@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { parseClarificationBlocks, parseScopeBlock, parseModulesBlock } from '../src/engine/agents/common.js';
 import { parseReviewIssues } from '../src/engine/agents/reviewer.js';
 import { parseEvaluationBlock } from '../src/engine/agents/builder.js';
+import { formatPriorClarifications } from '../src/engine/agents/planner.js';
 
 describe('parseClarificationBlocks', () => {
   it('parses a single question with all attributes', () => {
@@ -345,6 +346,60 @@ describe('parseReviewIssues', () => {
     const result = parseReviewIssues(text);
     expect(result).toHaveLength(1);
     expect(result[0].line).toBeUndefined();
+  });
+});
+
+describe('formatPriorClarifications', () => {
+  it('returns empty string for empty input', () => {
+    expect(formatPriorClarifications([])).toBe('');
+  });
+
+  it('returns empty string when no answers match questions', () => {
+    const result = formatPriorClarifications([{
+      questions: [{ id: 'q1', question: 'What DB?' }],
+      answers: { q2: 'irrelevant' },
+    }]);
+    expect(result).toBe('');
+  });
+
+  it('formats a single round of Q&A', () => {
+    const result = formatPriorClarifications([{
+      questions: [
+        { id: 'q1', question: 'What database?' },
+        { id: 'q2', question: 'Which ORM?' },
+      ],
+      answers: { q1: 'PostgreSQL', q2: 'Drizzle' },
+    }]);
+
+    expect(result).toContain('## Prior Clarifications');
+    expect(result).toContain('Do NOT re-ask');
+    expect(result).toContain('| q1: What database? | PostgreSQL |');
+    expect(result).toContain('| q2: Which ORM? | Drizzle |');
+  });
+
+  it('escapes pipe characters in questions and answers', () => {
+    const result = formatPriorClarifications([{
+      questions: [{ id: 'q1', question: 'PostgreSQL | MySQL?' }],
+      answers: { q1: 'PostgreSQL | with extensions' },
+    }]);
+
+    expect(result).toContain('| q1: PostgreSQL \\| MySQL? | PostgreSQL \\| with extensions |');
+  });
+
+  it('accumulates multiple clarification rounds', () => {
+    const result = formatPriorClarifications([
+      {
+        questions: [{ id: 'q1', question: 'First?' }],
+        answers: { q1: 'yes' },
+      },
+      {
+        questions: [{ id: 'q2', question: 'Second?' }],
+        answers: { q2: 'no' },
+      },
+    ]);
+
+    expect(result).toContain('| q1: First? | yes |');
+    expect(result).toContain('| q2: Second? | no |');
   });
 });
 

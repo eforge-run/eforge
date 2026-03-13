@@ -8,6 +8,8 @@ The user wants you to plan the following:
 
 {{source}}
 
+{{priorClarifications}}
+
 ## Plan Set
 
 - **Name**: `{{planSetName}}`

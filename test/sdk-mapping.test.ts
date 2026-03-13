@@ -105,12 +105,10 @@ describe('mapSDKMessages', () => {
     ]);
 
     const events = await collectEvents(mapSDKMessages(messages, 'planner'));
-    expect(events).toHaveLength(2);
+    // Result text is NOT re-emitted as agent:message (already came from assistant message).
+    // Only agent:result is emitted with resultText captured for tracing.
+    expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
-      type: 'agent:message',
-      content: 'Final result text',
-    });
-    expect(events[1]).toMatchObject({
       type: 'agent:result',
       agent: 'planner',
       result: {
