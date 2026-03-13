@@ -82,7 +82,7 @@ export class ForgeEngine {
   async *plan(source: string, options: Partial<PlanOptions> = {}): AsyncGenerator<ForgeEvent> {
     const runId = randomUUID();
     const planSet = options.name ?? source;
-    const tracing = createTracingContext(this.config, runId, 'plan');
+    const tracing = createTracingContext(this.config, runId, 'plan', planSet);
 
     yield {
       type: 'forge:start',
@@ -138,7 +138,7 @@ export class ForgeEngine {
    */
   async *build(planSet: string, options: Partial<BuildOptions> = {}): AsyncGenerator<ForgeEvent> {
     const runId = randomUUID();
-    const tracing = createTracingContext(this.config, runId, 'build');
+    const tracing = createTracingContext(this.config, runId, 'build', planSet);
     const cwd = options.cwd ?? this.cwd;
 
     yield {
@@ -296,7 +296,7 @@ export class ForgeEngine {
    */
   async *review(planSet: string, options: Partial<ReviewOptions> = {}): AsyncGenerator<ForgeEvent> {
     const runId = randomUUID();
-    const tracing = createTracingContext(this.config, runId, 'review');
+    const tracing = createTracingContext(this.config, runId, 'review', planSet);
     const cwd = options.cwd ?? this.cwd;
 
     yield {

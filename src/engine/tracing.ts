@@ -52,6 +52,7 @@ export function createTracingContext(
   config: ForgeConfig,
   runId: string,
   command: string,
+  sessionId?: string,
 ): TracingContext {
   if (!config.langfuse.enabled || !config.langfuse.publicKey || !config.langfuse.secretKey) {
     return createNoopTracingContext();
@@ -66,6 +67,7 @@ export function createTracingContext(
   const trace = langfuse.trace({
     id: runId,
     name: `forge:${command}`,
+    sessionId,
     metadata: { command },
   });
 
@@ -82,35 +84,35 @@ export function createTracingContext(
         metadata,
       });
 
+      // Buffer all data and send in a single end()/update() call to avoid
+      // Langfuse SDK issues with rapid-fire individual update() calls.
+      const pending: Record<string, unknown> = {};
+
       return {
         setInput(input: unknown) {
-          gen.update({ input });
+          pending.input = input;
         },
         setOutput(output: unknown) {
-          gen.update({ output });
+          pending.output = output;
         },
         setModel(model: string) {
-          gen.update({ model });
+          pending.model = model;
         },
         setUsage(usage: { input: number; output: number; total: number }) {
-          gen.update({
-            usage: { input: usage.input, output: usage.output, total: usage.total, unit: 'TOKENS' },
-          });
+          pending.usage = { input: usage.input, output: usage.output, total: usage.total, unit: 'TOKENS' };
         },
         setUsageDetails(details: Record<string, number>) {
-          gen.update({ usageDetails: details });
+          pending.usageDetails = details;
         },
         setCostDetails(details: Record<string, number>) {
-          gen.update({ costDetails: details });
+          pending.costDetails = details;
         },
         end() {
-          gen.update({ level: 'DEFAULT' });
-          gen.end();
+          gen.end({ ...pending, level: 'DEFAULT' });
         },
         error(err: Error | string) {
           const message = typeof err === 'string' ? err : err.message;
-          gen.update({ level: 'ERROR', statusMessage: message });
-          gen.end();
+          gen.end({ ...pending, level: 'ERROR', statusMessage: message });
         },
       };
     },
