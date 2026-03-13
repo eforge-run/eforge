@@ -22,6 +22,7 @@
   "packageManager": "pnpm@10.26.0",
   "dependencies": {
     "commander": "^14.0.3",
+    "langfuse": "^3.35.0",
     "yaml": "^2.8.2"
   },
   "devDependencies": {
