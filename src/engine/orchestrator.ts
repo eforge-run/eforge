@@ -36,6 +36,76 @@ export interface OrchestratorOptions {
   parallelism?: number;
 }
 
+/**
+ * Walk the dependency graph from a failed plan and mark all transitive
+ * dependents as blocked. Emits build:failed for each blocked plan.
+ */
+export function propagateFailure(
+  state: ForgeState,
+  failedPlanId: string,
+  plans: OrchestrationConfig['plans'],
+  eventQueue: AsyncEventQueue<ForgeEvent>,
+): void {
+  // Build adjacency: planId → direct dependents
+  const dependents = new Map<string, string[]>();
+  for (const plan of plans) {
+    for (const dep of plan.dependsOn) {
+      if (!dependents.has(dep)) dependents.set(dep, []);
+      dependents.get(dep)!.push(plan.id);
+    }
+  }
+
+  // BFS for transitive dependents
+  const queue = [failedPlanId];
+  const blocked = new Set<string>();
+
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    for (const dep of dependents.get(current) ?? []) {
+      if (blocked.has(dep)) continue;
+      blocked.add(dep);
+
+      const planState = state.plans[dep];
+      if (planState && planState.status !== 'completed' && planState.status !== 'merged') {
+        updatePlanStatus(state, dep, 'blocked');
+        planState.error = `Blocked by failed dependency: ${failedPlanId}`;
+        eventQueue.push({
+          type: 'build:failed',
+          planId: dep,
+          error: `Blocked by failed dependency: ${failedPlanId}`,
+        });
+      }
+      queue.push(dep);
+    }
+  }
+}
+
+/**
+ * Resume a ForgeState by resetting running plans to pending and
+ * re-evaluating blocked plans whose dependencies have resolved.
+ */
+export function resumeState(state: ForgeState): ForgeState {
+  // Reset running plans to pending for re-execution
+  for (const [id, plan] of Object.entries(state.plans)) {
+    if (plan.status === 'running') {
+      updatePlanStatus(state, id, 'pending');
+    }
+  }
+  // Re-evaluate blocked plans — unblock if all deps resolved
+  for (const [planId, plan] of Object.entries(state.plans)) {
+    if (plan.status === 'blocked') {
+      const allDepsResolved = plan.dependsOn.every((dep) => {
+        const depState = state.plans[dep];
+        return depState && (depState.status === 'completed' || depState.status === 'merged');
+      });
+      if (allDepsResolved) {
+        updatePlanStatus(state, planId, 'pending');
+      }
+    }
+  }
+  return state;
+}
+
 export class Orchestrator {
   private readonly options: OrchestratorOptions;
 
@@ -127,7 +197,7 @@ export class Orchestrator {
               saveState(stateDir, state);
 
               // Propagate failure to transitive dependents
-              this.propagateFailure(state, planId, config.plans, eventQueue);
+              propagateFailure(state, planId, config.plans, eventQueue);
               saveState(stateDir, state);
             } finally {
               try {
@@ -143,7 +213,7 @@ export class Orchestrator {
               state.plans[planId].error = (err as Error).message;
               saveState(stateDir, state);
 
-              this.propagateFailure(state, planId, config.plans, eventQueue);
+              propagateFailure(state, planId, config.plans, eventQueue);
               saveState(stateDir, state);
             }
           } finally {
@@ -219,24 +289,7 @@ export class Orchestrator {
 
     if (existing) {
       if (isResumable(existing)) {
-        // Reset running plans to pending for re-execution
-        for (const [id, plan] of Object.entries(existing.plans)) {
-          if (plan.status === 'running') {
-            updatePlanStatus(existing, id, 'pending');
-          }
-        }
-        // Re-evaluate blocked plans — unblock if all deps resolved
-        for (const [planId, plan] of Object.entries(existing.plans)) {
-          if (plan.status === 'blocked') {
-            const allDepsResolved = plan.dependsOn.every((dep) => {
-              const depState = existing.plans[dep];
-              return depState && (depState.status === 'completed' || depState.status === 'merged');
-            });
-            if (allDepsResolved) {
-              updatePlanStatus(existing, planId, 'pending');
-            }
-          }
-        }
+        resumeState(existing);
         saveState(stateDir, existing);
         return existing;
       }
@@ -271,47 +324,4 @@ export class Orchestrator {
     return state;
   }
 
-  /**
-   * Walk the dependency graph from a failed plan and mark all transitive
-   * dependents as blocked. Emits build:failed for each blocked plan.
-   */
-  private propagateFailure(
-    state: ForgeState,
-    failedPlanId: string,
-    plans: OrchestrationConfig['plans'],
-    eventQueue: AsyncEventQueue<ForgeEvent>,
-  ): void {
-    // Build adjacency: planId → direct dependents
-    const dependents = new Map<string, string[]>();
-    for (const plan of plans) {
-      for (const dep of plan.dependsOn) {
-        if (!dependents.has(dep)) dependents.set(dep, []);
-        dependents.get(dep)!.push(plan.id);
-      }
-    }
-
-    // BFS for transitive dependents
-    const queue = [failedPlanId];
-    const blocked = new Set<string>();
-
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      for (const dep of dependents.get(current) ?? []) {
-        if (blocked.has(dep)) continue;
-        blocked.add(dep);
-
-        const planState = state.plans[dep];
-        if (planState && planState.status !== 'completed' && planState.status !== 'merged') {
-          updatePlanStatus(state, dep, 'blocked');
-          planState.error = `Blocked by failed dependency: ${failedPlanId}`;
-          eventQueue.push({
-            type: 'build:failed',
-            planId: dep,
-            error: `Blocked by failed dependency: ${failedPlanId}`,
-          });
-        }
-        queue.push(dep);
-      }
-    }
-  }
 }

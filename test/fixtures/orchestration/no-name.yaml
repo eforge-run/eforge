@@ -1,0 +1,5 @@
+description: Config without a name
+plans:
+  - id: orphan
+    name: Orphan
+    branch: feature/orphan

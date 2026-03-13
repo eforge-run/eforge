@@ -48,6 +48,10 @@ export async function* mapSDKMessages(
         const result = msg as SDKResultMessage;
         if (result.subtype === 'success') {
           yield { type: 'agent:message', planId, agent, content: result.result };
+        } else {
+          const errorResult = result as SDKResultMessage & { errors?: string[] };
+          const errorMsg = errorResult.errors?.join('; ') ?? `Agent ${agent} failed: ${result.subtype}`;
+          throw new Error(errorMsg);
         }
         break;
       }

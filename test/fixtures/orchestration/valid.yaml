@@ -1,0 +1,14 @@
+name: test-orchestration
+description: A test orchestration config
+created: "2026-01-01"
+mode: excursion
+base_branch: main
+plans:
+  - id: core
+    name: Core Module
+    branch: feature/core
+  - id: cli
+    name: CLI Module
+    branch: feature/cli
+    depends_on:
+      - core

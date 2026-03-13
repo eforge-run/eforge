@@ -13,10 +13,10 @@ The architecture is **library-first**: a pure, event-driven engine (`src/engine/
 ```bash
 pnpm run build        # Bundle with tsup → dist/cli.js
 pnpm run dev          # Run directly via tsx (e.g. pnpm run dev -- plan foo.md)
+pnpm test             # Run tests (vitest)
+pnpm test:watch       # Watch mode
 pnpm run type-check   # Type check without emitting
 ```
-
-No test framework is configured yet.
 
 ## Architecture
 
@@ -63,6 +63,16 @@ src/
 
   cli.ts                      # Entry point (shebang, imports cli/index)
 ```
+
+## Testing
+
+Tests live in `test/` and use vitest. Organize by **logical unit**, not source file:
+
+- **Group by what's tested, not where it lives.** A source file may split across multiple test files (e.g., `plan.ts` → `dependency-graph.test.ts` + `plan-parsing.test.ts`) or multiple source files may merge into one test file (e.g., XML parsers from `common.ts`, `reviewer.ts`, `builder.ts` → `xml-parsers.test.ts`).
+- **No mocks.** Test real code. For SDK types, hand-craft data objects cast through `unknown` rather than mocking.
+- **Fixtures for I/O tests only.** File-reading tests use `test/fixtures/`; everything else constructs inputs inline.
+- **Helpers colocated.** Test helpers (e.g., `makeState()`, `asyncIterableFrom()`) live in the test file that uses them. No shared test utils unless reuse spans 3+ files.
+- **Only test pure logic.** Agent runners, `ForgeEngine`, worktree/git ops, and tracing are thin SDK wrappers — testing them means testing mocks, so don't.
 
 ## Conventions
 

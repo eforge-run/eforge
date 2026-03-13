@@ -9,6 +9,8 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "type-check": "tsc --noEmit"
   },
   "keywords": [
@@ -23,7 +25,7 @@
   "dependencies": {
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
-    "langfuse": "^3.35.0",
+    "langfuse": "^3.38.6",
     "ora": "^8.2.0",
     "yaml": "^2.8.2"
   },
@@ -32,6 +34,7 @@
     "@types/node": "^25.5.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
   }
 }
