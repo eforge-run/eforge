@@ -1,5 +1,4 @@
 import { query } from '@anthropic-ai/claude-agent-sdk';
-import type { SDKResultMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { ForgeEvent, ReviewIssue } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { mapSDKMessages } from './common.js';
@@ -156,30 +155,16 @@ export async function* runReview(
     },
   });
 
-  for await (const msg of q) {
+  for await (const event of mapSDKMessages(q, 'reviewer', planId)) {
     if (verbose) {
-      for await (const event of mapSDKMessages(asAsyncIterable(msg), 'reviewer', planId)) {
-        yield event;
-      }
+      yield event;
     }
-
-    // Collect final text from result message for issue parsing (both modes)
-    if (msg.type === 'result') {
-      const resultMsg = msg as SDKResultMessage;
-      if (resultMsg.subtype === 'success') {
-        fullText += resultMsg.result;
-      }
+    if (event.type === 'agent:message' && event.content) {
+      fullText += event.content;
     }
   }
 
   const issues = parseReviewIssues(fullText);
 
   yield { type: 'build:review:complete', planId, issues };
-}
-
-/**
- * Wrap a single value in an async iterable for mapSDKMessages compatibility.
- */
-async function* asAsyncIterable<T>(value: T): AsyncGenerator<T> {
-  yield value;
 }
