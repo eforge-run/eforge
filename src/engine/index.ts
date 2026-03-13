@@ -43,5 +43,9 @@ export { loadState, saveState, updatePlanStatus, isResumable } from './state.js'
 // --- orchestration ---
 
 // --- config ---
+export type { ForgeConfig } from './config.js';
+export { DEFAULT_CONFIG, findConfigFile, resolveConfig, loadConfig } from './config.js';
+export type { TracingContext, SpanHandle } from './tracing.js';
+export { createTracingContext, createNoopTracingContext } from './tracing.js';
 
 // --- forge-core ---
