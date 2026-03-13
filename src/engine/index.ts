@@ -47,6 +47,16 @@ export { runReview, parseReviewIssues, composeReviewPrompt } from './agents/revi
 export type { ReviewerOptions } from './agents/reviewer.js';
 
 // --- orchestration ---
+export { Orchestrator } from './orchestrator.js';
+export type { PlanRunner, OrchestratorOptions } from './orchestrator.js';
+export {
+  computeWorktreeBase,
+  createWorktree,
+  removeWorktree,
+  mergeWorktree,
+  cleanupWorktrees,
+} from './worktree.js';
+export { Semaphore, AsyncEventQueue } from './concurrency.js';
 
 // --- config ---
 
