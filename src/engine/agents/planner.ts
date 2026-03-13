@@ -103,8 +103,8 @@ export async function* runPlanner(
       }
     }
 
-    // Forward agent-level events when verbose
-    if (options.verbose) {
+    // Always yield agent:result (carries tracing data); gate streaming events on verbose
+    if (event.type === 'agent:result' || options.verbose) {
       yield event;
     }
   }
