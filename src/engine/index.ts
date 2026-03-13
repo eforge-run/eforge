@@ -41,6 +41,16 @@ export { loadState, saveState, updatePlanStatus, isResumable } from './state.js'
 // --- reviewer ---
 
 // --- orchestration ---
+export { Orchestrator } from './orchestrator.js';
+export type { PlanRunner, OrchestratorOptions } from './orchestrator.js';
+export {
+  computeWorktreeBase,
+  createWorktree,
+  removeWorktree,
+  mergeWorktree,
+  cleanupWorktrees,
+} from './worktree.js';
+export { Semaphore, AsyncEventQueue } from './concurrency.js';
 
 // --- config ---
 
