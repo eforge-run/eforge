@@ -8,7 +8,7 @@ import {
   resolveDependencyGraph,
 } from '../engine/plan.js';
 import type { ForgeEvent } from '../engine/events.js';
-import { initDisplay, renderEvent, renderStatus, renderDryRun, stopAllSpinners } from './display.js';
+import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
@@ -23,10 +23,16 @@ function setupSignalHandlers(): void {
   process.on('SIGTERM', handler);
 }
 
-async function consumeEvents(events: AsyncGenerator<ForgeEvent>): Promise<'completed' | 'failed'> {
+async function consumeEvents(
+  events: AsyncGenerator<ForgeEvent>,
+  opts?: { afterStart?: () => void },
+): Promise<'completed' | 'failed'> {
   let result: 'completed' | 'failed' = 'completed';
   for await (const event of events) {
     renderEvent(event);
+    if (event.type === 'forge:start' && opts?.afterStart) {
+      opts.afterStart();
+    }
     if (event.type === 'forge:end') {
       result = event.result.status;
     }
@@ -56,13 +62,13 @@ export function createProgram(): Command {
           onClarification: createClarificationHandler(options.auto ?? false),
           onApproval: createApprovalHandler(options.auto ?? false),
         });
-
         const result = await consumeEvents(
           engine.plan(source, {
             auto: options.auto,
             verbose: options.verbose,
             name: options.name,
           }),
+          { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
         );
 
         process.exit(result === 'completed' ? 0 : 1);
@@ -107,12 +113,12 @@ export function createProgram(): Command {
           onApproval: createApprovalHandler(options.auto ?? false),
           config: configOverrides,
         });
-
         const result = await consumeEvents(
           engine.build(planSet, {
             auto: options.auto,
             verbose: options.verbose,
           }),
+          { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
         );
 
         process.exit(result === 'completed' ? 0 : 1);
@@ -131,12 +137,12 @@ export function createProgram(): Command {
         onClarification: createClarificationHandler(options.auto ?? false),
         onApproval: createApprovalHandler(options.auto ?? false),
       });
-
       const result = await consumeEvents(
         engine.review(planSet, {
           auto: options.auto,
           verbose: options.verbose,
         }),
+        { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
       );
 
       process.exit(result === 'completed' ? 0 : 1);

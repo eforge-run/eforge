@@ -85,7 +85,7 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 - tsup bundles to a single `dist/cli.js` with shebang for direct execution
 - Engine uses `AsyncGenerator<ForgeEvent>` pattern — consumers iterate, no callbacks except clarification/approval
 - Clarification uses engine-level events (parsed from agent XML output), not SDK's built-in `AskUserQuestion`
-- Langfuse tracing planned for all agent calls (env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST`)
+- Langfuse tracing planned for all agent calls (env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`)
 
 ## CLI commands
 

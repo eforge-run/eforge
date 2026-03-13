@@ -49,12 +49,12 @@ describe('resolveConfig', () => {
     expect(config2.langfuse.enabled).toBe(false);
   });
 
-  it('takes LANGFUSE_HOST from env', () => {
+  it('takes LANGFUSE_BASE_URL from env', () => {
     const config = resolveConfig(
       {},
-      { LANGFUSE_HOST: 'https://custom.host' },
+      { LANGFUSE_BASE_URL: 'https://us.cloud.langfuse.com' },
     );
-    expect(config.langfuse.host).toBe('https://custom.host');
+    expect(config.langfuse.host).toBe('https://us.cloud.langfuse.com');
   });
 
   it('result is frozen', () => {

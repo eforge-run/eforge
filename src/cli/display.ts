@@ -1,6 +1,7 @@
 import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
 import type { ForgeEvent, ForgeStatus, OrchestrationConfig } from '../engine/events.js';
+import type { ForgeConfig } from '../engine/config.js';
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();
@@ -10,6 +11,14 @@ let startTime = Date.now();
 export function initDisplay(opts: { verbose?: boolean } = {}): void {
   verbose = opts.verbose ?? false;
   startTime = Date.now();
+}
+
+export function renderLangfuseStatus(config: ForgeConfig): void {
+  if (config.langfuse.enabled) {
+    console.log(chalk.dim(`  Langfuse: enabled → ${config.langfuse.host}`));
+  } else {
+    console.log(chalk.dim('  Langfuse: disabled'));
+  }
 }
 
 export function stopAllSpinners(): void {

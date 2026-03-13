@@ -51,7 +51,7 @@ export function resolveConfig(
 ): ForgeConfig {
   const langfusePublicKey = env.LANGFUSE_PUBLIC_KEY ?? fileConfig.langfuse?.publicKey;
   const langfuseSecretKey = env.LANGFUSE_SECRET_KEY ?? fileConfig.langfuse?.secretKey;
-  const langfuseHost = env.LANGFUSE_HOST ?? fileConfig.langfuse?.host ?? DEFAULT_CONFIG.langfuse.host;
+  const langfuseHost = env.LANGFUSE_BASE_URL ?? fileConfig.langfuse?.host ?? DEFAULT_CONFIG.langfuse.host;
   const langfuseEnabled = !!(langfusePublicKey && langfuseSecretKey);
 
   return Object.freeze({

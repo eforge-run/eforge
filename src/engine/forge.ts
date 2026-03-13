@@ -55,6 +55,11 @@ export class ForgeEngine {
     this.onApproval = options.onApproval;
   }
 
+  /** Expose resolved config for CLI diagnostics. */
+  get resolvedConfig(): ForgeConfig {
+    return this.config;
+  }
+
   /**
    * Async factory — loads config, applies overrides, returns engine.
    */
