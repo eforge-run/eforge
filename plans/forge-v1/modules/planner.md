@@ -67,6 +67,8 @@ Two files: the agent implementation and its prompt. The agent is an async genera
 
 7. **AbortController propagation** — The planner accepts an optional `AbortController` (from `PlanOptions` or a parent orchestration) and passes it through to the SDK `query()` call, enabling cancellation.
 
+8. **Deterministic positioning for shared files** — When the planner identifies files that multiple parallel plans will modify (e.g., barrel/index files, shared configs, route registries), it instructs the earliest-wave plan to create those files with named section markers (`// --- {module} ---`). Each parallel plan's "Modify" section references its specific marker. This eliminates merge conflicts during the orchestrator's sequential merge phase.
+
 ### Clarification Flow
 
 ```mermaid
@@ -132,6 +134,7 @@ The planner prompt is extracted from `schaake-cc-marketplace/eee-plugin/skills/e
   - Plan file format specification (YAML frontmatter + markdown sections)
   - Orchestration.yaml format specification
   - Quality criteria for good plans
+  - Deterministic positioning instructions: when generating plans that share modified files across parallel waves, include section markers in the creating plan and reference specific markers in each modifying plan
   - Output instructions (write files to `plans/{{planSetName}}/`)
 
 ### Modify
@@ -177,3 +180,4 @@ No test framework is configured yet. Verification will be done via type-checking
 - [ ] `AbortController` is propagated to the SDK `query()` call
 - [ ] Source is correctly handled as both file path (read content) and inline string
 - [ ] `runPlanner` is re-exported from `src/engine/index.ts`
+- [ ] The prompt instructs deterministic positioning (section markers) for shared files modified by parallel plans
