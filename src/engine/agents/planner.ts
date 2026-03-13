@@ -1,7 +1,6 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { stat } from 'node:fs/promises';
 import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { ForgeEvent, PlanOptions, ClarificationQuestion, PlanFile } from '../events.js';
@@ -62,6 +61,7 @@ export async function* runPlanner(
     options: {
       cwd,
       permissionMode: 'bypassPermissions',
+      allowDangerouslySkipPermissions: true,
       maxTurns: 30,
       tools: { type: 'preset', preset: 'claude_code' },
       abortController: options.abortController,

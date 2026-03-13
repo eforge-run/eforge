@@ -18,6 +18,8 @@ export interface ReviewerOptions {
   cwd: string;
   /** Whether to emit verbose agent-level events */
   verbose?: boolean;
+  /** AbortController for cancellation */
+  abortController?: AbortController;
 }
 
 /**
@@ -135,7 +137,7 @@ function mapSeverity(raw: string): ReviewIssue['severity'] | undefined {
 export async function* runReview(
   options: ReviewerOptions,
 ): AsyncGenerator<ForgeEvent> {
-  const { planContent, baseBranch, planId, cwd, verbose } = options;
+  const { planContent, baseBranch, planId, cwd, verbose, abortController } = options;
 
   yield { type: 'build:review:start', planId };
 
@@ -150,6 +152,7 @@ export async function* runReview(
       maxTurns: 30,
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
+      abortController,
     },
   });
 

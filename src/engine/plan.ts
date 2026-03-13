@@ -30,7 +30,7 @@ export async function parsePlanFile(mdPath: string): Promise<PlanFile> {
     id: frontmatter.id,
     name: frontmatter.name,
     dependsOn: Array.isArray(frontmatter.depends_on) ? frontmatter.depends_on : [],
-    branch: (frontmatter.branch as string) ?? '',
+    branch: typeof frontmatter.branch === 'string' ? frontmatter.branch : '',
     migrations: Array.isArray(frontmatter.migrations) ? frontmatter.migrations : undefined,
     body,
     filePath: absPath,
@@ -51,10 +51,10 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
 
   const plans = Array.isArray(data.plans)
     ? (data.plans as Array<Record<string, unknown>>).map((p) => ({
-        id: p.id as string,
-        name: p.name as string,
+        id: typeof p.id === 'string' ? p.id : String(p.id ?? ''),
+        name: typeof p.name === 'string' ? p.name : String(p.name ?? ''),
         dependsOn: Array.isArray(p.depends_on) ? (p.depends_on as string[]) : [],
-        branch: (p.branch as string) ?? '',
+        branch: typeof p.branch === 'string' ? p.branch : '',
       }))
     : [];
 

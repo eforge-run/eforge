@@ -65,3 +65,5 @@ export type { TracingContext, SpanHandle } from './tracing.js';
 export { createTracingContext, createNoopTracingContext } from './tracing.js';
 
 // --- forge-core ---
+export { ForgeEngine } from './forge.js';
+export type { ForgeEngineOptions } from './forge.js';

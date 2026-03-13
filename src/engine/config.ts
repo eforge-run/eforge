@@ -1,6 +1,6 @@
 import { readFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
-import { cpus } from 'node:os';
+import { availableParallelism } from 'node:os';
 import { parse as parseYaml } from 'yaml';
 
 export interface ForgeConfig {
@@ -13,7 +13,7 @@ export interface ForgeConfig {
 export const DEFAULT_CONFIG: ForgeConfig = Object.freeze({
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({ maxTurns: 30, permissionMode: 'bypass' as const }),
-  build: Object.freeze({ parallelism: cpus().length, worktreeDir: undefined }),
+  build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined }),
   plan: Object.freeze({ outputDir: 'plans' }),
 });
 
