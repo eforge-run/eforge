@@ -37,6 +37,8 @@ export { loadState, saveState, updatePlanStatus, isResumable } from './state.js'
 // --- planner ---
 
 // --- builder ---
+export { builderImplement, builderEvaluate, parseEvaluationBlock } from './agents/builder.js';
+export type { BuilderOptions, EvaluationVerdict } from './agents/builder.js';
 
 // --- reviewer ---
 
