@@ -27,8 +27,8 @@ export async function parsePlanFile(mdPath: string): Promise<PlanFile> {
   }
 
   return {
-    id: frontmatter.id as string,
-    name: frontmatter.name as string,
+    id: frontmatter.id,
+    name: frontmatter.name,
     dependsOn: Array.isArray(frontmatter.depends_on) ? frontmatter.depends_on : [],
     branch: (frontmatter.branch as string) ?? '',
     migrations: Array.isArray(frontmatter.migrations) ? frontmatter.migrations : undefined,
@@ -162,12 +162,15 @@ export async function validatePlanSet(
   // Check for duplicate plan IDs
   const seenIds = new Set<string>();
   for (const plan of config.plans) {
+    if (!plan.id) {
+      errors.push('Plan entry missing id');
+      continue;
+    }
     if (seenIds.has(plan.id)) {
       errors.push(`Duplicate plan ID: '${plan.id}'`);
     }
     seenIds.add(plan.id);
 
-    if (!plan.id) errors.push('Plan entry missing id');
     if (!plan.name) errors.push(`Plan '${plan.id}' missing name`);
     if (!plan.branch) errors.push(`Plan '${plan.id}' missing branch`);
   }

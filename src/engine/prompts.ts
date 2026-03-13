@@ -28,9 +28,7 @@ export async function loadPrompt(
   }
 
   if (vars) {
-    for (const [key, value] of Object.entries(vars)) {
-      content = content.replaceAll(`{{${key}}}`, value);
-    }
+    content = content.replace(/\{\{(\w+)\}\}/g, (match, key) => vars[key] ?? match);
   }
 
   return content;

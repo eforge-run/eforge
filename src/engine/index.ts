@@ -35,6 +35,8 @@ export { mapSDKMessages, parseClarificationBlocks } from './agents/common.js';
 export { loadState, saveState, updatePlanStatus, isResumable } from './state.js';
 
 // --- planner ---
+export { runPlanner } from './agents/planner.js';
+export type { PlannerOptions } from './agents/planner.js';
 
 // --- builder ---
 
