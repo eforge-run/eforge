@@ -1,7 +1,8 @@
 name: forge-v1
 description: Extract plan-build-review workflow from schaake-cc-marketplace plugins into standalone CLI on claude-agent-sdk. Library-first architecture with event-driven engine supporting CLI, headless, TUI, and web UI surfaces.
-created: 2026-03-12
-status: draft
+created: "2026-03-12"
+status: compiled
+compiled: "2026-03-12"
 mode: expedition
 
 architecture:
