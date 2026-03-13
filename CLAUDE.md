@@ -16,6 +16,9 @@ pnpm run dev          # Run directly via tsx (e.g. pnpm run dev -- plan foo.md)
 pnpm test             # Run tests (vitest)
 pnpm test:watch       # Watch mode
 pnpm run type-check   # Type check without emitting
+
+# Run built CLI with Langfuse tracing
+source .env && node dist/cli.js plan docs/init-prd.md --verbose
 ```
 
 ## Architecture
@@ -81,8 +84,8 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 ## Tech decisions
 
 - ESM-only (`"type": "module"`), target Node.js 22+
-- `@anthropic-ai/claude-agent-sdk` is a devDependency — chosen for Max subscription billing (zero API cost). Vendor lock-in accepted.
-- tsup bundles to a single `dist/cli.js` with shebang for direct execution
+- `@anthropic-ai/claude-agent-sdk` is a runtime dependency (externalized from bundle so its `import.meta.url` resolves correctly). Chosen for Max subscription billing (zero API cost). Vendor lock-in accepted.
+- tsup bundles to `dist/cli.js` with shebang; SDK is externalized via `external` config to preserve subprocess resolution
 - Engine uses `AsyncGenerator<ForgeEvent>` pattern — consumers iterate, no callbacks except clarification/approval
 - Clarification uses engine-level events (parsed from agent XML output), not SDK's built-in `AskUserQuestion`
 - Langfuse tracing planned for all agent calls (env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`)

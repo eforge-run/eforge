@@ -7,6 +7,7 @@ export default defineConfig({
   target: "node22",
   clean: true,
   dts: false,
+  external: ["@anthropic-ai/claude-agent-sdk"],
   banner: {
     js: "#!/usr/bin/env node",
   },

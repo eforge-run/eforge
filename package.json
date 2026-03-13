@@ -9,7 +9,6 @@
   "scripts": {
     "build": "tsup",
     "dev": "tsx src/cli.ts",
-    "dev:trace": "set -a && . ./.env && set +a && tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit"
@@ -24,6 +23,7 @@
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.26.0",
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.74",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "langfuse": "^3.38.6",
@@ -31,7 +31,6 @@
     "yaml": "^2.8.2"
   },
   "devDependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.74",
     "@types/node": "^25.5.0",
     "tsup": "^8.5.1",
     "tsx": "^4.21.0",

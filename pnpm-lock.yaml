@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.2.74
+        version: 0.2.74(zod@4.3.6)
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -24,9 +27,6 @@ importers:
         specifier: ^2.8.2
         version: 2.8.2
     devDependencies:
-      '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.74
-        version: 0.2.74(zod@4.3.6)
       '@types/node':
         specifier: ^25.5.0
         version: 25.5.0

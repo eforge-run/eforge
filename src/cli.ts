@@ -2,4 +2,10 @@
 delete process.env.CLAUDECODE;
 
 import { run } from './cli/index.js';
-run();
+
+try {
+  await run();
+} catch (err) {
+  console.error(err instanceof Error ? (err.stack ?? err.message) : err);
+  process.exit(1);
+}
