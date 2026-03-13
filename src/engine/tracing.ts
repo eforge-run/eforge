@@ -14,6 +14,8 @@ export interface SpanHandle {
 }
 
 export interface TracingContext {
+  setInput(input: unknown): void;
+  setOutput(output: unknown): void;
   createSpan(agent: AgentRole, metadata?: Record<string, unknown>): SpanHandle;
   flush(): Promise<void>;
 }
@@ -34,6 +36,8 @@ export function createNoopTracingContext(): TracingContext {
   };
 
   return {
+    setInput() {},
+    setOutput() {},
     createSpan() {
       return noopSpan;
     },
@@ -66,6 +70,12 @@ export function createTracingContext(
   });
 
   return {
+    setInput(input: unknown) {
+      trace.update({ input });
+    },
+    setOutput(output: unknown) {
+      trace.update({ output });
+    },
     createSpan(agent: AgentRole, metadata?: Record<string, unknown>): SpanHandle {
       const gen = trace.generation({
         name: agent,

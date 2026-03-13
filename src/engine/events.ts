@@ -70,6 +70,8 @@ export interface AgentResultData {
   usage: { input: number; output: number; total: number };
   /** Per-model token and cost breakdown, keyed by model name */
   modelUsage: Record<string, { inputTokens: number; outputTokens: number; costUSD: number }>;
+  /** Final result text from the agent (used as generation output in traces) */
+  resultText?: string;
 }
 
 export interface PlanOptions {

@@ -118,8 +118,49 @@ describe('mapSDKMessages', () => {
         numTurns: 3,
         totalCostUsd: 0.05,
         usage: { input: 100, output: 200, total: 300 },
+        resultText: 'Final result text',
       },
     });
+  });
+
+  it('aggregates tokens across multiple models in modelUsage', async () => {
+    const messages = asyncIterableFrom([
+      {
+        type: 'result',
+        subtype: 'success',
+        result: 'Done',
+        duration_ms: 10000,
+        duration_api_ms: 9000,
+        num_turns: 7,
+        total_cost_usd: 0.87,
+        // SDK aggregate only reflects primary model
+        usage: { input_tokens: 7, output_tokens: 11267 },
+        modelUsage: {
+          'claude-opus-4-6': {
+            inputTokens: 7,
+            outputTokens: 11267,
+            costUSD: 0.53,
+          },
+          'claude-haiku-4-5-20251001': {
+            inputTokens: 126,
+            outputTokens: 12591,
+            costUSD: 0.34,
+          },
+        },
+      },
+    ]);
+
+    const events = await collectEvents(mapSDKMessages(messages, 'planner'));
+    const resultEvent = events.find((e) => e.type === 'agent:result');
+    expect(resultEvent).toBeDefined();
+    if (resultEvent?.type === 'agent:result') {
+      // Aggregate should sum ALL models, not just the SDK's primary model usage
+      expect(resultEvent.result.usage).toEqual({
+        input: 7 + 126,
+        output: 11267 + 12591,
+        total: 7 + 126 + 11267 + 12591,
+      });
+    }
   });
 
   it('throws on result error after yielding agent:result', async () => {

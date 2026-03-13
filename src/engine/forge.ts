@@ -95,8 +95,11 @@ export class ForgeEngine {
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Planning complete';
 
+    tracing.setInput({ source, planSet });
+
     try {
       const span = tracing.createSpan('planner', { source, planSet });
+      span.setInput({ source, planSet });
 
       const plannerOptions: PlannerOptions = {
         ...options,
@@ -118,6 +121,7 @@ export class ForgeEngine {
         span.error(err as Error);
       }
     } finally {
+      tracing.setOutput({ status, summary });
       yield {
         type: 'forge:end',
         runId,
@@ -147,6 +151,8 @@ export class ForgeEngine {
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Build complete';
+
+    tracing.setInput({ planSet });
 
     try {
       // Validate plan set
@@ -187,6 +193,7 @@ export class ForgeEngine {
 
         // Phase 1: Implement
         const implSpan = tracing.createSpan('builder', { planId, phase: 'implement' });
+        implSpan.setInput({ planId, phase: 'implement' });
         let implFailed = false;
 
         try {
@@ -213,6 +220,7 @@ export class ForgeEngine {
 
         // Phase 2: Review
         const reviewSpan = tracing.createSpan('reviewer', { planId });
+        reviewSpan.setInput({ planId });
         try {
           for await (const event of runReview({
             planContent: planFile.body,
@@ -238,6 +246,7 @@ export class ForgeEngine {
         const hasUnstaged = await hasUnstagedChanges(worktreePath);
         if (hasUnstaged) {
           const evalSpan = tracing.createSpan('evaluator', { planId });
+          evalSpan.setInput({ planId });
           try {
             for await (const event of builderEvaluate(planFile, { cwd: worktreePath, verbose })) {
               if (event.type === 'agent:result' && event.agent === 'evaluator') {
@@ -271,6 +280,7 @@ export class ForgeEngine {
       status = 'failed';
       summary = (err as Error).message;
     } finally {
+      tracing.setOutput({ status, summary });
       yield {
         type: 'forge:end',
         runId,
@@ -300,6 +310,8 @@ export class ForgeEngine {
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Review complete';
 
+    tracing.setInput({ planSet });
+
     try {
       const configPath = resolve(cwd, 'plans', planSet, 'orchestration.yaml');
       const orchConfig = await parseOrchestrationConfig(configPath);
@@ -307,6 +319,7 @@ export class ForgeEngine {
 
       for (const plan of orchConfig.plans) {
         const span = tracing.createSpan('reviewer', { planId: plan.id });
+        span.setInput({ planId: plan.id });
         try {
           const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
           for await (const event of runReview({
@@ -331,6 +344,7 @@ export class ForgeEngine {
       status = 'failed';
       summary = (err as Error).message;
     } finally {
+      tracing.setOutput({ status, summary });
       yield {
         type: 'forge:end',
         runId,
@@ -400,6 +414,11 @@ function populateSpan(span: SpanHandle, data: AgentResultData): void {
   const models = Object.keys(data.modelUsage);
   if (models.length > 0) {
     span.setModel(models[0]);
+  }
+
+  // Set generation output from agent result text
+  if (data.resultText) {
+    span.setOutput(data.resultText);
   }
 
   span.setUsage(data.usage);

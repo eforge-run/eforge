@@ -50,7 +50,7 @@ export async function* mapSDKMessages(
         const result = msg as SDKResultMessage;
         if (result.subtype === 'success') {
           yield { type: 'agent:message', planId, agent, content: result.result };
-          yield { type: 'agent:result', planId, agent, result: extractResultData(result) };
+          yield { type: 'agent:result', planId, agent, result: extractResultData(result, result.result) };
         } else {
           const errorResult = result as SDKResultMessage & { errors?: string[] };
           const errorMsg = errorResult.errors?.join('; ') ?? `Agent ${agent} failed: ${result.subtype}`;
@@ -72,8 +72,11 @@ export async function* mapSDKMessages(
  * Extract tracing-relevant data from an SDK result message.
  * Defensive against missing fields (e.g. in test fixtures).
  */
-function extractResultData(result: SDKResultMessage): AgentResultData {
+function extractResultData(result: SDKResultMessage, resultText?: string): AgentResultData {
   const modelUsage: AgentResultData['modelUsage'] = {};
+  let inputTokens = 0;
+  let outputTokens = 0;
+
   if (result.modelUsage) {
     for (const [model, usage] of Object.entries(result.modelUsage)) {
       modelUsage[model] = {
@@ -81,11 +84,16 @@ function extractResultData(result: SDKResultMessage): AgentResultData {
         outputTokens: usage.outputTokens,
         costUSD: usage.costUSD,
       };
+      inputTokens += usage.inputTokens;
+      outputTokens += usage.outputTokens;
     }
   }
 
-  const inputTokens = result.usage?.input_tokens ?? 0;
-  const outputTokens = result.usage?.output_tokens ?? 0;
+  // Fall back to SDK aggregate if modelUsage was empty
+  if (inputTokens === 0 && outputTokens === 0) {
+    inputTokens = result.usage?.input_tokens ?? 0;
+    outputTokens = result.usage?.output_tokens ?? 0;
+  }
 
   return {
     durationMs: result.duration_ms ?? 0,
@@ -98,6 +106,7 @@ function extractResultData(result: SDKResultMessage): AgentResultData {
       total: inputTokens + outputTokens,
     },
     modelUsage,
+    resultText,
   };
 }
 
