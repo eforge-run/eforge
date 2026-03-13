@@ -15,6 +15,7 @@ export type {
   BuildOptions,
   ReviewOptions,
   ForgeStatus,
+  ScopeAssessment,
 } from './events.js';
 
 // --- plan ---

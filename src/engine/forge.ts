@@ -21,6 +21,7 @@ import type {
   AgentResultData,
   ExpeditionModule,
   OrchestrationConfig,
+  ScopeAssessment,
 } from './events.js';
 import type { ForgeConfig } from './config.js';
 import type { PlannerOptions } from './agents/planner.js';
@@ -119,7 +120,7 @@ export class ForgeEngine {
         onClarification: this.onClarification,
       };
 
-      let scopeAssessment: OrchestrationConfig['mode'] | undefined;
+      let scopeAssessment: ScopeAssessment | undefined;
       let expeditionModules: ExpeditionModule[] = [];
 
       try {
@@ -150,6 +151,10 @@ export class ForgeEngine {
           yield event;
         }
         span.end();
+
+        if (scopeAssessment === 'complete') {
+          summary = 'Nothing to plan — source is fully implemented';
+        }
       } catch (err) {
         status = 'failed';
         summary = (err as Error).message;

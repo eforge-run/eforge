@@ -1,6 +1,8 @@
 // ForgeEvent discriminated union and all supporting types
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
+export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
+export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
 export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner';
 
@@ -114,7 +116,7 @@ export type ForgeEvent =
 
   // Planning
   | { type: 'plan:start'; source: string }
-  | { type: 'plan:scope'; assessment: OrchestrationConfig['mode']; justification: string }
+  | { type: 'plan:scope'; assessment: ScopeAssessment; justification: string }
   | { type: 'plan:clarification'; questions: ClarificationQuestion[] }
   | { type: 'plan:clarification:answer'; answers: Record<string, string> }
   | { type: 'plan:progress'; message: string }

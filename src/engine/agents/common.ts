@@ -4,8 +4,8 @@ import type {
   SDKPartialAssistantMessage,
   SDKResultMessage,
 } from '@anthropic-ai/claude-agent-sdk';
-import { ORCHESTRATION_MODES } from '../events.js';
-import type { ForgeEvent, AgentRole, AgentResultData, ClarificationQuestion, OrchestrationConfig, ExpeditionModule } from '../events.js';
+import { SCOPE_ASSESSMENTS } from '../events.js';
+import type { ForgeEvent, AgentRole, AgentResultData, ClarificationQuestion, ScopeAssessment, ExpeditionModule } from '../events.js';
 
 /**
  * Map an async iterable of SDK messages to ForgeEvents.
@@ -183,11 +183,11 @@ export function parseClarificationBlocks(text: string): ClarificationQuestion[] 
  * Scope assessment from planner.
  */
 export interface ScopeDeclaration {
-  assessment: OrchestrationConfig['mode'];
+  assessment: ScopeAssessment;
   justification: string;
 }
 
-const VALID_ASSESSMENTS = new Set<string>(ORCHESTRATION_MODES);
+const VALID_ASSESSMENTS = new Set<string>(SCOPE_ASSESSMENTS);
 
 /**
  * Parse a <modules> XML block from assistant text into ExpeditionModule[].
@@ -244,5 +244,5 @@ export function parseScopeBlock(text: string): ScopeDeclaration | null {
   if (!VALID_ASSESSMENTS.has(assessment)) return null;
   if (!justification) return null;
 
-  return { assessment: assessment as OrchestrationConfig['mode'], justification };
+  return { assessment: assessment as ScopeAssessment, justification };
 }

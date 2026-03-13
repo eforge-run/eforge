@@ -29,12 +29,26 @@ The user wants you to plan the following:
 3. **Impact analysis** — Determine what files need changes, what the dependencies are, whether database migrations are needed, and what tests need updating
 4. **Delta assessment** — Compare what the source describes against what already exists. Focus on what actually needs to change, not what the source describes in total.
 
+### Scope Boundary
+
+Your planning is **strictly bounded by the source document**. The source is your specification — nothing else.
+
+- **DO**: Explore the codebase to understand what's already built vs. what the source requires
+- **DO**: Identify gaps between the source's requirements and the current implementation
+- **DO**: Plan to fill those gaps, even if the remaining work is small
+- **DO NOT**: Search for GitHub issues, feature requests, or other work items
+- **DO NOT**: Plan work that isn't described in the source document
+- **DO NOT**: Substitute the source with alternative tasks you discover during exploration
+
+If the source is fully implemented (zero gaps), emit `<scope assessment="complete">` and do NOT write any plan files.
+
 ### Phase 3: Scope Assessment
 
 Based on your exploration, classify the **actual work remaining** (not the source's ambition):
 
 | Level | Plans | When to use |
 |-------|-------|-------------|
+| **complete** | 0 | The source document is fully implemented. No gaps remain. Do NOT write any plan files. |
 | **errand** | 1 | Focused change in one area. No migrations, no architecture decisions. **This is the default — most tasks are errands.** |
 | **excursion** | 2-3 | Cross-cutting change with natural phasing — e.g., a migration must land before a feature, or backend/frontend have a real dependency edge. |
 | **expedition** | 4+ | Large initiative spanning multiple subsystems with a meaningful dependency graph. Requires architectural decisions. |
@@ -48,7 +62,7 @@ Use these concrete indicators alongside the source document:
 | Architecture impact | None | Fits existing | Requires new patterns |
 | Integration points | 0-1 | 2-4 | 5+ |
 
-**Critical**: Assess based on what you found during exploration, not just what the source document describes. If the source describes a large system but exploration shows it's already 80% built, scope the remaining delta — it may be an errand.
+**Critical**: Assess based on the **delta between the source and the current codebase**. If the source describes a large system but exploration shows it's already 80% built, identify the specific gaps that remain and scope those — the remaining work may be an errand. If the source is 100% implemented with no gaps, use `assessment="complete"`.
 
 **Decision criteria for splitting into multiple plans:**
 - A database migration must complete before dependent code can be built

@@ -97,6 +97,7 @@ export function renderEvent(event: ForgeEvent): void {
 
     case 'plan:scope': {
       const scopeColors: Record<string, (s: string) => string> = {
+        complete: chalk.dim,
         errand: chalk.green,
         excursion: chalk.yellow,
         expedition: chalk.magenta,
@@ -130,9 +131,13 @@ export function renderEvent(event: ForgeEvent): void {
     }
 
     case 'plan:complete':
-      succeedSpinner('plan', `Planning complete \u2014 ${event.plans.length} plan(s) created`);
-      for (const plan of event.plans) {
-        console.log(`  ${chalk.cyan(plan.id)} \u2014 ${plan.name}`);
+      if (event.plans.length === 0) {
+        succeedSpinner('plan', 'Nothing to plan \u2014 source is fully implemented');
+      } else {
+        succeedSpinner('plan', `Planning complete \u2014 ${event.plans.length} plan(s) created`);
+        for (const plan of event.plans) {
+          console.log(`  ${chalk.cyan(plan.id)} \u2014 ${plan.name}`);
+        }
       }
       break;
 

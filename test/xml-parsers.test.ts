@@ -127,7 +127,10 @@ describe('parseScopeBlock', () => {
     });
   });
 
-  it('parses excursion and expedition assessments', () => {
+  it('parses all valid assessment levels', () => {
+    const complete = parseScopeBlock('<scope assessment="complete">Source is fully implemented.</scope>');
+    expect(complete?.assessment).toBe('complete');
+
     const excursion = parseScopeBlock('<scope assessment="excursion">Cross-cutting change.</scope>');
     expect(excursion?.assessment).toBe('excursion');
 
