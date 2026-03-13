@@ -318,23 +318,18 @@ function isResumable(state: ForgeState): boolean;
 
 ### Dependency Graph
 
-```
-                    ┌──────────────┐
-                    │  foundation  │
-                    └──────┬───────┘
-           ┌───────┬───────┼───────┬─────────┐
-           ▼       ▼       ▼       ▼         ▼
-       planner  builder reviewer orchestr. config
-           │       │       │       │
-           └───────┴───────┴───────┘
-                    │
-             ┌──────▼──────┐
-             │  forge-core │
-             └──────┬──────┘
-                    │
-               ┌────▼────┐
-               │   cli   │
-               └─────────┘
+```mermaid
+graph TD
+    foundation --> planner
+    foundation --> builder
+    foundation --> reviewer
+    foundation --> orchestration
+    foundation --> config
+    planner --> forge-core
+    builder --> forge-core
+    reviewer --> forge-core
+    orchestration --> forge-core
+    forge-core --> cli
 ```
 
 ### Wave Execution

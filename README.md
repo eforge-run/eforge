@@ -8,22 +8,23 @@ aroh-forge extracts battle-tested workflows from Claude Code plugins into a stan
 
 **Library-first**: A pure, event-driven engine (`src/engine/`) yields typed `ForgeEvent`s via `AsyncGenerator`. Thin consumer layers render, persist, or stream events as appropriate.
 
-```
-┌───────────────────────────────────────┐
-│  Consumers                            │
-│  CLI (v1) · TUI · Headless · Web UI  │
-│              ↑ ForgeEvent stream      │
-├──────────────┼────────────────────────┤
-│  Engine      │                        │
-│         ┌────┴────┐                   │
-│         │  Forge  │                   │
-│         │  Core   │                   │
-│         └─┬──┬──┬─┘                   │
-│           │  │  │                     │
-│     Planner Builder Reviewer          │
-│           │  │  │                     │
-│         claude-agent-sdk              │
-└───────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Consumers
+        CLI["CLI (v1)"]
+        TUI["TUI"]
+        Headless
+        WebUI["Web UI"]
+    end
+
+    CLI & TUI & Headless & WebUI -->|ForgeEvent| Core["Forge Core"]
+
+    subgraph Engine
+        Core --> Planner
+        Core --> Builder
+        Core --> Reviewer
+        Planner & Builder & Reviewer --> SDK["claude-agent-sdk"]
+    end
 ```
 
 **Three-agent loop**:

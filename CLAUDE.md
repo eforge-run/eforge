@@ -64,6 +64,10 @@ src/
   cli.ts                      # Entry point (shebang, imports cli/index)
 ```
 
+## Conventions
+
+- Use Mermaid diagrams instead of ASCII art in documentation
+
 ## Tech decisions
 
 - ESM-only (`"type": "module"`), target Node.js 22+

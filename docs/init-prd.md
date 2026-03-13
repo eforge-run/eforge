@@ -45,45 +45,27 @@ All surfaces consume the same engine event stream.
 
 ## Architecture Overview
 
-```
-┌─────────────────────────────────────────────────┐
-│  Consumers (thin)                                │
-│  ┌──────┐ ┌──────┐ ┌──────────┐ ┌─────────┐     │
-│  │ CLI  │ │ TUI  │ │ Headless │ │ Web UI  │     │
-│  │ (v1) │ │(fut.)│ │  (fut.)  │ │ (fut.)  │     │
-│  └──┬───┘ └──┬───┘ └────┬─────┘ └────┬────┘     │
-│       │              │               │           │
-│       └──────────────┼───────────────┘           │
-│                      │                           │
-│              ┌───────▼────────┐                  │
-│              │  Event Stream  │                  │
-│              └───────┬────────┘                  │
-│                      │                           │
-├──────────────────────┼──────────────────────────┤
-│  Engine (library)    │                           │
-│              ┌───────▼────────┐                  │
-│              │   Forge Core   │                  │
-│              │  (orchestrate) │                  │
-│              └──┬────┬────┬──┘                   │
-│                 │    │    │                       │
-│          ┌──────┘    │    └──────┐                │
-│          ▼           ▼          ▼                │
-│     ┌─────────┐ ┌─────────┐ ┌─────────┐        │
-│     │ Planner │ │ Builder │ │Reviewer │        │
-│     └─────────┘ └─────────┘ └─────────┘        │
-│          │           │           │               │
-│          └───────────┼───────────┘               │
-│                      ▼                           │
-│              ┌───────────────┐                   │
-│              │  Agent SDK    │                   │
-│              │  query()      │                   │
-│              └───────────────┘                   │
-│                                                  │
-│  Supporting:                                     │
-│  ┌──────┐ ┌───────┐ ┌─────────┐ ┌───────────┐  │
-│  │ Plan │ │ State │ │Worktree │ │  Prompts  │  │
-│  └──────┘ └───────┘ └─────────┘ └───────────┘  │
-└─────────────────────────────────────────────────┘
+```mermaid
+graph TD
+    subgraph Consumers["Consumers (thin)"]
+        CLI["CLI (v1)"]
+        TUI["TUI (future)"]
+        Headless["Headless (future)"]
+        WebUI["Web UI (future)"]
+    end
+
+    CLI & TUI & Headless & WebUI -->|ForgeEvent| EventStream["AsyncGenerator&lt;ForgeEvent&gt;"]
+
+    subgraph Engine["Engine (library)"]
+        EventStream --> ForgeCore["Forge Core\n(orchestrate)"]
+        ForgeCore --> Planner
+        ForgeCore --> Builder
+        ForgeCore --> Reviewer
+        Planner & Builder & Reviewer --> SDK["claude-agent-sdk\nquery()"]
+        PlanParser["Plan Parser"] ~~~ State
+        State ~~~ Worktree
+        Worktree ~~~ Prompts
+    end
 ```
 
 ## Engine (the library)
