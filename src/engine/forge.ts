@@ -152,9 +152,8 @@ export class ForgeEngine {
         plannerTracker.cleanup();
         span.end();
 
-        if (scopeAssessment === 'complete') {
-          summary = 'Nothing to plan — source is fully implemented';
-        }
+        // No custom summary needed for 'complete' scope — plan:complete
+        // already conveys "Nothing to plan" to the display layer.
       } catch (err) {
         plannerTracker.cleanup();
         status = 'failed';
@@ -563,7 +562,7 @@ function createToolTracker(span: SpanHandle) {
     },
     cleanup(): void {
       for (const [, handle] of activeTools) {
-        handle.error('Agent completed with tool call still active');
+        handle.end();
       }
       activeTools.clear();
     },

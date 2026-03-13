@@ -3,7 +3,7 @@ import type {
   SDKAssistantMessage,
   SDKPartialAssistantMessage,
   SDKResultMessage,
-  SDKUserMessage,
+  SDKToolUseSummaryMessage,
 } from '@anthropic-ai/claude-agent-sdk';
 import { SCOPE_ASSESSMENTS } from '../events.js';
 import type { ForgeEvent, AgentRole, AgentResultData, ClarificationQuestion, ScopeAssessment, ExpeditionModule } from '../events.js';
@@ -43,30 +43,20 @@ export async function* mapSDKMessages(
         break;
       }
 
-      case 'user': {
-        const userMsg = msg as SDKUserMessage;
-        // Skip replay messages and non-tool-result user messages
-        if (
-          ('isReplay' in userMsg && (userMsg as SDKUserMessage & { isReplay?: boolean }).isReplay) ||
-          !userMsg.parent_tool_use_id ||
-          userMsg.tool_use_result === undefined
-        ) {
-          break;
+      case 'tool_use_summary': {
+        const summaryMsg = msg as SDKToolUseSummaryMessage;
+        // Emit a tool_result for each preceding tool_use_id with the combined summary
+        for (const toolUseId of summaryMsg.preceding_tool_use_ids) {
+          const toolName = toolNameMap.get(toolUseId) ?? 'unknown';
+          yield {
+            type: 'agent:tool_result',
+            planId,
+            agent,
+            tool: toolName,
+            toolUseId,
+            output: truncateOutput(summaryMsg.summary, 4096),
+          };
         }
-
-        const toolName = toolNameMap.get(userMsg.parent_tool_use_id) ?? 'unknown';
-        const rawOutput = typeof userMsg.tool_use_result === 'string'
-          ? userMsg.tool_use_result
-          : JSON.stringify(userMsg.tool_use_result);
-
-        yield {
-          type: 'agent:tool_result',
-          planId,
-          agent,
-          tool: toolName,
-          toolUseId: userMsg.parent_tool_use_id,
-          output: truncateOutput(rawOutput, 4096),
-        };
         break;
       }
 
@@ -82,7 +72,9 @@ export async function* mapSDKMessages(
       case 'result': {
         const result = msg as SDKResultMessage;
         if (result.subtype === 'success') {
-          yield { type: 'agent:message', planId, agent, content: result.result };
+          // Don't yield agent:message here — the text was already emitted
+          // from the assistant message. Duplicating it causes double-parsing
+          // of XML blocks (scope, clarification, review issues, verdicts).
           yield { type: 'agent:result', planId, agent, result: extractResultData(result, result.result) };
         } else {
           const errorResult = result as SDKResultMessage & { errors?: string[] };

@@ -64,9 +64,8 @@ describe('mapSDKMessages tool events', () => {
     });
   });
 
-  it('emits agent:tool_result from user message with parent_tool_use_id', async () => {
+  it('emits agent:tool_result from tool_use_summary message', async () => {
     const messages = asyncIterableFrom([
-      // First: assistant sends tool_use
       {
         type: 'assistant',
         message: {
@@ -75,12 +74,11 @@ describe('mapSDKMessages tool events', () => {
           ],
         },
       } as unknown,
-      // Then: user message carries tool result
       {
-        type: 'user',
-        parent_tool_use_id: 'tu_def456',
-        tool_use_result: 'file1.ts\nfile2.ts',
-        message: { role: 'user', content: '' },
+        type: 'tool_use_summary',
+        summary: 'Listed directory contents',
+        preceding_tool_use_ids: ['tu_def456'],
+        uuid: 'uuid-1',
         session_id: '',
       } as unknown,
       {
@@ -101,11 +99,11 @@ describe('mapSDKMessages tool events', () => {
       planId: 'plan-1',
       tool: 'Bash',
       toolUseId: 'tu_def456',
-      output: 'file1.ts\nfile2.ts',
+      output: 'Listed directory contents',
     });
   });
 
-  it('resolves tool name from prior tool_use block', async () => {
+  it('emits tool_result for each tool in a batch summary', async () => {
     const messages = asyncIterableFrom([
       {
         type: 'assistant',
@@ -117,17 +115,10 @@ describe('mapSDKMessages tool events', () => {
         },
       } as unknown,
       {
-        type: 'user',
-        parent_tool_use_id: 'tu_222',
-        tool_use_result: 'contents',
-        message: { role: 'user', content: '' },
-        session_id: '',
-      } as unknown,
-      {
-        type: 'user',
-        parent_tool_use_id: 'tu_111',
-        tool_use_result: 'matches',
-        message: { role: 'user', content: '' },
+        type: 'tool_use_summary',
+        summary: 'Found matches and read file',
+        preceding_tool_use_ids: ['tu_111', 'tu_222'],
+        uuid: 'uuid-2',
         session_id: '',
       } as unknown,
       {
@@ -142,47 +133,16 @@ describe('mapSDKMessages tool events', () => {
     const toolResults = events.filter((e) => e.type === 'agent:tool_result');
 
     expect(toolResults).toHaveLength(2);
-    expect(toolResults[0]).toMatchObject({ tool: 'Read', toolUseId: 'tu_222' });
-    expect(toolResults[1]).toMatchObject({ tool: 'Grep', toolUseId: 'tu_111' });
+    expect(toolResults[0]).toMatchObject({ tool: 'Grep', toolUseId: 'tu_111' });
+    expect(toolResults[1]).toMatchObject({ tool: 'Read', toolUseId: 'tu_222' });
   });
 
-  it('ignores user messages without parent_tool_use_id', async () => {
+  it('ignores unhandled SDK message types', async () => {
     const messages = asyncIterableFrom([
       {
-        type: 'user',
-        parent_tool_use_id: null,
-        message: { role: 'user', content: 'hello' },
-        session_id: '',
-      } as unknown,
-      {
-        type: 'result',
-        subtype: 'success',
-        result: 'done',
-        modelUsage: {},
-      } as unknown,
-    ]);
-
-    const events = await collectEvents(mapSDKMessages(messages as AsyncIterable<any>, 'planner'));
-    const toolResults = events.filter((e) => e.type === 'agent:tool_result');
-    expect(toolResults).toHaveLength(0);
-  });
-
-  it('ignores replay user messages', async () => {
-    const messages = asyncIterableFrom([
-      {
-        type: 'assistant',
-        message: {
-          content: [
-            { type: 'tool_use', id: 'tu_replay', name: 'Read', input: {} },
-          ],
-        },
-      } as unknown,
-      {
-        type: 'user',
-        parent_tool_use_id: 'tu_replay',
-        tool_use_result: 'replayed content',
-        isReplay: true,
-        message: { role: 'user', content: '' },
+        type: 'system',
+        subtype: 'init',
+        uuid: 'uuid-3',
         session_id: '',
       } as unknown,
       {
@@ -201,10 +161,10 @@ describe('mapSDKMessages tool events', () => {
   it('falls back to "unknown" tool name when toolUseId not previously seen', async () => {
     const messages = asyncIterableFrom([
       {
-        type: 'user',
-        parent_tool_use_id: 'tu_orphan',
-        tool_use_result: 'some result',
-        message: { role: 'user', content: '' },
+        type: 'tool_use_summary',
+        summary: 'did something',
+        preceding_tool_use_ids: ['tu_orphan'],
+        uuid: 'uuid-4',
         session_id: '',
       } as unknown,
       {
@@ -220,21 +180,22 @@ describe('mapSDKMessages tool events', () => {
     expect(toolResult).toMatchObject({ tool: 'unknown', toolUseId: 'tu_orphan' });
   });
 
-  it('stringifies non-string tool_use_result', async () => {
+  it('truncates long tool_use_summary output', async () => {
+    const longSummary = 'x'.repeat(8000);
     const messages = asyncIterableFrom([
       {
         type: 'assistant',
         message: {
           content: [
-            { type: 'tool_use', id: 'tu_obj', name: 'Read', input: {} },
+            { type: 'tool_use', id: 'tu_long', name: 'Read', input: {} },
           ],
         },
       } as unknown,
       {
-        type: 'user',
-        parent_tool_use_id: 'tu_obj',
-        tool_use_result: { lines: ['a', 'b'], total: 2 },
-        message: { role: 'user', content: '' },
+        type: 'tool_use_summary',
+        summary: longSummary,
+        preceding_tool_use_ids: ['tu_long'],
+        uuid: 'uuid-5',
         session_id: '',
       } as unknown,
       {
@@ -249,7 +210,8 @@ describe('mapSDKMessages tool events', () => {
     const toolResult = events.find((e) => e.type === 'agent:tool_result');
     expect(toolResult).toBeDefined();
     if (toolResult?.type === 'agent:tool_result') {
-      expect(toolResult.output).toBe('{"lines":["a","b"],"total":2}');
+      expect(toolResult.output.length).toBeLessThan(8000);
+      expect(toolResult.output).toContain('... [truncated from 8000 chars]');
     }
   });
 });
