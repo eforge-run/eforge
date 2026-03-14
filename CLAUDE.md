@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 forge is a standalone CLI tool that extracts plan-build-review workflows from the schaake-cc-marketplace Claude Code plugins into a portable TypeScript library + CLI built on `@anthropic-ai/claude-agent-sdk`. It runs outside Claude Code as an independent developer tool.
 
-The architecture is **library-first**: a pure, event-driven engine (`src/engine/`) that yields typed `ForgeEvent`s via `AsyncGenerator`, consumed by thin surface layers (CLI today, TUI/headless/web UI in the future).
+The architecture is **library-first**: a pure, event-driven engine (`src/engine/`) that yields typed `ForgeEvent`s via `AsyncGenerator`, consumed by thin surface layers (CLI today, Claude Code plugin and headless/CI in the future).
 
 ## Commands
 
@@ -138,8 +138,21 @@ forge status             # Check running builds
 
 Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--no-monitor` (disable web monitor)
 
+## Roadmap
+
+`docs/roadmap.md` is a high-level vision document for where the project is headed. It captures direction (what and why), not implementation details (how). It will evolve over time as priorities shift.
+
+- **Read it** before proposing new features or architectural changes to ensure alignment with planned direction
+- **Keep it lean** — goal + bullet points per section, no code examples, frontmatter specs, or implementation plans
+- **Future only** — remove items from the roadmap once they ship. Completed work is documented in the PRD, git history, and CLAUDE.md, not the roadmap.
+- **Update it** when direction changes after discussion with the user
+- **Don't duplicate it** — implementation details belong in PRDs, plan files, or CLAUDE.md, not the roadmap
+
+The original PRD (`docs/init-prd.md`) is historical context. The roadmap is the current source of truth for future direction.
+
 ## Key references
 
-- PRD: `docs/init-prd.md`
+- Roadmap: `docs/roadmap.md`
+- PRD (historical): `docs/init-prd.md`
 - Architecture: `plans/forge-v1/architecture.md`
 - Expedition plan: `plans/forge-v1/index.yaml`
