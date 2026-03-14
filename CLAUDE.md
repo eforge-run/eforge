@@ -29,7 +29,8 @@ node --env-file=.env dist/cli.js plan docs/init-prd.md --verbose
 
 **Three-agent loop**: planner → builder → reviewer, each wrapping an SDK `query()` call.
 
-- **Planner** — one-shot query. Explores codebase, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities.
+- **Planner** — one-shot query. Explores codebase, assesses scope, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities. For expeditions, also generates architecture + module list.
+- **Module Planner** — one-shot query (expedition mode only). Writes detailed plan for a single module using architecture context.
 - **Builder** — multi-turn SDK client. Turn 1: implement plan. Turn 2: evaluate reviewer's unstaged fixes (accept/reject/review).
 - **Reviewer** — one-shot query. Blind review (no builder context), leaves fixes unstaged.
 
@@ -48,17 +49,27 @@ src/
   engine/                     # Library (no stdout, events only)
     forge.ts                  # ForgeEngine: plan(), build(), review(), status()
     events.ts                 # ForgeEvent type definitions
+    index.ts                  # Barrel re-exports for engine public API
     agents/
       planner.ts              # PRD → plan files (one-shot query)
+      module-planner.ts       # Expedition module → detailed plan (one-shot query)
       builder.ts              # Plan → implementation (multi-turn)
       reviewer.ts             # Blind review (one-shot query)
       common.ts               # SDK message → ForgeEvent mapping
     plan.ts                   # Plan file parsing (YAML frontmatter)
     state.ts                  # .forge-state.json read/write
     orchestrator.ts           # Dependency graph, wave execution
+    concurrency.ts            # Semaphore + AsyncEventQueue for parallel plans
     worktree.ts               # Git worktree lifecycle
+    compiler.ts               # Expedition compiler (modules → plan files + orchestration.yaml)
+    tracing.ts                # Langfuse tracing (noop when disabled)
     prompts.ts                # Load/template .md prompt files
     prompts/                  # Agent prompt files
+      planner.md
+      module-planner.md
+      builder.md
+      reviewer.md
+      evaluator.md
     config.ts                 # forge.yaml loading
 
   cli/                        # CLI consumer (thin)
@@ -90,7 +101,7 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 - tsup bundles to `dist/cli.js` with shebang; SDK is externalized via `external` config to preserve subprocess resolution
 - Engine uses `AsyncGenerator<ForgeEvent>` pattern — consumers iterate, no callbacks except clarification/approval
 - Clarification uses engine-level events (parsed from agent XML output), not SDK's built-in `AskUserQuestion`
-- Langfuse tracing planned for all agent calls (env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`)
+- Langfuse tracing for all agent calls via `src/engine/tracing.ts` (env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`)
 
 ## CLI commands
 

@@ -38,7 +38,7 @@ All surfaces consume the same engine event stream.
 
 - **Language**: TypeScript (ESM-only, `"type": "module"`)
 - **Runtime**: Node.js 22+
-- **Agent SDK**: `@anthropic-ai/claude-agent-sdk` (v0.2.74) — chosen over multi-provider SDKs for Max subscription billing (zero API cost). Vendor lock-in accepted.
+- **Agent SDK**: `@anthropic-ai/claude-agent-sdk` (v0.2.75+) — chosen over multi-provider SDKs for Max subscription billing (zero API cost). Vendor lock-in accepted.
 - **CLI framework**: Commander.js
 - **Build**: tsup → single `dist/cli.js` with shebang
 - **Package manager**: pnpm
@@ -232,18 +232,24 @@ src/
   engine/                     # The library (no stdout, events only)
     forge.ts                  # ForgeEngine: plan(), build(), review(), status()
     events.ts                 # ForgeEvent type definitions
+    index.ts                  # Barrel re-exports for engine public API
     agents/
       planner.ts              # PRD → plan files (one-shot query)
+      module-planner.ts       # Expedition module → detailed plan (one-shot query)
       builder.ts              # Plan → implementation (multi-turn)
       reviewer.ts             # Blind review (one-shot query)
       common.ts               # Shared: SDK message → ForgeEvent mapping
     plan.ts                   # Plan file parsing (YAML frontmatter)
     state.ts                  # .forge-state.json read/write
     orchestrator.ts           # Dependency graph, wave execution
+    concurrency.ts            # Semaphore + AsyncEventQueue for parallel plans
     worktree.ts               # Git worktree lifecycle
+    compiler.ts               # Expedition compiler (modules → plan files + orchestration.yaml)
+    tracing.ts                # Langfuse tracing (noop when disabled)
     prompts.ts                # Load/template .md prompt files
     prompts/
       planner.md
+      module-planner.md
       builder.md
       reviewer.md
       evaluator.md
@@ -364,7 +370,7 @@ function withRecording(
 Langfuse tracing for all agent SDK calls. Dogfoods the aroh observability story — forge becomes the first "customer" of the diagnosis flywheel.
 
 - **SDK**: `langfuse` npm package (JS SDK)
-- **Config**: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_HOST` from env or forge.yaml
+- **Config**: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL` from env or forge.yaml
 - **Trace structure**: one trace per `aroh-forge` invocation, spans per agent call (planner, builder, reviewer, evaluator)
 - **Captured**: model, token usage, wall-clock duration, success/failure, plan metadata
 

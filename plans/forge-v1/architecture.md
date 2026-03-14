@@ -9,7 +9,7 @@ aroh-forge is a standalone CLI tool that extracts the plan-build-review autonomo
 1. **Engine emits, consumers render** — The engine yields typed `ForgeEvent`s via `AsyncGenerator`, never writes to stdout. All display logic lives in consumers.
 2. **Callbacks for interaction** — Clarification and approval gates use callbacks (`onClarification`, `onApproval`). CLI provides readline implementations; headless provides none; TUI/web provide their own.
 3. **Prompts are data, not code** — Agent behavior is defined in `.md` prompt files loaded at runtime. No plugin dependencies.
-4. **SDK as runtime host** — `@anthropic-ai/claude-agent-sdk` provides the agent runtime (LLM, tools, permissions). It's a devDependency expected at runtime, not bundled.
+4. **SDK as runtime host** — `@anthropic-ai/claude-agent-sdk` provides the agent runtime (LLM, tools, permissions). It's a runtime dependency, externalized from the bundle so its `import.meta.url` resolves correctly.
 
 ## Shared Data Model
 
@@ -58,7 +58,7 @@ type ForgeEvent =
   | { type: 'approval:needed'; planId?: string; action: string; details: string }
   | { type: 'approval:response'; approved: boolean }
 
-type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator';
+type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner';
 type ForgeResult = { status: 'completed' | 'failed'; summary: string };
 ```
 
@@ -87,7 +87,7 @@ interface OrchestrationConfig {
   name: string;
   description: string;
   created: string;
-  mode: 'excursion' | 'expedition';
+  mode: 'errand' | 'excursion' | 'expedition';
   baseBranch: string;
   plans: Array<{
     id: string;
