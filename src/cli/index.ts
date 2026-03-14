@@ -91,7 +91,7 @@ export function createProgram(): Command {
     );
 
   program
-    .command('run <source>')
+    .command('forge <source>')
     .description('Plan and build in one step')
     .option('--auto', 'Run without approval gates')
     .option('--verbose', 'Stream agent output')
