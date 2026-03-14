@@ -1,10 +1,10 @@
 {
-  "name": "forge",
+  "name": "forgeai",
   "version": "0.1.0",
   "description": "Autonomous plan-build-review CLI for code generation",
   "type": "module",
   "bin": {
-    "forge": "./dist/cli.js"
+    "forgeai": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsup",
