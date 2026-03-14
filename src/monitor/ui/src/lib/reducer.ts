@@ -1,5 +1,6 @@
 import type { EforgeEvent } from './types';
 import type { PipelineStage } from './types';
+import type { WaveInfo } from './wave-utils';
 import { formatDuration } from './format';
 
 export interface StoredEvent {
@@ -11,6 +12,7 @@ export interface RunState {
   events: StoredEvent[];
   startTime: number | null;
   planStatuses: Record<string, PipelineStage>;
+  waves: WaveInfo[];
   tokensIn: number;
   tokensOut: number;
   totalCost: number;
@@ -21,6 +23,7 @@ export const initialRunState: RunState = {
   events: [],
   startTime: null,
   planStatuses: {},
+  waves: [],
   tokensIn: 0,
   tokensOut: 0,
   totalCost: 0,
@@ -58,6 +61,14 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         newState.tokensIn = state.tokensIn + (event.result.usage?.input || 0);
         newState.tokensOut = state.tokensOut + (event.result.usage?.output || 0);
         newState.totalCost = state.totalCost + (event.result.totalCostUsd || 0);
+      }
+
+      // Track waves
+      if (event.type === 'wave:start') {
+        newState.waves = [
+          ...state.waves,
+          { wave: event.wave, planIds: event.planIds },
+        ];
       }
 
       // Track plan statuses

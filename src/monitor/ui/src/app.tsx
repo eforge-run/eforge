@@ -100,7 +100,12 @@ export function App() {
           <>
             <SummaryCards {...stats} />
             <Pipeline planStatuses={runState.planStatuses} />
-            <Timeline events={runState.events} startTime={runState.startTime} />
+            <Timeline
+              events={runState.events}
+              startTime={runState.startTime}
+              waves={runState.waves}
+              planStatuses={runState.planStatuses}
+            />
           </>
         )}
       </main>
