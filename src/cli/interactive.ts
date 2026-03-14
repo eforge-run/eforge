@@ -1,6 +1,7 @@
 import readline from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
-import type { ClarificationQuestion } from '../engine/events.js';
+import chalk from 'chalk';
+import type { ClarificationQuestion, PlanFile } from '../engine/events.js';
 
 /**
  * Create a clarification callback for the engine.
@@ -55,4 +56,24 @@ export function createApprovalHandler(
       rl.close();
     }
   };
+}
+
+/**
+ * Prompt the user to confirm building after plan generation.
+ * Shows plan summary and asks y/N. Returns true if user approves.
+ */
+export async function confirmBuild(plans: PlanFile[]): Promise<boolean> {
+  const rl = readline.createInterface({ input: stdin, output: stdout });
+  try {
+    console.log('');
+    console.log(chalk.bold(`${plans.length} plan(s) ready to build:`));
+    for (const plan of plans) {
+      console.log(`  ${chalk.cyan(plan.id)} — ${plan.name}`);
+    }
+    console.log('');
+    const answer = await rl.question('Proceed to build? [y/N]: ');
+    return answer.toLowerCase() === 'y';
+  } finally {
+    rl.close();
+  }
 }

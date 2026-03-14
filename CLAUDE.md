@@ -113,6 +113,7 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 
 ```
 aroh-forge plan <source>      # PRD file or prompt → plan files
+aroh-forge run <source>       # Plan + build in one step
 aroh-forge build <planSet>    # Execute plans (implement + review)
 aroh-forge review <planSet>   # Review code against plans
 aroh-forge status             # Check running builds

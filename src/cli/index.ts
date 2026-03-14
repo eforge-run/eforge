@@ -7,9 +7,9 @@ import {
   parseOrchestrationConfig,
   resolveDependencyGraph,
 } from '../engine/plan.js';
-import type { ForgeEvent } from '../engine/events.js';
+import type { ForgeEvent, PlanFile } from '../engine/events.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, stopAllSpinners } from './display.js';
-import { createClarificationHandler, createApprovalHandler } from './interactive.js';
+import { createClarificationHandler, createApprovalHandler, confirmBuild } from './interactive.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -38,6 +38,21 @@ async function consumeEvents(
     }
   }
   return result;
+}
+
+async function showDryRun(planSet: string): Promise<never> {
+  const configPath = resolve(process.cwd(), 'plans', planSet, 'orchestration.yaml');
+  const validation = await validatePlanSet(configPath);
+  if (!validation.valid) {
+    console.error(
+      `Validation failed:\n${validation.errors.map((e) => `  - ${e}`).join('\n')}`,
+    );
+    process.exit(1);
+  }
+  const config = await parseOrchestrationConfig(configPath);
+  const { waves, mergeOrder } = resolveDependencyGraph(config.plans);
+  renderDryRun(config, waves, mergeOrder);
+  process.exit(0);
 }
 
 export function createProgram(): Command {
@@ -76,6 +91,91 @@ export function createProgram(): Command {
     );
 
   program
+    .command('run <source>')
+    .description('Plan and build in one step')
+    .option('--auto', 'Run without approval gates')
+    .option('--verbose', 'Stream agent output')
+    .option('--name <name>', 'Plan set name (inferred from source if omitted)')
+    .option('--parallelism <n>', 'Max parallel plans', parseInt)
+    .option('--dry-run', 'Plan only, then show execution plan without building')
+    .action(
+      async (
+        source: string,
+        options: {
+          auto?: boolean;
+          verbose?: boolean;
+          name?: string;
+          parallelism?: number;
+          dryRun?: boolean;
+        },
+      ) => {
+        initDisplay({ verbose: options.verbose });
+
+        const configOverrides = options.parallelism
+          ? { build: { parallelism: options.parallelism } }
+          : undefined;
+
+        const engine = await ForgeEngine.create({
+          onClarification: createClarificationHandler(options.auto ?? false),
+          onApproval: createApprovalHandler(options.auto ?? false),
+          config: configOverrides,
+        });
+
+        // Phase 1: Plan
+        let planSetName: string | undefined;
+        let planFiles: PlanFile[] = [];
+        let planResult: 'completed' | 'failed' = 'completed';
+
+        for await (const event of engine.plan(source, {
+          auto: options.auto,
+          verbose: options.verbose,
+          name: options.name,
+        })) {
+          renderEvent(event);
+          if (event.type === 'forge:start') {
+            renderLangfuseStatus(engine.resolvedConfig);
+            planSetName = event.planSet;
+          }
+          if (event.type === 'plan:complete') {
+            planFiles = event.plans;
+          }
+          if (event.type === 'forge:end') {
+            planResult = event.result.status;
+          }
+        }
+
+        if (planResult === 'failed' || planFiles.length === 0 || !planSetName) {
+          process.exit(1);
+        }
+
+        // Handle --dry-run: show execution plan and exit
+        if (options.dryRun) {
+          await showDryRun(planSetName);
+        }
+
+        // Approval gate: confirm before building
+        if (!options.auto) {
+          const approved = await confirmBuild(planFiles);
+          if (!approved) {
+            console.log('\nBuild skipped.');
+            process.exit(0);
+          }
+        }
+
+        // Phase 2: Build
+        const buildResult = await consumeEvents(
+          engine.build(planSetName, {
+            auto: options.auto,
+            verbose: options.verbose,
+          }),
+          { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
+        );
+
+        process.exit(buildResult === 'completed' ? 0 : 1);
+      },
+    );
+
+  program
     .command('build <planSet>')
     .description('Execute plans (implement + review)')
     .option('--auto', 'Run without approval gates')
@@ -90,18 +190,7 @@ export function createProgram(): Command {
         initDisplay({ verbose: options.verbose });
 
         if (options.dryRun) {
-          const configPath = resolve(process.cwd(), 'plans', planSet, 'orchestration.yaml');
-          const validation = await validatePlanSet(configPath);
-          if (!validation.valid) {
-            console.error(
-              `Validation failed:\n${validation.errors.map((e) => `  - ${e}`).join('\n')}`,
-            );
-            process.exit(1);
-          }
-          const config = await parseOrchestrationConfig(configPath);
-          const { waves, mergeOrder } = resolveDependencyGraph(config.plans);
-          renderDryRun(config, waves, mergeOrder);
-          process.exit(0);
+          await showDryRun(planSet);
         }
 
         const configOverrides = options.parallelism
