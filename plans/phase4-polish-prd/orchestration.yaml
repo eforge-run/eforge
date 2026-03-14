@@ -1,0 +1,20 @@
+name: phase4-polish-prd
+description: Robustness, safety & validation hardening — atomic state writes, merge failure propagation, signal cancellation, post-merge validation, dry-run readiness checks
+created: 2026-03-13
+compiled: 2026-03-13
+mode: excursion
+base_branch: main
+
+plans:
+  - id: plan-01-state-safety
+    name: Atomic State Writes & Corruption Recovery
+    depends_on: []
+    branch: phase4-polish-prd/state-safety
+  - id: plan-02-merge-robustness
+    name: Merge Failure Propagation & Conflict Cleanup
+    depends_on: []
+    branch: phase4-polish-prd/merge-robustness
+  - id: plan-03-signal-validation-dryrun
+    name: Signal Cancellation, Post-Merge Validation & Dry-Run Readiness
+    depends_on: [plan-01-state-safety, plan-02-merge-robustness]
+    branch: phase4-polish-prd/signal-validation-dryrun
