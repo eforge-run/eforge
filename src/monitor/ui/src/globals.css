@@ -58,3 +58,21 @@ body {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }
 }
+
+@keyframes dash-flow {
+  to { stroke-dashoffset: -12; }
+}
+
+/* ReactFlow overrides for dark theme */
+.react-flow__controls button {
+  background: var(--color-card) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-foreground) !important;
+  fill: var(--color-foreground) !important;
+}
+.react-flow__controls button:hover {
+  background: var(--color-bg-tertiary) !important;
+}
+.react-flow__controls button svg {
+  fill: var(--color-foreground) !important;
+}

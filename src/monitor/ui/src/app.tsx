@@ -6,14 +6,21 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { SummaryCards } from '@/components/common/summary-cards';
 import { Pipeline } from '@/components/pipeline/pipeline';
 import { Timeline } from '@/components/timeline/timeline';
+import { DependencyGraph } from '@/components/graph';
 import { useEforgeEvents } from '@/hooks/use-eforge-events';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { getSummaryStats } from '@/lib/reducer';
-import { fetchLatestRunId } from '@/lib/api';
+import { fetchLatestRunId, fetchOrchestration } from '@/lib/api';
+import type { OrchestrationConfig } from '@/lib/types';
+
+type ContentTab = 'timeline' | 'graph';
 
 export function App() {
   const [currentRunId, setCurrentRunId] = useState<string | null>(null);
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
+  const [activeTab, setActiveTab] = useState<ContentTab>('timeline');
+  const [orchestration, setOrchestration] = useState<OrchestrationConfig | null>(null);
+  const [mergedPlanIds, setMergedPlanIds] = useState<Set<string>>(new Set());
   const knownLatestRef = useRef<string | null>(null);
   const { runState, connectionStatus, resetState } = useEforgeEvents(currentRunId);
   const { containerRef, autoScroll, enableAutoScroll } = useAutoScroll([runState.events.length]);
@@ -68,6 +75,34 @@ export function App() {
     }
   }, [runState.events.length]);
 
+  // Fetch orchestration data when run changes
+  useEffect(() => {
+    if (!currentRunId) {
+      setOrchestration(null);
+      return;
+    }
+    fetchOrchestration(currentRunId)
+      .then((data) => setOrchestration(data as OrchestrationConfig))
+      .catch(() => setOrchestration(null));
+  }, [currentRunId]);
+
+  // Track merged plan IDs from events
+  useEffect(() => {
+    const merged = new Set<string>();
+    for (const { event } of runState.events) {
+      if (event.type === 'merge:complete' && 'planId' in event) {
+        merged.add((event as { planId: string }).planId);
+      }
+    }
+    // Only update state if the set actually changed
+    setMergedPlanIds((prev) => {
+      if (prev.size === merged.size && [...merged].every((id) => prev.has(id))) return prev;
+      return merged;
+    });
+  }, [runState.events.length]);
+
+  const hasOrchestration = orchestration !== null && orchestration.plans.length > 0;
+
   // Update duration every second while running
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -90,7 +125,7 @@ export function App() {
     >
       <main
         ref={containerRef}
-        className="overflow-y-auto p-4 flex flex-col gap-4"
+        className="overflow-y-auto p-4 flex flex-col gap-4 flex-1"
       >
         {!hasEvents ? (
           <div className="flex items-center justify-center h-full text-text-dim text-sm">
@@ -100,7 +135,45 @@ export function App() {
           <>
             <SummaryCards {...stats} />
             <Pipeline planStatuses={runState.planStatuses} />
-            <Timeline events={runState.events} startTime={runState.startTime} />
+
+            {/* Content tabs */}
+            {hasOrchestration && (
+              <div className="flex gap-1 border-b border-border">
+                <button
+                  onClick={() => setActiveTab('timeline')}
+                  className={`px-3 py-1.5 text-[11px] font-medium border-b-2 transition-colors ${
+                    activeTab === 'timeline'
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-text-dim hover:text-foreground'
+                  }`}
+                >
+                  Timeline
+                </button>
+                <button
+                  onClick={() => setActiveTab('graph')}
+                  className={`px-3 py-1.5 text-[11px] font-medium border-b-2 transition-colors ${
+                    activeTab === 'graph'
+                      ? 'border-primary text-foreground'
+                      : 'border-transparent text-text-dim hover:text-foreground'
+                  }`}
+                >
+                  Graph
+                </button>
+              </div>
+            )}
+
+            {/* Tab content */}
+            {activeTab === 'graph' && hasOrchestration ? (
+              <div className="flex-1" style={{ minHeight: 400 }}>
+                <DependencyGraph
+                  orchestration={orchestration}
+                  planStatuses={runState.planStatuses}
+                  mergedPlanIds={mergedPlanIds}
+                />
+              </div>
+            ) : (
+              <Timeline events={runState.events} startTime={runState.startTime} />
+            )}
           </>
         )}
       </main>
