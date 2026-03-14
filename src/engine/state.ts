@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import type { ForgeState, PlanState } from './events.js';
 
@@ -9,20 +9,24 @@ const STATE_FILENAME = '.forge/state.json';
  */
 export function loadState(stateDir: string): ForgeState | null {
   const filePath = resolve(stateDir, STATE_FILENAME);
-  if (!existsSync(filePath)) {
+  try {
+    const raw = readFileSync(filePath, 'utf-8');
+    return JSON.parse(raw) as ForgeState;
+  } catch {
     return null;
   }
-  const raw = readFileSync(filePath, 'utf-8');
-  return JSON.parse(raw) as ForgeState;
 }
 
 /**
- * Save forge state to a directory (sync write, not atomic).
+ * Save forge state to a directory. Uses write-to-temp-then-rename for
+ * atomic writes on POSIX (safe against SIGINT mid-write).
  */
 export function saveState(stateDir: string, state: ForgeState): void {
   const filePath = resolve(stateDir, STATE_FILENAME);
+  const tmpPath = filePath + '.tmp';
   mkdirSync(dirname(filePath), { recursive: true });
-  writeFileSync(filePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
+  writeFileSync(tmpPath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
+  renameSync(tmpPath, filePath);
 }
 
 /**
