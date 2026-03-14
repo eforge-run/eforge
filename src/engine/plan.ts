@@ -4,6 +4,50 @@ import { parse as parseYaml } from 'yaml';
 import type { PlanFile, OrchestrationConfig, ExpeditionModule } from './events.js';
 
 /**
+ * Derive a kebab-case plan set name from a source string.
+ * If it looks like a file path, use the filename without extension.
+ * For free-text prompts, only strips short extensions (1-4 chars) to avoid
+ * truncating sentences that contain periods.
+ */
+export function deriveNameFromSource(source: string): string {
+  const hasPathSeparator = /[\\/]/.test(source);
+  let base = source.replace(/^.*[\\/]/, '');
+
+  // Only strip extension for file-like inputs (has path separator or short extension)
+  if (hasPathSeparator) {
+    base = base.replace(/\.[^.]+$/, '');
+  } else {
+    base = base.replace(/\.[a-z]{1,4}$/i, '');
+  }
+
+  const name = base
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
+
+  return name || 'unnamed';
+}
+
+/**
+ * Validate a plan set name for use in file paths.
+ * Rejects empty strings, path traversal, and non-kebab-case names.
+ */
+export function validatePlanSetName(name: string): void {
+  if (!name || name === 'unnamed') {
+    throw new Error(`Invalid plan set name (empty or unnamed): "${name}"`);
+  }
+  if (name.includes('..')) {
+    throw new Error(`Invalid plan set name (path traversal): ${name}`);
+  }
+  if (/[\\/]/.test(name)) {
+    throw new Error(`Invalid plan set name (contains path separator): ${name}`);
+  }
+}
+
+/**
  * Parsed expedition index.yaml.
  */
 export interface ExpeditionIndex {

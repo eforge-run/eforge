@@ -34,7 +34,7 @@ import { runReview } from './agents/reviewer.js';
 import { runPlanReview } from './agents/plan-reviewer.js';
 import { runPlanEvaluate } from './agents/plan-evaluator.js';
 import { Orchestrator } from './orchestrator.js';
-import { parseOrchestrationConfig, parsePlanFile, validatePlanSet } from './plan.js';
+import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
 import { compileExpedition } from './compiler.js';
 import { parseModulesBlock } from './agents/common.js';
 import { loadState } from './state.js';
@@ -94,20 +94,15 @@ export class ForgeEngine {
    */
   async *plan(source: string, options: Partial<PlanOptions> = {}): AsyncGenerator<ForgeEvent> {
     const runId = randomUUID();
-    const planSet = options.name ?? source;
-    const tracing = createTracingContext(this.config, runId, 'plan', planSet);
+    const planSetName = options.name ?? deriveNameFromSource(source);
+    validatePlanSetName(planSetName);
+    const tracing = createTracingContext(this.config, runId, 'plan', planSetName);
     const cwd = options.cwd ?? this.cwd;
-    const planSetName = options.name ?? source;
-
-    // Validate planSetName to prevent path traversal
-    if (planSetName.includes('..')) {
-      throw new Error(`Invalid plan set name (path traversal): ${planSetName}`);
-    }
 
     yield {
       type: 'forge:start',
       runId,
-      planSet,
+      planSet: planSetName,
       command: 'plan',
       timestamp: new Date().toISOString(),
     };
@@ -115,7 +110,7 @@ export class ForgeEngine {
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Planning complete';
 
-    tracing.setInput({ source, planSet });
+    tracing.setInput({ source, planSet: planSetName });
 
     // Resolve source content early — needed for plan review + evaluate
     let sourceContent: string;
@@ -129,8 +124,8 @@ export class ForgeEngine {
 
     try {
       // Run planner agent (explores codebase, assesses scope, generates artifacts)
-      const span = tracing.createSpan('planner', { source, planSet });
-      span.setInput({ source, planSet });
+      const span = tracing.createSpan('planner', { source, planSet: planSetName });
+      span.setInput({ source, planSet: planSetName });
 
       const plannerOptions: PlannerOptions = {
         ...options,
@@ -188,7 +183,7 @@ export class ForgeEngine {
       // If expedition scope with modules defined, continue with module planning + compilation
       if (status !== 'failed' && scopeAssessment === 'expedition' && expeditionModules.length > 0) {
         try {
-          for await (const event of this.planExpeditionModules(source, expeditionModules, tracing, {
+          for await (const event of this.planExpeditionModules(planSetName, expeditionModules, tracing, {
             ...options,
             cwd,
             sourceContent,
@@ -205,18 +200,17 @@ export class ForgeEngine {
         }
       }
 
-      // Plan review cycle: commit → blind review → evaluate
+      // Commit plan artifacts (required for worktree-based builds)
       if (status !== 'failed' && finalPlans.length > 0) {
         const planDir = resolve(cwd, 'plans', planSetName);
         const verbose = options.verbose;
         const abortController = options.abortController;
 
-        try {
-          // Commit plan artifacts so reviewer has a clean baseline
-          await exec('git', ['add', planDir], { cwd });
-          await exec('git', ['commit', '-m', `plan(${planSetName}): initial planning artifacts`], { cwd });
+        await exec('git', ['add', planDir], { cwd });
+        await exec('git', ['commit', '-m', `plan(${planSetName}): initial planning artifacts`], { cwd });
 
-          // Run review → evaluate cycle
+        // Plan review cycle: blind review → evaluate (non-fatal)
+        try {
           yield* runReviewCycle({
             tracing,
             cwd,
@@ -232,7 +226,7 @@ export class ForgeEngine {
             },
           });
         } catch (err) {
-          // Plan review failure is non-fatal — plan artifacts are preserved
+          // Plan review failure is non-fatal — plan artifacts are already committed
           yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
         }
       }
@@ -252,12 +246,11 @@ export class ForgeEngine {
    * Run module planners for each expedition module, then compile to plan files.
    */
   private async *planExpeditionModules(
-    source: string,
+    planSetName: string,
     modules: ExpeditionModule[],
     tracing: TracingContext,
     options: Partial<PlanOptions> & { cwd: string; sourceContent: string },
   ): AsyncGenerator<ForgeEvent> {
-    const planSetName = options.name ?? source;
     const cwd = options.cwd;
     const sourceContent = options.sourceContent;
     const planDir = resolve(cwd, 'plans', planSetName);
@@ -312,6 +305,7 @@ export class ForgeEngine {
    * Creates Orchestrator with PlanRunner closure for three-phase pipeline.
    */
   async *build(planSet: string, options: Partial<BuildOptions> = {}): AsyncGenerator<ForgeEvent> {
+    validatePlanSetName(planSet);
     const runId = randomUUID();
     const tracing = createTracingContext(this.config, runId, 'build', planSet);
     const cwd = options.cwd ?? this.cwd;
@@ -453,6 +447,7 @@ export class ForgeEngine {
    * Review: run blind review sequentially per plan (no orchestrator).
    */
   async *review(planSet: string, options: Partial<ReviewOptions> = {}): AsyncGenerator<ForgeEvent> {
+    validatePlanSetName(planSet);
     const runId = randomUUID();
     const tracing = createTracingContext(this.config, runId, 'review', planSet);
     const cwd = options.cwd ?? this.cwd;

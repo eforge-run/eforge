@@ -6,7 +6,7 @@ import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { ForgeEvent, PlanOptions, ClarificationQuestion, PlanFile } from '../events.js';
 import { mapSDKMessages, parseClarificationBlocks, parseScopeBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
-import { parsePlanFile } from '../plan.js';
+import { parsePlanFile, deriveNameFromSource } from '../plan.js';
 
 export interface PlannerOptions extends PlanOptions {
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
@@ -230,14 +230,3 @@ export async function* runPlanner(
   yield { type: 'plan:complete', plans };
 }
 
-/**
- * Derive a kebab-case plan set name from a source string.
- * If it looks like a file path, use the filename without extension.
- */
-function deriveNameFromSource(source: string): string {
-  const basename = source.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
-  return basename
-    .replace(/([a-z])([A-Z])/g, '$1-$2')
-    .replace(/[\s_]+/g, '-')
-    .toLowerCase();
-}

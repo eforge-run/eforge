@@ -20,10 +20,12 @@ export type {
 
 // --- plan ---
 export {
+  deriveNameFromSource,
   parsePlanFile,
   parseOrchestrationConfig,
   resolveDependencyGraph,
   validatePlanSet,
+  validatePlanSetName,
 } from './plan.js';
 
 // --- prompts ---
