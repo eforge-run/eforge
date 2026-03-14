@@ -7,11 +7,12 @@ export default defineConfig({
   target: "node22",
   clean: true,
   dts: false,
-  external: ["@anthropic-ai/claude-agent-sdk"],
+  external: ["@anthropic-ai/claude-agent-sdk", "better-sqlite3"],
   banner: {
     js: "#!/usr/bin/env node",
   },
   async onSuccess() {
     await cp("src/engine/prompts", "dist/prompts", { recursive: true });
+    await cp("src/monitor/ui", "dist/monitor-ui", { recursive: true });
   },
 });

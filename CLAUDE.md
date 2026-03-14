@@ -40,7 +40,9 @@ node --env-file=.env dist/cli.js plan docs/init-prd.md --verbose
 
 **Orchestration**: `src/engine/orchestrator.ts` resolves a dependency graph from `orchestration.yaml`, computes execution waves, and runs plans in parallel via git worktrees (`src/engine/worktree.ts`). Worktrees live in a sibling directory (`../{project}-{set}-worktrees/`) to avoid CLAUDE.md context pollution. Branches merge in topological order after all plans complete.
 
-**State**: `.forge-state.json` (gitignored) tracks build progress for resume support.
+**State**: `.forge/state.json` (gitignored) tracks build progress for resume support.
+
+**Monitor** (`src/monitor/`): Web-based real-time monitor. Records all `ForgeEvent`s to SQLite (`.forge/monitor.db`) via a transparent `withRecording()` async generator middleware. Serves a single-page dashboard over SSE at `http://localhost:4567`. Auto-starts with `plan`, `build`, `forge`, and `review` commands (disable with `--no-monitor`).
 
 **CLI** (`src/cli/`): Thin consumer that iterates the engine's event stream and renders to stdout. Handles interactive clarification prompts and approval gates via callbacks.
 
@@ -61,7 +63,7 @@ src/
       plan-evaluator.ts       # Plan fix evaluation (one-shot query)
       common.ts               # SDK message → ForgeEvent mapping
     plan.ts                   # Plan file parsing (YAML frontmatter)
-    state.ts                  # .forge-state.json read/write
+    state.ts                  # .forge/state.json read/write
     orchestrator.ts           # Dependency graph, wave execution
     concurrency.ts            # Semaphore + AsyncEventQueue for parallel plans
     worktree.ts               # Git worktree lifecycle
@@ -77,6 +79,14 @@ src/
       plan-reviewer.md
       plan-evaluator.md
     config.ts                 # forge.yaml loading
+
+  monitor/                    # Web monitor (event persistence + dashboard)
+    db.ts                     # SQLite: open, schema, CRUD (better-sqlite3)
+    recorder.ts               # withRecording() async generator middleware
+    server.ts                 # node:http server, SSE endpoint
+    index.ts                  # Barrel + createMonitor() convenience
+    ui/
+      index.html              # Single-page monitor app (inline CSS + JS)
 
   cli/                        # CLI consumer (thin)
     index.ts                  # Commander setup, wires engine → display
@@ -119,7 +129,7 @@ aroh-forge review <planSet>   # Review code against plans
 aroh-forge status             # Check running builds
 ```
 
-Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only)
+Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--no-monitor` (disable web monitor)
 
 ## Key references
 

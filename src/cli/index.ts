@@ -1,4 +1,5 @@
 import { Command } from 'commander';
+import chalk from 'chalk';
 import { resolve } from 'node:path';
 
 import { ForgeEngine } from '../engine/forge.js';
@@ -10,17 +11,54 @@ import {
 import type { ForgeEvent, PlanFile } from '../engine/events.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler, confirmBuild } from './interactive.js';
+import { createMonitor, type Monitor } from '../monitor/index.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
+
+let activeMonitor: Monitor | undefined;
 
 function setupSignalHandlers(): void {
   const handler = () => {
     stopAllSpinners();
     const timer = setTimeout(() => process.exit(130), SHUTDOWN_TIMEOUT_MS);
     timer.unref();
+    if (activeMonitor) {
+      activeMonitor.stop().catch(() => {}).finally(() => {
+        activeMonitor = undefined;
+      });
+    }
   };
   process.on('SIGINT', handler);
   process.on('SIGTERM', handler);
+}
+
+async function withMonitor<T>(
+  noMonitor: boolean | undefined,
+  fn: (monitor: Monitor | undefined) => Promise<T>,
+): Promise<T> {
+  if (noMonitor) {
+    return fn(undefined);
+  }
+
+  const monitor = await createMonitor(process.cwd());
+  activeMonitor = monitor;
+  console.error(chalk.dim(`  Monitor: ${monitor.server.url}`));
+
+  try {
+    return await fn(monitor);
+  } finally {
+    if (activeMonitor) {
+      await monitor.stop();
+      activeMonitor = undefined;
+    }
+  }
+}
+
+function wrapEvents(
+  events: AsyncGenerator<ForgeEvent>,
+  monitor: Monitor | undefined,
+): AsyncGenerator<ForgeEvent> {
+  return monitor ? monitor.wrapEvents(events) : events;
 }
 
 async function consumeEvents(
@@ -69,24 +107,28 @@ export function createProgram(): Command {
     .option('--auto', 'Run without approval gates')
     .option('--verbose', 'Stream agent output')
     .option('--name <name>', 'Plan set name (inferred from source if omitted)')
+    .option('--no-monitor', 'Disable web monitor')
     .action(
-      async (source: string, options: { auto?: boolean; verbose?: boolean; name?: string }) => {
+      async (source: string, options: { auto?: boolean; verbose?: boolean; name?: string; monitor?: boolean }) => {
         initDisplay({ verbose: options.verbose });
 
         const engine = await ForgeEngine.create({
           onClarification: createClarificationHandler(options.auto ?? false),
           onApproval: createApprovalHandler(options.auto ?? false),
         });
-        const result = await consumeEvents(
-          engine.plan(source, {
-            auto: options.auto,
-            verbose: options.verbose,
-            name: options.name,
-          }),
-          { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-        );
 
-        process.exit(result === 'completed' ? 0 : 1);
+        await withMonitor(options.monitor === false, async (monitor) => {
+          const result = await consumeEvents(
+            wrapEvents(engine.plan(source, {
+              auto: options.auto,
+              verbose: options.verbose,
+              name: options.name,
+            }), monitor),
+            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
+          );
+
+          process.exit(result === 'completed' ? 0 : 1);
+        });
       },
     );
 
@@ -98,6 +140,7 @@ export function createProgram(): Command {
     .option('--name <name>', 'Plan set name (inferred from source if omitted)')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
     .option('--dry-run', 'Plan only, then show execution plan without building')
+    .option('--no-monitor', 'Disable web monitor')
     .action(
       async (
         source: string,
@@ -107,6 +150,7 @@ export function createProgram(): Command {
           name?: string;
           parallelism?: number;
           dryRun?: boolean;
+          monitor?: boolean;
         },
       ) => {
         initDisplay({ verbose: options.verbose });
@@ -121,57 +165,59 @@ export function createProgram(): Command {
           config: configOverrides,
         });
 
-        // Phase 1: Plan
-        let planSetName: string | undefined;
-        let planFiles: PlanFile[] = [];
-        let planResult: 'completed' | 'failed' = 'completed';
+        await withMonitor(options.monitor === false, async (monitor) => {
+          // Phase 1: Plan
+          let planSetName: string | undefined;
+          let planFiles: PlanFile[] = [];
+          let planResult: 'completed' | 'failed' = 'completed';
 
-        for await (const event of engine.plan(source, {
-          auto: options.auto,
-          verbose: options.verbose,
-          name: options.name,
-        })) {
-          renderEvent(event);
-          if (event.type === 'forge:start') {
-            renderLangfuseStatus(engine.resolvedConfig);
-            planSetName = event.planSet;
-          }
-          if (event.type === 'plan:complete') {
-            planFiles = event.plans;
-          }
-          if (event.type === 'forge:end') {
-            planResult = event.result.status;
-          }
-        }
-
-        if (planResult === 'failed' || planFiles.length === 0 || !planSetName) {
-          process.exit(1);
-        }
-
-        // Handle --dry-run: show execution plan and exit
-        if (options.dryRun) {
-          await showDryRun(planSetName);
-        }
-
-        // Approval gate: confirm before building
-        if (!options.auto) {
-          const approved = await confirmBuild(planFiles);
-          if (!approved) {
-            console.log('\nBuild skipped.');
-            process.exit(0);
-          }
-        }
-
-        // Phase 2: Build
-        const buildResult = await consumeEvents(
-          engine.build(planSetName, {
+          for await (const event of wrapEvents(engine.plan(source, {
             auto: options.auto,
             verbose: options.verbose,
-          }),
-          { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-        );
+            name: options.name,
+          }), monitor)) {
+            renderEvent(event);
+            if (event.type === 'forge:start') {
+              renderLangfuseStatus(engine.resolvedConfig);
+              planSetName = event.planSet;
+            }
+            if (event.type === 'plan:complete') {
+              planFiles = event.plans;
+            }
+            if (event.type === 'forge:end') {
+              planResult = event.result.status;
+            }
+          }
 
-        process.exit(buildResult === 'completed' ? 0 : 1);
+          if (planResult === 'failed' || planFiles.length === 0 || !planSetName) {
+            process.exit(1);
+          }
+
+          // Handle --dry-run: show execution plan and exit
+          if (options.dryRun) {
+            await showDryRun(planSetName);
+          }
+
+          // Approval gate: confirm before building
+          if (!options.auto) {
+            const approved = await confirmBuild(planFiles);
+            if (!approved) {
+              console.log('\nBuild skipped.');
+              process.exit(0);
+            }
+          }
+
+          // Phase 2: Build
+          const buildResult = await consumeEvents(
+            wrapEvents(engine.build(planSetName, {
+              auto: options.auto,
+              verbose: options.verbose,
+            }), monitor),
+            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
+          );
+
+          process.exit(buildResult === 'completed' ? 0 : 1);
+        });
       },
     );
 
@@ -182,10 +228,11 @@ export function createProgram(): Command {
     .option('--verbose', 'Stream agent output')
     .option('--dry-run', 'Validate and show execution plan without running')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
+    .option('--no-monitor', 'Disable web monitor')
     .action(
       async (
         planSet: string,
-        options: { auto?: boolean; verbose?: boolean; dryRun?: boolean; parallelism?: number },
+        options: { auto?: boolean; verbose?: boolean; dryRun?: boolean; parallelism?: number; monitor?: boolean },
       ) => {
         initDisplay({ verbose: options.verbose });
 
@@ -202,15 +249,18 @@ export function createProgram(): Command {
           onApproval: createApprovalHandler(options.auto ?? false),
           config: configOverrides,
         });
-        const result = await consumeEvents(
-          engine.build(planSet, {
-            auto: options.auto,
-            verbose: options.verbose,
-          }),
-          { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-        );
 
-        process.exit(result === 'completed' ? 0 : 1);
+        await withMonitor(options.monitor === false, async (monitor) => {
+          const result = await consumeEvents(
+            wrapEvents(engine.build(planSet, {
+              auto: options.auto,
+              verbose: options.verbose,
+            }), monitor),
+            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
+          );
+
+          process.exit(result === 'completed' ? 0 : 1);
+        });
       },
     );
 
@@ -219,22 +269,26 @@ export function createProgram(): Command {
     .description('Review existing code against plans')
     .option('--auto', 'Run without approval gates')
     .option('--verbose', 'Stream agent output')
-    .action(async (planSet: string, options: { auto?: boolean; verbose?: boolean }) => {
+    .option('--no-monitor', 'Disable web monitor')
+    .action(async (planSet: string, options: { auto?: boolean; verbose?: boolean; monitor?: boolean }) => {
       initDisplay({ verbose: options.verbose });
 
       const engine = await ForgeEngine.create({
         onClarification: createClarificationHandler(options.auto ?? false),
         onApproval: createApprovalHandler(options.auto ?? false),
       });
-      const result = await consumeEvents(
-        engine.review(planSet, {
-          auto: options.auto,
-          verbose: options.verbose,
-        }),
-        { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-      );
 
-      process.exit(result === 'completed' ? 0 : 1);
+      await withMonitor(options.monitor === false, async (monitor) => {
+        const result = await consumeEvents(
+          wrapEvents(engine.review(planSet, {
+            auto: options.auto,
+            verbose: options.verbose,
+          }), monitor),
+          { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
+        );
+
+        process.exit(result === 'completed' ? 0 : 1);
+      });
     });
 
   program

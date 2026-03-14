@@ -2,8 +2,7 @@ node_modules/
 dist/
 .env
 .env.local
-.forge-state.json
+.forge/
 .forge-logs/
 .mcp.json
 .schaake-os-track
-.forge.db

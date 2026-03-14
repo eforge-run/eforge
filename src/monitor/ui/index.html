@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>aroh-forge monitor</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-secondary: #161b22;
+    --bg-tertiary: #21262d;
+    --border: #30363d;
+    --text: #c9d1d9;
+    --text-dim: #8b949e;
+    --text-bright: #f0f6fc;
+    --green: #3fb950;
+    --red: #f85149;
+    --blue: #58a6ff;
+    --yellow: #d29922;
+    --purple: #bc8cff;
+    --cyan: #39d2c0;
+    --orange: #f0883e;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 13px;
+    line-height: 1.5;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 260px 1fr;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
+
+  header {
+    grid-column: 1 / -1;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 16px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  header h1 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-bright);
+  }
+
+  header h1 span { color: var(--cyan); }
+
+  .connection-status {
+    margin-left: auto;
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .connection-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--text-dim);
+  }
+
+  .connection-dot.connected { background: var(--green); }
+  .connection-dot.connecting {
+    background: var(--yellow);
+    animation: pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .sidebar {
+    background: var(--bg-secondary);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 8px;
+  }
+
+  .sidebar h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    padding: 8px 8px 4px;
+  }
+
+  .run-item {
+    padding: 8px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 2px;
+  }
+
+  .run-item:hover { background: var(--bg-tertiary); }
+  .run-item.active { background: var(--bg-tertiary); border-left: 2px solid var(--cyan); }
+
+  .run-item .run-command {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-bright);
+  }
+
+  .run-item .run-planset {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+  }
+
+  .run-item .run-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+    font-size: 11px;
+  }
+
+  .badge {
+    display: inline-block;
+    padding: 1px 6px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .badge-running { background: rgba(88, 166, 255, 0.15); color: var(--blue); }
+  .badge-completed { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+  .badge-failed { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+
+  .main {
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .summary-cards {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .summary-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+    min-width: 140px;
+  }
+
+  .summary-card .label {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+
+  .summary-card .value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-bright);
+    margin-top: 2px;
+  }
+
+  .pipeline {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 16px;
+  }
+
+  .pipeline h3 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  .pipeline-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+    font-size: 11px;
+  }
+
+  .pipeline-label {
+    width: 120px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pipeline-stages {
+    display: flex;
+    gap: 2px;
+    flex: 1;
+  }
+
+  .pipeline-stage {
+    padding: 2px 8px;
+    border-radius: 3px;
+    background: var(--bg-tertiary);
+    color: var(--text-dim);
+    font-size: 10px;
+    text-align: center;
+    flex: 1;
+  }
+
+  .pipeline-stage.active { background: rgba(88, 166, 255, 0.2); color: var(--blue); }
+  .pipeline-stage.done { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+  .pipeline-stage.failed { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+
+  .controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .controls label {
+    font-size: 11px;
+    color: var(--text-dim);
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    cursor: pointer;
+  }
+
+  .timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+  }
+
+  .event-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .event-card.verbose {
+    opacity: 0.6;
+    border-color: transparent;
+    background: transparent;
+  }
+
+  .event-card.hidden { display: none; }
+
+  .event-type {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+    min-width: 100px;
+    text-align: center;
+  }
+
+  .event-type.start { background: rgba(88, 166, 255, 0.15); color: var(--blue); }
+  .event-type.complete { background: rgba(63, 185, 80, 0.15); color: var(--green); }
+  .event-type.failed { background: rgba(248, 81, 73, 0.15); color: var(--red); }
+  .event-type.progress { background: rgba(210, 153, 34, 0.15); color: var(--yellow); }
+  .event-type.agent { background: rgba(139, 148, 158, 0.1); color: var(--text-dim); }
+  .event-type.info { background: rgba(188, 140, 255, 0.15); color: var(--purple); }
+
+  .event-body {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .event-body .event-summary {
+    color: var(--text);
+    font-size: 12px;
+  }
+
+  .event-body .event-detail {
+    color: var(--text-dim);
+    font-size: 11px;
+    margin-top: 4px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+  }
+
+  .event-body .event-detail.collapsed {
+    max-height: 0;
+    overflow: hidden;
+  }
+
+  .event-time {
+    font-size: 11px;
+    color: var(--text-dim);
+    white-space: nowrap;
+  }
+
+  .toggle-detail {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 10px;
+    padding: 0;
+  }
+
+  .toggle-detail:hover { color: var(--text); }
+
+  .empty-state {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--text-dim);
+    font-size: 14px;
+  }
+
+  .auto-scroll-indicator {
+    position: fixed;
+    bottom: 16px;
+    right: 16px;
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 12px;
+    font-size: 11px;
+    color: var(--text-dim);
+    cursor: pointer;
+    display: none;
+  }
+
+  .auto-scroll-indicator.visible { display: block; }
+</style>
+</head>
+<body>
+<div class="layout">
+  <header>
+    <h1><span>aroh</span>-forge monitor</h1>
+    <div class="connection-status">
+      <div class="connection-dot" id="connDot"></div>
+      <span id="connText">disconnected</span>
+    </div>
+  </header>
+
+  <aside class="sidebar">
+    <h2>Runs</h2>
+    <div id="runList"></div>
+  </aside>
+
+  <main class="main" id="mainPanel">
+    <div class="empty-state" id="emptyState">Waiting for events...</div>
+  </main>
+</div>
+
+<div class="auto-scroll-indicator" id="scrollBtn" onclick="enableAutoScroll()">
+  ↓ Auto-scroll
+</div>
+
+<script>
+(function() {
+  let currentRunId = null;
+  let eventSource = null;
+  let events = [];
+  let startTime = null;
+  let autoScroll = true;
+  let showVerbose = false;
+
+  // Summary state
+  let totalTokens = { input: 0, output: 0 };
+  let totalCost = 0;
+  let planStatuses = {};
+
+  const mainPanel = document.getElementById('mainPanel');
+  const emptyState = document.getElementById('emptyState');
+  const runList = document.getElementById('runList');
+  const connDot = document.getElementById('connDot');
+  const connText = document.getElementById('connText');
+  const scrollBtn = document.getElementById('scrollBtn');
+
+  // Detect scroll position for auto-scroll
+  mainPanel.addEventListener('scroll', () => {
+    const atBottom = mainPanel.scrollHeight - mainPanel.scrollTop - mainPanel.clientHeight < 50;
+    autoScroll = atBottom;
+    scrollBtn.classList.toggle('visible', !atBottom);
+  });
+
+  window.enableAutoScroll = function() {
+    autoScroll = true;
+    scrollBtn.classList.remove('visible');
+    mainPanel.scrollTop = mainPanel.scrollHeight;
+  };
+
+  async function loadRuns() {
+    try {
+      const res = await fetch('/api/runs');
+      const runs = await res.json();
+      renderRunList(runs);
+
+      // Auto-select latest run if none selected
+      if (!currentRunId && runs.length > 0) {
+        selectRun(runs[0].id);
+      }
+    } catch (e) {
+      console.error('Failed to load runs:', e);
+    }
+  }
+
+  async function checkForNewRun() {
+    try {
+      const res = await fetch('/api/latest-run');
+      const { runId } = await res.json();
+      if (runId && runId !== currentRunId) {
+        selectRun(runId);
+        loadRuns();
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function renderRunList(runs) {
+    runList.innerHTML = runs.map(run => `
+      <div class="run-item ${run.id === currentRunId ? 'active' : ''}"
+           onclick="window.selectRun('${escapeHtml(run.id)}')">
+        <div class="run-command">${escapeHtml(run.command)}</div>
+        <div class="run-planset">${escapeHtml(run.planSet)}</div>
+        <div class="run-meta">
+          <span class="badge badge-${escapeHtml(run.status)}">${escapeHtml(run.status)}</span>
+          <span>${formatTime(run.startedAt)}</span>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  window.selectRun = function(runId) {
+    currentRunId = runId;
+    events = [];
+    startTime = null;
+    totalTokens = { input: 0, output: 0 };
+    totalCost = 0;
+    planStatuses = {};
+    connectSSE(runId);
+    loadRuns();
+  };
+
+  function connectSSE(runId) {
+    if (eventSource) eventSource.close();
+
+    setConnectionStatus('connecting');
+    eventSource = new EventSource(`/api/events/${runId}`);
+
+    eventSource.onopen = () => setConnectionStatus('connected');
+
+    eventSource.onmessage = (msg) => {
+      try {
+        const event = JSON.parse(msg.data);
+        events.push({ ...event, _id: msg.lastEventId });
+        processEvent(event);
+        renderMain();
+      } catch (e) {
+        console.error('Failed to parse event:', e);
+      }
+    };
+
+    eventSource.onerror = () => {
+      setConnectionStatus('connecting');
+    };
+  }
+
+  function setConnectionStatus(status) {
+    connDot.className = 'connection-dot ' + (status === 'connected' ? 'connected' : status === 'connecting' ? 'connecting' : '');
+    connText.textContent = status;
+  }
+
+  function processEvent(event) {
+    if (event.type === 'forge:start' && event.timestamp) {
+      startTime = new Date(event.timestamp);
+    }
+
+    if (event.type === 'agent:result' && event.result) {
+      totalTokens.input += event.result.usage?.input || 0;
+      totalTokens.output += event.result.usage?.output || 0;
+      totalCost += event.result.totalCostUsd || 0;
+    }
+
+    // Track plan statuses
+    const planId = event.planId || event.moduleId;
+    if (planId) {
+      if (event.type === 'build:start' || event.type === 'build:implement:start') {
+        planStatuses[planId] = 'implement';
+      } else if (event.type === 'build:implement:complete') {
+        planStatuses[planId] = 'review';
+      } else if (event.type === 'build:review:start') {
+        planStatuses[planId] = 'review';
+      } else if (event.type === 'build:review:complete' || event.type === 'build:evaluate:start') {
+        planStatuses[planId] = 'evaluate';
+      } else if (event.type === 'build:complete') {
+        planStatuses[planId] = 'complete';
+      } else if (event.type === 'build:failed') {
+        planStatuses[planId] = 'failed';
+      }
+    }
+
+    // Auto-select new runs
+    if (event.type === 'forge:start') {
+      loadRuns();
+    } else if (event.type === 'forge:end') {
+      loadRuns();
+    }
+  }
+
+  function renderMain() {
+    const hasPipeline = Object.keys(planStatuses).length > 0;
+    const duration = startTime ? formatDuration(Date.now() - startTime.getTime()) : '--';
+    const lastEvent = events[events.length - 1];
+    const isComplete = lastEvent && lastEvent.type === 'forge:end';
+
+    let html = '';
+
+    // Summary cards
+    html += '<div class="summary-cards">';
+    html += renderSummaryCard('Duration', duration);
+    html += renderSummaryCard('Events', events.length.toString());
+    if (totalTokens.input > 0) {
+      html += renderSummaryCard('Tokens', formatNumber(totalTokens.input + totalTokens.output));
+    }
+    if (totalCost > 0) {
+      html += renderSummaryCard('Cost', '$' + totalCost.toFixed(4));
+    }
+    const completed = Object.values(planStatuses).filter(s => s === 'complete').length;
+    const failed = Object.values(planStatuses).filter(s => s === 'failed').length;
+    const total = Object.keys(planStatuses).length;
+    if (total > 0) {
+      html += renderSummaryCard('Plans', `${completed}/${total}${failed ? ` (${failed} failed)` : ''}`);
+    }
+    html += '</div>';
+
+    // Pipeline visualization
+    if (hasPipeline) {
+      html += '<div class="pipeline"><h3>Pipeline</h3>';
+      for (const [planId, status] of Object.entries(planStatuses)) {
+        html += renderPipelineRow(planId, status);
+      }
+      html += '</div>';
+    }
+
+    // Controls
+    html += '<div class="controls">';
+    html += `<label><input type="checkbox" ${showVerbose ? 'checked' : ''} onchange="window.toggleVerbose(this.checked)"> Show agent events</label>`;
+    html += '</div>';
+
+    // Timeline
+    html += '<div class="timeline">';
+    for (const event of events) {
+      html += renderEventCard(event);
+    }
+    html += '</div>';
+
+    emptyState.style.display = 'none';
+    mainPanel.innerHTML = html;
+
+    if (autoScroll) {
+      mainPanel.scrollTop = mainPanel.scrollHeight;
+    }
+  }
+
+  function renderSummaryCard(label, value) {
+    return `<div class="summary-card"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+  }
+
+  const STAGES = ['implement', 'review', 'evaluate', 'complete'];
+
+  function renderPipelineRow(planId, currentStage) {
+    let stages = '';
+    for (const stage of STAGES) {
+      let cls = '';
+      if (currentStage === 'failed') {
+        cls = stage === currentStage ? 'failed' : (STAGES.indexOf(stage) < STAGES.indexOf(currentStage) ? 'done' : '');
+      } else if (stage === currentStage) {
+        cls = currentStage === 'complete' ? 'done' : 'active';
+      } else if (STAGES.indexOf(stage) < STAGES.indexOf(currentStage)) {
+        cls = 'done';
+      }
+      stages += `<div class="pipeline-stage ${cls}">${stage}</div>`;
+    }
+    return `<div class="pipeline-row"><span class="pipeline-label" title="${escapeHtml(planId)}">${escapeHtml(planId)}</span><div class="pipeline-stages">${stages}</div></div>`;
+  }
+
+  window.toggleVerbose = function(checked) {
+    showVerbose = checked;
+    document.querySelectorAll('.event-card.verbose').forEach(el => {
+      el.classList.toggle('hidden', !showVerbose);
+    });
+  };
+
+  function renderEventCard(event) {
+    const typeInfo = classifyEvent(event.type, event);
+    const isVerbose = event.type.startsWith('agent:');
+    const hiddenClass = isVerbose && !showVerbose ? 'hidden' : '';
+    const verboseClass = isVerbose ? 'verbose' : '';
+    const elapsed = startTime && event.timestamp ? formatDuration(new Date(event.timestamp).getTime() - startTime.getTime()) : '';
+
+    let summary = eventSummary(event);
+    let detail = eventDetail(event);
+
+    let html = `<div class="event-card ${verboseClass} ${hiddenClass}">`;
+    html += `<span class="event-type ${typeInfo.cls}">${typeInfo.label}</span>`;
+    html += `<div class="event-body"><div class="event-summary">${escapeHtml(summary)}</div>`;
+    if (detail) {
+      const detailId = 'detail-' + (event._id || Math.random().toString(36).slice(2));
+      html += `<button class="toggle-detail" onclick="document.getElementById('${detailId}').classList.toggle('collapsed')">details</button>`;
+      html += `<div class="event-detail collapsed" id="${detailId}">${escapeHtml(detail)}</div>`;
+    }
+    html += '</div>';
+    html += `<span class="event-time">${elapsed}</span>`;
+    html += '</div>';
+    return html;
+  }
+
+  function classifyEvent(type, event) {
+    if (type === 'forge:start') return { cls: 'start', label: type };
+    if (type === 'forge:end') {
+      const status = event?.result?.status;
+      return { cls: status === 'failed' ? 'failed' : 'complete', label: type };
+    }
+    if (type.endsWith(':start')) return { cls: 'start', label: type };
+    if (type.endsWith(':complete')) return { cls: 'complete', label: type };
+    if (type.endsWith(':failed')) return { cls: 'failed', label: type };
+    if (type.endsWith(':progress')) return { cls: 'progress', label: type };
+    if (type.startsWith('agent:')) return { cls: 'agent', label: type };
+    if (type === 'plan:scope' || type === 'plan:clarification') return { cls: 'info', label: type };
+    return { cls: 'info', label: type };
+  }
+
+  function eventSummary(event) {
+    switch (event.type) {
+      case 'forge:start': return `Run started: ${event.command} "${event.planSet}"`;
+      case 'forge:end': return `Run ${event.result?.status}: ${event.result?.summary || ''}`;
+      case 'plan:start': return `Planning from: ${event.source}`;
+      case 'plan:scope': return `Scope: ${event.assessment} — ${event.justification}`;
+      case 'plan:clarification': return `${event.questions?.length || 0} clarification question(s)`;
+      case 'plan:progress': return event.message;
+      case 'plan:complete': return `${event.plans?.length || 0} plan(s) generated`;
+      case 'plan:review:start': return 'Plan review started';
+      case 'plan:review:complete': return `Plan review: ${event.issues?.length || 0} issue(s)`;
+      case 'plan:evaluate:start': return 'Evaluating plan review fixes';
+      case 'plan:evaluate:complete': return `Accepted ${event.accepted}, rejected ${event.rejected}`;
+      case 'build:start': return `Building: ${event.planId}`;
+      case 'build:implement:start': return `Implementing: ${event.planId}`;
+      case 'build:implement:progress': return `[${event.planId}] ${event.message}`;
+      case 'build:implement:complete': return `Implementation complete: ${event.planId}`;
+      case 'build:review:start': return `Reviewing: ${event.planId}`;
+      case 'build:review:complete': return `[${event.planId}] Review: ${event.issues?.length || 0} issue(s)`;
+      case 'build:evaluate:start': return `Evaluating: ${event.planId}`;
+      case 'build:evaluate:complete': return `[${event.planId}] Accepted ${event.accepted}, rejected ${event.rejected}`;
+      case 'build:complete': return `Build complete: ${event.planId}`;
+      case 'build:failed': return `Build FAILED: ${event.planId} — ${event.error}`;
+      case 'wave:start': return `Wave ${event.wave}: ${event.planIds?.join(', ')}`;
+      case 'wave:complete': return `Wave ${event.wave} complete`;
+      case 'merge:start': return `Merging: ${event.planId}`;
+      case 'merge:complete': return `Merged: ${event.planId}`;
+      case 'expedition:architecture:complete': return `Architecture: ${event.modules?.length || 0} module(s)`;
+      case 'expedition:module:start': return `Module planning: ${event.moduleId}`;
+      case 'expedition:module:complete': return `Module complete: ${event.moduleId}`;
+      case 'expedition:compile:start': return 'Compiling expedition plans';
+      case 'expedition:compile:complete': return `Compiled ${event.plans?.length || 0} plan(s)`;
+      case 'agent:message': return `[${event.agent}] message`;
+      case 'agent:tool_use': return `[${event.agent}] ${event.tool}`;
+      case 'agent:tool_result': return `[${event.agent}] ${event.tool} result`;
+      case 'agent:result': return `[${event.agent}] done — ${event.result?.usage?.total || 0} tokens, ${(event.result?.durationMs / 1000).toFixed(1)}s`;
+      case 'approval:needed': return `Approval needed: ${event.action}`;
+      case 'approval:response': return event.approved ? 'Approved' : 'Rejected';
+      default: return event.type;
+    }
+  }
+
+  function eventDetail(event) {
+    switch (event.type) {
+      case 'plan:clarification':
+        return event.questions?.map(q => `Q: ${q.question}${q.context ? '\n   ' + q.context : ''}`).join('\n\n');
+      case 'plan:review:complete':
+      case 'build:review:complete':
+        return event.issues?.map(i => `[${i.severity}] ${i.category} — ${i.file}${i.line ? ':' + i.line : ''}\n  ${i.description}`).join('\n\n');
+      case 'agent:message':
+        return event.content;
+      case 'agent:tool_use':
+        return typeof event.input === 'string' ? event.input : JSON.stringify(event.input, null, 2);
+      case 'agent:tool_result':
+        return event.output;
+      case 'agent:result':
+        if (!event.result) return null;
+        const r = event.result;
+        let detail = `Duration: ${(r.durationMs / 1000).toFixed(1)}s (API: ${(r.durationApiMs / 1000).toFixed(1)}s)`;
+        detail += `\nTokens: ${formatNumber(r.usage?.input || 0)} in / ${formatNumber(r.usage?.output || 0)} out`;
+        detail += `\nTurns: ${r.numTurns}`;
+        if (r.totalCostUsd) detail += `\nCost: $${r.totalCostUsd.toFixed(4)}`;
+        if (r.modelUsage) {
+          detail += '\nModels:';
+          for (const [model, usage] of Object.entries(r.modelUsage)) {
+            detail += `\n  ${model}: ${formatNumber(usage.inputTokens)} in / ${formatNumber(usage.outputTokens)} out ($${usage.costUSD.toFixed(4)})`;
+          }
+        }
+        return detail;
+      case 'build:failed':
+        return event.error;
+      case 'forge:end':
+        return event.result?.summary;
+      case 'expedition:architecture:complete':
+        return event.modules?.map(m => `${m.id}: ${m.description}${m.dependsOn?.length ? ' (depends: ' + m.dependsOn.join(', ') + ')' : ''}`).join('\n');
+      default:
+        return null;
+    }
+  }
+
+  function escapeHtml(str) {
+    if (!str) return '';
+    return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function formatTime(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  function formatDuration(ms) {
+    if (ms < 0) ms = 0;
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const h = Math.floor(m / 60);
+    if (h > 0) return `${h}h ${m % 60}m`;
+    if (m > 0) return `${m}m ${s % 60}s`;
+    return `${s}s`;
+  }
+
+  function formatNumber(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'k';
+    return n.toString();
+  }
+
+  // Initialize
+  loadRuns();
+
+  // Poll for new runs (handles the case where monitor starts before engine)
+  setInterval(checkForNewRun, 2000);
+})();
+</script>
+</body>
+</html>

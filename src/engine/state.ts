@@ -1,8 +1,8 @@
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
 import type { ForgeState, PlanState } from './events.js';
 
-const STATE_FILENAME = '.forge-state.json';
+const STATE_FILENAME = '.forge/state.json';
 
 /**
  * Load the forge state from a directory. Returns null if no state file exists.
@@ -21,6 +21,7 @@ export function loadState(stateDir: string): ForgeState | null {
  */
 export function saveState(stateDir: string, state: ForgeState): void {
   const filePath = resolve(stateDir, STATE_FILENAME);
+  mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, JSON.stringify(state, null, 2) + '\n', 'utf-8');
 }
 
