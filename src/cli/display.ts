@@ -324,6 +324,16 @@ export function renderEvent(event: EforgeEvent): void {
       }
       break;
 
+    case 'validation:fix:start':
+      console.log('');
+      console.log(chalk.yellow(`Attempting validation fix (${event.attempt}/${event.maxAttempts})...`));
+      startSpinner('validation-fix', `Fixing validation failures (attempt ${event.attempt})`);
+      break;
+
+    case 'validation:fix:complete':
+      succeedSpinner('validation-fix', `Validation fix attempt ${event.attempt} complete`);
+      break;
+
     // Agent-level (verbose streaming)
     case 'agent:message':
       if (!verbose) break;

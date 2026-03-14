@@ -16,7 +16,6 @@ import type {
   EforgeStatus,
   PlanOptions,
   BuildOptions,
-  ReviewOptions,
   PlanFile,
   ClarificationQuestion,
   AgentResultData,
@@ -38,7 +37,8 @@ import { builderImplement, builderEvaluate } from './agents/builder.js';
 import { runReview } from './agents/reviewer.js';
 import { runPlanReview } from './agents/plan-reviewer.js';
 import { runPlanEvaluate } from './agents/plan-evaluator.js';
-import { Orchestrator } from './orchestrator.js';
+import { runValidationFixer } from './agents/validation-fixer.js';
+import { Orchestrator, type ValidationFixer } from './orchestrator.js';
 import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
 import { compileExpedition } from './compiler.js';
 import { parseModulesBlock } from './agents/common.js';
@@ -456,6 +456,32 @@ export class EforgeEngine {
         yield { type: 'build:complete', planId };
       };
 
+      // Create validation fixer closure
+      const validationFixer: ValidationFixer = async function* (failures, attempt, maxAttempts) {
+        const fixerSpan = tracing.createSpan('validation-fixer', { attempt, maxAttempts });
+        fixerSpan.setInput({ failures: failures.map((f) => f.command) });
+        const fixerTracker = createToolTracker(fixerSpan);
+        try {
+          for await (const event of runValidationFixer({
+            backend,
+            cwd,
+            failures,
+            attempt,
+            maxAttempts,
+            verbose,
+            abortController,
+          })) {
+            fixerTracker.handleEvent(event);
+            yield event;
+          }
+          fixerTracker.cleanup();
+          fixerSpan.end();
+        } catch (err) {
+          fixerTracker.cleanup();
+          fixerSpan.error(err as Error);
+        }
+      };
+
       // Create and run orchestrator
       const parallelism = config.build.parallelism;
       const signal = abortController?.signal;
@@ -466,77 +492,21 @@ export class EforgeEngine {
         parallelism,
         signal,
         postMergeCommands: config.build.postMergeCommands,
+        validateCommands: orchConfig.validate,
+        validationFixer,
+        maxValidationRetries: config.build.maxValidationRetries,
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
         yield event;
-      }
-    } catch (err) {
-      status = 'failed';
-      summary = (err as Error).message;
-    } finally {
-      tracing.setOutput({ status, summary });
-      yield {
-        type: 'eforge:end',
-        runId,
-        result: { status, summary },
-        timestamp: new Date().toISOString(),
-      };
-      await tracing.flush();
-    }
-  }
-
-  /**
-   * Review: run blind review sequentially per plan (no orchestrator).
-   */
-  async *review(planSet: string, options: Partial<ReviewOptions> = {}): AsyncGenerator<EforgeEvent> {
-    validatePlanSetName(planSet);
-    const runId = randomUUID();
-    const tracing = createTracingContext(this.config, runId, 'review', planSet);
-    const cwd = options.cwd ?? this.cwd;
-
-    yield {
-      type: 'eforge:start',
-      runId,
-      planSet,
-      command: 'review',
-      timestamp: new Date().toISOString(),
-    };
-
-    let status: 'completed' | 'failed' = 'completed';
-    let summary = 'Review complete';
-
-    tracing.setInput({ planSet });
-
-    try {
-      const configPath = resolve(cwd, 'plans', planSet, 'orchestration.yaml');
-      const orchConfig = await parseOrchestrationConfig(configPath);
-      const planDir = resolve(cwd, 'plans', planSet);
-
-      for (const plan of orchConfig.plans) {
-        const span = tracing.createSpan('reviewer', { planId: plan.id });
-        span.setInput({ planId: plan.id });
-        const tracker = createToolTracker(span);
-        try {
-          const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
-          for await (const event of runReview({
-            backend: this.backend,
-            planContent: planFile.body,
-            baseBranch: orchConfig.baseBranch,
-            planId: plan.id,
-            cwd,
-            verbose: options.verbose,
-            abortController: options.abortController,
-          })) {
-            tracker.handleEvent(event);
-            yield event;
+        if (event.type === 'validation:complete') {
+          if (event.passed) {
+            status = 'completed';
+            summary = 'Build complete';
+          } else {
+            status = 'failed';
+            summary = 'Post-merge validation failed';
           }
-          tracker.cleanup();
-          span.end();
-        } catch (err) {
-          // Review failures are non-fatal — continue to next plan
-          tracker.cleanup();
-          span.error(err as Error);
         }
       }
     } catch (err) {

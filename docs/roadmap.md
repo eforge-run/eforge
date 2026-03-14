@@ -31,7 +31,6 @@ Plugin lives in `schaake-cc-marketplace`, invokes `eforge` CLI as subprocess.
 **Skills**:
 - `/eforge:plan <source>` — The core skill. Helps refine requirements in-conversation using full Claude Code context, then kicks off `eforge plan`.
 - `/eforge:build <planSet>` — Validates plan set and delegates to `eforge build`.
-- `/eforge:review <planSet>` — Delegates to `eforge review`.
 - `/eforge:status` — Reads `.eforge/state.json` and renders inline with monitor dashboard link.
 
 **Testing**: Engine/CLI correctness covered by eval system (`eval/`). Plugin UX tested via `claude --print` smoke tests, manual scenario checklist, and Langfuse observability.

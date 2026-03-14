@@ -13,7 +13,6 @@ export type {
   PlanState,
   PlanOptions,
   BuildOptions,
-  ReviewOptions,
   EforgeStatus,
   ScopeAssessment,
 } from './events.js';
@@ -62,9 +61,13 @@ export type { PlanReviewerOptions } from './agents/plan-reviewer.js';
 export { runPlanEvaluate } from './agents/plan-evaluator.js';
 export type { PlanEvaluatorOptions } from './agents/plan-evaluator.js';
 
+// --- validation-fixer ---
+export { runValidationFixer } from './agents/validation-fixer.js';
+export type { ValidationFixerOptions } from './agents/validation-fixer.js';
+
 // --- orchestration ---
 export { Orchestrator } from './orchestrator.js';
-export type { PlanRunner, OrchestratorOptions } from './orchestrator.js';
+export type { PlanRunner, ValidationFixer, OrchestratorOptions } from './orchestrator.js';
 export {
   computeWorktreeBase,
   createWorktree,

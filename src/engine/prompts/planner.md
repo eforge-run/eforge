@@ -237,6 +237,10 @@ compiled: {YYYY-MM-DD}
 mode: errand
 base_branch: {current git branch}
 
+validate:
+  - {validation command 1}
+  - {validation command 2}
+
 plans:
   - id: plan-01-{identifier}
     name: {Plan 1 Name}
@@ -254,6 +258,16 @@ Important:
 - Plan entries must match the plan files exactly
 - `depends_on` in orchestration.yaml must use the same IDs as in plan file frontmatter
 
+### Validation Commands
+
+The `validate` section lists shell commands that verify the implementation is correct after all plans merge and is required. Derive these from the codebase:
+
+1. Check `package.json` for existing scripts (type-check, test, lint, build)
+2. Look at CI config files (`.github/workflows/`, `Makefile`, etc.)
+3. Only include commands that actually exist in the project — do not invent scripts
+
+Common validation commands: type checking, linting, building, running tests. Order them from fastest to slowest (type-check before tests).
+
 ## Index.yaml Format
 
 Create `plans/{{planSetName}}/index.yaml` (expedition only):
@@ -264,6 +278,10 @@ description: {description derived from source}
 created: {YYYY-MM-DD}
 status: architecture-complete
 mode: expedition
+
+validate:
+  - {validation command 1}
+  - {validation command 2}
 
 architecture:
   status: complete
@@ -279,6 +297,8 @@ modules:
     description: {module description}
     depends_on: []
 ```
+
+The `validate` section follows the same rules as for orchestration.yaml — derive commands from the project's existing scripts and CI config.
 
 ## Quality Criteria
 

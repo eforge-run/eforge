@@ -49,14 +49,11 @@ pnpm build
 eforge plan docs/my-feature.md
 eforge plan "Add a health check endpoint"
 
-# Plan + build in one step
+# Plan + build + validate in one step
 eforge run docs/my-feature.md
 
-# Execute plans (implement + review loop)
+# Execute plans (implement + review + validate)
 eforge build my-plan-set
-
-# Review existing code against plans
-eforge review my-plan-set
 
 # Check running builds
 eforge status
@@ -98,9 +95,12 @@ agents:
 
 build:
   parallelism: <cpu-count>    # Max parallel plan executions
+  maxValidationRetries: 2     # Fix attempts on validation failure (0 = no retries)
   # worktreeDir: /custom/path # Override worktree base directory
-  # postMergeCommands:        # Commands to run after each merge
+  # postMergeCommands:        # Extra validation commands (appended to planner-generated ones)
   #   - "pnpm install"
+  #   - "pnpm type-check"
+  #   - "pnpm test"
 
 plan:
   outputDir: plans            # Where plan artifacts are written

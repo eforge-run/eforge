@@ -41,14 +41,15 @@ node --env-file=.env dist/cli.js plan docs/init-prd.md --verbose
 - **Module Planner** — one-shot query (expedition mode only). Writes detailed plan for a single module using architecture context.
 - **Builder** — multi-turn agent. Turn 1: implement plan. Turn 2: evaluate reviewer's unstaged fixes (accept/reject/review).
 - **Reviewer** — one-shot query. Blind code review (no builder context), leaves fixes unstaged.
+- **Validation Fixer** — one-shot coding agent. Receives post-merge validation failures and makes minimal fixes.
 
 **Engine** (`src/engine/`): Pure library, no stdout. Agent implementations in `src/engine/agents/`, prompts in `src/engine/prompts/` (self-contained `.md` files, no runtime plugin dependencies).
 
-**Orchestration**: `src/engine/orchestrator.ts` resolves a dependency graph from `orchestration.yaml`, computes execution waves, and runs plans in parallel via git worktrees (`src/engine/worktree.ts`). Worktrees live in a sibling directory (`../{project}-{set}-worktrees/`) to avoid CLAUDE.md context pollution. Branches merge in topological order after all plans complete.
+**Orchestration**: `src/engine/orchestrator.ts` resolves a dependency graph from `orchestration.yaml`, computes execution waves, and runs plans in parallel via git worktrees (`src/engine/worktree.ts`). Worktrees live in a sibling directory (`../{project}-{set}-worktrees/`) to avoid CLAUDE.md context pollution. Branches merge in topological order after all plans complete. Post-merge validation runs commands from `orchestration.yaml` `validate` (planner-generated) + `eforge.yaml` `postMergeCommands` (user-configured). On failure, the validation fixer agent attempts repairs up to `maxValidationRetries` times (default 2).
 
 **State**: `.eforge/state.json` (gitignored) tracks build progress for resume support.
 
-**Monitor** (`src/monitor/`): Web-based real-time monitor. Records all `EforgeEvent`s to SQLite (`.eforge/monitor.db`) via a transparent `withRecording()` async generator middleware. Serves a single-page dashboard over SSE at `http://localhost:4567`. Auto-starts with `plan`, `build`, `run`, and `review` commands (disable with `--no-monitor`).
+**Monitor** (`src/monitor/`): Web-based real-time monitor. Records all `EforgeEvent`s to SQLite (`.eforge/monitor.db`) via a transparent `withRecording()` async generator middleware. Serves a single-page dashboard over SSE at `http://localhost:4567`. Auto-starts with `plan`, `build`, and `run` commands (disable with `--no-monitor`).
 
 **CLI** (`src/cli/`): Thin consumer that iterates the engine's event stream and renders to stdout. Handles interactive clarification prompts and approval gates via callbacks.
 
@@ -59,7 +60,7 @@ node --env-file=.env dist/cli.js plan docs/init-prd.md --verbose
 eforge.yaml                         # Optional engine config (langfuse, parallelism, etc.)
 src/
   engine/                     # Library (no stdout, events only)
-    eforge.ts                 # EforgeEngine: plan(), build(), review(), status()
+    eforge.ts                 # EforgeEngine: plan(), build(), status()
     events.ts                 # EforgeEvent type definitions
     index.ts                  # Barrel re-exports for engine public API
     backend.ts                # AgentBackend interface (provider abstraction)
@@ -72,6 +73,7 @@ src/
       reviewer.ts             # Blind code review (one-shot query)
       plan-reviewer.ts        # Blind plan review (one-shot query)
       plan-evaluator.ts       # Plan fix evaluation (one-shot query)
+      validation-fixer.ts     # Post-merge validation fix (one-shot coding agent)
       common.ts               # Provider-agnostic XML parsers for agent output
     plan.ts                   # Plan file parsing (YAML frontmatter)
     state.ts                  # .eforge/state.json read/write
@@ -89,6 +91,7 @@ src/
       evaluator.md
       plan-reviewer.md
       plan-evaluator.md
+      validation-fixer.md
     config.ts                 # eforge.yaml loading
 
   monitor/                    # Web monitor (event persistence + dashboard)
@@ -152,9 +155,8 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 
 ```
 eforge plan <source>      # PRD file or prompt → plan files
-eforge run <source>       # Plan + build in one step
-eforge build <planSet>    # Execute plans (implement + review)
-eforge review <planSet>   # Review code against plans
+eforge run <source>       # Plan + build + validate in one step
+eforge build <planSet>    # Execute plans (implement + review + validate)
 eforge status             # Check running builds
 ```
 

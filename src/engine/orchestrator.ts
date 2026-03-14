@@ -33,6 +33,16 @@ export type PlanRunner = (
   plan: OrchestrationConfig['plans'][0],
 ) => AsyncGenerator<EforgeEvent>;
 
+/**
+ * Callback that attempts to fix validation failures.
+ * Injected by the consumer (typically wraps the validation-fixer agent).
+ */
+export type ValidationFixer = (
+  failures: Array<{ command: string; exitCode: number; output: string }>,
+  attempt: number,
+  maxAttempts: number,
+) => AsyncGenerator<EforgeEvent>;
+
 export interface OrchestratorOptions {
   stateDir: string;
   repoRoot: string;
@@ -40,6 +50,9 @@ export interface OrchestratorOptions {
   parallelism?: number;
   signal?: AbortSignal;
   postMergeCommands?: string[];
+  validateCommands?: string[];
+  validationFixer?: ValidationFixer;
+  maxValidationRetries?: number;
 }
 
 /**
@@ -311,39 +324,65 @@ export class Orchestrator {
         }
       }
 
-      // 5. Post-merge validation commands
+      // 5. Post-merge validation commands (with optional fix cycle)
       const allMerged = Object.values(state.plans).every((p) => p.status === 'merged');
+      const { validateCommands, validationFixer } = this.options;
+      const maxRetries = this.options.maxValidationRetries ?? 2;
 
-      if (allMerged && postMergeCommands && postMergeCommands.length > 0 && !signal?.aborted) {
-        yield { type: 'validation:start', commands: postMergeCommands };
-        let validationPassed = true;
+      // Merge planner-generated validate commands with config postMergeCommands
+      const allValidationCommands = [
+        ...(validateCommands ?? []),
+        ...(postMergeCommands ?? []),
+      ];
 
-        for (const cmd of postMergeCommands) {
-          if (signal?.aborted) {
-            validationPassed = false;
+      if (allMerged && allValidationCommands.length > 0 && !signal?.aborted) {
+        let passed = false;
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+          yield { type: 'validation:start', commands: allValidationCommands };
+          const failures: Array<{ command: string; exitCode: number; output: string }> = [];
+          let validationPassed = true;
+
+          for (const cmd of allValidationCommands) {
+            if (signal?.aborted) { validationPassed = false; break; }
+
+            yield { type: 'validation:command:start', command: cmd };
+
+            try {
+              const { stdout, stderr } = await exec('sh', ['-c', cmd], { cwd: repoRoot });
+              const output = (stdout + stderr).trim();
+              yield { type: 'validation:command:complete', command: cmd, exitCode: 0, output };
+            } catch (err) {
+              const execErr = err as { code?: number | string; stdout?: string; stderr?: string; message?: string };
+              const exitCode = typeof execErr.code === 'number' ? execErr.code : 1;
+              const stdOutput = (execErr.stdout ?? '') + (execErr.stderr ?? '');
+              const output = (stdOutput || (execErr.message ?? '')).trim();
+              yield { type: 'validation:command:complete', command: cmd, exitCode, output };
+              failures.push({ command: cmd, exitCode, output });
+              validationPassed = false;
+              break; // Stop on first non-zero exit code
+            }
+          }
+
+          yield { type: 'validation:complete', passed: validationPassed };
+
+          if (validationPassed) {
+            passed = true;
             break;
           }
 
-          yield { type: 'validation:command:start', command: cmd };
-
-          try {
-            const { stdout, stderr } = await exec('sh', ['-c', cmd], { cwd: repoRoot });
-            const output = (stdout + stderr).trim();
-            yield { type: 'validation:command:complete', command: cmd, exitCode: 0, output };
-          } catch (err) {
-            const execErr = err as { code?: number | string; stdout?: string; stderr?: string; message?: string };
-            const exitCode = typeof execErr.code === 'number' ? execErr.code : 1;
-            const stdOutput = (execErr.stdout ?? '') + (execErr.stderr ?? '');
-            const output = (stdOutput || (execErr.message ?? '')).trim();
-            yield { type: 'validation:command:complete', command: cmd, exitCode, output };
-            validationPassed = false;
-            break; // Stop on first non-zero exit code
+          // Attempt fix if retries remain and a fixer is available
+          if (attempt < maxRetries && validationFixer && !signal?.aborted) {
+            for await (const event of validationFixer(failures, attempt + 1, maxRetries)) {
+              yield event;
+            }
+            // Loop continues to re-validate
+          } else {
+            break;
           }
         }
 
-        yield { type: 'validation:complete', passed: validationPassed };
-
-        if (!validationPassed) {
+        if (!passed) {
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
           saveState(stateDir, state);

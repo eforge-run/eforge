@@ -4,7 +4,7 @@ export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as cons
 export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
 export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'validation-fixer';
 
 export interface ExpeditionModule {
   id: string;
@@ -48,6 +48,7 @@ export interface OrchestrationConfig {
   mode: (typeof ORCHESTRATION_MODES)[number];
   baseBranch: string;
   plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string }>;
+  validate?: string[];
 }
 
 export interface PlanState {
@@ -98,13 +99,6 @@ export interface BuildOptions {
   abortController?: AbortController;
 }
 
-export interface ReviewOptions {
-  auto?: boolean;
-  verbose?: boolean;
-  cwd?: string;
-  abortController?: AbortController;
-}
-
 export interface EforgeStatus {
   running: boolean;
   setName?: string;
@@ -114,7 +108,7 @@ export interface EforgeStatus {
 
 export type EforgeEvent =
   // Lifecycle
-  | { type: 'eforge:start'; runId: string; planSet: string; command: 'plan' | 'build' | 'review'; timestamp: string }
+  | { type: 'eforge:start'; runId: string; planSet: string; command: 'plan' | 'build'; timestamp: string }
   | { type: 'eforge:end'; runId: string; result: EforgeResult; timestamp: string }
 
   // Planning
@@ -167,6 +161,8 @@ export type EforgeEvent =
   | { type: 'validation:command:start'; command: string }
   | { type: 'validation:command:complete'; command: string; exitCode: number; output: string }
   | { type: 'validation:complete'; passed: boolean }
+  | { type: 'validation:fix:start'; attempt: number; maxAttempts: number }
+  | { type: 'validation:fix:complete'; attempt: number }
 
   // User interaction
   | { type: 'approval:needed'; planId?: string; action: string; details: string }

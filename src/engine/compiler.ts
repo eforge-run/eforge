@@ -114,13 +114,14 @@ export async function compileExpedition(cwd: string, planSetName: string): Promi
   }
 
   // Generate orchestration.yaml
-  const orchConfig = {
+  const orchConfig: Record<string, unknown> = {
     name: planSetName,
     description: index.description,
     created: index.created,
     compiled: new Date().toISOString().split('T')[0],
     mode: 'expedition',
     base_branch: baseBranch,
+    ...(index.validate && index.validate.length > 0 && { validate: index.validate }),
     plans: planFiles.map((p) => ({
       id: p.id,
       name: p.name,

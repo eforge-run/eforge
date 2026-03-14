@@ -61,6 +61,7 @@ export interface ExpeditionIndex {
   created: string;
   status: string;
   mode: 'expedition';
+  validate?: string[];
   architecture: { status: string; lastUpdated?: string };
   modules: Record<string, { status: string; description: string; dependsOn: string[] }>;
 }
@@ -90,12 +91,17 @@ export async function parseExpeditionIndex(yamlPath: string): Promise<Expedition
 
   const arch = (data.architecture ?? {}) as Record<string, unknown>;
 
+  const validate = Array.isArray(data.validate)
+    ? (data.validate as unknown[]).filter((v): v is string => typeof v === 'string')
+    : undefined;
+
   return {
     name: data.name,
     description: (data.description as string) ?? '',
     created: (data.created as string) ?? '',
     status: (data.status as string) ?? 'draft',
     mode: 'expedition',
+    ...(validate && validate.length > 0 && { validate }),
     architecture: {
       status: (arch.status as string) ?? 'pending',
       lastUpdated: arch.last_updated as string | undefined,
@@ -172,6 +178,10 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
       }))
     : [];
 
+  const validate = Array.isArray(data.validate)
+    ? (data.validate as unknown[]).filter((v): v is string => typeof v === 'string')
+    : undefined;
+
   return {
     name: data.name as string,
     description: (data.description as string) ?? '',
@@ -179,6 +189,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     mode: (data.mode as OrchestrationConfig['mode']) ?? 'errand',
     baseBranch: (data.base_branch as string) ?? 'main',
     plans,
+    ...(validate && validate.length > 0 && { validate }),
   };
 }
 

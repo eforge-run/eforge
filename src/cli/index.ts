@@ -161,7 +161,7 @@ export function createProgram(abortController?: AbortController): Command {
 
   program
     .command('run <source>')
-    .description('Plan and build in one step')
+    .description('Plan + build + validate in one step')
     .option('--auto', 'Run without approval gates')
     .option('--verbose', 'Stream agent output')
     .option('--name <name>', 'Plan set name (inferred from source if omitted)')
@@ -243,7 +243,7 @@ export function createProgram(abortController?: AbortController): Command {
 
   program
     .command('build <planSet>')
-    .description('Execute plans (implement + review)')
+    .description('Execute plans (implement + review + validate)')
     .option('--auto', 'Run without approval gates')
     .option('--verbose', 'Stream agent output')
     .option('--dry-run', 'Validate and show execution plan without running')
@@ -283,36 +283,6 @@ export function createProgram(abortController?: AbortController): Command {
         });
       },
     );
-
-  program
-    .command('review <planSet>')
-    .description('Review existing code against plans')
-    .option('--auto', 'Run without approval gates')
-    .option('--verbose', 'Stream agent output')
-    .option('--no-monitor', 'Disable web monitor')
-    .option('--no-plugins', 'Disable plugin loading')
-    .action(async (planSet: string, options: { auto?: boolean; verbose?: boolean; monitor?: boolean; plugins?: boolean }) => {
-      initDisplay({ verbose: options.verbose });
-
-      const engine = await EforgeEngine.create({
-        onClarification: createClarificationHandler(options.auto ?? false),
-        onApproval: createApprovalHandler(options.auto ?? false),
-        ...(options.plugins === false && { config: { plugins: { enabled: false } } }),
-      });
-
-      await withMonitor(options.monitor === false, async (monitor) => {
-        const result = await consumeEvents(
-          wrapEvents(engine.review(planSet, {
-            auto: options.auto,
-            verbose: options.verbose,
-            abortController,
-          }), monitor),
-          { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-        );
-
-        process.exit(result === 'completed' ? 0 : 1);
-      });
-    });
 
   program
     .command('status')

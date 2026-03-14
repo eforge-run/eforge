@@ -16,7 +16,7 @@ export interface PluginConfig {
 export interface EforgeConfig {
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
   agents: { maxTurns: number; permissionMode: 'bypass' | 'default'; settingSources?: string[] };
-  build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[] };
+  build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number };
   plan: { outputDir: string };
   plugins: PluginConfig;
 }
@@ -24,7 +24,7 @@ export interface EforgeConfig {
 export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({ maxTurns: 30, permissionMode: 'bypass' as const, settingSources: ['project'] as string[] }),
-  build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined }),
+  build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2 }),
   plan: Object.freeze({ outputDir: 'plans' }),
   plugins: Object.freeze({ enabled: true }),
 });
@@ -82,6 +82,7 @@ export function resolveConfig(
       parallelism: fileConfig.build?.parallelism ?? DEFAULT_CONFIG.build.parallelism,
       worktreeDir: fileConfig.build?.worktreeDir ?? DEFAULT_CONFIG.build.worktreeDir,
       postMergeCommands: fileConfig.build?.postMergeCommands ?? DEFAULT_CONFIG.build.postMergeCommands,
+      maxValidationRetries: fileConfig.build?.maxValidationRetries ?? DEFAULT_CONFIG.build.maxValidationRetries,
     }),
     plan: Object.freeze({
       outputDir: fileConfig.plan?.outputDir ?? DEFAULT_CONFIG.plan.outputDir,
@@ -142,6 +143,10 @@ function parseRawConfig(data: Record<string, unknown>): Partial<EforgeConfig> {
           : DEFAULT_CONFIG.build.parallelism,
       worktreeDir: typeof bd.worktreeDir === 'string' ? bd.worktreeDir : undefined,
       postMergeCommands,
+      maxValidationRetries:
+        typeof bd.maxValidationRetries === 'number' && bd.maxValidationRetries >= 0
+          ? bd.maxValidationRetries
+          : DEFAULT_CONFIG.build.maxValidationRetries,
     };
   }
 
