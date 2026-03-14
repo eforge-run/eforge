@@ -6,7 +6,11 @@
  * as an AsyncGenerator. Agent execution is injected via PlanRunner callbacks.
  */
 
+import { execFile } from 'node:child_process';
 import { availableParallelism } from 'node:os';
+import { promisify } from 'node:util';
+
+const exec = promisify(execFile);
 import type { ForgeEvent, OrchestrationConfig, ForgeState, PlanState } from './events.js';
 import { loadState, saveState, updatePlanStatus, isResumable } from './state.js';
 import { resolveDependencyGraph } from './plan.js';
@@ -34,6 +38,8 @@ export interface OrchestratorOptions {
   repoRoot: string;
   planRunner: PlanRunner;
   parallelism?: number;
+  signal?: AbortSignal;
+  postMergeCommands?: string[];
 }
 
 /**
@@ -114,7 +120,7 @@ export class Orchestrator {
   }
 
   async *execute(config: OrchestrationConfig): AsyncGenerator<ForgeEvent> {
-    const { stateDir, repoRoot, planRunner } = this.options;
+    const { stateDir, repoRoot, planRunner, signal, postMergeCommands } = this.options;
     const parallelism = this.options.parallelism ?? availableParallelism();
 
     // 1. Load/initialize state
@@ -140,6 +146,12 @@ export class Orchestrator {
     try {
       // 3. Wave loop
       for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
+        // Check for abort signal at wave loop entry
+        if (signal?.aborted) {
+          saveState(stateDir, state);
+          break;
+        }
+
         const wave = waves[waveIdx];
 
         // Filter out completed/blocked/failed plans
@@ -235,6 +247,12 @@ export class Orchestrator {
 
       // 4. Merge phase — sequential, topological order, --no-ff
       for (const planId of mergeOrder) {
+        // Check for abort signal before each merge
+        if (signal?.aborted) {
+          saveState(stateDir, state);
+          break;
+        }
+
         const planState = state.plans[planId];
         if (!planState || planState.status !== 'completed') continue;
 
@@ -262,8 +280,47 @@ export class Orchestrator {
         }
       }
 
-      // Determine final status
+      // 5. Post-merge validation commands
       const allMerged = Object.values(state.plans).every((p) => p.status === 'merged');
+
+      if (allMerged && postMergeCommands && postMergeCommands.length > 0 && !signal?.aborted) {
+        yield { type: 'validation:start', commands: postMergeCommands };
+        let validationPassed = true;
+
+        for (const cmd of postMergeCommands) {
+          if (signal?.aborted) {
+            validationPassed = false;
+            break;
+          }
+
+          yield { type: 'validation:command:start', command: cmd };
+
+          try {
+            const { stdout, stderr } = await exec('sh', ['-c', cmd], { cwd: repoRoot });
+            const output = (stdout + stderr).trim();
+            yield { type: 'validation:command:complete', command: cmd, exitCode: 0, output };
+          } catch (err) {
+            const execErr = err as { code?: number | string; stdout?: string; stderr?: string; message?: string };
+            const exitCode = typeof execErr.code === 'number' ? execErr.code : 1;
+            const stdOutput = (execErr.stdout ?? '') + (execErr.stderr ?? '');
+            const output = (stdOutput || (execErr.message ?? '')).trim();
+            yield { type: 'validation:command:complete', command: cmd, exitCode, output };
+            validationPassed = false;
+            break; // Stop on first non-zero exit code
+          }
+        }
+
+        yield { type: 'validation:complete', passed: validationPassed };
+
+        if (!validationPassed) {
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
+          saveState(stateDir, state);
+          return;
+        }
+      }
+
+      // Determine final status
       state.status = allMerged ? 'completed' : 'failed';
       state.completedAt = new Date().toISOString();
       saveState(stateDir, state);

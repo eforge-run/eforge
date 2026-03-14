@@ -7,6 +7,7 @@ import {
   validatePlanSet,
   parseOrchestrationConfig,
   resolveDependencyGraph,
+  validateRuntimeReadiness,
 } from '../engine/plan.js';
 import type { ForgeEvent, PlanFile } from '../engine/events.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, stopAllSpinners } from './display.js';
@@ -17,8 +18,10 @@ const SHUTDOWN_TIMEOUT_MS = 5000;
 
 let activeMonitor: Monitor | undefined;
 
-function setupSignalHandlers(): void {
+function setupSignalHandlers(): AbortController {
+  const controller = new AbortController();
   const handler = () => {
+    controller.abort();
     stopAllSpinners();
     const timer = setTimeout(() => process.exit(130), SHUTDOWN_TIMEOUT_MS);
     timer.unref();
@@ -30,6 +33,7 @@ function setupSignalHandlers(): void {
   };
   process.on('SIGINT', handler);
   process.on('SIGTERM', handler);
+  return controller;
 }
 
 async function withMonitor<T>(
@@ -79,7 +83,8 @@ async function consumeEvents(
 }
 
 async function showDryRun(planSet: string): Promise<never> {
-  const configPath = resolve(process.cwd(), 'plans', planSet, 'orchestration.yaml');
+  const cwd = process.cwd();
+  const configPath = resolve(cwd, 'plans', planSet, 'orchestration.yaml');
   const validation = await validatePlanSet(configPath);
   if (!validation.valid) {
     console.error(
@@ -89,11 +94,22 @@ async function showDryRun(planSet: string): Promise<never> {
   }
   const config = await parseOrchestrationConfig(configPath);
   const { waves, mergeOrder } = resolveDependencyGraph(config.plans);
+
+  // Runtime readiness warnings
+  const warnings = await validateRuntimeReadiness(cwd, config.plans);
+  if (warnings.length > 0) {
+    console.log('');
+    console.log(chalk.yellow('\u26a0 Runtime readiness warnings:'));
+    for (const warning of warnings) {
+      console.log(chalk.yellow(`  - ${warning}`));
+    }
+  }
+
   renderDryRun(config, waves, mergeOrder);
   process.exit(0);
 }
 
-export function createProgram(): Command {
+export function createProgram(abortController?: AbortController): Command {
   const program = new Command();
 
   program
@@ -123,6 +139,7 @@ export function createProgram(): Command {
               auto: options.auto,
               verbose: options.verbose,
               name: options.name,
+              abortController,
             }), monitor),
             { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
           );
@@ -175,6 +192,7 @@ export function createProgram(): Command {
             auto: options.auto,
             verbose: options.verbose,
             name: options.name,
+            abortController,
           }), monitor)) {
             renderEvent(event);
             if (event.type === 'forge:start') {
@@ -212,6 +230,7 @@ export function createProgram(): Command {
             wrapEvents(engine.build(planSetName, {
               auto: options.auto,
               verbose: options.verbose,
+              abortController,
             }), monitor),
             { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
           );
@@ -255,6 +274,7 @@ export function createProgram(): Command {
             wrapEvents(engine.build(planSet, {
               auto: options.auto,
               verbose: options.verbose,
+              abortController,
             }), monitor),
             { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
           );
@@ -283,6 +303,7 @@ export function createProgram(): Command {
           wrapEvents(engine.review(planSet, {
             auto: options.auto,
             verbose: options.verbose,
+            abortController,
           }), monitor),
           { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
         );
@@ -303,7 +324,7 @@ export function createProgram(): Command {
 }
 
 export async function run(): Promise<void> {
-  setupSignalHandlers();
-  const program = createProgram();
+  const abortController = setupSignalHandlers();
+  const program = createProgram(abortController);
   await program.parseAsync();
 }

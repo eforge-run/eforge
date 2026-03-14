@@ -162,6 +162,12 @@ export type ForgeEvent =
   | { type: 'agent:tool_result'; planId?: string; agent: AgentRole; tool: string; toolUseId: string; output: string }
   | { type: 'agent:result'; planId?: string; agent: AgentRole; result: AgentResultData }
 
+  // Validation (post-merge)
+  | { type: 'validation:start'; commands: string[] }
+  | { type: 'validation:command:start'; command: string }
+  | { type: 'validation:command:complete'; command: string; exitCode: number; output: string }
+  | { type: 'validation:complete'; passed: boolean }
+
   // User interaction
   | { type: 'approval:needed'; planId?: string; action: string; details: string }
   | { type: 'approval:response'; approved: boolean };

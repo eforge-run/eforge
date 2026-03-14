@@ -292,6 +292,38 @@ export function renderEvent(event: ForgeEvent): void {
       succeedSpinner('compile', `Compiled ${event.plans.length} plan file(s)`);
       break;
 
+    // Validation (post-merge)
+    case 'validation:start':
+      console.log('');
+      console.log(chalk.bold('Running post-merge validation...'));
+      for (const cmd of event.commands) {
+        console.log(chalk.dim(`  \u2022 ${cmd}`));
+      }
+      break;
+
+    case 'validation:command:start':
+      startSpinner(`validation:${event.command}`, `Running: ${chalk.cyan(event.command)}`);
+      break;
+
+    case 'validation:command:complete':
+      if (event.exitCode === 0) {
+        succeedSpinner(`validation:${event.command}`, `${chalk.cyan(event.command)} ${chalk.green('passed')}`);
+      } else {
+        failSpinner(`validation:${event.command}`, `${chalk.cyan(event.command)} ${chalk.red(`failed (exit ${event.exitCode})`)}`);
+        if (event.output) {
+          console.log(chalk.dim(event.output));
+        }
+      }
+      break;
+
+    case 'validation:complete':
+      if (event.passed) {
+        console.log(chalk.green('\u2713 All validation commands passed'));
+      } else {
+        console.log(chalk.red('\u2717 Validation failed'));
+      }
+      break;
+
     // Agent-level (verbose streaming)
     case 'agent:message':
       if (!verbose) break;

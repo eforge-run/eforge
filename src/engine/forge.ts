@@ -418,11 +418,14 @@ export class ForgeEngine {
 
       // Create and run orchestrator
       const parallelism = config.build.parallelism;
+      const signal = abortController?.signal;
       const orchestrator = new Orchestrator({
         stateDir: cwd,
         repoRoot: cwd,
         planRunner,
         parallelism,
+        signal,
+        postMergeCommands: config.build.postMergeCommands,
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {

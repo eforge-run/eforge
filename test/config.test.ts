@@ -57,6 +57,24 @@ describe('resolveConfig', () => {
     expect(config.langfuse.host).toBe('https://us.cloud.langfuse.com');
   });
 
+  it('postMergeCommands parsed from file config', () => {
+    const config = resolveConfig(
+      {
+        build: {
+          parallelism: 4,
+          postMergeCommands: ['pnpm run type-check', 'pnpm test'],
+        },
+      },
+      {},
+    );
+    expect(config.build.postMergeCommands).toEqual(['pnpm run type-check', 'pnpm test']);
+  });
+
+  it('postMergeCommands defaults to undefined when not set', () => {
+    const config = resolveConfig({}, {});
+    expect(config.build.postMergeCommands).toBeUndefined();
+  });
+
   it('result is frozen', () => {
     const config = resolveConfig({}, {});
     expect(Object.isFrozen(config)).toBe(true);

@@ -1,7 +1,12 @@
-import { readFile } from 'node:fs/promises';
+import { readFile, access as fsAccess } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { execFile } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
+import { promisify } from 'node:util';
 import { parse as parseYaml } from 'yaml';
 import type { PlanFile, OrchestrationConfig, ExpeditionModule } from './events.js';
+
+const execAsync = promisify(execFile);
 
 /**
  * Derive a kebab-case plan set name from a source string.
@@ -303,4 +308,50 @@ export async function validatePlanSet(
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+/**
+ * Validate runtime readiness for a build. Returns warning strings for:
+ * - Dirty git working directory
+ * - Existing plan branches
+ * - Unwritable worktree parent directory
+ */
+export async function validateRuntimeReadiness(
+  repoRoot: string,
+  plans: OrchestrationConfig['plans'],
+): Promise<string[]> {
+  const warnings: string[] = [];
+
+  // Check for dirty git working directory
+  try {
+    const { stdout } = await execAsync('git', ['status', '--porcelain'], { cwd: repoRoot });
+    if (stdout.trim().length > 0) {
+      warnings.push('Git working directory has uncommitted changes');
+    }
+  } catch {
+    warnings.push('Unable to check git status');
+  }
+
+  // Check for existing plan branches
+  for (const plan of plans) {
+    if (!plan.branch) continue;
+    try {
+      const { stdout } = await execAsync('git', ['branch', '--list', plan.branch], { cwd: repoRoot });
+      if (stdout.trim().length > 0) {
+        warnings.push(`Branch '${plan.branch}' already exists (plan: ${plan.id})`);
+      }
+    } catch {
+      // Ignore branch check failures
+    }
+  }
+
+  // Check writable worktree parent directory
+  const worktreeParent = dirname(repoRoot);
+  try {
+    await fsAccess(worktreeParent, constants.W_OK);
+  } catch {
+    warnings.push(`Worktree parent directory is not writable: ${worktreeParent}`);
+  }
+
+  return warnings;
 }

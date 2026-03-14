@@ -6,14 +6,14 @@ import { parse as parseYaml } from 'yaml';
 export interface ForgeConfig {
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
   agents: { maxTurns: number; permissionMode: 'bypass' | 'default' };
-  build: { parallelism: number; worktreeDir?: string };
+  build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[] };
   plan: { outputDir: string };
 }
 
 export const DEFAULT_CONFIG: ForgeConfig = Object.freeze({
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({ maxTurns: 30, permissionMode: 'bypass' as const }),
-  build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined }),
+  build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined }),
   plan: Object.freeze({ outputDir: 'plans' }),
 });
 
@@ -68,6 +68,7 @@ export function resolveConfig(
     build: Object.freeze({
       parallelism: fileConfig.build?.parallelism ?? DEFAULT_CONFIG.build.parallelism,
       worktreeDir: fileConfig.build?.worktreeDir ?? DEFAULT_CONFIG.build.worktreeDir,
+      postMergeCommands: fileConfig.build?.postMergeCommands ?? DEFAULT_CONFIG.build.postMergeCommands,
     }),
     plan: Object.freeze({
       outputDir: fileConfig.plan?.outputDir ?? DEFAULT_CONFIG.plan.outputDir,
@@ -105,12 +106,17 @@ function parseRawConfig(data: Record<string, unknown>): Partial<ForgeConfig> {
 
   if (data.build && typeof data.build === 'object') {
     const bd = data.build as Record<string, unknown>;
+    const postMergeCommands =
+      Array.isArray(bd.postMergeCommands) && bd.postMergeCommands.every((c: unknown) => typeof c === 'string')
+        ? (bd.postMergeCommands as string[])
+        : undefined;
     result.build = {
       parallelism:
         typeof bd.parallelism === 'number' && bd.parallelism > 0
           ? bd.parallelism
           : DEFAULT_CONFIG.build.parallelism,
       worktreeDir: typeof bd.worktreeDir === 'string' ? bd.worktreeDir : undefined,
+      postMergeCommands,
     };
   }
 
