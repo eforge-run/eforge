@@ -83,7 +83,7 @@ Six focused files, each with a single responsibility. All are pure library code 
 No test framework is configured yet. Verification will be done via type-checking and manual validation.
 
 ### Type Check
-- `pnpm run type-check` must pass with zero errors
+- `pnpm type-check` must pass with zero errors
 - All `ForgeEvent` variants must be exhaustively enumerable via `switch(event.type)`
 
 ### Manual Validation
@@ -94,12 +94,12 @@ No test framework is configured yet. Verification will be done via type-checking
 - Verify `parseClarificationBlocks()` extracts questions from sample XML
 
 ### Build
-- `pnpm run build` must succeed — tsup bundles all new files
+- `pnpm build` must succeed — tsup bundles all new files
 
 ## Verification Criteria
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `ForgeEvent` type matches architecture spec exactly (all variants present)
 - [ ] `parsePlanFile()` correctly parses YAML frontmatter + markdown body from a `.md` plan file
 - [ ] `parseOrchestrationConfig()` correctly parses a valid `orchestration.yaml`

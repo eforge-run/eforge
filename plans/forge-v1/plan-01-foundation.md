@@ -187,8 +187,8 @@ Six focused files, each with a single responsibility. All are pure library code 
 
 ## Verification
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `ForgeEvent` type matches architecture spec exactly (all variants present)
 - [ ] `parsePlanFile()` correctly parses YAML frontmatter + markdown body from a `.md` plan file
 - [ ] `parseOrchestrationConfig()` correctly parses a valid `orchestration.yaml`

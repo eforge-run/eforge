@@ -90,8 +90,8 @@ graph TD
 
 ## Verification
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `runReview()` yields `build:review:start` then `build:review:complete` with `ReviewIssue[]`
 - [ ] Verbose mode yields `agent:message`, `agent:tool_use`, `agent:tool_result` events
 - [ ] `parseReviewIssues()` extracts severity, category, file, line, description, fix from XML

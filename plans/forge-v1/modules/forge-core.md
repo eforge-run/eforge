@@ -558,7 +558,7 @@ function mergeConfigOverrides(
 No test framework is configured yet. Verification will be done via type-checking and manual validation.
 
 ### Type Check
-- `pnpm run type-check` must pass with zero errors
+- `pnpm type-check` must pass with zero errors
 - `ForgeEngine` methods must return the correct types (`AsyncGenerator<ForgeEvent>` for plan/build/review, `ForgeStatus` for status)
 - `ForgeEngineOptions` must accept all documented option fields
 - `PlanRunner` type from orchestration module must be satisfied by the closure created in `build()`
@@ -573,12 +573,12 @@ No test framework is configured yet. Verification will be done via type-checking
 - Verify `forge:end` is always emitted even when errors occur
 
 ### Build
-- `pnpm run build` must succeed — tsup bundles all new files
+- `pnpm build` must succeed — tsup bundles all new files
 
 ## Verification Criteria
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `ForgeEngine.create()` loads config via `loadConfig()`, creates tracing context via `createTracingContext()`, and returns a constructed engine instance
 - [ ] `ForgeEngine.create()` accepts `ForgeEngineOptions` with optional `cwd`, `auto`, `verbose`, `onClarification`, `onApproval`, and `configOverrides`
 - [ ] `plan()` yields `forge:start` with `command: 'plan'` and a UUID `runId` as the first event

@@ -112,7 +112,7 @@ main() {
   # so we're always testing the version in this checkout
   local eforge_bin="$REPO_ROOT/dist/cli.js"
   if [[ "$DRY_RUN" == "false" && ! -f "$eforge_bin" ]]; then
-    echo "Error: eforge not built. Run 'pnpm run build' first."
+    echo "Error: eforge not built. Run 'pnpm build' first."
     exit 1
   fi
 

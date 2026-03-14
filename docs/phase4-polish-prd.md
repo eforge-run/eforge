@@ -56,7 +56,7 @@ Add `postMergeCommands?: string[]` to `ForgeConfig.build`, configurable via `for
 ```yaml
 build:
   postMergeCommands:
-    - "pnpm run type-check"
+    - "pnpm type-check"
     - "pnpm test"
 ```
 
@@ -105,7 +105,7 @@ Units A and B have no dependencies and can be done first (or in parallel). Unit 
 ## Verification
 
 - [ ] `pnpm test` passes with all new tests
-- [ ] `pnpm run type-check` passes
+- [ ] `pnpm type-check` passes
 - [ ] Corrupt `.forge-state.json` → `forge status` returns gracefully (no crash)
 - [ ] `forge build <planSet> --dry-run` shows runtime warnings for dirty git / existing branches
 - [ ] `forge.yaml` with `postMergeCommands` → build runs validation commands after merge, fails on non-zero exit

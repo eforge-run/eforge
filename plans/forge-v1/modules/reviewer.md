@@ -138,7 +138,7 @@ The reviewer agent outputs issues in a structured XML block that the parser extr
 No test framework is configured yet. Verification will be done via type-checking and manual validation.
 
 ### Type Check
-- `pnpm run type-check` must pass with zero errors
+- `pnpm type-check` must pass with zero errors
 - `ReviewerOptions` interface must be compatible with `PlanFile` from foundation
 - `runReview()` return type must be `AsyncGenerator<ForgeEvent>`
 - `parseReviewIssues()` return type must be `ReviewIssue[]`
@@ -152,12 +152,12 @@ No test framework is configured yet. Verification will be done via type-checking
 - Verify `reviewer.md` prompt loads successfully via `loadPrompt('reviewer')`
 
 ### Build
-- `pnpm run build` must succeed — tsup bundles reviewer agent and prompt file
+- `pnpm build` must succeed — tsup bundles reviewer agent and prompt file
 
 ## Verification Criteria
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `runReview()` is an async generator that yields `ForgeEvent`s
 - [ ] `runReview()` yields `build:review:start` with the correct `planId` as the first non-agent event
 - [ ] `runReview()` yields `build:review:complete` with parsed `ReviewIssue[]` as the final event

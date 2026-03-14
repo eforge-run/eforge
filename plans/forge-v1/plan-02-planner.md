@@ -106,8 +106,8 @@ Extracted from `schaake-cc-marketplace/eee-plugin/skills/excursion-planner/SKILL
 
 ## Verification
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `runPlanner()` is an async generator that yields `ForgeEvent`s
 - [ ] `runPlanner()` emits `plan:start` as the first event
 - [ ] `runPlanner()` calls SDK `query()` with `permissionMode: 'bypassPermissions'`, `maxTurns: 30`, tools preset

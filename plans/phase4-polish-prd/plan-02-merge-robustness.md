@@ -58,4 +58,4 @@ The merge phase in `orchestrator.ts` runs sequentially through `mergeOrder` (top
 - [ ] `mergeWorktree` runs `git merge --abort` on conflict (verify repo is clean after failure)
 - [ ] Merge loop skips dependent plans when upstream merge fails
 - [ ] `pnpm test` passes with all new tests
-- [ ] `pnpm run type-check` passes
+- [ ] `pnpm type-check` passes

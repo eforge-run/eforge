@@ -26,8 +26,8 @@ You are working in a git worktree. All changes should be made within this workin
 ## Verification
 
 Before committing, run the verification commands specified in the plan's "Verification" section. If the plan specifies:
-- Type checking (e.g., `pnpm run type-check`) — run it and fix any errors
-- Build (e.g., `pnpm run build`) — run it and fix any errors
+- Type checking (e.g., `pnpm type-check`) — run it and fix any errors
+- Build (e.g., `pnpm build`) — run it and fix any errors
 - Tests — run them and fix any failures
 
 Fix any issues that arise from verification. Only proceed to commit when all verification passes.

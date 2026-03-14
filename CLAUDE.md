@@ -11,11 +11,11 @@ The architecture is **library-first**: a pure, event-driven engine (`src/engine/
 ## Commands
 
 ```bash
-pnpm run build        # Bundle with tsup → dist/cli.js
-pnpm run dev          # Run directly via tsx (e.g. pnpm run dev -- plan foo.md)
+pnpm build        # Bundle with tsup → dist/cli.js
+pnpm dev          # Run directly via tsx (e.g. pnpm dev -- plan foo.md)
 pnpm test             # Run tests (vitest)
 pnpm test:watch       # Watch mode
-pnpm run type-check   # Type check without emitting
+pnpm type-check   # Type check without emitting
 
 # Run with Langfuse tracing (dev)
 pnpm dev:trace -- plan docs/init-prd.md --verbose

@@ -118,8 +118,8 @@ interface SpanHandle {
 
 ## Verification
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `ForgeConfig` covers all forge.yaml fields (langfuse, agents, build, plan)
 - [ ] `DEFAULT_CONFIG` has sensible defaults (tracing disabled, maxTurns 30, parallelism from CPU cores, outputDir "plans")
 - [ ] `findConfigFile()` walks up directory tree, returns path or null

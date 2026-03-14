@@ -126,8 +126,8 @@ graph TD
 
 ## Verification
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `ForgeEngine.create()` loads config, creates tracing context, returns engine
 - [ ] `ForgeEngine.create()` accepts all `ForgeEngineOptions` fields
 - [ ] `plan()` yields `forge:start` with `command: 'plan'` and UUID `runId`

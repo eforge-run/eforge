@@ -116,8 +116,8 @@ On startup: no state → fresh. Resumable state → reuse, skip completed/merged
 
 ## Verification
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `Orchestrator.execute()` yields `wave:start` and `wave:complete` in correct order
 - [ ] Plans within a wave run concurrently up to `parallelism` limit
 - [ ] `Semaphore` correctly limits concurrent acquisitions and unblocks on release

@@ -23,7 +23,7 @@ This plan builds on atomic state writes (plan-01) and merge robustness (plan-02)
 
 1. **`signal?: AbortSignal` (not `AbortController`)** — The orchestrator and engine receive the signal (read-only), not the controller. Only the CLI owns the controller. This follows the standard AbortSignal pattern from the Web/Node APIs.
 2. **Add `signal` to `OrchestratorOptions`, keep `abortController` on `BuildOptions`** — The existing `abortController` on `BuildOptions`/`PlanOptions`/`ReviewOptions` is already used by agent runners. The orchestrator receives a derived `AbortSignal` from the controller. The CLI creates the controller and passes it to ForgeEngine, which extracts `.signal` for the orchestrator and passes the full controller to agent runners (existing behavior).
-3. **Validation commands run via `sh -c`** — This allows users to specify compound commands (e.g., `pnpm run type-check && pnpm test`) naturally. Commands execute in the repo root directory.
+3. **Validation commands run via `sh -c`** — This allows users to specify compound commands (e.g., `pnpm type-check && pnpm test`) naturally. Commands execute in the repo root directory.
 4. **Validation events are new ForgeEvent union members** — `validation:start`, `validation:command:start`, `validation:command:complete`, `validation:complete`. The exhaustive switch in `display.ts` forces handling.
 5. **Runtime readiness returns warnings, not errors** — Dirty git or existing branches are warnings (the build may still succeed on resume). Only the display layer decides how to present them.
 
@@ -78,4 +78,4 @@ This plan builds on atomic state writes (plan-01) and merge robustness (plan-02)
 - [ ] `--dry-run` shows warnings for existing plan branches
 - [ ] `--dry-run` shows warnings for unwritable worktree parent
 - [ ] `pnpm test` passes with all new tests
-- [ ] `pnpm run type-check` passes
+- [ ] `pnpm type-check` passes

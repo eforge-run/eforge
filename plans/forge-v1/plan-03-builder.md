@@ -141,8 +141,8 @@ Adapted from review plugin's fix-evaluation-policy. Key sections:
 
 ## Verification
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `builderImplement()` yields `build:implement:start`, agent events (verbose), `build:implement:progress`, `build:implement:complete` in order
 - [ ] `builderEvaluate()` yields `build:evaluate:start`, agent events (verbose), `build:evaluate:complete` with accept/reject counts
 - [ ] `builderImplement()` SDK query: `cwd` from options, `bypassPermissions`, `maxTurns: 50`, AbortController forwarded

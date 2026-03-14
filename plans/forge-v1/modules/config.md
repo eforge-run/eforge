@@ -165,7 +165,7 @@ interface SpanHandle {
 No test framework is configured yet. Verification will be done via type-checking and manual validation.
 
 ### Type Check
-- `pnpm run type-check` must pass with zero errors
+- `pnpm type-check` must pass with zero errors
 - `ForgeConfig` type must be compatible with all config access patterns in architecture spec
 
 ### Manual Validation
@@ -178,12 +178,12 @@ No test framework is configured yet. Verification will be done via type-checking
 - Call `createTracingContext()` with valid Langfuse config — returns live context (verify with Langfuse dashboard or mock)
 
 ### Build
-- `pnpm run build` must succeed — tsup bundles all new files
+- `pnpm build` must succeed — tsup bundles all new files
 
 ## Verification Criteria
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `ForgeConfig` type covers all fields from the `forge.yaml` schema (langfuse, agents, build, plan)
 - [ ] `DEFAULT_CONFIG` provides sensible defaults for all fields (tracing disabled, maxTurns 30, parallelism from CPU cores, outputDir "plans")
 - [ ] `findConfigFile()` walks up directory tree from `cwd` and returns path to nearest `forge.yaml`, or `null` if none found

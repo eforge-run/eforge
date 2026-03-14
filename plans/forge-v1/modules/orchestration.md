@@ -237,7 +237,7 @@ On startup, `execute()` calls `loadState()`:
 No test framework is configured yet. Verification will be done via type-checking and manual validation.
 
 ### Type Check
-- `pnpm run type-check` must pass with zero errors
+- `pnpm type-check` must pass with zero errors
 - `Orchestrator` class must accept `OrchestrationConfig`, `PlanRunner`, and `OrchestratorOptions` without type errors
 - All yielded events must conform to `ForgeEvent` discriminated union
 
@@ -251,12 +251,12 @@ No test framework is configured yet. Verification will be done via type-checking
 - Verify failure propagation: mock a plan runner that throws, confirm dependent plans are marked `blocked`
 
 ### Build
-- `pnpm run build` must succeed — tsup bundles all new files
+- `pnpm build` must succeed — tsup bundles all new files
 
 ## Verification Criteria
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `Orchestrator.execute()` yields `wave:start` and `wave:complete` events in correct wave order
 - [ ] Plans within a wave run concurrently up to `parallelism` limit
 - [ ] `Semaphore` correctly limits concurrent acquisitions and unblocks on release

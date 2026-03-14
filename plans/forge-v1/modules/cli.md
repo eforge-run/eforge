@@ -538,15 +538,15 @@ function renderForgeStart(event: ForgeEvent & { type: 'forge:start' }): void {
 No test framework is configured yet. Verification will be done via type-checking and manual validation.
 
 ### Type Check
-- `pnpm run type-check` must pass with zero errors
+- `pnpm type-check` must pass with zero errors
 - `renderEvent()` must accept all `ForgeEvent` variants (exhaustive switch with `never` default)
 - `createClarificationHandler()` return type must match `ForgeEngineOptions['onClarification']`
 - `createApprovalHandler()` return type must match `ForgeEngineOptions['onApproval']`
 
 ### Manual Validation
-- Run `pnpm run dev -- plan docs/init-prd.md --verbose` and verify the engine is created and events stream through the display
-- Run `pnpm run dev -- status` and verify it renders "No active builds" when no state file exists
-- Run `pnpm run dev -- build forge-v1 --dry-run` and verify it displays the execution plan from `orchestration.yaml`
+- Run `pnpm dev -- plan docs/init-prd.md --verbose` and verify the engine is created and events stream through the display
+- Run `pnpm dev -- status` and verify it renders "No active builds" when no state file exists
+- Run `pnpm dev -- build forge-v1 --dry-run` and verify it displays the execution plan from `orchestration.yaml`
 - Verify `createClarificationHandler(true)` returns defaults without prompting
 - Verify `createClarificationHandler(false)` prompts via readline and collects answers
 - Verify `createApprovalHandler(true)` resolves `true` without prompting
@@ -555,12 +555,12 @@ No test framework is configured yet. Verification will be done via type-checking
 - Verify all event types render without errors (feed mock events through `renderEvent`)
 
 ### Build
-- `pnpm run build` must succeed — tsup bundles all new files
+- `pnpm build` must succeed — tsup bundles all new files
 
 ## Verification Criteria
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `src/cli.ts` is refactored to a thin entry point that imports and calls `run()` from `src/cli/index.ts`
 - [ ] Commander program defines `plan`, `build`, `review`, and `status` commands with the correct arguments and options
 - [ ] `plan` command accepts `<source>` argument and `--auto`, `--verbose`, `--name <name>` options

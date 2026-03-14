@@ -49,4 +49,4 @@ Replace direct `writeFileSync` with write-to-temp-then-rename (atomic on POSIX s
 - [ ] `loadState()` still returns `null` when no state file exists (existing behavior preserved)
 - [ ] `saveState()` creates parent directories if needed (existing behavior preserved)
 - [ ] `pnpm test` passes with all new tests
-- [ ] `pnpm run type-check` passes
+- [ ] `pnpm type-check` passes

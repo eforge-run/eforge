@@ -39,7 +39,7 @@ For multi-plan sets, an orchestrator resolves dependencies, computes execution w
 
 ```bash
 pnpm install
-pnpm run build
+pnpm build
 ```
 
 ## Usage
@@ -148,9 +148,9 @@ See `eval/scenarios.yaml` for the scenario manifest and `eval/fixtures/` for the
 ## Development
 
 ```bash
-pnpm run dev          # Run via tsx (pass args after --)
-pnpm run build        # Bundle with tsup
-pnpm run type-check   # Type check
+pnpm dev          # Run via tsx (pass args after --)
+pnpm build        # Bundle with tsup
+pnpm type-check   # Type check
 pnpm test             # Run unit tests
 ```
 

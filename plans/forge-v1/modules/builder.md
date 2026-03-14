@@ -282,7 +282,7 @@ Adapted from the review plugin's `fix-evaluation-policy` SKILL.md. Key sections:
 No test framework is configured yet. Verification will be done via type-checking and manual validation.
 
 ### Type Check
-- `pnpm run type-check` must pass with zero errors
+- `pnpm type-check` must pass with zero errors
 - `BuilderOptions` and `EvaluationVerdict` types must be correctly exported
 - `builderImplement()` and `builderEvaluate()` must return `AsyncGenerator<ForgeEvent>`
 
@@ -294,12 +294,12 @@ No test framework is configured yet. Verification will be done via type-checking
 - Verify evaluator prompt contains the full fix-evaluation-policy criteria
 
 ### Build
-- `pnpm run build` must succeed — tsup bundles all new files
+- `pnpm build` must succeed — tsup bundles all new files
 
 ## Verification Criteria
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `builderImplement()` yields `build:implement:start`, verbose agent events (when enabled), `build:implement:progress` events, and `build:implement:complete` in correct order
 - [ ] `builderEvaluate()` yields `build:evaluate:start`, verbose agent events (when enabled), and `build:evaluate:complete` with accurate accept/reject counts
 - [ ] `builderImplement()` constructs SDK `query()` with correct options: `cwd` from options, `bypassPermissions`, `maxTurns: 50`, `abortController` forwarded

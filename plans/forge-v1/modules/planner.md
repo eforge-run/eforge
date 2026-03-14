@@ -146,7 +146,7 @@ The planner prompt is extracted from `schaake-cc-marketplace/eee-plugin/skills/e
 No test framework is configured yet. Verification will be done via type-checking and manual validation.
 
 ### Type Check
-- `pnpm run type-check` must pass with zero errors
+- `pnpm type-check` must pass with zero errors
 - `runPlanner()` return type must be `AsyncGenerator<ForgeEvent>`
 - `PlannerOptions` must be compatible with `PlanOptions` from foundation
 
@@ -157,12 +157,12 @@ No test framework is configured yet. Verification will be done via type-checking
 - Verify `plan:start`, `plan:progress`, `plan:clarification`, `plan:complete` events are emitted in the correct order
 
 ### Build
-- `pnpm run build` must succeed — tsup bundles the new files
+- `pnpm build` must succeed — tsup bundles the new files
 
 ## Verification Criteria
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `runPlanner()` is an async generator that yields `ForgeEvent`s
 - [ ] `runPlanner()` emits `plan:start` as the first event with the source identifier
 - [ ] `runPlanner()` calls SDK `query()` with the composed prompt, `permissionMode: 'bypassPermissions'`, `maxTurns: 30`, and `tools: { type: 'preset', preset: 'claude_code' }`

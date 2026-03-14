@@ -100,8 +100,8 @@ sequenceDiagram
 
 ## Verification
 
-- [ ] `pnpm run type-check` passes with zero errors
-- [ ] `pnpm run build` produces `dist/cli.js` without errors
+- [ ] `pnpm type-check` passes with zero errors
+- [ ] `pnpm build` produces `dist/cli.js` without errors
 - [ ] `src/cli.ts` is thin entry point importing `run()` from `src/cli/index.ts`
 - [ ] Commander defines `plan`, `build`, `review`, `status` commands with correct args/options
 - [ ] `plan` accepts `<source>`, `--auto`, `--verbose`, `--name <name>`
