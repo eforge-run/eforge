@@ -7,9 +7,11 @@
     "eforge": "./dist/cli.js"
   },
   "scripts": {
-    "build": "tsup",
+    "build": "tsup && pnpm --filter monitor-ui build",
+    "build:ui": "pnpm --filter monitor-ui build",
     "dev": "tsx src/cli.ts",
     "dev:trace": "node --env-file=.env node_modules/.bin/tsx src/cli.ts",
+    "dev:monitor": "pnpm --filter monitor-ui dev",
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "tsc --noEmit"
@@ -24,7 +26,7 @@
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.26.0",
   "pnpm": {
-    "onlyBuiltDependencies": ["better-sqlite3"]
+    "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.75",

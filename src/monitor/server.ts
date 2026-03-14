@@ -4,14 +4,31 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
+import { readFile, stat } from 'node:fs/promises';
+import { resolve, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { EforgeEvent } from '../engine/events.js';
 import type { MonitorDB } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
+
+const MIME_TYPES: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.svg': 'image/svg+xml',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.ico': 'image/x-icon',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.ttf': 'font/ttf',
+  '.eot': 'application/vnd.ms-fontobject',
+  '.map': 'application/json',
+};
 
 export interface MonitorServer {
   readonly port: number;
@@ -30,14 +47,51 @@ export async function startServer(
   preferredPort = 4567,
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
-  let htmlCache: string | undefined;
 
-  async function serveHTML(_req: IncomingMessage, res: ServerResponse): Promise<void> {
-    if (!htmlCache) {
-      htmlCache = await readFile(resolve(UI_DIR, 'index.html'), 'utf-8');
+  async function serveStaticFile(req: IncomingMessage, res: ServerResponse, urlPath: string): Promise<void> {
+    // Determine the file path
+    let filePath: string;
+    if (urlPath === '/' || urlPath === '/index.html') {
+      filePath = join(UI_DIR, 'index.html');
+    } else {
+      // Resolve and verify containment to prevent directory traversal
+      filePath = resolve(UI_DIR, '.' + urlPath);
+      if (!filePath.startsWith(UI_DIR + '/')) {
+        filePath = join(UI_DIR, 'index.html');
+      }
     }
-    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-    res.end(htmlCache);
+
+    try {
+      const fileStat = await stat(filePath);
+      if (!fileStat.isFile()) {
+        // SPA fallback: serve index.html for non-file paths
+        filePath = join(UI_DIR, 'index.html');
+      }
+    } catch {
+      // File not found — SPA fallback to index.html
+      filePath = join(UI_DIR, 'index.html');
+    }
+
+    try {
+      const content = await readFile(filePath);
+      const ext = extname(filePath).toLowerCase();
+      const contentType = MIME_TYPES[ext] || 'application/octet-stream';
+
+      // Cache hashed assets (files in assets/ directory) for 1 year
+      const cacheControl = urlPath.includes('/assets/')
+        ? 'public, max-age=31536000, immutable'
+        : 'no-cache';
+
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': content.length,
+        'Cache-Control': cacheControl,
+      });
+      res.end(content);
+    } catch {
+      res.writeHead(500, { 'Content-Type': 'text/plain' });
+      res.end('Internal Server Error');
+    }
   }
 
   function serveRuns(_req: IncomingMessage, res: ServerResponse): void {
@@ -85,12 +139,81 @@ export async function startServer(
     res.end(JSON.stringify({ runId: runId ?? null }));
   }
 
+  function serveOrchestration(_req: IncomingMessage, res: ServerResponse, runId: string): void {
+    const events = db.getEventsByType(runId, 'plan:complete');
+    if (events.length === 0) {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify(null));
+      return;
+    }
+
+    try {
+      const data = JSON.parse(events[0].data);
+      const plans = data.plans || [];
+      const orchestration = {
+        plans: plans.map((p: { id: string; name: string; dependsOn: string[]; branch: string }) => ({
+          id: p.id,
+          name: p.name,
+          dependsOn: p.dependsOn || [],
+          branch: p.branch,
+        })),
+        mode: data.mode || null,
+      };
+
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify(orchestration));
+    } catch {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify(null));
+    }
+  }
+
+  function servePlans(_req: IncomingMessage, res: ServerResponse, runId: string): void {
+    const events = db.getEventsByType(runId, 'plan:complete');
+    if (events.length === 0) {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify([]));
+      return;
+    }
+
+    try {
+      const data = JSON.parse(events[0].data);
+      const plans = (data.plans || []).map((p: { id: string; name: string; body: string }) => ({
+        id: p.id,
+        name: p.name,
+        body: p.body,
+      }));
+
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify(plans));
+    } catch {
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify([]));
+    }
+  }
+
   const server = createServer(async (req, res) => {
     const url = req.url ?? '/';
 
-    if (url === '/' || url === '/index.html') {
-      await serveHTML(req, res);
-    } else if (url === '/api/runs') {
+    if (url === '/api/runs') {
       serveRuns(req, res);
     } else if (url === '/api/latest-run') {
       serveLatestRunId(req, res);
@@ -102,9 +225,25 @@ export async function startServer(
         return;
       }
       serveSSE(req, res, runId);
+    } else if (url.startsWith('/api/orchestration/')) {
+      const runId = url.slice('/api/orchestration/'.length);
+      if (!runId || !/^[\w-]+$/.test(runId)) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Invalid runId');
+        return;
+      }
+      serveOrchestration(req, res, runId);
+    } else if (url.startsWith('/api/plans/')) {
+      const runId = url.slice('/api/plans/'.length);
+      if (!runId || !/^[\w-]+$/.test(runId)) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Invalid runId');
+        return;
+      }
+      servePlans(req, res, runId);
     } else {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('Not found');
+      // Serve static files (SPA)
+      await serveStaticFile(req, res, url);
     }
   });
 

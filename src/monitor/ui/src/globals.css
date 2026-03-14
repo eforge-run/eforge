@@ -1,0 +1,60 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme {
+  --color-background: #0d1117;
+  --color-foreground: #c9d1d9;
+  --color-card: #161b22;
+  --color-card-foreground: #c9d1d9;
+  --color-popover: #161b22;
+  --color-popover-foreground: #c9d1d9;
+  --color-primary: #58a6ff;
+  --color-primary-foreground: #0d1117;
+  --color-secondary: #21262d;
+  --color-secondary-foreground: #c9d1d9;
+  --color-muted: #21262d;
+  --color-muted-foreground: #8b949e;
+  --color-accent: #21262d;
+  --color-accent-foreground: #c9d1d9;
+  --color-destructive: #f85149;
+  --color-destructive-foreground: #f0f6fc;
+  --color-border: #30363d;
+  --color-input: #30363d;
+  --color-ring: #58a6ff;
+  --radius: 0.5rem;
+
+  /* Monitor-specific colors */
+  --color-green: #3fb950;
+  --color-red: #f85149;
+  --color-blue: #58a6ff;
+  --color-yellow: #d29922;
+  --color-purple: #bc8cff;
+  --color-cyan: #39d2c0;
+  --color-orange: #f0883e;
+  --color-text-bright: #f0f6fc;
+  --color-text-dim: #8b949e;
+  --color-bg-tertiary: #21262d;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  border-color: var(--color-border);
+}
+
+body {
+  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+  background: var(--color-background);
+  color: var(--color-foreground);
+  font-size: 13px;
+  line-height: 1.5;
+  height: 100vh;
+  overflow: hidden;
+}
+
+@keyframes pulse-opacity {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}

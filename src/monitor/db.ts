@@ -42,6 +42,7 @@ export interface MonitorDB {
   updateRunStatus(runId: string, status: string, completedAt: string): void;
   getRuns(): RunRecord[];
   getEvents(runId: string, afterId?: number): EventRecord[];
+  getEventsByType(runId: string, type: string): EventRecord[];
   getLatestRunId(): string | undefined;
   close(): void;
 }
@@ -97,6 +98,9 @@ export function openDatabase(dbPath: string): MonitorDB {
     getEventsAfter: db.prepare(
       `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND id > ? ORDER BY id`,
     ),
+    getEventsByType: db.prepare(
+      `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = ? ORDER BY id`,
+    ),
     getLatestRunId: db.prepare(
       `SELECT id FROM runs ORDER BY started_at DESC LIMIT 1`,
     ),
@@ -132,6 +136,10 @@ export function openDatabase(dbPath: string): MonitorDB {
         return stmts.getEventsAfter.all(runId, afterId) as EventRecord[];
       }
       return stmts.getEventsAll.all(runId) as EventRecord[];
+    },
+
+    getEventsByType(runId, type) {
+      return stmts.getEventsByType.all(runId, type) as EventRecord[];
     },
 
     getLatestRunId() {

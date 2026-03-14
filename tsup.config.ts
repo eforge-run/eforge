@@ -13,6 +13,5 @@ export default defineConfig({
   },
   async onSuccess() {
     await cp("src/engine/prompts", "dist/prompts", { recursive: true });
-    await cp("src/monitor/ui", "dist/monitor-ui", { recursive: true });
   },
 });

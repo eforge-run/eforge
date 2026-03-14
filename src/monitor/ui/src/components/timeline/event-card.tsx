@@ -1,0 +1,177 @@
+import { useState } from 'react';
+import type { EforgeEvent } from '@/lib/types';
+import { formatDuration, formatNumber } from '@/lib/format';
+import { cn } from '@/lib/utils';
+
+interface EventCardProps {
+  event: EforgeEvent;
+  startTime: number | null;
+  showVerbose: boolean;
+}
+
+function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: string } {
+  if (type === 'eforge:start') return { cls: 'start', label: type };
+  if (type === 'eforge:end') {
+    const status = 'result' in event ? (event as { result?: { status?: string } }).result?.status : undefined;
+    return { cls: status === 'failed' ? 'failed' : 'complete', label: type };
+  }
+  if (type.endsWith(':start')) return { cls: 'start', label: type };
+  if (type.endsWith(':complete')) return { cls: 'complete', label: type };
+  if (type.endsWith(':failed')) return { cls: 'failed', label: type };
+  if (type.endsWith(':progress')) return { cls: 'progress', label: type };
+  if (type.startsWith('agent:')) return { cls: 'agent', label: type };
+  if (type === 'plan:scope' || type === 'plan:clarification') return { cls: 'info', label: type };
+  return { cls: 'info', label: type };
+}
+
+function eventSummary(event: EforgeEvent): string {
+  switch (event.type) {
+    case 'eforge:start': return `Run started: ${event.command} "${event.planSet}"`;
+    case 'eforge:end': return `Run ${event.result?.status}: ${event.result?.summary || ''}`;
+    case 'plan:start': return `Planning from: ${event.source}`;
+    case 'plan:scope': return `Scope: ${event.assessment} — ${event.justification}`;
+    case 'plan:clarification': return `${event.questions?.length || 0} clarification question(s)`;
+    case 'plan:progress': return event.message;
+    case 'plan:complete': return `${event.plans?.length || 0} plan(s) generated`;
+    case 'plan:review:start': return 'Plan review started';
+    case 'plan:review:complete': return `Plan review: ${event.issues?.length || 0} issue(s)`;
+    case 'plan:evaluate:start': return 'Evaluating plan review fixes';
+    case 'plan:evaluate:complete': return `Accepted ${event.accepted}, rejected ${event.rejected}`;
+    case 'build:start': return `Building: ${event.planId}`;
+    case 'build:implement:start': return `Implementing: ${event.planId}`;
+    case 'build:implement:progress': return `[${event.planId}] ${event.message}`;
+    case 'build:implement:complete': return `Implementation complete: ${event.planId}`;
+    case 'build:review:start': return `Reviewing: ${event.planId}`;
+    case 'build:review:complete': return `[${event.planId}] Review: ${event.issues?.length || 0} issue(s)`;
+    case 'build:evaluate:start': return `Evaluating: ${event.planId}`;
+    case 'build:evaluate:complete': return `[${event.planId}] Accepted ${event.accepted}, rejected ${event.rejected}`;
+    case 'build:complete': return `Build complete: ${event.planId}`;
+    case 'build:failed': return `Build FAILED: ${event.planId} — ${event.error}`;
+    case 'wave:start': return `Wave ${event.wave}: ${event.planIds?.join(', ')}`;
+    case 'wave:complete': return `Wave ${event.wave} complete`;
+    case 'merge:start': return `Merging: ${event.planId}`;
+    case 'merge:complete': return `Merged: ${event.planId}`;
+    case 'expedition:architecture:complete': return `Architecture: ${event.modules?.length || 0} module(s)`;
+    case 'expedition:module:start': return `Module planning: ${event.moduleId}`;
+    case 'expedition:module:complete': return `Module complete: ${event.moduleId}`;
+    case 'expedition:compile:start': return 'Compiling expedition plans';
+    case 'expedition:compile:complete': return `Compiled ${event.plans?.length || 0} plan(s)`;
+    case 'agent:message': return `[${event.agent}] message`;
+    case 'agent:tool_use': return `[${event.agent}] ${event.tool}`;
+    case 'agent:tool_result': return `[${event.agent}] ${event.tool} result`;
+    case 'agent:result': return `[${event.agent}] done — ${event.result?.usage?.total || 0} tokens, ${((event.result?.durationMs ?? 0) / 1000).toFixed(1)}s`;
+    case 'validation:start': return `Validation: ${event.commands?.length || 0} command(s)`;
+    case 'validation:command:start': return `Running: ${event.command}`;
+    case 'validation:command:complete': return `${event.command}: exit ${event.exitCode}`;
+    case 'validation:complete': return event.passed ? 'Validation passed' : 'Validation failed';
+    case 'validation:fix:start': return `Fix attempt ${event.attempt}/${event.maxAttempts}`;
+    case 'validation:fix:complete': return `Fix attempt ${event.attempt} complete`;
+    case 'approval:needed': return `Approval needed: ${event.action}`;
+    case 'approval:response': return event.approved ? 'Approved' : 'Rejected';
+    default: return event.type;
+  }
+}
+
+function eventDetail(event: EforgeEvent): string | null {
+  switch (event.type) {
+    case 'plan:clarification':
+      return event.questions?.map((q) => `Q: ${q.question}${q.context ? '\n   ' + q.context : ''}`).join('\n\n') ?? null;
+    case 'plan:review:complete':
+    case 'build:review:complete':
+      return event.issues?.map((i) => `[${i.severity}] ${i.category} — ${i.file}${i.line ? ':' + i.line : ''}\n  ${i.description}`).join('\n\n') ?? null;
+    case 'agent:message':
+      return event.content;
+    case 'agent:tool_use':
+      return typeof event.input === 'string' ? event.input : JSON.stringify(event.input, null, 2);
+    case 'agent:tool_result':
+      return event.output;
+    case 'agent:result': {
+      if (!event.result) return null;
+      const r = event.result;
+      let detail = `Duration: ${(r.durationMs / 1000).toFixed(1)}s (API: ${(r.durationApiMs / 1000).toFixed(1)}s)`;
+      detail += `\nTokens: ${formatNumber(r.usage?.input || 0)} in / ${formatNumber(r.usage?.output || 0)} out`;
+      detail += `\nTurns: ${r.numTurns}`;
+      if (r.totalCostUsd) detail += `\nCost: $${r.totalCostUsd.toFixed(4)}`;
+      if (r.modelUsage) {
+        detail += '\nModels:';
+        for (const [model, usage] of Object.entries(r.modelUsage)) {
+          detail += `\n  ${model}: ${formatNumber(usage.inputTokens)} in / ${formatNumber(usage.outputTokens)} out ($${usage.costUSD.toFixed(4)})`;
+        }
+      }
+      return detail;
+    }
+    case 'build:failed':
+      return event.error;
+    case 'eforge:end':
+      return event.result?.summary ?? null;
+    case 'expedition:architecture:complete':
+      return event.modules?.map((m) => `${m.id}: ${m.description}${m.dependsOn?.length ? ' (depends: ' + m.dependsOn.join(', ') + ')' : ''}`).join('\n') ?? null;
+    case 'validation:command:complete':
+      return event.output || null;
+    default:
+      return null;
+  }
+}
+
+export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const typeInfo = classifyEvent(event.type, event);
+  const isVerbose = event.type.startsWith('agent:');
+
+  // Hide verbose events when toggle is off
+  if (isVerbose && !showVerbose) return null;
+
+  const elapsed =
+    startTime && 'timestamp' in event && (event as { timestamp?: string }).timestamp
+      ? formatDuration(new Date((event as { timestamp: string }).timestamp).getTime() - startTime)
+      : '';
+
+  const summary = eventSummary(event);
+  const detail = eventDetail(event);
+
+  const typeClasses: Record<string, string> = {
+    start: 'bg-blue/15 text-blue',
+    complete: 'bg-green/15 text-green',
+    failed: 'bg-red/15 text-red',
+    progress: 'bg-yellow/15 text-yellow',
+    agent: 'bg-muted-foreground/10 text-text-dim',
+    info: 'bg-purple/15 text-purple',
+  };
+
+  return (
+    <div
+      className={cn(
+        'bg-card border border-border rounded-md px-3 py-2 flex items-start gap-2.5',
+        isVerbose && 'opacity-60 border-transparent bg-transparent',
+      )}
+    >
+      <span
+        className={cn(
+          'text-[11px] font-semibold px-1.5 py-px rounded-sm whitespace-nowrap min-w-[100px] text-center',
+          typeClasses[typeInfo.cls] || typeClasses.info,
+        )}
+      >
+        {typeInfo.label}
+      </span>
+      <div className="flex-1 min-w-0">
+        <div className="text-xs text-foreground">{summary}</div>
+        {detail && (
+          <>
+            <button
+              className="bg-transparent border-none text-text-dim cursor-pointer text-[10px] p-0 hover:text-foreground"
+              onClick={() => setIsExpanded(!isExpanded)}
+            >
+              {isExpanded ? 'hide' : 'details'}
+            </button>
+            {isExpanded && (
+              <div className="text-text-dim text-[11px] mt-1 whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
+                {detail}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      <span className="text-[11px] text-text-dim whitespace-nowrap">{elapsed}</span>
+    </div>
+  );
+}
