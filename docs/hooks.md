@@ -42,15 +42,15 @@ Every hook receives these environment variables:
 
 | Variable | Description |
 |----------|-------------|
-| `EFORGE_SESSION_ID` | Session identifier - stable across plan+build when using `eforge run`. Use this for session tracking. |
-| `EFORGE_RUN_ID` | Per-phase run identifier. Changes between plan and build phases. |
+| `EFORGE_SESSION_ID` | Session identifier - stable across compile+build when using `eforge run`. Use this for session tracking. |
+| `EFORGE_RUN_ID` | Per-phase run identifier. Changes between compile and build phases. |
 | `EFORGE_EVENT_TYPE` | Event type string (e.g., `build:start`, `agent:tool_use`) |
 | `EFORGE_CWD` | Working directory for the eforge run |
 | `EFORGE_GIT_REMOTE` | Git origin remote URL (empty if not a git repo or no origin) |
 
 `EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup. `EFORGE_EVENT_TYPE` is set per event. `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events.
 
-For `eforge run`, `EFORGE_SESSION_ID` stays the same across the plan and build phases while `EFORGE_RUN_ID` changes. For standalone `eforge plan` or `eforge build`, both values are the same.
+For `eforge run`, `EFORGE_SESSION_ID` stays the same across the compile and build phases while `EFORGE_RUN_ID` changes.
 
 ## Event JSON on stdin
 
@@ -77,7 +77,7 @@ When both are present, hook arrays are **concatenated** - global hooks fire firs
 See `src/engine/events.ts` for the full `EforgeEvent` type definition. The main event categories:
 
 - `session:start` / `session:end` - Session lifecycle (one per invocation)
-- `phase:start` / `phase:end` - Phase lifecycle (plan, build, adopt)
+- `phase:start` / `phase:end` - Phase lifecycle (compile, build, adopt)
 - `plan:*` - Planning phase events
 - `build:*` - Build phase events (per-plan)
 - `wave:*` / `merge:*` - Orchestration events

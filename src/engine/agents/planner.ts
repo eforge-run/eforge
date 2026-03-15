@@ -2,12 +2,12 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AgentBackend } from '../backend.js';
-import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
+import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
 import { parseClarificationBlocks, parseScopeBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
 import { parsePlanFile, deriveNameFromSource } from '../plan.js';
 
-export interface PlannerOptions extends PlanOptions {
+export interface PlannerOptions extends CompileOptions {
   backend: AgentBackend;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
 }

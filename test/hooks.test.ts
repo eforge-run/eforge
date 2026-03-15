@@ -71,7 +71,7 @@ describe('withHooks', () => {
   }
 
   const sampleEvents: EforgeEvent[] = [
-    { type: 'phase:start', runId: '1', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
+    { type: 'phase:start', runId: '1', planSet: 'test', command: 'compile', timestamp: new Date().toISOString() },
     { type: 'plan:start', source: 'test.md' },
     { type: 'plan:complete', plans: [] },
     { type: 'phase:end', runId: '1', result: { status: 'completed', summary: 'done' }, timestamp: new Date().toISOString() },
@@ -119,7 +119,7 @@ describe('withHooks', () => {
       ];
 
       const events: EforgeEvent[] = [
-        { type: 'phase:start', runId: '1', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
+        { type: 'phase:start', runId: '1', planSet: 'test', command: 'compile', timestamp: new Date().toISOString() },
       ];
 
       // Consume all events so hooks fire and drain
@@ -148,7 +148,7 @@ describe('withHooks', () => {
       ];
 
       const events: EforgeEvent[] = [
-        { type: 'phase:start', runId: 'test-run-42', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
+        { type: 'phase:start', runId: 'test-run-42', planSet: 'test', command: 'compile', timestamp: new Date().toISOString() },
         { type: 'plan:start', source: 'test.md' },
       ];
 

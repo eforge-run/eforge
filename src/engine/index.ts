@@ -12,7 +12,7 @@ export type {
   OrchestrationConfig,
   EforgeState,
   PlanState,
-  PlanOptions,
+  CompileOptions,
   BuildOptions,
   AdoptOptions,
   EforgeStatus,

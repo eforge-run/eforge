@@ -104,6 +104,8 @@ export function openDatabase(dbPath: string): MonitorDB {
   }
   // Backfill session_id for pre-existing runs so session-scoped queries work
   db.exec('UPDATE runs SET session_id = id WHERE session_id IS NULL');
+  // Rename 'plan' command to 'compile' for existing records
+  db.exec("UPDATE runs SET command = 'compile' WHERE command = 'plan'");
 
   const stmts = {
     insertRun: db.prepare(

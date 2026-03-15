@@ -70,7 +70,7 @@ db.insertRun({
 });
 db.updateRunStatus(RUN1_ID, 'completed', makeTimestamp(120_000));
 
-insertEvent(RUN1_ID, { type: 'phase:start', runId: RUN1_ID, planSet: RUN1_PLAN_SET, command: 'plan', timestamp: makeTimestamp(0) }, 0);
+insertEvent(RUN1_ID, { type: 'phase:start', runId: RUN1_ID, planSet: RUN1_PLAN_SET, command: 'compile', timestamp: makeTimestamp(0) }, 0);
 insertEvent(RUN1_ID, { type: 'plan:start', source: 'docs/add-health-check.md' }, 1000);
 insertEvent(RUN1_ID, { type: 'plan:scope', assessment: 'errand', justification: 'Single endpoint addition with no dependencies' }, 5000);
 insertEvent(RUN1_ID, { type: 'plan:progress', message: 'Exploring codebase structure...' }, 10000);
@@ -150,7 +150,7 @@ db.insertRun({
 });
 db.updateRunStatus(RUN2_ID, 'completed', makeTimestamp(500_000));
 
-insertEvent(RUN2_ID, { type: 'phase:start', runId: RUN2_ID, planSet: RUN2_PLAN_SET, command: 'plan', timestamp: makeTimestamp(200000) }, 200000);
+insertEvent(RUN2_ID, { type: 'phase:start', runId: RUN2_ID, planSet: RUN2_PLAN_SET, command: 'compile', timestamp: makeTimestamp(200000) }, 200000);
 insertEvent(RUN2_ID, { type: 'plan:start', source: 'docs/add-jwt-auth.md' }, 201000);
 insertEvent(RUN2_ID, { type: 'plan:scope', assessment: 'excursion', justification: 'Multi-file auth middleware + protected routes + tests' }, 210000);
 insertEvent(RUN2_ID, agentResult('planner'), 240000);
@@ -313,7 +313,7 @@ db.insertRun({
 });
 db.updateRunStatus(RUN3_ID, 'failed', makeTimestamp(700_000));
 
-insertEvent(RUN3_ID, { type: 'phase:start', runId: RUN3_ID, planSet: RUN3_PLAN_SET, command: 'plan', timestamp: makeTimestamp(600000) }, 600000);
+insertEvent(RUN3_ID, { type: 'phase:start', runId: RUN3_ID, planSet: RUN3_PLAN_SET, command: 'compile', timestamp: makeTimestamp(600000) }, 600000);
 insertEvent(RUN3_ID, { type: 'plan:start', source: 'docs/add-rate-limiting.md' }, 601000);
 insertEvent(RUN3_ID, { type: 'plan:scope', assessment: 'errand', justification: 'Single middleware addition' }, 610000);
 insertEvent(RUN3_ID, agentResult('planner'), 630000);
@@ -365,7 +365,7 @@ db.insertRun({
 const now = Date.now();
 function runTs(ms: number): string { return new Date(now - 60_000 + ms).toISOString(); }
 
-db.insertEvent({ runId: RUN4_ID, type: 'phase:start', data: JSON.stringify({ type: 'phase:start', runId: RUN4_ID, planSet: RUN4_PLAN_SET, command: 'plan', timestamp: runTs(0) }), timestamp: runTs(0) });
+db.insertEvent({ runId: RUN4_ID, type: 'phase:start', data: JSON.stringify({ type: 'phase:start', runId: RUN4_ID, planSet: RUN4_PLAN_SET, command: 'compile', timestamp: runTs(0) }), timestamp: runTs(0) });
 db.insertEvent({ runId: RUN4_ID, type: 'plan:start', data: JSON.stringify({ type: 'plan:start', source: 'docs/add-pagination.md' }), timestamp: runTs(2000) });
 db.insertEvent({ runId: RUN4_ID, type: 'plan:scope', data: JSON.stringify({ type: 'plan:scope', assessment: 'excursion', justification: 'Pagination touches list routes + query parsing + tests' }), timestamp: runTs(8000) });
 db.insertEvent({ runId: RUN4_ID, type: 'plan:progress', data: JSON.stringify({ type: 'plan:progress', message: 'Exploring existing route patterns and query handling...' }), timestamp: runTs(15000) });

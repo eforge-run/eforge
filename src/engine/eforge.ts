@@ -14,7 +14,7 @@ import { promisify } from 'node:util';
 import type {
   EforgeEvent,
   EforgeStatus,
-  PlanOptions,
+  CompileOptions,
   BuildOptions,
   AdoptOptions,
   PlanFile,
@@ -132,23 +132,23 @@ export class EforgeEngine {
    * - expedition: planner generates architecture.md + index.yaml + module list,
    *   then engine runs module planners and compiles plan files
    */
-  async *plan(source: string, options: Partial<PlanOptions> = {}): AsyncGenerator<EforgeEvent> {
+  async *compile(source: string, options: Partial<CompileOptions> = {}): AsyncGenerator<EforgeEvent> {
     const runId = randomUUID();
     const planSetName = options.name ?? deriveNameFromSource(source);
     validatePlanSetName(planSetName);
-    const tracing = createTracingContext(this.config, runId, 'plan', planSetName);
+    const tracing = createTracingContext(this.config, runId, 'compile', planSetName);
     const cwd = options.cwd ?? this.cwd;
 
     yield {
       type: 'phase:start',
       runId,
       planSet: planSetName,
-      command: 'plan',
+      command: 'compile',
       timestamp: new Date().toISOString(),
     };
 
     let status: 'completed' | 'failed' = 'completed';
-    let summary = 'Planning complete';
+    let summary = 'Compile complete';
 
     tracing.setInput({ source, planSet: planSetName });
 
@@ -593,7 +593,7 @@ export class EforgeEngine {
     planSetName: string,
     modules: ExpeditionModule[],
     tracing: TracingContext,
-    options: Partial<PlanOptions> & { cwd: string; sourceContent: string },
+    options: Partial<CompileOptions> & { cwd: string; sourceContent: string },
   ): AsyncGenerator<EforgeEvent> {
     const cwd = options.cwd;
     const sourceContent = options.sourceContent;

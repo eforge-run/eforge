@@ -92,21 +92,18 @@ Once installed, the primary entrypoint is `/eforge:run` - it takes a PRD or prom
 
 | Skill | Description |
 |-------|-------------|
-| `/eforge:run` | Plan + build + validate in one step |
+| `/eforge:run` | Compile + build + validate in one step |
 | `/eforge:status` | Check build progress |
 
 ### CLI Usage
 
 ```bash
-# Generate plans from a PRD or description
-eforge plan docs/my-feature.md
-eforge plan "Add a health check endpoint"
-
-# Plan + build + validate in one step
+# Compile + build + validate in one step
 eforge run docs/my-feature.md
+eforge run "Add a health check endpoint"
 
-# Execute plans (implement + review + validate)
-eforge build my-plan-set
+# Adopt an existing plan (skip planner agent)
+eforge run docs/my-feature.md --adopt
 
 # Check running builds
 eforge status
@@ -200,7 +197,7 @@ eforge is **library-first**. The engine (`src/engine/`) is a pure TypeScript lib
 
 Agent runners use the `AgentBackend` interface - all SDK interaction is isolated behind a single adapter (`src/engine/backends/claude-sdk.ts`). New surfaces (CI, TUI, web) consume the same event stream.
 
-A real-time web monitor records all events to SQLite and serves a dashboard over SSE, auto-starting with `plan`, `build`, and `run` commands.
+A real-time web monitor records all events to SQLite and serves a dashboard over SSE, auto-starting with `run` commands.
 
 ## Evaluation
 

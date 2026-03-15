@@ -135,49 +135,15 @@ export function createProgram(abortController?: AbortController): Command {
     .version('0.1.0');
 
   program
-    .command('plan <source>')
-    .description('Generate execution plans from a PRD file or description')
-    .option('--auto', 'Run without approval gates')
-    .option('--verbose', 'Stream agent output')
-    .option('--name <name>', 'Plan set name (inferred from source if omitted)')
-    .option('--no-monitor', 'Disable web monitor')
-    .option('--no-plugins', 'Disable plugin loading')
-    .action(
-      async (source: string, options: { auto?: boolean; verbose?: boolean; name?: string; monitor?: boolean; plugins?: boolean }) => {
-        initDisplay({ verbose: options.verbose });
-
-        const engine = await EforgeEngine.create({
-          onClarification: createClarificationHandler(options.auto ?? false),
-          onApproval: createApprovalHandler(options.auto ?? false),
-          ...(options.plugins === false && { config: { plugins: { enabled: false } } }),
-        });
-
-        await withMonitor(options.monitor === false, async (monitor) => {
-          const result = await consumeEvents(
-            wrapEvents(engine.plan(source, {
-              auto: options.auto,
-              verbose: options.verbose,
-              name: options.name,
-              abortController,
-            }), monitor, engine.resolvedConfig.hooks),
-            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-          );
-
-          process.exit(result === 'completed' ? 0 : 1);
-        });
-      },
-    );
-
-  program
     .command('run <source>')
-    .description('Plan + build + validate in one step')
+    .description('Compile + build + validate in one step')
     .option('--auto', 'Run without approval gates')
     .option('--verbose', 'Stream agent output')
     .option('--name <name>', 'Plan set name (inferred from source if omitted)')
     .option('--adopt', 'Adopt source as an existing plan (skip planner agent)')
     .option('--no-review', 'Skip plan review (only applies with --adopt)')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
-    .option('--dry-run', 'Plan only, then show execution plan without building')
+    .option('--dry-run', 'Compile only, then show execution plan without building')
     .option('--no-cleanup', 'Keep plan files after successful build')
     .option('--no-monitor', 'Disable web monitor')
     .option('--no-plugins', 'Disable plugin loading')
@@ -208,10 +174,10 @@ export function createProgram(abortController?: AbortController): Command {
         });
 
         await withMonitor(options.monitor === false, async (monitor) => {
-          // Shared sessionId across plan+build so tracking sees one session
+          // Shared sessionId across compile+build so tracking sees one session
           const sessionId = randomUUID();
 
-          // Phase 1: Plan or Adopt
+          // Phase 1: Compile or Adopt
           let planSetName: string | undefined;
           let planFiles: PlanFile[] = [];
           let planResult: 'completed' | 'failed' = 'completed';
@@ -225,7 +191,7 @@ export function createProgram(abortController?: AbortController): Command {
                 skipReview: options.review === false,
                 abortController,
               })
-            : engine.plan(source, {
+            : engine.compile(source, {
                 auto: options.auto,
                 verbose: options.verbose,
                 name: options.name,
@@ -275,51 +241,6 @@ export function createProgram(abortController?: AbortController): Command {
           );
 
           process.exit(buildResult === 'completed' ? 0 : 1);
-        });
-      },
-    );
-
-  program
-    .command('build <planSet>')
-    .description('Execute plans (implement + review + validate)')
-    .option('--auto', 'Run without approval gates')
-    .option('--verbose', 'Stream agent output')
-    .option('--dry-run', 'Validate and show execution plan without running')
-    .option('--parallelism <n>', 'Max parallel plans', parseInt)
-    .option('--no-cleanup', 'Keep plan files after successful build')
-    .option('--no-monitor', 'Disable web monitor')
-    .option('--no-plugins', 'Disable plugin loading')
-    .action(
-      async (
-        planSet: string,
-        options: { auto?: boolean; verbose?: boolean; dryRun?: boolean; cleanup?: boolean; parallelism?: number; monitor?: boolean; plugins?: boolean },
-      ) => {
-        initDisplay({ verbose: options.verbose });
-
-        if (options.dryRun) {
-          await showDryRun(planSet);
-        }
-
-        const configOverrides = buildConfigOverrides(options);
-
-        const engine = await EforgeEngine.create({
-          onClarification: createClarificationHandler(options.auto ?? false),
-          onApproval: createApprovalHandler(options.auto ?? false),
-          ...(configOverrides && { config: configOverrides }),
-        });
-
-        await withMonitor(options.monitor === false, async (monitor) => {
-          const result = await consumeEvents(
-            wrapEvents(engine.build(planSet, {
-              auto: options.auto,
-              verbose: options.verbose,
-              cleanup: options.cleanup,
-              abortController,
-            }), monitor, engine.resolvedConfig.hooks),
-            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-          );
-
-          process.exit(result === 'completed' ? 0 : 1);
         });
       },
     );

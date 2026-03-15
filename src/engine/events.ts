@@ -83,7 +83,7 @@ export interface AgentResultData {
   resultText?: string;
 }
 
-export interface PlanOptions {
+export interface CompileOptions {
   auto?: boolean;
   verbose?: boolean;
   name?: string;
@@ -125,8 +125,8 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'session:start'; sessionId: string; timestamp: string }
   | { type: 'session:end'; sessionId: string; result: EforgeResult; timestamp: string }
 
-  // Phase lifecycle (one per plan/build/adopt phase)
-  | { type: 'phase:start'; runId: string; planSet: string; command: 'plan' | 'build' | 'adopt'; timestamp: string }
+  // Phase lifecycle (one per compile/build/adopt phase)
+  | { type: 'phase:start'; runId: string; planSet: string; command: 'compile' | 'build' | 'adopt'; timestamp: string }
   | { type: 'phase:end'; runId: string; result: EforgeResult; timestamp: string }
 
   // Planning

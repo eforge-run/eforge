@@ -16,15 +16,15 @@ The architecture is **library-first**: a pure, event-driven engine (`src/engine/
 
 ```bash
 pnpm build        # Bundle with tsup → dist/cli.js
-pnpm dev          # Run directly via tsx (e.g. pnpm dev -- plan foo.md)
+pnpm dev          # Run directly via tsx (e.g. pnpm dev -- run foo.md)
 pnpm test             # Run tests (vitest)
 pnpm test:watch       # Watch mode
 pnpm type-check   # Type check without emitting
 
 # Run with Langfuse tracing (dev)
-pnpm dev:trace -- plan docs/init-prd.md --verbose
+pnpm dev:trace -- run docs/init-prd.md --verbose
 # Run built CLI with Langfuse tracing
-node --env-file=.env dist/cli.js plan docs/init-prd.md --verbose
+node --env-file=.env dist/cli.js run docs/init-prd.md --verbose
 ```
 
 ## Architecture
@@ -53,7 +53,7 @@ node --env-file=.env dist/cli.js plan docs/init-prd.md --verbose
 
 **State**: `.eforge/state.json` (gitignored) tracks build progress for resume support.
 
-**Monitor** (`src/monitor/`): Web-based real-time monitor. Records all `EforgeEvent`s to SQLite (`.eforge/monitor.db`) via a transparent `withRecording()` async generator middleware. Serves a single-page dashboard over SSE at `http://localhost:4567`. Auto-starts with `plan`, `build`, and `run` commands (disable with `--no-monitor`).
+**Monitor** (`src/monitor/`): Web-based real-time monitor. Records all `EforgeEvent`s to SQLite (`.eforge/monitor.db`) via a transparent `withRecording()` async generator middleware. Serves a single-page dashboard over SSE at `http://localhost:4567`. Auto-starts with `run` commands (disable with `--no-monitor`).
 
 **CLI** (`src/cli/`): Thin consumer that iterates the engine's event stream and renders to stdout. Handles interactive clarification prompts and approval gates via callbacks.
 
@@ -69,7 +69,7 @@ eforge-plugin/                      # Claude Code plugin (skills for plan, run, 
 eforge.yaml                         # Optional engine config (langfuse, parallelism, etc.)
 src/
   engine/                     # Library (no stdout, events only)
-    eforge.ts                 # EforgeEngine: plan(), build(), status()
+    eforge.ts                 # EforgeEngine: compile(), build(), status()
     events.ts                 # EforgeEvent type definitions
     index.ts                  # Barrel re-exports for engine public API
     backend.ts                # AgentBackend interface (provider abstraction)
@@ -164,13 +164,13 @@ eforge loads config from two levels, merged together:
 
 | Env var | Description |
 |---------|-------------|
-| `EFORGE_SESSION_ID` | Session ID - stable across plan+build in `run` mode. Preferred identifier for session tracking. |
-| `EFORGE_RUN_ID` | Per-phase run ID (UUID). Changes between plan and build phases. |
+| `EFORGE_SESSION_ID` | Session ID - stable across compile+build in `run` mode. Preferred identifier for session tracking. |
+| `EFORGE_RUN_ID` | Per-phase run ID (UUID). Changes between compile and build phases. |
 | `EFORGE_EVENT_TYPE` | Event type string (e.g., `session:start`, `phase:start`, `plan:complete`) |
 | `EFORGE_CWD` | Working directory for the eforge run |
 | `EFORGE_GIT_REMOTE` | Git origin remote URL (empty string if not a git repo or no origin) |
 
-`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events. For `eforge run`, `EFORGE_SESSION_ID` is shared across both phases while `EFORGE_RUN_ID` is unique per phase. For standalone commands, both values are the same.
+`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events. For `eforge run`, `EFORGE_SESSION_ID` is shared across both phases while `EFORGE_RUN_ID` is unique per phase.
 
 ## Conventions
 
@@ -191,13 +191,11 @@ eforge loads config from two levels, merged together:
 ## CLI commands
 
 ```
-eforge plan <source>      # PRD file or prompt → plan files
-eforge run <source>       # Plan + build + validate in one step
-eforge build <planSet>    # Execute plans (implement + review + validate)
+eforge run <source>       # Compile + build + validate in one step
 eforge status             # Check running builds
 ```
 
-Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading)
+Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--adopt` (wrap existing plan), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading)
 
 ## Roadmap
 

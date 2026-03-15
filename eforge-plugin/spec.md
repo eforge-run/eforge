@@ -16,7 +16,7 @@ eforge-plugin/
     ├── plan/
     │   └── SKILL.md          # /eforge:plan — conversational PRD authoring
     ├── run/
-    │   └── SKILL.md          # /eforge:run — plan + build + validate delegation
+    │   └── SKILL.md          # /eforge:run — compile + build + validate delegation
     └── status/
         └── SKILL.md          # /eforge:status — state file rendering
 ```
@@ -65,7 +65,7 @@ The core value-add skill — conversational requirement refinement that produces
 
 **Frontmatter**: `disable-model-invocation: true`
 
-**Purpose**: Validate a source and delegate to `eforge run` (plan + build + validate in one step) as a background task.
+**Purpose**: Validate a source and delegate to `eforge run` (compile + build + validate in one step) as a background task.
 
 **Workflow**:
 
@@ -107,9 +107,7 @@ This is the only skill that doesn't invoke the eforge CLI — it just reads and 
 Commands the plugin wraps:
 
 ```
-eforge plan <source>      # PRD file or prompt → plan files
-eforge run <source>       # Plan + build + validate in one step
-eforge build <planSet>    # Execute plans (implement + validate)
+eforge run <source>       # Compile + build + validate in one step
 eforge status             # Check running builds
 ```
 

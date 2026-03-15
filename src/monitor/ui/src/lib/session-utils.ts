@@ -10,13 +10,13 @@ export interface SessionGroup {
   completedAt?: string;
 }
 
-const commandOrder: Record<string, number> = { plan: 0, adopt: 0, run: 1, build: 2 };
+const commandOrder: Record<string, number> = { compile: 0, adopt: 0, run: 1, build: 2 };
 
 function sortRuns(runs: RunInfo[]): RunInfo[] {
   return [...runs].sort((a, b) => {
     const ta = new Date(a.startedAt).getTime();
     const tb = new Date(b.startedAt).getTime();
-    // Same timestamp bucket (within 1s) - sort plan before build
+    // Same timestamp bucket (within 1s) - sort compile before build
     if (Math.abs(ta - tb) < 1000) {
       return (commandOrder[a.command] ?? 9) - (commandOrder[b.command] ?? 9);
     }
