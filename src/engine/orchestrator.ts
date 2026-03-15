@@ -21,7 +21,8 @@ import {
   mergeWorktree,
   cleanupWorktrees,
 } from './worktree.js';
-import { Semaphore, AsyncEventQueue } from './concurrency.js';
+import { runParallel } from './concurrency.js';
+import type { ParallelTask } from './concurrency.js';
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -57,14 +58,15 @@ export interface OrchestratorOptions {
 
 /**
  * Walk the dependency graph from a failed plan and mark all transitive
- * dependents as blocked. Emits build:failed for each blocked plan.
+ * dependents as blocked. Returns build:failed events for each blocked plan.
  */
 export function propagateFailure(
   state: EforgeState,
   failedPlanId: string,
   plans: OrchestrationConfig['plans'],
-  eventQueue: AsyncEventQueue<EforgeEvent>,
-): void {
+): EforgeEvent[] {
+  const events: EforgeEvent[] = [];
+
   // Build adjacency: planId → direct dependents
   const dependents = new Map<string, string[]>();
   for (const plan of plans) {
@@ -88,7 +90,7 @@ export function propagateFailure(
       if (planState && planState.status !== 'completed' && planState.status !== 'merged') {
         updatePlanStatus(state, dep, 'blocked');
         planState.error = `Blocked by failed dependency: ${failedPlanId}`;
-        eventQueue.push({
+        events.push({
           type: 'build:failed',
           planId: dep,
           error: `Blocked by failed dependency: ${failedPlanId}`,
@@ -97,6 +99,8 @@ export function propagateFailure(
       queue.push(dep);
     }
   }
+
+  return events;
 }
 
 /**
@@ -205,77 +209,62 @@ export class Orchestrator {
         if (activePlans.length > 0) {
           yield { type: 'wave:start', wave: waveIdx + 1, planIds: activePlans };
 
-          // Run plans concurrently via semaphore + event queue
-          const semaphore = new Semaphore(parallelism);
-          const eventQueue = new AsyncEventQueue<EforgeEvent>();
-
-          const planPromises = activePlans.map(async (planId) => {
-            eventQueue.addProducer();
-            let acquired = false;
-            try {
-              await semaphore.acquire();
-              acquired = true;
-
+          // Build parallel tasks — each wraps worktree lifecycle, plan runner,
+          // state updates, and failure propagation into a self-contained generator.
+          const tasks: ParallelTask<EforgeEvent>[] = activePlans.map((planId) => ({
+            id: planId,
+            async *run() {
               const plan = planMap.get(planId)!;
-
-              // Create worktree
-              const worktreePath = await createWorktree(
-                repoRoot,
-                worktreeBase,
-                plan.branch,
-                config.baseBranch,
-              );
-
-              state.plans[planId].worktreePath = worktreePath;
-              updatePlanStatus(state, planId, 'running');
-              saveState(stateDir, state);
+              let worktreePath: string | undefined;
 
               try {
+                // Create worktree
+                worktreePath = await createWorktree(
+                  repoRoot,
+                  worktreeBase,
+                  plan.branch,
+                  config.baseBranch,
+                );
+
+                state.plans[planId].worktreePath = worktreePath;
+                updatePlanStatus(state, planId, 'running');
+                saveState(stateDir, state);
+
                 // Delegate to injected plan runner
                 for await (const event of planRunner(planId, worktreePath, plan)) {
-                  eventQueue.push(event);
+                  yield event;
                 }
 
                 updatePlanStatus(state, planId, 'completed');
                 saveState(stateDir, state);
               } catch (err) {
-                updatePlanStatus(state, planId, 'failed');
-                state.plans[planId].error = (err as Error).message;
-                saveState(stateDir, state);
+                // Handle all failures (worktree creation, plan runner, etc.)
+                if (state.plans[planId].status !== 'failed') {
+                  updatePlanStatus(state, planId, 'failed');
+                  state.plans[planId].error = (err as Error).message;
+                  saveState(stateDir, state);
+                }
 
                 // Propagate failure to transitive dependents
-                propagateFailure(state, planId, config.plans, eventQueue);
+                const failureEvents = propagateFailure(state, planId, config.plans);
                 saveState(stateDir, state);
+                for (const e of failureEvents) yield e;
               } finally {
-                try {
-                  await removeWorktree(repoRoot, worktreePath);
-                } catch {
-                  // Best-effort worktree cleanup
+                if (worktreePath) {
+                  try {
+                    await removeWorktree(repoRoot, worktreePath);
+                  } catch {
+                    // Best-effort worktree cleanup
+                  }
                 }
               }
-            } catch (err) {
-              // Handle errors outside the plan runner (e.g., worktree creation failure)
-              if (state.plans[planId].status !== 'failed') {
-                updatePlanStatus(state, planId, 'failed');
-                state.plans[planId].error = (err as Error).message;
-                saveState(stateDir, state);
+            },
+          }));
 
-                propagateFailure(state, planId, config.plans, eventQueue);
-                saveState(stateDir, state);
-              }
-            } finally {
-              if (acquired) semaphore.release();
-              eventQueue.removeProducer();
-            }
-          });
-
-          // Consume multiplexed events from all concurrent plans
-          for await (const event of eventQueue) {
+          // Run plans concurrently via runParallel
+          for await (const event of runParallel(tasks, { parallelism })) {
             yield event;
           }
-
-          // All producers finished — promises should be settled
-          await Promise.allSettled(planPromises);
 
           yield { type: 'wave:complete', wave: waveIdx + 1 };
         }

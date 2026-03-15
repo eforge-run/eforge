@@ -4,6 +4,8 @@
  * EforgeEvents from concurrent producers into a single async iterable.
  */
 
+import { availableParallelism } from 'node:os';
+
 /**
  * Counting semaphore — Promise-based acquire/release.
  * Limits concurrent operations to the specified number of permits.
@@ -89,4 +91,62 @@ export class AsyncEventQueue<T> implements AsyncIterable<T> {
       },
     };
   }
+}
+
+/**
+ * A single unit of work for `runParallel`.
+ * Each task has a unique id and a `run()` generator that yields events.
+ */
+export interface ParallelTask<T> {
+  id: string;
+  run(): AsyncGenerator<T>;
+}
+
+export interface RunParallelOptions {
+  /** Maximum number of concurrent tasks. Defaults to `availableParallelism()`. */
+  parallelism?: number;
+}
+
+/**
+ * Run N tasks concurrently with semaphore-limited parallelism, multiplexing
+ * all yielded events through a single async generator. Individual task failures
+ * are caught and do not block other tasks — callers should emit domain-specific
+ * error events from within their `run()` generators.
+ */
+export async function* runParallel<T>(
+  tasks: ParallelTask<T>[],
+  options?: RunParallelOptions,
+): AsyncGenerator<T> {
+  if (tasks.length === 0) return;
+
+  const parallelism = options?.parallelism ?? availableParallelism();
+  const semaphore = new Semaphore(parallelism);
+  const eventQueue = new AsyncEventQueue<T>();
+
+  const taskPromises = tasks.map(async (task) => {
+    eventQueue.addProducer();
+    let acquired = false;
+    try {
+      await semaphore.acquire();
+      acquired = true;
+
+      for await (const event of task.run()) {
+        eventQueue.push(event);
+      }
+    } catch {
+      // Individual task failures are non-fatal — swallowed here.
+      // Callers wrap their run() generators to emit domain-specific error events.
+    } finally {
+      if (acquired) semaphore.release();
+      eventQueue.removeProducer();
+    }
+  });
+
+  // Consume multiplexed events from all concurrent tasks
+  for await (const event of eventQueue) {
+    yield event;
+  }
+
+  // All producers finished — promises should be settled
+  await Promise.allSettled(taskPromises);
 }

@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { propagateFailure, resumeState, shouldSkipMerge } from '../src/engine/orchestrator.js';
-import { AsyncEventQueue } from '../src/engine/concurrency.js';
-import type { EforgeState, EforgeEvent, OrchestrationConfig, PlanState } from '../src/engine/events.js';
+import type { EforgeState, OrchestrationConfig, PlanState } from '../src/engine/events.js';
 
 // --- Helpers ---
 
@@ -42,20 +41,10 @@ function makePlans(
   }));
 }
 
-async function drainEvents(queue: AsyncEventQueue<EforgeEvent>): Promise<EforgeEvent[]> {
-  queue.addProducer();
-  queue.removeProducer();
-  const events: EforgeEvent[] = [];
-  for await (const event of queue) {
-    events.push(event);
-  }
-  return events;
-}
-
 // --- Tests ---
 
 describe('propagateFailure', () => {
-  it('does nothing when failed plan has no dependents', async () => {
+  it('does nothing when failed plan has no dependents', () => {
     const state = makeState({
       a: { status: 'failed' },
       b: { status: 'pending' },
@@ -64,16 +53,14 @@ describe('propagateFailure', () => {
       { id: 'a' },
       { id: 'b' },
     ]);
-    const queue = new AsyncEventQueue<EforgeEvent>();
 
-    propagateFailure(state, 'a', plans, queue);
+    const events = propagateFailure(state, 'a', plans);
 
     expect(state.plans['b'].status).toBe('pending');
-    const events = await drainEvents(queue);
     expect(events).toHaveLength(0);
   });
 
-  it('blocks a single direct dependent', async () => {
+  it('blocks a single direct dependent', () => {
     const state = makeState({
       a: { status: 'failed' },
       b: { status: 'pending', dependsOn: ['a'] },
@@ -82,18 +69,16 @@ describe('propagateFailure', () => {
       { id: 'a' },
       { id: 'b', dependsOn: ['a'] },
     ]);
-    const queue = new AsyncEventQueue<EforgeEvent>();
 
-    propagateFailure(state, 'a', plans, queue);
+    const events = propagateFailure(state, 'a', plans);
 
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['b'].error).toContain('a');
-    const events = await drainEvents(queue);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ type: 'build:failed', planId: 'b' });
   });
 
-  it('blocks transitive chain A→B→C', async () => {
+  it('blocks transitive chain A→B→C', () => {
     const state = makeState({
       a: { status: 'failed' },
       b: { status: 'pending', dependsOn: ['a'] },
@@ -104,17 +89,15 @@ describe('propagateFailure', () => {
       { id: 'b', dependsOn: ['a'] },
       { id: 'c', dependsOn: ['b'] },
     ]);
-    const queue = new AsyncEventQueue<EforgeEvent>();
 
-    propagateFailure(state, 'a', plans, queue);
+    const events = propagateFailure(state, 'a', plans);
 
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['c'].status).toBe('blocked');
-    const events = await drainEvents(queue);
     expect(events).toHaveLength(2);
   });
 
-  it('blocks diamond A→{B,C}→D (D reached once)', async () => {
+  it('blocks diamond A→{B,C}→D (D reached once)', () => {
     const state = makeState({
       a: { status: 'failed' },
       b: { status: 'pending', dependsOn: ['a'] },
@@ -127,19 +110,17 @@ describe('propagateFailure', () => {
       { id: 'c', dependsOn: ['a'] },
       { id: 'd', dependsOn: ['b', 'c'] },
     ]);
-    const queue = new AsyncEventQueue<EforgeEvent>();
 
-    propagateFailure(state, 'a', plans, queue);
+    const events = propagateFailure(state, 'a', plans);
 
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['c'].status).toBe('blocked');
     expect(state.plans['d'].status).toBe('blocked');
-    const events = await drainEvents(queue);
     // 3 events: b, c, d (d only once due to visited set)
     expect(events).toHaveLength(3);
   });
 
-  it('skips completed dependents', async () => {
+  it('skips completed dependents', () => {
     const state = makeState({
       a: { status: 'failed' },
       b: { status: 'completed', dependsOn: ['a'] },
@@ -148,16 +129,14 @@ describe('propagateFailure', () => {
       { id: 'a' },
       { id: 'b', dependsOn: ['a'] },
     ]);
-    const queue = new AsyncEventQueue<EforgeEvent>();
 
-    propagateFailure(state, 'a', plans, queue);
+    const events = propagateFailure(state, 'a', plans);
 
     expect(state.plans['b'].status).toBe('completed');
-    const events = await drainEvents(queue);
     expect(events).toHaveLength(0);
   });
 
-  it('skips merged dependents', async () => {
+  it('skips merged dependents', () => {
     const state = makeState({
       a: { status: 'failed' },
       b: { status: 'merged', dependsOn: ['a'], merged: true },
@@ -166,16 +145,14 @@ describe('propagateFailure', () => {
       { id: 'a' },
       { id: 'b', dependsOn: ['a'] },
     ]);
-    const queue = new AsyncEventQueue<EforgeEvent>();
 
-    propagateFailure(state, 'a', plans, queue);
+    const events = propagateFailure(state, 'a', plans);
 
     expect(state.plans['b'].status).toBe('merged');
-    const events = await drainEvents(queue);
     expect(events).toHaveLength(0);
   });
 
-  it('blocks multiple direct dependents and their transitive deps', async () => {
+  it('blocks multiple direct dependents and their transitive deps', () => {
     const state = makeState({
       a: { status: 'failed' },
       b: { status: 'pending', dependsOn: ['a'] },
@@ -188,14 +165,12 @@ describe('propagateFailure', () => {
       { id: 'c', dependsOn: ['a'] },
       { id: 'd', dependsOn: ['b'] },
     ]);
-    const queue = new AsyncEventQueue<EforgeEvent>();
 
-    propagateFailure(state, 'a', plans, queue);
+    const events = propagateFailure(state, 'a', plans);
 
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['c'].status).toBe('blocked');
     expect(state.plans['d'].status).toBe('blocked');
-    const events = await drainEvents(queue);
     expect(events).toHaveLength(3);
   });
 });
