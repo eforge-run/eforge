@@ -1,0 +1,11 @@
+{
+  "name": "eforge",
+  "owner": { "name": "Mark Schaake" },
+  "plugins": [
+    {
+      "name": "eforge",
+      "source": "./eforge-plugin",
+      "description": "Conversational planning, CLI delegation, and roadmap management for eforge"
+    }
+  ]
+}
