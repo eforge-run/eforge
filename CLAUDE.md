@@ -176,6 +176,7 @@ eforge loads config from two levels, merged together:
 
 - Use Mermaid diagrams instead of ASCII art in documentation
 - SDK imports (`@anthropic-ai/claude-agent-sdk`) are restricted to `src/engine/backends/` — agent runners use the `AgentBackend` interface
+- **Always bump the plugin version** in `eforge-plugin/.claude-plugin/plugin.json` when making any changes to the plugin (skills, plugin.json, etc.)
 
 ## Tech decisions
 
