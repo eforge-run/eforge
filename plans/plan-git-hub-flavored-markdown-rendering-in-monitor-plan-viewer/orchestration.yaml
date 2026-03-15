@@ -1,0 +1,13 @@
+name: plan-git-hub-flavored-markdown-rendering-in-monitor-plan-viewer
+description: "Plan: GitHub-flavored markdown rendering in monitor plan viewer"
+created: 2026-03-15
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-plan-git-hub-flavored-markdown-rendering-in-monitor-plan-viewer
+    name: "Plan: GitHub-flavored markdown rendering in monitor plan viewer"
+    depends_on: []
+    branch: plan-git-hub-flavored-markdown-rendering-in-monitor-plan-viewer/main
