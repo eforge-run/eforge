@@ -2,6 +2,7 @@
   "name": "eforge",
   "version": "0.1.0",
   "description": "Autonomous plan-build-review CLI for code generation",
+  "license": "Apache-2.0",
   "type": "module",
   "bin": {
     "eforge": "./dist/cli.js"
