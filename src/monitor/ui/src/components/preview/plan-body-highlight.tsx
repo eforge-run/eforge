@@ -1,6 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Highlighter } from 'shiki';
+import { Marked, Renderer } from 'marked';
 import { splitPlanContent } from '@/lib/plan-content';
+
+const CODE_LANGS = [
+  'yaml',
+  'markdown',
+  'typescript',
+  'javascript',
+  'tsx',
+  'jsx',
+  'json',
+  'bash',
+  'sql',
+  'css',
+  'html',
+  'go',
+  'python',
+];
 
 interface PlanBodyHighlightProps {
   content: string;
@@ -18,8 +35,7 @@ export function PlanBodyHighlight({ content }: PlanBodyHighlightProps) {
 
     async function initHighlighter() {
       if (highlighterRef.current) {
-        // Already initialized — just highlight
-        highlight(highlighterRef.current);
+        render(highlighterRef.current);
         return;
       }
 
@@ -27,12 +43,12 @@ export function PlanBodyHighlight({ content }: PlanBodyHighlightProps) {
         const { createHighlighter } = await import('shiki');
         const highlighter = await createHighlighter({
           themes: ['github-dark'],
-          langs: ['yaml', 'markdown'],
+          langs: CODE_LANGS,
         });
 
         if (cancelled) return;
         highlighterRef.current = highlighter;
-        highlight(highlighter);
+        render(highlighter);
       } catch (err) {
         console.error('Failed to initialize shiki:', err);
         if (!cancelled) {
@@ -41,7 +57,7 @@ export function PlanBodyHighlight({ content }: PlanBodyHighlightProps) {
       }
     }
 
-    function highlight(highlighter: Highlighter) {
+    function render(highlighter: Highlighter) {
       let html = '';
 
       if (frontmatter) {
@@ -52,10 +68,26 @@ export function PlanBodyHighlight({ content }: PlanBodyHighlightProps) {
       }
 
       if (body) {
-        html += highlighter.codeToHtml(body, {
-          lang: 'markdown',
-          theme: 'github-dark',
-        });
+        const loadedLangs = highlighter.getLoadedLanguages();
+
+        const renderer = new Renderer();
+        renderer.code = function ({ text, lang }: { text: string; lang?: string }) {
+          const language = lang?.trim().toLowerCase() ?? '';
+          if (language && loadedLangs.includes(language)) {
+            return highlighter.codeToHtml(text, {
+              lang: language,
+              theme: 'github-dark',
+            });
+          }
+          const escaped = text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+          return `<pre><code>${escaped}</code></pre>`;
+        };
+
+        const marked = new Marked({ gfm: true, renderer });
+        html += `<div class="plan-prose">${marked.parse(body, { async: false })}</div>`;
       }
 
       if (!cancelled) {

@@ -81,6 +81,134 @@
   to { stroke-dashoffset: -12; }
 }
 
+/* Prose styles for rendered markdown in plan viewer */
+.plan-prose {
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--color-foreground);
+}
+
+.plan-prose h1,
+.plan-prose h2,
+.plan-prose h3,
+.plan-prose h4 {
+  color: var(--color-text-bright);
+  font-weight: 600;
+  margin-top: 1.5em;
+  margin-bottom: 0.5em;
+  line-height: 1.3;
+}
+
+.plan-prose h1 { font-size: 1.5em; }
+.plan-prose h2 { font-size: 1.25em; }
+.plan-prose h3 { font-size: 1.1em; }
+.plan-prose h4 { font-size: 1em; }
+
+.plan-prose h1:first-child,
+.plan-prose h2:first-child,
+.plan-prose h3:first-child,
+.plan-prose h4:first-child {
+  margin-top: 0;
+}
+
+.plan-prose p {
+  margin-bottom: 0.75em;
+}
+
+.plan-prose code {
+  background: color-mix(in srgb, var(--color-primary) 15%, transparent);
+  color: var(--color-primary);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+
+.plan-prose pre code {
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  border-radius: 0;
+  font-size: inherit;
+}
+
+.plan-prose pre {
+  background: var(--color-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin-bottom: 0.75em;
+}
+
+.plan-prose ul,
+.plan-prose ol {
+  padding-left: 1.5em;
+  margin-bottom: 0.75em;
+}
+
+.plan-prose ul { list-style-type: disc; }
+.plan-prose ol { list-style-type: decimal; }
+
+.plan-prose li {
+  margin-bottom: 0.25em;
+}
+
+.plan-prose li > ul,
+.plan-prose li > ol {
+  margin-top: 0.25em;
+  margin-bottom: 0;
+}
+
+.plan-prose blockquote {
+  border-left: 3px solid var(--color-border);
+  padding-left: 1em;
+  color: var(--color-text-dim);
+  margin-bottom: 0.75em;
+}
+
+.plan-prose a {
+  color: var(--color-primary);
+  text-decoration: none;
+}
+
+.plan-prose a:hover {
+  text-decoration: underline;
+}
+
+.plan-prose hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1.5em 0;
+}
+
+.plan-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.75em;
+}
+
+.plan-prose th,
+.plan-prose td {
+  border: 1px solid var(--color-border);
+  padding: 0.4em 0.75em;
+  text-align: left;
+}
+
+.plan-prose th {
+  background: var(--color-secondary);
+  color: var(--color-text-bright);
+  font-weight: 600;
+}
+
+.plan-prose tr:nth-child(even) {
+  background: color-mix(in srgb, var(--color-secondary) 50%, transparent);
+}
+
+.plan-prose strong {
+  color: var(--color-text-bright);
+  font-weight: 600;
+}
+
 @layer base {
   /* ReactFlow overrides for dark theme */
   .react-flow__controls button {
