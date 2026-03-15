@@ -8,10 +8,12 @@ interface AppLayoutProps {
 
 export function AppLayout({ header, sidebar, children }: AppLayoutProps) {
   return (
-    <div className="grid grid-cols-[260px_1fr] grid-rows-[auto_1fr] h-screen">
+    <div className="grid grid-cols-[280px_1fr] grid-rows-[auto_1fr] h-screen bg-background gap-x-0">
       {header}
       {sidebar}
-      {children}
+      <div className="overflow-hidden flex flex-col">
+        {children}
+      </div>
     </div>
   );
 }

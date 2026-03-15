@@ -12,6 +12,7 @@
     "build:ui": "pnpm --filter monitor-ui build",
     "dev": "tsx src/cli.ts",
     "dev:trace": "node --env-file=.env node_modules/.bin/tsx src/cli.ts",
+    "dev:mock": "tsx src/monitor/mock-server.ts",
     "dev:monitor": "pnpm --filter monitor-ui dev",
     "test": "vitest run",
     "test:watch": "vitest",
@@ -24,7 +25,6 @@
     "claude"
   ],
   "author": "Schaake Solutions LLC",
-  "license": "UNLICENSED",
   "packageManager": "pnpm@10.26.0",
   "pnpm": {
     "onlyBuiltDependencies": ["better-sqlite3", "esbuild"]

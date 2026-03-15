@@ -19,6 +19,7 @@ export interface RunState {
   tokensOut: number;
   totalCost: number;
   isComplete: boolean;
+  resultStatus: 'completed' | 'failed' | null;
   fileChanges: Map<string, string[]>;
 }
 
@@ -31,83 +32,123 @@ export const initialRunState: RunState = {
   tokensOut: 0,
   totalCost: 0,
   isComplete: false,
+  resultStatus: null,
   fileChanges: new Map(),
 };
 
 export type RunAction =
   | { type: 'ADD_EVENT'; event: EforgeEvent; eventId: string }
+  | { type: 'BATCH_LOAD'; events: Array<{ event: EforgeEvent; eventId: string }> }
   | { type: 'RESET' };
+
+/** Process a single event into mutable state accumulators */
+function processEvent(
+  event: EforgeEvent,
+  state: {
+    startTime: number | null;
+    isComplete: boolean;
+    resultStatus: 'completed' | 'failed' | null;
+    tokensIn: number;
+    tokensOut: number;
+    totalCost: number;
+    planStatuses: Record<string, PipelineStage>;
+    waves: WaveInfo[];
+    fileChanges: Map<string, string[]>;
+  },
+): void {
+  if (event.type === 'eforge:start' && 'timestamp' in event) {
+    state.startTime = new Date(event.timestamp).getTime();
+  }
+
+  if (event.type === 'eforge:end') {
+    state.isComplete = true;
+    if ('result' in event && event.result) {
+      state.resultStatus = (event.result as { status: 'completed' | 'failed' }).status;
+    }
+  }
+
+  if (event.type === 'agent:result' && event.result) {
+    state.tokensIn += event.result.usage?.input || 0;
+    state.tokensOut += event.result.usage?.output || 0;
+    state.totalCost += event.result.totalCostUsd || 0;
+  }
+
+  const planId = 'planId' in event ? (event as { planId?: string }).planId : undefined;
+  if (planId) {
+    switch (event.type) {
+      case 'build:start':
+      case 'build:implement:start':
+        state.planStatuses[planId] = 'implement';
+        break;
+      case 'build:implement:complete':
+      case 'build:review:start':
+        state.planStatuses[planId] = 'review';
+        break;
+      case 'build:review:complete':
+      case 'build:evaluate:start':
+        state.planStatuses[planId] = 'evaluate';
+        break;
+      case 'build:complete':
+        state.planStatuses[planId] = 'complete';
+        break;
+      case 'build:failed':
+        state.planStatuses[planId] = 'failed';
+        break;
+    }
+  }
+
+  if (event.type === 'build:files_changed' && 'files' in event) {
+    state.fileChanges.set(event.planId, event.files);
+  }
+
+  if (event.type === 'wave:start' && 'wave' in event && 'planIds' in event) {
+    const existing = state.waves.find((w) => w.wave === event.wave);
+    if (!existing) {
+      state.waves.push({ wave: event.wave, planIds: event.planIds });
+    }
+  }
+}
 
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
       return { ...initialRunState, fileChanges: new Map(), waves: [] };
 
-    case 'ADD_EVENT': {
-      const { event, eventId } = action;
-      const newState = {
-        ...state,
-        events: [...state.events, { event, eventId }],
+    case 'BATCH_LOAD': {
+      const acc = {
+        startTime: null as number | null,
+        isComplete: false,
+        resultStatus: null as 'completed' | 'failed' | null,
+        tokensIn: 0,
+        tokensOut: 0,
+        totalCost: 0,
+        planStatuses: {} as Record<string, PipelineStage>,
+        waves: [] as WaveInfo[],
+        fileChanges: new Map<string, string[]>(),
       };
 
-      // Track start time
-      if (event.type === 'eforge:start' && 'timestamp' in event) {
-        newState.startTime = new Date(event.timestamp).getTime();
+      for (const { event } of action.events) {
+        processEvent(event, acc);
       }
 
-      // Track completion
-      if (event.type === 'eforge:end') {
-        newState.isComplete = true;
-      }
+      return {
+        events: action.events,
+        ...acc,
+      };
+    }
 
-      // Accumulate tokens and cost
-      if (event.type === 'agent:result' && event.result) {
-        newState.tokensIn = state.tokensIn + (event.result.usage?.input || 0);
-        newState.tokensOut = state.tokensOut + (event.result.usage?.output || 0);
-        newState.totalCost = state.totalCost + (event.result.totalCostUsd || 0);
-      }
+    case 'ADD_EVENT': {
+      const { event, eventId } = action;
+      const newState: RunState = {
+        ...state,
+        events: [...state.events, { event, eventId }],
+        resultStatus: state.resultStatus,
+        planStatuses: { ...state.planStatuses },
+        waves: [...state.waves],
+        fileChanges: new Map(state.fileChanges),
+      };
 
-      // Track plan statuses
-      const planId = 'planId' in event ? (event as { planId?: string }).planId : undefined;
-      if (planId) {
-        const planStatuses = { ...state.planStatuses };
-        switch (event.type) {
-          case 'build:start':
-          case 'build:implement:start':
-            planStatuses[planId] = 'implement';
-            break;
-          case 'build:implement:complete':
-          case 'build:review:start':
-            planStatuses[planId] = 'review';
-            break;
-          case 'build:review:complete':
-          case 'build:evaluate:start':
-            planStatuses[planId] = 'evaluate';
-            break;
-          case 'build:complete':
-            planStatuses[planId] = 'complete';
-            break;
-          case 'build:failed':
-            planStatuses[planId] = 'failed';
-            break;
-        }
-        newState.planStatuses = planStatuses;
-      }
-
-      // Track file changes per plan
-      if (event.type === 'build:files_changed' && 'files' in event) {
-        const fileChanges = new Map(state.fileChanges);
-        fileChanges.set(event.planId, event.files);
-        newState.fileChanges = fileChanges;
-      }
-
-      // Track wave assignments
-      if (event.type === 'wave:start' && 'wave' in event && 'planIds' in event) {
-        const existing = state.waves.find((w) => w.wave === event.wave);
-        if (!existing) {
-          newState.waves = [...state.waves, { wave: event.wave, planIds: event.planIds }];
-        }
-      }
+      processEvent(event, newState);
 
       return newState;
     }
@@ -119,7 +160,6 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
 
 export function getSummaryStats(state: RunState): {
   duration: string;
-  eventCount: number;
   tokensIn: number;
   tokensOut: number;
   totalCost: number;
@@ -134,7 +174,6 @@ export function getSummaryStats(state: RunState): {
   const statuses = Object.values(state.planStatuses);
   return {
     duration,
-    eventCount: state.events.length,
     tokensIn: state.tokensIn,
     tokensOut: state.tokensOut,
     totalCost: state.totalCost,

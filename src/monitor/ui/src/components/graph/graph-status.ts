@@ -60,9 +60,9 @@ const STATUS_STYLES: Record<GraphNodeStatus, StatusStyle> = {
     animated: false,
   },
   merged: {
-    color: 'var(--color-purple)',
-    bgColor: 'rgba(188, 140, 255, 0.15)',
-    icon: '⑂',
+    color: 'var(--color-green)',
+    bgColor: 'rgba(63, 185, 80, 0.12)',
+    icon: '✓',
     animated: false,
   },
 };

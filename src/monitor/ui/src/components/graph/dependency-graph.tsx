@@ -13,12 +13,14 @@ import type { OrchestrationConfig, PipelineStage } from '@/lib/types';
 import { useGraphLayout } from './use-graph-layout';
 import { DagNode } from './dag-node';
 import { DagEdge } from './dag-edge';
+import { WaveGroupNode } from './wave-group-node';
 import { resolveNodeStatus, type GraphNodeStatus } from './graph-status';
 
 const EMPTY_SET = new Set<string>();
 
 const nodeTypes: NodeTypes = {
   dagNode: DagNode,
+  waveGroup: WaveGroupNode,
 };
 
 const edgeTypes: EdgeTypes = {
@@ -90,7 +92,7 @@ export function DependencyGraph({
   const nodes: Node[] = useMemo(() => {
     return layoutNodes.map((node) => {
       // Skip wave group nodes — pass through unchanged
-      if (node.type === 'group') return node;
+      if (node.type === 'waveGroup') return node;
 
       const status: GraphNodeStatus = resolveNodeStatus(
         node.id,
@@ -143,7 +145,7 @@ export function DependencyGraph({
   const onNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node) => {
       // Ignore clicks on wave group nodes
-      if (node.type === 'group') return;
+      if (node.type === 'waveGroup') return;
 
       // Toggle selection: clicking same node clears, clicking different node selects
       setSelectedNodeId((prev) => (prev === node.id ? null : node.id));
@@ -181,7 +183,7 @@ export function DependencyGraph({
         onNodeClick={onNodeClick}
         onPaneClick={onPaneClick}
         fitView
-        fitViewOptions={{ padding: 0.2 }}
+        fitViewOptions={{ padding: 0.4, maxZoom: 0.9 }}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={false}
         nodesConnectable={false}

@@ -37,21 +37,23 @@
   --color-bg-tertiary: #21262d;
 }
 
-* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-  border-color: var(--color-border);
-}
+@layer base {
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    border-color: var(--color-border);
+  }
 
-body {
-  font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
-  background: var(--color-background);
-  color: var(--color-foreground);
-  font-size: 13px;
-  line-height: 1.5;
-  height: 100vh;
-  overflow: hidden;
+  body {
+    font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', 'JetBrains Mono', monospace;
+    background: var(--color-background);
+    color: var(--color-foreground);
+    font-size: 13px;
+    line-height: 1.5;
+    height: 100vh;
+    overflow: hidden;
+  }
 }
 
 @keyframes pulse-opacity {
@@ -63,16 +65,18 @@ body {
   to { stroke-dashoffset: -12; }
 }
 
-/* ReactFlow overrides for dark theme */
-.react-flow__controls button {
-  background: var(--color-card) !important;
-  border-color: var(--color-border) !important;
-  color: var(--color-foreground) !important;
-  fill: var(--color-foreground) !important;
-}
-.react-flow__controls button:hover {
-  background: var(--color-bg-tertiary) !important;
-}
-.react-flow__controls button svg {
-  fill: var(--color-foreground) !important;
+@layer base {
+  /* ReactFlow overrides for dark theme */
+  .react-flow__controls button {
+    background: var(--color-card) !important;
+    border-color: var(--color-border) !important;
+    color: var(--color-foreground) !important;
+    fill: var(--color-foreground) !important;
+  }
+  .react-flow__controls button:hover {
+    background: var(--color-bg-tertiary) !important;
+  }
+  .react-flow__controls button svg {
+    fill: var(--color-foreground) !important;
+  }
 }

@@ -222,10 +222,11 @@ export async function startServer(
 
     try {
       const data = JSON.parse(events[0].data);
-      const plans = (data.plans || []).map((p: { id: string; name: string; body: string }) => ({
+      const plans = (data.plans || []).map((p: { id: string; name: string; body: string; dependsOn?: string[] }) => ({
         id: p.id,
         name: p.name,
         body: p.body,
+        dependsOn: p.dependsOn || [],
       }));
 
       res.writeHead(200, {
@@ -267,6 +268,20 @@ export async function startServer(
         return;
       }
       serveOrchestration(req, res, runId);
+    } else if (url.startsWith('/api/run-state/')) {
+      const runId = url.slice('/api/run-state/'.length);
+      if (!runId || !/^[\w-]+$/.test(runId)) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Invalid runId');
+        return;
+      }
+      const run = db.getRun(runId);
+      const events = db.getEvents(runId);
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.end(JSON.stringify({ run: run ?? null, events }));
     } else if (url.startsWith('/api/plans/')) {
       const runId = url.slice('/api/plans/'.length);
       if (!runId || !/^[\w-]+$/.test(runId)) {

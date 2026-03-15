@@ -13,22 +13,21 @@ export function PipelineRow({ planId, currentStage }: PipelineRowProps) {
   const { openPreview } = usePlanPreview();
 
   return (
-    <div className="flex items-center gap-1.5 text-[11px]">
+    <div className="flex items-center gap-2 text-xs">
       <span
-        className="w-[120px] text-text-dim overflow-hidden text-ellipsis whitespace-nowrap cursor-pointer hover:text-foreground hover:underline"
+        className="w-[140px] text-text-dim overflow-hidden text-ellipsis whitespace-nowrap cursor-pointer hover:text-foreground hover:underline font-mono text-[11px]"
         title={planId}
         onClick={() => openPreview(planId)}
       >
         {planId}
       </span>
-      <div className="flex gap-0.5 flex-1">
+      <div className="flex gap-1 flex-1">
         {STAGES.map((stage) => {
           const stageIndex = STAGES.indexOf(stage);
           const currentIndex = STAGES.indexOf(currentStage);
           let cls = '';
 
           if (currentStage === 'failed') {
-            // Plan failed — tint all stage cells red since we don't track which stage failed
             cls = 'bg-red/15 text-red';
           } else if (stage === currentStage) {
             cls = currentStage === 'complete' ? 'bg-green/15 text-green' : 'bg-blue/20 text-blue';

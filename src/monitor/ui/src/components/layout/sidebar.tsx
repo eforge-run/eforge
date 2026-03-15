@@ -1,4 +1,5 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { RunInfo } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
 import { RunItem } from './run-item';
@@ -43,6 +44,27 @@ function groupByPlanSet(runs: RunInfo[]): PlanSetGroup[] {
   return sorted.map(([planSet, runs]) => ({ planSet, runs }));
 }
 
+function GroupHeader({ planSet, count, isExpanded, onToggle }: {
+  planSet: string;
+  count: number;
+  isExpanded: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      className="w-full text-left flex items-center gap-1 px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-text-dim/70 hover:text-text-dim cursor-pointer bg-transparent border-none"
+      onClick={onToggle}
+    >
+      {isExpanded
+        ? <ChevronDown className="w-3 h-3 flex-shrink-0" />
+        : <ChevronRight className="w-3 h-3 flex-shrink-0" />
+      }
+      <span className="truncate">{planSet}</span>
+      <span className="text-text-dim/50 ml-auto">{count}</span>
+    </button>
+  );
+}
+
 export function Sidebar({ currentRunId, onSelectRun, refreshTrigger }: SidebarProps) {
   const { data: runs, refetch } = useApi<RunInfo[]>('/api/runs');
 
@@ -55,25 +77,61 @@ export function Sidebar({ currentRunId, onSelectRun, refreshTrigger }: SidebarPr
 
   const groups = useMemo(() => groupByPlanSet(runs ?? []), [runs]);
 
+  // Track which groups are expanded — default: first group expanded
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (groups.length > 0 && expandedGroups.size === 0) {
+      setExpandedGroups(new Set([groups[0].planSet]));
+    }
+  }, [groups]);
+
+  // Also expand the group containing the current run
+  useEffect(() => {
+    if (currentRunId && groups.length > 0) {
+      const group = groups.find((g) => g.runs.some((r) => r.id === currentRunId));
+      if (group && !expandedGroups.has(group.planSet)) {
+        setExpandedGroups((prev) => new Set([...prev, group.planSet]));
+      }
+    }
+  }, [currentRunId, groups]);
+
+  const toggleGroup = (planSet: string) => {
+    setExpandedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(planSet)) {
+        next.delete(planSet);
+      } else {
+        next.add(planSet);
+      }
+      return next;
+    });
+  };
+
   return (
-    <aside className="bg-card border-r border-border overflow-y-auto p-2">
-      <h2 className="text-[11px] uppercase tracking-wide text-text-dim px-2 py-2 pb-1">
+    <aside className="bg-card border-r border-border overflow-y-auto px-3 py-3">
+      <h2 className="text-[11px] uppercase tracking-wider text-text-dim px-2 py-1.5 mb-1">
         Runs
       </h2>
       {groups.map((group) => (
-        <div key={group.planSet} className="mb-3">
-          <div className="text-[10px] font-semibold uppercase tracking-wider text-text-dim/70 px-2.5 py-1 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan/50" />
-            {group.planSet}
-          </div>
-          {group.runs.map((run) => (
-            <RunItem
-              key={run.id}
-              run={run}
-              isActive={run.id === currentRunId}
-              onSelect={onSelectRun}
-            />
-          ))}
+        <div key={group.planSet} className="mb-1">
+          <GroupHeader
+            planSet={group.planSet}
+            count={group.runs.length}
+            isExpanded={expandedGroups.has(group.planSet)}
+            onToggle={() => toggleGroup(group.planSet)}
+          />
+          {expandedGroups.has(group.planSet) && (
+            <div className="ml-1">
+              {group.runs.map((run) => (
+                <RunItem
+                  key={run.id}
+                  run={run}
+                  isActive={run.id === currentRunId}
+                  onSelect={onSelectRun}
+                />
+              ))}
+            </div>
+          )}
         </div>
       ))}
     </aside>

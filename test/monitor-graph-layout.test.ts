@@ -19,7 +19,7 @@ describe('computeGraphLayout', () => {
     const plans = [makePlan('p1', 'Plan One')];
     const { nodes, edges } = computeGraphLayout(plans);
 
-    const waveNodes = nodes.filter((n) => n.type === 'group');
+    const waveNodes = nodes.filter((n) => n.type === 'waveGroup');
     const planNodes = nodes.filter((n) => n.type === 'dagNode');
 
     expect(waveNodes).toHaveLength(1);
@@ -38,7 +38,7 @@ describe('computeGraphLayout', () => {
     ];
     const { nodes, edges } = computeGraphLayout(plans);
 
-    const waveNodes = nodes.filter((n) => n.type === 'group');
+    const waveNodes = nodes.filter((n) => n.type === 'waveGroup');
     const planNodes = nodes.filter((n) => n.type === 'dagNode');
 
     expect(waveNodes).toHaveLength(1);
@@ -59,7 +59,7 @@ describe('computeGraphLayout', () => {
     ];
     const { nodes, edges } = computeGraphLayout(plans);
 
-    const waveNodes = nodes.filter((n) => n.type === 'group');
+    const waveNodes = nodes.filter((n) => n.type === 'waveGroup');
     const planNodes = nodes.filter((n) => n.type === 'dagNode');
 
     expect(waveNodes).toHaveLength(3);
@@ -88,7 +88,7 @@ describe('computeGraphLayout', () => {
     ];
     const { nodes, edges } = computeGraphLayout(plans);
 
-    const waveNodes = nodes.filter((n) => n.type === 'group');
+    const waveNodes = nodes.filter((n) => n.type === 'waveGroup');
     const planNodes = nodes.filter((n) => n.type === 'dagNode');
 
     expect(waveNodes).toHaveLength(3);

@@ -23,16 +23,6 @@ export interface PlanStatus {
   stage: PipelineStage;
 }
 
-export interface SummaryStats {
-  duration: string;
-  eventCount: number;
-  tokensIn: number;
-  tokensOut: number;
-  totalCost: number;
-  plansCompleted: number;
-  plansFailed: number;
-  plansTotal: number;
-}
 
 export interface RunInfo {
   id: string;

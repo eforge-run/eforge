@@ -7,9 +7,9 @@ interface HeaderProps {
 
 export function Header({ connectionStatus }: HeaderProps) {
   return (
-    <header className="col-span-full bg-card border-b border-border px-5 py-3 flex items-center gap-3 shadow-sm shadow-black/20">
-      <h1 className="text-sm font-bold text-text-bright tracking-tight">eforge monitor</h1>
-      <div className="ml-auto text-[11px] flex items-center gap-1.5">
+    <header className="col-span-full bg-card border-b border-border px-6 py-3.5 flex items-center gap-3 shadow-sm shadow-black/30">
+      <h1 className="text-base font-bold text-text-bright tracking-tight">eforge monitor</h1>
+      <div className="ml-auto text-xs flex items-center gap-2">
         <div
           className={cn(
             'w-2 h-2 rounded-full',

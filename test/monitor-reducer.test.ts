@@ -239,7 +239,6 @@ describe('getSummaryStats', () => {
   it('returns defaults for empty state', () => {
     const stats = getSummaryStats(initialRunState);
     expect(stats.duration).toBe('--');
-    expect(stats.eventCount).toBe(0);
     expect(stats.tokensIn).toBe(0);
     expect(stats.tokensOut).toBe(0);
     expect(stats.totalCost).toBe(0);

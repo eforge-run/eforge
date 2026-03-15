@@ -24,12 +24,12 @@ function DagNodeComponent({ data }: NodeProps) {
         opacity: isDimmed ? 0.25 : 1,
         transition: 'opacity 0.2s ease, background 0.3s ease, border-color 0.3s ease',
       }}
-      className="rounded-md border px-3 py-2 min-w-[180px] cursor-pointer"
+      className="rounded-lg border px-4 py-3 min-w-[180px] cursor-pointer"
     >
       <Handle
         type="target"
         position={Position.Top}
-        style={{ background: 'var(--color-border)', width: 8, height: 8, border: 'none' }}
+        style={{ background: 'var(--color-border)', width: 6, height: 6, border: 'none', opacity: 0.4 }}
       />
 
       <div className="flex items-center gap-2">
@@ -59,7 +59,7 @@ function DagNodeComponent({ data }: NodeProps) {
       <Handle
         type="source"
         position={Position.Bottom}
-        style={{ background: 'var(--color-border)', width: 8, height: 8, border: 'none' }}
+        style={{ background: 'var(--color-border)', width: 6, height: 6, border: 'none', opacity: 0.4 }}
       />
     </div>
   );

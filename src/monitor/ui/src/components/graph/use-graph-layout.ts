@@ -5,8 +5,8 @@ import type { OrchestrationConfig } from '@/lib/types';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 60;
-const WAVE_PADDING = 40;
-const WAVE_LABEL_HEIGHT = 28;
+const WAVE_PADDING = 30;
+const WAVE_LABEL_HEIGHT = 24;
 
 export interface GraphLayoutResult {
   nodes: Node[];
@@ -58,7 +58,7 @@ export function computeGraphLayout(
   g.setGraph({
     rankdir: 'TB',
     nodesep: 60,
-    ranksep: 100,
+    ranksep: 120,
     marginx: 20,
     marginy: 20,
   });
@@ -106,28 +106,39 @@ export function computeGraphLayout(
     waveBounds.set(wave, bounds);
   }
 
+  // Compute uniform width across all wave groups
+  let globalMinX = Infinity;
+  let globalMaxX = -Infinity;
+  for (const bounds of waveBounds.values()) {
+    globalMinX = Math.min(globalMinX, bounds.minX);
+    globalMaxX = Math.max(globalMaxX, bounds.maxX);
+  }
+  const uniformWidth = globalMaxX - globalMinX + WAVE_PADDING * 2;
+
   // Create wave group nodes (background)
   for (let w = 0; w <= maxWave; w++) {
     const bounds = waveBounds.get(w);
     if (!bounds) continue;
 
+    const waveHeight = bounds.maxY - bounds.minY + WAVE_PADDING * 2 + WAVE_LABEL_HEIGHT;
+
     rfNodes.push({
       id: `wave-${w}`,
-      type: 'group',
+      type: 'waveGroup',
       position: {
-        x: bounds.minX - WAVE_PADDING,
+        x: globalMinX - WAVE_PADDING,
         y: bounds.minY - WAVE_PADDING - WAVE_LABEL_HEIGHT,
       },
       data: { label: `Wave ${w + 1}` },
       style: {
-        width: bounds.maxX - bounds.minX + WAVE_PADDING * 2,
-        height: bounds.maxY - bounds.minY + WAVE_PADDING * 2 + WAVE_LABEL_HEIGHT,
-        backgroundColor: 'rgba(48, 54, 61, 0.3)',
-        borderRadius: '8px',
-        border: '1px solid var(--color-border)',
+        width: uniformWidth,
+        height: waveHeight,
+        backgroundColor: 'rgba(48, 54, 61, 0.25)',
+        borderRadius: '10px',
+        border: '1px solid rgba(48, 54, 61, 0.6)',
         padding: '0',
-        fontSize: '11px',
-        color: 'var(--color-text-dim)',
+        fontSize: '0',
+        color: 'transparent',
       },
     });
   }
@@ -139,7 +150,7 @@ export function computeGraphLayout(
 
     const wave = waveMap.get(plan.id) ?? 0;
     const waveBound = waveBounds.get(wave)!;
-    const groupX = waveBound.minX - WAVE_PADDING;
+    const groupX = globalMinX - WAVE_PADDING;
     const groupY = waveBound.minY - WAVE_PADDING - WAVE_LABEL_HEIGHT;
 
     rfNodes.push({
