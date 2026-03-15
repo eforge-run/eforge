@@ -32,4 +32,5 @@ export interface RunInfo {
   startedAt: string;
   completedAt?: string;
   cwd: string;
+  sessionId?: string;
 }

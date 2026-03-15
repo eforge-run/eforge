@@ -56,6 +56,22 @@
   }
 }
 
+@keyframes stage-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--stage-glow-color); }
+  50% { box-shadow: 0 0 8px 2px var(--stage-glow-color); }
+}
+
+@keyframes stage-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes stage-complete-pop {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
 @keyframes pulse-opacity {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.4; }

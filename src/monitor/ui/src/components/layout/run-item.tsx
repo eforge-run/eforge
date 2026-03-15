@@ -7,6 +7,7 @@ interface RunItemProps {
   run: RunInfo;
   isActive: boolean;
   onSelect: (runId: string) => void;
+  compact?: boolean;
 }
 
 function StatusIcon({ status }: { status: string }) {
@@ -22,7 +23,7 @@ function StatusIcon({ status }: { status: string }) {
   }
 }
 
-export function RunItem({ run, isActive, onSelect }: RunItemProps) {
+export function RunItem({ run, isActive, onSelect, compact }: RunItemProps) {
   const duration = formatRunDuration(run.startedAt, run.completedAt);
   const relative = formatRelativeTime(run.startedAt);
 
@@ -53,10 +54,17 @@ export function RunItem({ run, isActive, onSelect }: RunItemProps) {
             </span>
             <span className="text-[11px] text-text-dim">{relative}</span>
           </div>
-          <div className="flex items-center justify-between gap-2 mt-1">
-            <span className="text-[11px] text-text-dim truncate">{run.planSet}</span>
-            <span className="text-[11px] text-text-dim whitespace-nowrap">{duration}</span>
-          </div>
+          {!compact && (
+            <div className="flex items-center justify-between gap-2 mt-1">
+              <span className="text-[11px] text-text-dim truncate">{run.planSet}</span>
+              <span className="text-[11px] text-text-dim whitespace-nowrap">{duration}</span>
+            </div>
+          )}
+          {compact && (
+            <div className="flex items-center justify-end mt-1">
+              <span className="text-[11px] text-text-dim whitespace-nowrap">{duration}</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

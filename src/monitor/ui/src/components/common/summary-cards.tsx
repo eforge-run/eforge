@@ -1,6 +1,8 @@
+import { useCallback } from 'react';
 import { CheckCircle2, XCircle, Loader2, Clock, Zap, DollarSign, Layers } from 'lucide-react';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { AnimatedCounter } from './animated-counter';
 
 interface SummaryCardsProps {
   duration: string;
@@ -14,11 +16,12 @@ interface SummaryCardsProps {
   isFailed?: boolean;
 }
 
-function SummaryCard({ label, value, icon, accent }: {
+function SummaryCard({ label, value, icon, accent, children }: {
   label: string;
-  value: string;
+  value?: string;
   icon?: React.ReactNode;
   accent?: 'green' | 'red' | 'blue';
+  children?: React.ReactNode;
 }) {
   return (
     <div className={cn(
@@ -39,7 +42,7 @@ function SummaryCard({ label, value, icon, accent }: {
         accent === 'blue' && 'text-blue',
         !accent && 'text-text-bright',
       )}>
-        {value}
+        {children ?? value}
       </div>
     </div>
   );
@@ -63,6 +66,9 @@ export function SummaryCards({
       ? <CheckCircle2 className="w-3 h-3 text-green" />
       : <Loader2 className="w-3 h-3 text-blue animate-spin" />;
   const statusLabel = isFailed ? 'Failed' : isComplete ? 'Completed' : 'Running';
+
+  const formatTokens = useCallback((n: number) => formatNumber(n), []);
+  const formatCost = useCallback((n: number) => `$${(n / 10000).toFixed(4)}`, []);
 
   return (
     <div className="flex gap-3 flex-wrap">
@@ -88,16 +94,18 @@ export function SummaryCards({
       {tokensIn + tokensOut > 0 && (
         <SummaryCard
           label="Tokens"
-          value={formatNumber(tokensIn + tokensOut)}
           icon={<Zap className="w-3 h-3 text-text-dim" />}
-        />
+        >
+          <AnimatedCounter value={tokensIn + tokensOut} format={formatTokens} />
+        </SummaryCard>
       )}
       {totalCost > 0 && (
         <SummaryCard
           label="Cost"
-          value={`$${totalCost.toFixed(4)}`}
           icon={<DollarSign className="w-3 h-3 text-text-dim" />}
-        />
+        >
+          <AnimatedCounter value={Math.round(totalCost * 10000)} format={formatCost} />
+        </SummaryCard>
       )}
     </div>
   );

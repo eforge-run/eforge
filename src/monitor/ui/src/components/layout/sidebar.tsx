@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Link2 } from 'lucide-react';
 import type { RunInfo } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
+import { groupRunsBySessions, type SessionGroup } from '@/lib/session-utils';
 import { RunItem } from './run-item';
 
 interface SidebarProps {
@@ -10,43 +11,18 @@ interface SidebarProps {
   refreshTrigger: number;
 }
 
-interface PlanSetGroup {
-  planSet: string;
-  runs: RunInfo[];
+function StatusDot({ status }: { status: SessionGroup['status'] }) {
+  const color =
+    status === 'running' ? 'bg-blue' :
+    status === 'failed' ? 'bg-red' :
+    'bg-green';
+  return (
+    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${color}`} />
+  );
 }
 
-function groupByPlanSet(runs: RunInfo[]): PlanSetGroup[] {
-  const groups = new Map<string, RunInfo[]>();
-  for (const run of runs) {
-    const key = run.planSet || 'unknown';
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)!.push(run);
-  }
-  // Sort runs within each group: plan before build, then chronological (newest first)
-  const commandOrder: Record<string, number> = { plan: 0, adopt: 0, run: 1, build: 2 };
-  for (const groupRuns of groups.values()) {
-    groupRuns.sort((a, b) => {
-      const ta = new Date(a.startedAt).getTime();
-      const tb = new Date(b.startedAt).getTime();
-      // Same timestamp bucket (within 1s) — sort plan before build
-      if (Math.abs(ta - tb) < 1000) {
-        return (commandOrder[a.command] ?? 9) - (commandOrder[b.command] ?? 9);
-      }
-      return tb - ta; // newest first
-    });
-  }
-  // Sort groups by most recent run (newest group first)
-  const sorted = [...groups.entries()].sort((a, b) => {
-    const latestA = new Date(a[1][0].startedAt).getTime();
-    const latestB = new Date(b[1][0].startedAt).getTime();
-    return latestB - latestA;
-  });
-  return sorted.map(([planSet, runs]) => ({ planSet, runs }));
-}
-
-function GroupHeader({ planSet, count, isExpanded, onToggle }: {
-  planSet: string;
-  count: number;
+function GroupHeader({ group, isExpanded, onToggle }: {
+  group: SessionGroup;
   isExpanded: boolean;
   onToggle: () => void;
 }) {
@@ -59,8 +35,12 @@ function GroupHeader({ planSet, count, isExpanded, onToggle }: {
         ? <ChevronDown className="w-3 h-3 flex-shrink-0" />
         : <ChevronRight className="w-3 h-3 flex-shrink-0" />
       }
-      <span className="truncate">{planSet}</span>
-      <span className="text-text-dim/50 ml-auto">{count}</span>
+      {group.isSession && (
+        <Link2 className="w-3 h-3 flex-shrink-0 text-cyan/70" />
+      )}
+      <span className="truncate">{group.label}</span>
+      <StatusDot status={group.status} />
+      <span className="text-text-dim/50 ml-auto">{group.runs.length}</span>
     </button>
   );
 }
@@ -75,13 +55,13 @@ export function Sidebar({ currentRunId, onSelectRun, refreshTrigger }: SidebarPr
     }
   }, [refreshTrigger, refetch]);
 
-  const groups = useMemo(() => groupByPlanSet(runs ?? []), [runs]);
+  const groups = useMemo(() => groupRunsBySessions(runs ?? []), [runs]);
 
   // Track which groups are expanded — default: first group expanded
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   useEffect(() => {
     if (groups.length > 0 && expandedGroups.size === 0) {
-      setExpandedGroups(new Set([groups[0].planSet]));
+      setExpandedGroups(new Set([groups[0].key]));
     }
   }, [groups]);
 
@@ -89,19 +69,19 @@ export function Sidebar({ currentRunId, onSelectRun, refreshTrigger }: SidebarPr
   useEffect(() => {
     if (currentRunId && groups.length > 0) {
       const group = groups.find((g) => g.runs.some((r) => r.id === currentRunId));
-      if (group && !expandedGroups.has(group.planSet)) {
-        setExpandedGroups((prev) => new Set([...prev, group.planSet]));
+      if (group && !expandedGroups.has(group.key)) {
+        setExpandedGroups((prev) => new Set([...prev, group.key]));
       }
     }
   }, [currentRunId, groups]);
 
-  const toggleGroup = (planSet: string) => {
+  const toggleGroup = (key: string) => {
     setExpandedGroups((prev) => {
       const next = new Set(prev);
-      if (next.has(planSet)) {
-        next.delete(planSet);
+      if (next.has(key)) {
+        next.delete(key);
       } else {
-        next.add(planSet);
+        next.add(key);
       }
       return next;
     });
@@ -113,14 +93,13 @@ export function Sidebar({ currentRunId, onSelectRun, refreshTrigger }: SidebarPr
         Runs
       </h2>
       {groups.map((group) => (
-        <div key={group.planSet} className="mb-1">
+        <div key={group.key} className="mb-1">
           <GroupHeader
-            planSet={group.planSet}
-            count={group.runs.length}
-            isExpanded={expandedGroups.has(group.planSet)}
-            onToggle={() => toggleGroup(group.planSet)}
+            group={group}
+            isExpanded={expandedGroups.has(group.key)}
+            onToggle={() => toggleGroup(group.key)}
           />
-          {expandedGroups.has(group.planSet) && (
+          {expandedGroups.has(group.key) && (
             <div className="ml-1">
               {group.runs.map((run) => (
                 <RunItem
@@ -128,6 +107,7 @@ export function Sidebar({ currentRunId, onSelectRun, refreshTrigger }: SidebarPr
                   run={run}
                   isActive={run.id === currentRunId}
                   onSelect={onSelectRun}
+                  compact={group.isSession}
                 />
               ))}
             </div>

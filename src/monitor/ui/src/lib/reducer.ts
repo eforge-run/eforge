@@ -1,4 +1,4 @@
-import type { EforgeEvent } from './types';
+import type { EforgeEvent, ReviewIssue } from './types';
 import type { PipelineStage } from './types';
 import type { WaveInfo } from './wave-utils';
 import { formatDuration } from './format';
@@ -21,6 +21,7 @@ export interface RunState {
   isComplete: boolean;
   resultStatus: 'completed' | 'failed' | null;
   fileChanges: Map<string, string[]>;
+  reviewIssues: Record<string, ReviewIssue[]>;
 }
 
 export const initialRunState: RunState = {
@@ -34,6 +35,7 @@ export const initialRunState: RunState = {
   isComplete: false,
   resultStatus: null,
   fileChanges: new Map(),
+  reviewIssues: {},
 };
 
 export type RunAction =
@@ -54,6 +56,7 @@ function processEvent(
     planStatuses: Record<string, PipelineStage>;
     waves: WaveInfo[];
     fileChanges: Map<string, string[]>;
+    reviewIssues: Record<string, ReviewIssue[]>;
   },
 ): void {
   if (event.type === 'phase:start' && 'timestamp' in event) {
@@ -97,6 +100,10 @@ function processEvent(
     }
   }
 
+  if (event.type === 'build:review:complete' && 'planId' in event && 'issues' in event) {
+    state.reviewIssues[(event as { planId: string }).planId] = (event as { issues: ReviewIssue[] }).issues;
+  }
+
   if (event.type === 'build:files_changed' && 'files' in event) {
     state.fileChanges.set(event.planId, event.files);
   }
@@ -112,7 +119,7 @@ function processEvent(
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), waves: [] };
+      return { ...initialRunState, fileChanges: new Map(), waves: [], reviewIssues: {} };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -125,6 +132,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         planStatuses: {} as Record<string, PipelineStage>,
         waves: [] as WaveInfo[],
         fileChanges: new Map<string, string[]>(),
+        reviewIssues: {} as Record<string, ReviewIssue[]>,
       };
 
       for (const { event } of action.events) {
@@ -146,6 +154,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         planStatuses: { ...state.planStatuses },
         waves: [...state.waves],
         fileChanges: new Map(state.fileChanges),
+        reviewIssues: { ...state.reviewIssues },
       };
 
       processEvent(event, newState);

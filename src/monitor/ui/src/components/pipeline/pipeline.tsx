@@ -1,11 +1,12 @@
-import type { PipelineStage } from '@/lib/types';
+import type { PipelineStage, ReviewIssue } from '@/lib/types';
 import { PipelineRow } from './pipeline-row';
 
 interface PipelineProps {
   planStatuses: Record<string, PipelineStage>;
+  reviewIssues?: Record<string, ReviewIssue[]>;
 }
 
-export function Pipeline({ planStatuses }: PipelineProps) {
+export function Pipeline({ planStatuses, reviewIssues }: PipelineProps) {
   const entries = Object.entries(planStatuses);
   if (entries.length === 0) return null;
 
@@ -17,7 +18,12 @@ export function Pipeline({ planStatuses }: PipelineProps) {
       </h3>
       <div className="flex flex-col gap-1.5">
         {entries.map(([planId, stage]) => (
-          <PipelineRow key={planId} planId={planId} currentStage={stage} />
+          <PipelineRow
+            key={planId}
+            planId={planId}
+            currentStage={stage}
+            reviewIssues={reviewIssues?.[planId]}
+          />
         ))}
       </div>
     </div>
