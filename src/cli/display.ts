@@ -267,6 +267,36 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
+    case 'build:review:parallel:start': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} \u2014 reviewing: ${event.perspectives.join(', ')}`;
+      break;
+    }
+
+    case 'build:review:parallel:perspective:start':
+      // No-op — spinner already shows perspectives
+      break;
+
+    case 'build:review:parallel:perspective:complete': {
+      const pIssues = event.issues;
+      if (pIssues.length > 0) {
+        console.log(chalk.dim(`  ${chalk.cyan(event.planId)} ${event.perspective}: ${pIssues.length} issue(s)`));
+      }
+      break;
+    }
+
+    case 'build:review:fix:start': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} \u2014 applying fixes (${event.issueCount} issues)`;
+      break;
+    }
+
+    case 'build:review:fix:complete': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} \u2014 fixes applied`;
+      break;
+    }
+
     case 'build:evaluate:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 evaluating fixes...`;

@@ -36,6 +36,8 @@ import { runPlanner } from './agents/planner.js';
 import { runModulePlanner } from './agents/module-planner.js';
 import { builderImplement, builderEvaluate } from './agents/builder.js';
 import { runReview } from './agents/reviewer.js';
+import { runParallelReview } from './agents/parallel-reviewer.js';
+import { runReviewFixer } from './agents/review-fixer.js';
 import { runPlanReview } from './agents/plan-reviewer.js';
 import { runPlanEvaluate } from './agents/plan-evaluator.js';
 import { runCohesionReview } from './agents/cohesion-reviewer.js';
@@ -753,29 +755,77 @@ export class EforgeEngine {
           // Non-critical — skip silently
         }
 
-        // Phase 2 + 3: Review → Evaluate cycle
-        yield* runReviewCycle({
-          tracing,
-          cwd: worktreePath,
-          reviewer: {
-            role: 'reviewer',
-            metadata: { planId },
-            run: () => runReview({
+        // Phase 2: Parallel review (handles parallel-or-single decision internally)
+        const reviewSpan = tracing.createSpan('reviewer', { planId, phase: 'review' });
+        reviewSpan.setInput({ planId, phase: 'review' });
+        const reviewTracker = createToolTracker(reviewSpan);
+        let reviewIssues: import('./events.js').ReviewIssue[] = [];
+
+        try {
+          for await (const event of runParallelReview({
+            backend,
+            planContent: planFile.body,
+            baseBranch: orchConfig.baseBranch,
+            planId,
+            cwd: worktreePath,
+            verbose,
+            abortController,
+          })) {
+            reviewTracker.handleEvent(event);
+            yield event;
+            if (event.type === 'build:review:complete') {
+              reviewIssues = event.issues;
+            }
+          }
+          reviewTracker.cleanup();
+          reviewSpan.end();
+        } catch (err) {
+          reviewTracker.cleanup();
+          reviewSpan.error(err as Error);
+        }
+
+        // Phase 2.5: If parallel review found issues, run review fixer
+        if (reviewIssues.length > 0) {
+          const fixerSpan = tracing.createSpan('review-fixer', { planId });
+          fixerSpan.setInput({ planId, issueCount: reviewIssues.length });
+          const fixerTracker = createToolTracker(fixerSpan);
+          try {
+            for await (const event of runReviewFixer({
               backend,
-              planContent: planFile.body,
-              baseBranch: orchConfig.baseBranch,
               planId,
               cwd: worktreePath,
+              issues: reviewIssues,
               verbose,
               abortController,
-            }),
-          },
-          evaluator: {
-            role: 'evaluator',
-            metadata: { planId },
-            run: () => builderEvaluate(planFile, { backend, cwd: worktreePath, verbose, abortController }),
-          },
-        });
+            })) {
+              fixerTracker.handleEvent(event);
+              yield event;
+            }
+            fixerTracker.cleanup();
+            fixerSpan.end();
+          } catch (err) {
+            fixerTracker.cleanup();
+            fixerSpan.error(err as Error);
+          }
+        }
+
+        // Phase 3: Evaluate (only if there are unstaged changes from review/fixer)
+        if (await hasUnstagedChanges(worktreePath)) {
+          const evalSpan = tracing.createSpan('evaluator', { planId });
+          evalSpan.setInput({ planId });
+          const evalTracker = createToolTracker(evalSpan);
+          try {
+            for await (const event of builderEvaluate(planFile, { backend, cwd: worktreePath, verbose, abortController })) {
+              evalTracker.handleEvent(event);
+              yield event;
+            }
+            evalTracker.cleanup();
+            evalSpan.end();
+          } catch (err) {
+            evalTracker.cleanup();
+            evalSpan.error(err as Error);
+          }
+        }
 
         yield { type: 'build:complete', planId };
       };

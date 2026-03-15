@@ -59,6 +59,18 @@ export type { BuilderOptions, EvaluationVerdict, EvaluationEvidence } from './ag
 export { runReview, parseReviewIssues, composeReviewPrompt } from './agents/reviewer.js';
 export type { ReviewerOptions } from './agents/reviewer.js';
 
+// --- parallel-reviewer ---
+export { runParallelReview, deduplicateIssues } from './agents/parallel-reviewer.js';
+export type { ParallelReviewerOptions } from './agents/parallel-reviewer.js';
+
+// --- review-fixer ---
+export { runReviewFixer } from './agents/review-fixer.js';
+export type { ReviewFixerOptions } from './agents/review-fixer.js';
+
+// --- review-heuristics ---
+export { categorizeFiles, determineApplicableReviews, shouldParallelizeReview } from './review-heuristics.js';
+export type { ReviewPerspective, FileCategories, DiffStats } from './review-heuristics.js';
+
 // --- plan-reviewer ---
 export { runPlanReview } from './agents/plan-reviewer.js';
 export type { PlanReviewerOptions } from './agents/plan-reviewer.js';

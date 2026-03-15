@@ -1,10 +1,12 @@
 // EforgeEvent discriminated union and all supporting types
 
+import type { ReviewPerspective } from './review-heuristics.js';
+
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
 export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor' | 'review-fixer';
 
 export interface ExpeditionModule {
   id: string;
@@ -157,6 +159,11 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'build:files_changed'; planId: string; files: string[] }
   | { type: 'build:review:start'; planId: string }
   | { type: 'build:review:complete'; planId: string; issues: ReviewIssue[] }
+  | { type: 'build:review:parallel:start'; planId: string; perspectives: ReviewPerspective[] }
+  | { type: 'build:review:parallel:perspective:start'; planId: string; perspective: ReviewPerspective }
+  | { type: 'build:review:parallel:perspective:complete'; planId: string; perspective: ReviewPerspective; issues: ReviewIssue[] }
+  | { type: 'build:review:fix:start'; planId: string; issueCount: number }
+  | { type: 'build:review:fix:complete'; planId: string }
   | { type: 'build:evaluate:start'; planId: string }
   | { type: 'build:evaluate:complete'; planId: string; accepted: number; rejected: number }
   | { type: 'build:complete'; planId: string }
