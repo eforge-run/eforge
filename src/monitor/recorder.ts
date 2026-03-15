@@ -3,14 +3,14 @@ import type { MonitorDB } from './db.js';
 
 /**
  * Middleware generator that records every EforgeEvent to SQLite,
- * then re-yields it unchanged. Also pushes events to live SSE
- * subscribers via the onEvent callback.
+ * then re-yields it unchanged. DB-only writes — no SSE push.
+ * The detached server polls the DB for new events.
  */
 export async function* withRecording(
   events: AsyncGenerator<EforgeEvent>,
   db: MonitorDB,
   cwd: string,
-  onEvent?: (event: EforgeEvent, eventId: number) => void,
+  pid?: number,
 ): AsyncGenerator<EforgeEvent> {
   let runId: string | undefined;
 
@@ -24,11 +24,12 @@ export async function* withRecording(
         status: 'running',
         startedAt: event.timestamp,
         cwd,
+        pid,
       });
     }
 
     if (runId) {
-      const eventId = db.insertEvent({
+      db.insertEvent({
         runId,
         type: event.type,
         planId: extractPlanId(event),
@@ -36,7 +37,6 @@ export async function* withRecording(
         data: JSON.stringify(event),
         timestamp: 'timestamp' in event ? (event as { timestamp: string }).timestamp : new Date().toISOString(),
       });
-      onEvent?.(event, eventId);
     }
 
     if (event.type === 'eforge:end' && runId) {

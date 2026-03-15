@@ -10,6 +10,7 @@ export interface RunRecord {
   startedAt: string;
   completedAt?: string;
   cwd: string;
+  pid?: number;
 }
 
 export interface EventRecord {
@@ -30,6 +31,7 @@ export interface MonitorDB {
     status: string;
     startedAt: string;
     cwd: string;
+    pid?: number;
   }): void;
   insertEvent(event: {
     runId: string;
@@ -39,11 +41,13 @@ export interface MonitorDB {
     data: string;
     timestamp: string;
   }): number;
-  updateRunStatus(runId: string, status: string, completedAt: string): void;
+  updateRunStatus(runId: string, status: string, completedAt?: string): void;
   getRuns(): RunRecord[];
+  getRunningRuns(): RunRecord[];
   getEvents(runId: string, afterId?: number): EventRecord[];
   getEventsByType(runId: string, type: string): EventRecord[];
   getLatestRunId(): string | undefined;
+  getLatestEventTimestamp(): string | undefined;
   close(): void;
 }
 
@@ -55,7 +59,8 @@ const SCHEMA = `
     status TEXT NOT NULL DEFAULT 'running',
     started_at TEXT NOT NULL,
     completed_at TEXT,
-    cwd TEXT NOT NULL
+    cwd TEXT NOT NULL,
+    pid INTEGER
   );
 
   CREATE TABLE IF NOT EXISTS events (
@@ -79,9 +84,15 @@ export function openDatabase(dbPath: string): MonitorDB {
   db.pragma('journal_mode = WAL');
   db.exec(SCHEMA);
 
+  // Migration: add pid column if it doesn't exist (for existing DBs)
+  const columns = db.pragma('table_info(runs)') as { name: string }[];
+  if (!columns.some((c) => c.name === 'pid')) {
+    db.exec('ALTER TABLE runs ADD COLUMN pid INTEGER');
+  }
+
   const stmts = {
     insertRun: db.prepare(
-      `INSERT INTO runs (id, plan_set, command, status, started_at, cwd) VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO runs (id, plan_set, command, status, started_at, cwd, pid) VALUES (?, ?, ?, ?, ?, ?, ?)`,
     ),
     insertEvent: db.prepare(
       `INSERT INTO events (run_id, type, plan_id, agent, data, timestamp) VALUES (?, ?, ?, ?, ?, ?)`,
@@ -89,8 +100,14 @@ export function openDatabase(dbPath: string): MonitorDB {
     updateRunStatus: db.prepare(
       `UPDATE runs SET status = ?, completed_at = ? WHERE id = ?`,
     ),
+    updateRunStatusNoCa: db.prepare(
+      `UPDATE runs SET status = ? WHERE id = ?`,
+    ),
     getRuns: db.prepare(
-      `SELECT id, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd FROM runs ORDER BY started_at DESC`,
+      `SELECT id, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd, pid FROM runs ORDER BY started_at DESC`,
+    ),
+    getRunningRuns: db.prepare(
+      `SELECT id, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd, pid FROM runs WHERE status = 'running' ORDER BY started_at DESC`,
     ),
     getEventsAll: db.prepare(
       `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? ORDER BY id`,
@@ -104,11 +121,14 @@ export function openDatabase(dbPath: string): MonitorDB {
     getLatestRunId: db.prepare(
       `SELECT id FROM runs ORDER BY started_at DESC LIMIT 1`,
     ),
+    getLatestEventTimestamp: db.prepare(
+      `SELECT timestamp FROM events ORDER BY id DESC LIMIT 1`,
+    ),
   };
 
   return {
     insertRun(run) {
-      stmts.insertRun.run(run.id, run.planSet, run.command, run.status, run.startedAt, run.cwd);
+      stmts.insertRun.run(run.id, run.planSet, run.command, run.status, run.startedAt, run.cwd, run.pid ?? null);
     },
 
     insertEvent(event) {
@@ -123,12 +143,20 @@ export function openDatabase(dbPath: string): MonitorDB {
       return Number(result.lastInsertRowid);
     },
 
-    updateRunStatus(runId, status, completedAt) {
-      stmts.updateRunStatus.run(status, completedAt, runId);
+    updateRunStatus(runId, status, completedAt?) {
+      if (completedAt) {
+        stmts.updateRunStatus.run(status, completedAt, runId);
+      } else {
+        stmts.updateRunStatusNoCa.run(status, runId);
+      }
     },
 
     getRuns() {
       return stmts.getRuns.all() as RunRecord[];
+    },
+
+    getRunningRuns() {
+      return stmts.getRunningRuns.all() as RunRecord[];
     },
 
     getEvents(runId, afterId) {
@@ -145,6 +173,11 @@ export function openDatabase(dbPath: string): MonitorDB {
     getLatestRunId() {
       const row = stmts.getLatestRunId.get() as { id: string } | undefined;
       return row?.id;
+    },
+
+    getLatestEventTimestamp() {
+      const row = stmts.getLatestEventTimestamp.get() as { timestamp: string } | undefined;
+      return row?.timestamp;
     },
 
     close() {

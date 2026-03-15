@@ -7,7 +7,6 @@ import {
 import { readFile, stat } from 'node:fs/promises';
 import { resolve, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { EforgeEvent } from '../engine/events.js';
 import type { MonitorDB } from './db.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -33,18 +32,19 @@ const MIME_TYPES: Record<string, string> = {
 export interface MonitorServer {
   readonly port: number;
   readonly url: string;
-  pushEvent(event: EforgeEvent, eventId: number): void;
   stop(): Promise<void>;
 }
 
 interface SSESubscriber {
   res: ServerResponse;
   runId: string;
+  lastSeenId: number;
 }
 
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
+  options?: { strictPort?: boolean },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -116,19 +116,51 @@ export async function startServer(
       ? parseInt(req.headers['last-event-id'] as string, 10)
       : undefined;
     const historicalEvents = db.getEvents(runId, lastEventId);
+    let lastSeenId = lastEventId ?? 0;
     for (const event of historicalEvents) {
       const dataLines = event.data.split('\n').map((l: string) => `data: ${l}`).join('\n');
       res.write(`id: ${event.id}\n${dataLines}\n\n`);
+      if (event.id > lastSeenId) {
+        lastSeenId = event.id;
+      }
     }
 
-    // Register for live updates
-    const subscriber: SSESubscriber = { res, runId };
+    // Register for poll-based live updates
+    const subscriber: SSESubscriber = { res, runId, lastSeenId };
     subscribers.add(subscriber);
 
     req.on('close', () => {
       subscribers.delete(subscriber);
     });
   }
+
+  function serveHealth(_req: IncomingMessage, res: ServerResponse): void {
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify({ status: 'ok', pid: process.pid }));
+  }
+
+  // Poll loop: check DB for new events and push to SSE subscribers
+  const POLL_INTERVAL_MS = 200;
+  const pollTimer = setInterval(() => {
+    for (const subscriber of subscribers) {
+      try {
+        const newEvents = db.getEvents(subscriber.runId, subscriber.lastSeenId);
+        for (const event of newEvents) {
+          const dataLines = event.data.split('\n').map((l: string) => `data: ${l}`).join('\n');
+          subscriber.res.write(`id: ${event.id}\n${dataLines}\n\n`);
+          if (event.id > subscriber.lastSeenId) {
+            subscriber.lastSeenId = event.id;
+          }
+        }
+      } catch {
+        // Subscriber may have disconnected
+      }
+    }
+  }, POLL_INTERVAL_MS);
+  pollTimer.unref();
 
   function serveLatestRunId(_req: IncomingMessage, res: ServerResponse): void {
     const runId = db.getLatestRunId();
@@ -213,7 +245,9 @@ export async function startServer(
   const server = createServer(async (req, res) => {
     const url = req.url ?? '/';
 
-    if (url === '/api/runs') {
+    if (url === '/api/health') {
+      serveHealth(req, res);
+    } else if (url === '/api/runs') {
       serveRuns(req, res);
     } else if (url === '/api/latest-run') {
       serveLatestRunId(req, res);
@@ -247,34 +281,21 @@ export async function startServer(
     }
   });
 
-  const port = await listen(server, preferredPort);
+  const port = await listen(server, preferredPort, options?.strictPort ? 0 : 10);
 
   return {
     port,
     url: `http://localhost:${port}`,
 
-    pushEvent(event: EforgeEvent, eventId: number): void {
-      const data = JSON.stringify(event);
-      // Determine which runId this event belongs to
-      const runId = 'runId' in event ? (event as { runId: string }).runId : undefined;
-
-      for (const subscriber of subscribers) {
-        // Push to subscribers watching this run, or all subscribers if run is unknown
-        if (!runId || subscriber.runId === runId) {
-          const dataLines = data.split('\n').map((l: string) => `data: ${l}`).join('\n');
-          subscriber.res.write(`id: ${eventId}\n${dataLines}\n\n`);
-        }
-      }
-    },
-
     stop(): Promise<void> {
-      return new Promise((resolve) => {
+      clearInterval(pollTimer);
+      return new Promise((resolveStop) => {
         // Close all SSE connections
         for (const subscriber of subscribers) {
           subscriber.res.end();
         }
         subscribers.clear();
-        server.close(() => resolve());
+        server.close(() => resolveStop());
       });
     },
   };

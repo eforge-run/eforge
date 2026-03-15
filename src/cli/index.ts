@@ -14,7 +14,8 @@ import type { EforgeEvent, PlanFile } from '../engine/events.js';
 import { withHooks } from '../engine/hooks.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
-import { createMonitor, type Monitor } from '../monitor/index.js';
+import { ensureMonitor, type Monitor } from '../monitor/index.js';
+import { readLockfile, isServerAlive } from '../monitor/lockfile.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -35,9 +36,8 @@ function setupSignalHandlers(): AbortController {
     const timer = setTimeout(() => process.exit(130), SHUTDOWN_TIMEOUT_MS);
     timer.unref();
     if (activeMonitor) {
-      activeMonitor.stop().catch(() => {}).finally(() => {
-        activeMonitor = undefined;
-      });
+      try { activeMonitor.stop(); } catch {}
+      activeMonitor = undefined;
     }
   };
   process.on('SIGINT', handler);
@@ -53,7 +53,7 @@ async function withMonitor<T>(
     return fn(undefined);
   }
 
-  const monitor = await createMonitor(process.cwd());
+  const monitor = await ensureMonitor(process.cwd());
   activeMonitor = monitor;
   console.error(chalk.dim(`  Monitor: ${monitor.server.url}`));
 
@@ -61,7 +61,7 @@ async function withMonitor<T>(
     return await fn(monitor);
   } finally {
     if (activeMonitor) {
-      await monitor.stop();
+      monitor.stop();
       activeMonitor = undefined;
     }
   }
@@ -289,6 +289,60 @@ export function createProgram(abortController?: AbortController): Command {
         });
       },
     );
+
+  program
+    .command('monitor')
+    .description('Start or connect to the monitor dashboard')
+    .option('--port <port>', 'Preferred port', parseInt)
+    .action(async (options: { port?: number }) => {
+      const cwd = process.cwd();
+      const monitor = await ensureMonitor(cwd, options.port);
+
+      console.log(chalk.bold(`Monitor: ${monitor.server.url}`));
+      console.log(chalk.dim('Press Ctrl+C to exit'));
+
+      // Keep process alive until Ctrl+C
+      await new Promise<void>((resolveWait) => {
+        const handler = async () => {
+          process.removeListener('SIGINT', handler);
+          process.removeListener('SIGTERM', handler);
+
+          monitor.stop();
+
+          // If no active runs remain, signal the detached server to shut down
+          try {
+            const lock = readLockfile(cwd);
+            if (lock) {
+              const alive = await isServerAlive(lock);
+              if (alive) {
+                // Check if there are running runs by re-opening DB briefly
+                const { openDatabase } = await import('../monitor/db.js');
+                const { resolve: pathResolve } = await import('node:path');
+                const dbPath = pathResolve(cwd, '.eforge', 'monitor.db');
+                let hasRunning = false;
+                try {
+                  const checkDb = openDatabase(dbPath);
+                  hasRunning = checkDb.getRunningRuns().length > 0;
+                  checkDb.close();
+                } catch {}
+
+                if (!hasRunning) {
+                  // Send SIGTERM to the detached server
+                  try {
+                    process.kill(lock.pid, 'SIGTERM');
+                  } catch {}
+                }
+              }
+            }
+          } catch {}
+
+          resolveWait();
+        };
+
+        process.on('SIGINT', handler);
+        process.on('SIGTERM', handler);
+      });
+    });
 
   program
     .command('status')
