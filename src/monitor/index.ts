@@ -1,4 +1,5 @@
 import { resolve, dirname } from 'node:path';
+import { accessSync } from 'node:fs';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { EforgeEvent } from '../engine/events.js';
@@ -48,10 +49,10 @@ export async function ensureMonitor(cwd: string, port?: number): Promise<Monitor
   }
 
   // Spawn detached child process
-  await spawnDetachedServer(dbPath, preferredPort, cwd);
+  const getSpawnError = await spawnDetachedServer(dbPath, preferredPort, cwd);
 
   // Wait for the server to come up by polling lockfile + health
-  const serverPort = await waitForServer(cwd);
+  const serverPort = await waitForServer(cwd, getSpawnError);
 
   return buildMonitor(db, serverPort, cwd);
 }
@@ -69,19 +70,30 @@ function buildMonitor(db: MonitorDB, port: number, cwd: string): Monitor {
   };
 }
 
-async function spawnDetachedServer(dbPath: string, port: number, cwd: string): Promise<void> {
-  // Determine the server-main entry point
-  // In dev (tsx), use the source file; in production, use the built file
-  let serverMainPath: string;
-  const builtPath = resolve(__dirname, '..', 'server-main.js');
-  const sourcePath = resolve(__dirname, 'server-main.ts');
+function resolveServerMain(): string {
+  // In prod (bundled): __dirname = dist/, server-main.js sits alongside cli.js
+  // In dev (tsx): __dirname = src/monitor/, server-main.ts is in the same directory
+  const jsPath = resolve(__dirname, 'server-main.js');
+  try {
+    accessSync(jsPath);
+    return jsPath;
+  } catch {}
+  const tsPath = resolve(__dirname, 'server-main.ts');
+  try {
+    accessSync(tsPath);
+    return tsPath;
+  } catch {}
+  throw new Error(`Monitor server entry point not found at ${jsPath} or ${tsPath}`);
+}
 
-  // Check if we're running from dist/ (built) or src/ (dev)
-  if (__dirname.includes('/dist/')) {
-    serverMainPath = builtPath;
-  } else {
-    serverMainPath = sourcePath;
-  }
+async function spawnDetachedServer(
+  dbPath: string,
+  port: number,
+  cwd: string,
+): Promise<() => Error | undefined> {
+  const serverMainPath = resolveServerMain();
+
+  let spawnError: Error | undefined;
 
   const child = fork(serverMainPath, [dbPath, String(port), cwd], {
     detached: true,
@@ -90,13 +102,27 @@ async function spawnDetachedServer(dbPath: string, port: number, cwd: string): P
     execArgv: process.execArgv,
   });
 
+  child.on('error', (err) => {
+    spawnError = err;
+  });
+
   // Detach the child so the parent can exit independently
   child.unref();
   child.disconnect?.();
+
+  return () => spawnError;
 }
 
-async function waitForServer(cwd: string): Promise<number> {
+async function waitForServer(
+  cwd: string,
+  getSpawnError?: () => Error | undefined,
+): Promise<number> {
   for (let i = 0; i < HEALTH_CHECK_RETRIES; i++) {
+    const err = getSpawnError?.();
+    if (err) {
+      throw new Error(`Monitor server failed to spawn: ${err.message}`);
+    }
+
     await sleep(HEALTH_CHECK_INTERVAL_MS);
 
     const lock = readLockfile(cwd);
@@ -108,7 +134,9 @@ async function waitForServer(cwd: string): Promise<number> {
     }
   }
 
-  throw new Error('Monitor server failed to start within timeout');
+  const err = getSpawnError?.();
+  const detail = err ? `: ${err.message}` : '';
+  throw new Error(`Monitor server failed to start within timeout${detail}`);
 }
 
 function sleep(ms: number): Promise<void> {
