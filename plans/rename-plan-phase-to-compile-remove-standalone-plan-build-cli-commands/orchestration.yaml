@@ -1,0 +1,13 @@
+name: rename-plan-phase-to-compile-remove-standalone-plan-build-cli-commands
+description: Rename "plan" phase to "compile", remove standalone plan/build CLI commands
+created: 2026-03-15
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-rename-plan-phase-to-compile-remove-standalone-plan-build-cli-commands
+    name: Rename "plan" phase to "compile", remove standalone plan/build CLI commands
+    depends_on: []
+    branch: rename-plan-phase-to-compile-remove-standalone-plan-build-cli-commands/main
