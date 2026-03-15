@@ -8,6 +8,15 @@ export interface StoredEvent {
   eventId: string;
 }
 
+export interface AgentThread {
+  agentId: string;
+  agent: string;  // AgentRole
+  planId?: string;
+  startedAt: string;      // ISO from agent:start timestamp
+  endedAt: string | null;  // ISO from agent:stop timestamp
+  durationMs: number | null; // from agent:result
+}
+
 export type { WaveInfo } from './wave-utils';
 
 export interface RunState {
@@ -22,6 +31,7 @@ export interface RunState {
   resultStatus: 'completed' | 'failed' | null;
   fileChanges: Map<string, string[]>;
   reviewIssues: Record<string, ReviewIssue[]>;
+  agentThreads: AgentThread[];
 }
 
 export const initialRunState: RunState = {
@@ -36,6 +46,7 @@ export const initialRunState: RunState = {
   resultStatus: null,
   fileChanges: new Map(),
   reviewIssues: {},
+  agentThreads: [],
 };
 
 export type RunAction =
@@ -57,6 +68,7 @@ function processEvent(
     waves: WaveInfo[];
     fileChanges: Map<string, string[]>;
     reviewIssues: Record<string, ReviewIssue[]>;
+    agentThreads: AgentThread[];
   },
 ): void {
   if (event.type === 'phase:start' && 'timestamp' in event) {
@@ -121,12 +133,44 @@ function processEvent(
       state.waves.push({ wave: event.wave, planIds: event.planIds });
     }
   }
+
+  // Agent thread tracking
+  if (event.type === 'agent:start' && 'timestamp' in event && event.timestamp) {
+    state.agentThreads.push({
+      agentId: event.agentId,
+      agent: event.agent,
+      planId: 'planId' in event ? (event as { planId?: string }).planId : undefined,
+      startedAt: event.timestamp,
+      endedAt: null,
+      durationMs: null,
+    });
+  }
+
+  if (event.type === 'agent:stop' && 'timestamp' in event && event.timestamp) {
+    const thread = state.agentThreads.find((t) => t.agentId === event.agentId);
+    if (thread) {
+      thread.endedAt = event.timestamp;
+    }
+  }
+
+  if (event.type === 'agent:result' && event.result) {
+    const agentRole = event.agent;
+    const eventPlanId = 'planId' in event ? (event as { planId?: string }).planId : undefined;
+    // Find most recent thread matching (agent, planId) where durationMs is null
+    for (let i = state.agentThreads.length - 1; i >= 0; i--) {
+      const thread = state.agentThreads[i];
+      if (thread.agent === agentRole && thread.planId === eventPlanId && thread.durationMs === null) {
+        thread.durationMs = event.result.durationMs;
+        break;
+      }
+    }
+  }
 }
 
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), waves: [], reviewIssues: {} };
+      return { ...initialRunState, fileChanges: new Map(), waves: [], reviewIssues: {}, agentThreads: [] };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -140,6 +184,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         waves: [] as WaveInfo[],
         fileChanges: new Map<string, string[]>(),
         reviewIssues: {} as Record<string, ReviewIssue[]>,
+        agentThreads: [] as AgentThread[],
       };
 
       for (const { event } of action.events) {
@@ -162,6 +207,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         waves: [...state.waves],
         fileChanges: new Map(state.fileChanges),
         reviewIssues: { ...state.reviewIssues },
+        agentThreads: [...state.agentThreads],
       };
 
       processEvent(event, newState);

@@ -5,7 +5,7 @@ import { Header } from '@/components/layout/header';
 import { Sidebar } from '@/components/layout/sidebar';
 import { SummaryCards } from '@/components/common/summary-cards';
 import { ActivityHeatstrip } from '@/components/common/activity-heatstrip';
-import { Pipeline } from '@/components/pipeline/pipeline';
+import { ThreadPipeline } from '@/components/pipeline/thread-pipeline';
 import { Timeline } from '@/components/timeline/timeline';
 import { PlanCards } from '@/components/plans/plan-cards';
 import { DependencyGraph } from '@/components/graph';
@@ -169,7 +169,7 @@ export function App() {
             <>
               <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} />
               <ActivityHeatstrip events={runState.events} startTime={runState.startTime} />
-              <Pipeline planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} />
+              <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} />
 
               {/* Content tabs */}
               <div className="flex gap-2 border-b border-border pb-px">

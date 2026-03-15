@@ -65,7 +65,7 @@ export class StubBackend implements AgentBackend {
     this.calls.push(options);
 
     const agentId = crypto.randomUUID();
-    yield { type: 'agent:start', planId, agent, agentId };
+    yield { type: 'agent:start', planId, agent, agentId, timestamp: new Date().toISOString() };
 
     let error: string | undefined;
     try {
@@ -97,7 +97,7 @@ export class StubBackend implements AgentBackend {
       error = err instanceof Error ? err.message : String(err);
       throw err;
     } finally {
-      yield { type: 'agent:stop', planId, agent, agentId, error };
+      yield { type: 'agent:stop', planId, agent, agentId, error, timestamp: new Date().toISOString() };
     }
   }
 }

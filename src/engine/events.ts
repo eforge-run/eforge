@@ -176,8 +176,8 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'expedition:compile:complete'; plans: PlanFile[] }
 
   // Agent lifecycle (emitted by backend for every agent invocation)
-  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole }
-  | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string }
+  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; timestamp?: string }
+  | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string; timestamp?: string }
 
   // Agent-level (verbose streaming)
   | { type: 'agent:message'; planId?: string; agent: AgentRole; content: string }
