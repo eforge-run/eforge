@@ -1,0 +1,13 @@
+name: fix-session-scoped-monitor-viewing
+description: "Fix: Session-scoped monitor viewing"
+created: 2026-03-15
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-fix-session-scoped-monitor-viewing
+    name: "Fix: Session-scoped monitor viewing"
+    depends_on: []
+    branch: fix-session-scoped-monitor-viewing/main
