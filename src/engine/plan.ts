@@ -377,6 +377,23 @@ export function extractPlanTitle(markdown: string): string | undefined {
 }
 
 /**
+ * Derive a kebab-case plan set name from content's H1 heading.
+ * Returns undefined if no H1 heading is found.
+ */
+export function deriveNameFromContent(content: string): string | undefined {
+  const title = extractPlanTitle(content);
+  if (!title) return undefined;
+  const name = title
+    .replace(/([a-z])([A-Z])/g, '$1-$2')
+    .replace(/[\s_]+/g, '-')
+    .replace(/[^a-z0-9-]/gi, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
+  return name || undefined;
+}
+
+/**
  * Detect validation commands from package.json scripts and lockfile.
  * Returns an array of runnable commands (e.g., ['pnpm type-check', 'pnpm test']).
  */
@@ -419,6 +436,7 @@ export interface WritePlanArtifactsOptions {
   planName: string;
   baseBranch: string;
   validate?: string[];
+  mode?: 'errand' | 'excursion';
 }
 
 export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Promise<PlanFile> {
@@ -446,7 +464,7 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
     name: planSetName,
     description: planName,
     created: new Date().toISOString().split('T')[0],
-    mode: 'errand',
+    mode: options.mode ?? 'errand',
     base_branch: baseBranch,
     ...(validate && validate.length > 0 && { validate }),
     plans: [{

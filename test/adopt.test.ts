@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync, rmSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { extractPlanTitle, detectValidationCommands, writePlanArtifacts } from '../src/engine/plan.js';
+import { extractPlanTitle, deriveNameFromContent, detectValidationCommands, writePlanArtifacts } from '../src/engine/plan.js';
 import { parsePlanFile, parseOrchestrationConfig } from '../src/engine/plan.js';
 
 // --- extractPlanTitle ---
@@ -33,6 +33,35 @@ describe('extractPlanTitle', () => {
     const md = '```\n# Not a heading\n```\n\n# Real heading';
     // The regex matches the first # line regardless of code block context
     expect(extractPlanTitle(md)).toBe('Not a heading');
+  });
+});
+
+// --- deriveNameFromContent ---
+
+describe('deriveNameFromContent', () => {
+  it('extracts H1 and kebab-cases it', () => {
+    expect(deriveNameFromContent('# Add Authentication System\n\nDetails...')).toBe('add-authentication-system');
+  });
+
+  it('handles camelCase in H1', () => {
+    expect(deriveNameFromContent('# addAuthSystem\n\nDetails...')).toBe('add-auth-system');
+  });
+
+  it('handles special characters', () => {
+    expect(deriveNameFromContent('# Fix: Memory Leak (Critical)\n\n...')).toBe('fix-memory-leak-critical');
+  });
+
+  it('returns undefined for content without H1', () => {
+    expect(deriveNameFromContent('## Only H2\n\nNo H1 here')).toBeUndefined();
+  });
+
+  it('returns undefined for empty string', () => {
+    expect(deriveNameFromContent('')).toBeUndefined();
+  });
+
+  it('returns undefined for H1 that produces empty kebab string', () => {
+    // Edge case: H1 with only special chars
+    expect(deriveNameFromContent('# !!!\n\n...')).toBeUndefined();
   });
 });
 
@@ -175,6 +204,41 @@ describe('writePlanArtifacts', () => {
     });
 
     expect(existsSync(resolve(dir, 'plans', 'my-plan'))).toBe(true);
+  });
+
+  it('uses explicit mode in orchestration.yaml', async () => {
+    const dir = makeTempDir();
+
+    await writePlanArtifacts({
+      cwd: dir,
+      planSetName: 'multi-plan',
+      sourceContent: '# Multi Plan\n\nContent',
+      planName: 'Multi Plan',
+      baseBranch: 'main',
+      mode: 'excursion',
+    });
+
+    const orch = await parseOrchestrationConfig(
+      resolve(dir, 'plans', 'multi-plan', 'orchestration.yaml'),
+    );
+    expect(orch.mode).toBe('excursion');
+  });
+
+  it('defaults mode to errand when not specified', async () => {
+    const dir = makeTempDir();
+
+    await writePlanArtifacts({
+      cwd: dir,
+      planSetName: 'default-mode',
+      sourceContent: 'Content',
+      planName: 'Default Mode',
+      baseBranch: 'main',
+    });
+
+    const orch = await parseOrchestrationConfig(
+      resolve(dir, 'plans', 'default-mode', 'orchestration.yaml'),
+    );
+    expect(orch.mode).toBe('errand');
   });
 
   it('omits validate when empty', async () => {

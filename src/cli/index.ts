@@ -215,11 +215,13 @@ export function createProgram(abortController?: AbortController): Command {
           let planSetName: string | undefined;
           let planFiles: PlanFile[] = [];
           let planResult: 'completed' | 'failed' = 'completed';
+          let scopeComplete = false;
 
           const phase1Events = options.adopt
             ? engine.adopt(source, {
                 verbose: options.verbose,
                 name: options.name,
+                auto: options.auto,
                 skipReview: options.review === false,
                 abortController,
               })
@@ -236,12 +238,20 @@ export function createProgram(abortController?: AbortController): Command {
               renderLangfuseStatus(engine.resolvedConfig);
               planSetName = event.planSet;
             }
+            if (event.type === 'plan:scope' && event.assessment === 'complete') {
+              scopeComplete = true;
+            }
             if (event.type === 'plan:complete') {
               planFiles = event.plans;
             }
             if (event.type === 'phase:end') {
               planResult = event.result.status;
             }
+          }
+
+          // Scope "complete" means the work is already implemented — exit successfully
+          if (scopeComplete) {
+            process.exit(0);
           }
 
           if (planResult === 'failed' || planFiles.length === 0 || !planSetName) {

@@ -41,8 +41,9 @@ import { runPlanEvaluate } from './agents/plan-evaluator.js';
 import { runCohesionReview } from './agents/cohesion-reviewer.js';
 import { runCohesionEvaluate } from './agents/cohesion-evaluator.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
+import { runAssessor } from './agents/assessor.js';
 import { Orchestrator, type ValidationFixer } from './orchestrator.js';
-import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName, extractPlanTitle, detectValidationCommands, writePlanArtifacts } from './plan.js';
+import { deriveNameFromSource, deriveNameFromContent, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName, extractPlanTitle, detectValidationCommands, writePlanArtifacts } from './plan.js';
 import { compileExpedition } from './compiler.js';
 import { parseModulesBlock } from './agents/common.js';
 import { loadState } from './state.js';
@@ -315,9 +316,8 @@ export class EforgeEngine {
 
   /**
    * Adopt: wrap an existing implementation plan (e.g., from Claude Code plan mode)
-   * into eforge plan format and optionally run plan review.
-   *
-   * Skips the planner agent entirely — this is a deterministic transformation.
+   * into eforge plan format. Runs scope assessment first — errands wrap as-is,
+   * excursion/expedition delegates to the full planner for proper decomposition.
    */
   async *adopt(source: string, options: Partial<AdoptOptions> = {}): AsyncGenerator<EforgeEvent> {
     const cwd = options.cwd ?? this.cwd;
@@ -333,7 +333,10 @@ export class EforgeEngine {
       sourceContent = source;
     }
 
-    const planSetName = options.name ?? deriveNameFromSource(source);
+    // Derive plan set name from content H1, fall back to filename
+    const planSetName = options.name
+      ?? deriveNameFromContent(sourceContent)
+      ?? deriveNameFromSource(source);
     validatePlanSetName(planSetName);
     const tracing = createTracingContext(this.config, runId, 'adopt', planSetName);
 
@@ -373,47 +376,199 @@ export class EforgeEngine {
         validate = await detectValidationCommands(cwd);
       }
 
+      const verbose = options.verbose;
+      const abortController = options.abortController;
+
       yield { type: 'plan:start', source };
-      yield { type: 'plan:progress', message: `Adopting plan as ${planSetName}...` };
 
-      // Write plan artifacts
-      const planFile = await writePlanArtifacts({
-        cwd,
-        planSetName,
-        sourceContent,
-        planName,
-        baseBranch,
-        validate,
-      });
+      // Run assessor agent to determine scope
+      const assessorSpan = tracing.createSpan('assessor', { planSet: planSetName });
+      assessorSpan.setInput({ source, planSet: planSetName });
+      const assessorTracker = createToolTracker(assessorSpan);
 
-      // Commit plan artifacts
-      const planDir = resolve(cwd, 'plans', planSetName);
-      await exec('git', ['add', planDir], { cwd });
-      await exec('git', ['commit', '-m', `plan(${planSetName}): adopt existing implementation plan`], { cwd });
+      let scopeAssessment: ScopeAssessment = 'errand';
 
-      yield { type: 'plan:complete', plans: [planFile] };
+      try {
+        for await (const event of runAssessor({ backend: this.backend, sourceContent, cwd, verbose, abortController })) {
+          assessorTracker.handleEvent(event);
 
-      // Plan review cycle (non-fatal, skippable)
-      if (!options.skipReview) {
-        const verbose = options.verbose;
-        const abortController = options.abortController;
-        try {
-          yield* runReviewCycle({
-            tracing,
-            cwd,
-            reviewer: {
-              role: 'plan-reviewer',
-              metadata: { planSet: planSetName },
-              run: () => runPlanReview({ backend: this.backend, sourceContent, planSetName, cwd, verbose, abortController }),
-            },
-            evaluator: {
-              role: 'plan-evaluator',
-              metadata: { planSet: planSetName },
-              run: () => runPlanEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
-            },
-          });
-        } catch (err) {
-          yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
+          if (event.type === 'plan:scope') {
+            scopeAssessment = event.assessment;
+          }
+
+          yield event;
+        }
+        assessorTracker.cleanup();
+        assessorSpan.end();
+      } catch (err) {
+        assessorTracker.cleanup();
+        assessorSpan.error(err as Error);
+        // On assessor failure, default to errand (safe fallback)
+        yield { type: 'plan:scope', assessment: 'errand', justification: `Assessor failed: ${(err as Error).message} — defaulting to errand.` };
+      }
+
+      // Branch on scope
+      if (scopeAssessment === 'complete') {
+        // Nothing to do — source is fully implemented
+        yield { type: 'plan:complete', plans: [] };
+      } else if (scopeAssessment === 'errand') {
+        // Wrap as-is (current behavior)
+        yield { type: 'plan:progress', message: `Adopting plan as ${planSetName}...` };
+
+        const planFile = await writePlanArtifacts({
+          cwd,
+          planSetName,
+          sourceContent,
+          planName,
+          baseBranch,
+          validate,
+          mode: 'errand',
+        });
+
+        // Commit plan artifacts
+        const planDir = resolve(cwd, 'plans', planSetName);
+        await exec('git', ['add', planDir], { cwd });
+        await exec('git', ['commit', '-m', `plan(${planSetName}): adopt existing implementation plan`], { cwd });
+
+        yield { type: 'plan:complete', plans: [planFile] };
+
+        // Plan review cycle (non-fatal, skippable)
+        if (!options.skipReview) {
+          try {
+            yield* runReviewCycle({
+              tracing,
+              cwd,
+              reviewer: {
+                role: 'plan-reviewer',
+                metadata: { planSet: planSetName },
+                run: () => runPlanReview({ backend: this.backend, sourceContent, planSetName, cwd, verbose, abortController }),
+              },
+              evaluator: {
+                role: 'plan-evaluator',
+                metadata: { planSet: planSetName },
+                run: () => runPlanEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
+              },
+            });
+          } catch (err) {
+            yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
+          }
+        }
+      } else {
+        // excursion or expedition — delegate to the full planner
+        yield { type: 'plan:progress', message: `Scope is ${scopeAssessment} — running planner...` };
+
+        let expeditionModules: ExpeditionModule[] = [];
+        let finalPlans: PlanFile[] = [];
+
+        for await (const event of runPlanner(source, {
+          cwd,
+          name: planSetName,
+          auto: options.auto,
+          backend: this.backend,
+          onClarification: this.onClarification,
+          verbose,
+          abortController,
+        })) {
+          // Suppress duplicate plan:start and plan:scope (adopt already emitted these)
+          if (event.type === 'plan:start' || event.type === 'plan:scope') continue;
+
+          // Detect <modules> block in agent messages (expedition mode, first match only)
+          if (event.type === 'agent:message' && event.agent === 'planner' && expeditionModules.length === 0) {
+            const modules = parseModulesBlock(event.content);
+            if (modules.length > 0) {
+              expeditionModules = modules;
+              yield { type: 'expedition:architecture:complete', modules };
+            }
+          }
+
+          // Suppress planner's plan:complete in expedition mode (compilation emits the real one)
+          if (event.type === 'plan:complete' && scopeAssessment === 'expedition' && expeditionModules.length > 0) {
+            continue;
+          }
+
+          // Track final plans
+          if (event.type === 'plan:complete') {
+            finalPlans = event.plans;
+          }
+
+          yield event;
+        }
+
+        // Expedition module planning (if needed)
+        if (scopeAssessment === 'expedition' && expeditionModules.length > 0) {
+          try {
+            for await (const event of this.planExpeditionModules(planSetName, expeditionModules, tracing, {
+              ...options,
+              cwd,
+              sourceContent,
+            })) {
+              if (event.type === 'plan:complete') {
+                finalPlans = event.plans;
+              }
+              yield event;
+            }
+          } catch (err) {
+            status = 'failed';
+            summary = (err as Error).message;
+          }
+        }
+
+        // Commit plan artifacts
+        if (status !== 'failed' && finalPlans.length > 0) {
+          const planDir = resolve(cwd, 'plans', planSetName);
+          await exec('git', ['add', planDir], { cwd });
+          await exec('git', ['commit', '-m', `plan(${planSetName}): adopt existing implementation plan`], { cwd });
+
+          // Cohesion review cycle (expedition only, non-fatal)
+          if (scopeAssessment === 'expedition') {
+            try {
+              let architectureContent = '';
+              try {
+                architectureContent = await readFile(resolve(cwd, 'plans', planSetName, 'architecture.md'), 'utf-8');
+              } catch {
+                // Architecture file may not exist
+              }
+
+              yield* runReviewCycle({
+                tracing,
+                cwd,
+                reviewer: {
+                  role: 'cohesion-reviewer',
+                  metadata: { planSet: planSetName },
+                  run: () => runCohesionReview({ backend: this.backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
+                },
+                evaluator: {
+                  role: 'cohesion-evaluator',
+                  metadata: { planSet: planSetName },
+                  run: () => runCohesionEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
+                },
+              });
+            } catch (err) {
+              yield { type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
+            }
+          }
+
+          // Plan review cycle (non-fatal, skippable)
+          if (!options.skipReview) {
+            try {
+              yield* runReviewCycle({
+                tracing,
+                cwd,
+                reviewer: {
+                  role: 'plan-reviewer',
+                  metadata: { planSet: planSetName },
+                  run: () => runPlanReview({ backend: this.backend, sourceContent, planSetName, cwd, verbose, abortController }),
+                },
+                evaluator: {
+                  role: 'plan-evaluator',
+                  metadata: { planSet: planSetName },
+                  run: () => runPlanEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
+                },
+              });
+            } catch (err) {
+              yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
+            }
+          }
         }
       }
     } catch (err) {
