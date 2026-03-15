@@ -6,7 +6,7 @@
 
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFile, stat } from 'node:fs/promises';
+import { readFile, readdir, rm, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -672,6 +672,13 @@ export class EforgeEngine {
           }
         }
       }
+
+      const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
+      if (status === 'completed' && shouldCleanup) {
+        try {
+          yield* cleanupPlanFiles(cwd, planSet);
+        } catch { /* non-fatal */ }
+      }
     } catch (err) {
       status = 'failed';
       summary = (err as Error).message;
@@ -785,6 +792,31 @@ async function hasUnstagedChanges(cwd: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/**
+ * Remove plan files after a successful build and commit the removal.
+ */
+async function* cleanupPlanFiles(cwd: string, planSet: string): AsyncGenerator<EforgeEvent> {
+  yield { type: 'cleanup:start', planSet };
+  const planDir = resolve(cwd, 'plans', planSet);
+  await exec('git', ['rm', '-r', planDir], { cwd });
+
+  // Remove empty plans/ directory
+  const plansDir = resolve(cwd, 'plans');
+  try {
+    const remaining = await readdir(plansDir);
+    if (remaining.length === 0) {
+      await rm(plansDir, { recursive: true });
+    }
+  } catch { /* may already be gone */ }
+
+  await exec('git', ['commit', '-m', `cleanup(${planSet}): remove plan files after successful build`], { cwd });
+
+  // Clean up state file (gitignored)
+  try { await rm(resolve(cwd, '.eforge', 'state.json')); } catch {}
+
+  yield { type: 'cleanup:complete', planSet };
 }
 
 /**

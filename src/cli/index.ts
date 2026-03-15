@@ -175,6 +175,7 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--no-review', 'Skip plan review (only applies with --adopt)')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
     .option('--dry-run', 'Plan only, then show execution plan without building')
+    .option('--no-cleanup', 'Keep plan files after successful build')
     .option('--no-monitor', 'Disable web monitor')
     .option('--no-plugins', 'Disable plugin loading')
     .action(
@@ -186,6 +187,7 @@ export function createProgram(abortController?: AbortController): Command {
           name?: string;
           adopt?: boolean;
           review?: boolean;
+          cleanup?: boolean;
           parallelism?: number;
           dryRun?: boolean;
           monitor?: boolean;
@@ -250,6 +252,7 @@ export function createProgram(abortController?: AbortController): Command {
             wrapEvents(engine.build(planSetName, {
               auto: options.auto,
               verbose: options.verbose,
+              cleanup: options.cleanup,
               abortController,
             }), monitor, engine.resolvedConfig.hooks),
             { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
@@ -267,12 +270,13 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--verbose', 'Stream agent output')
     .option('--dry-run', 'Validate and show execution plan without running')
     .option('--parallelism <n>', 'Max parallel plans', parseInt)
+    .option('--no-cleanup', 'Keep plan files after successful build')
     .option('--no-monitor', 'Disable web monitor')
     .option('--no-plugins', 'Disable plugin loading')
     .action(
       async (
         planSet: string,
-        options: { auto?: boolean; verbose?: boolean; dryRun?: boolean; parallelism?: number; monitor?: boolean; plugins?: boolean },
+        options: { auto?: boolean; verbose?: boolean; dryRun?: boolean; cleanup?: boolean; parallelism?: number; monitor?: boolean; plugins?: boolean },
       ) => {
         initDisplay({ verbose: options.verbose });
 
@@ -293,6 +297,7 @@ export function createProgram(abortController?: AbortController): Command {
             wrapEvents(engine.build(planSet, {
               auto: options.auto,
               verbose: options.verbose,
+              cleanup: options.cleanup,
               abortController,
             }), monitor, engine.resolvedConfig.hooks),
             { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },

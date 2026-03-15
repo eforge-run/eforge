@@ -95,6 +95,7 @@ export interface BuildOptions {
   auto?: boolean;
   verbose?: boolean;
   dryRun?: boolean;
+  cleanup?: boolean;
   cwd?: string;
   abortController?: AbortController;
 }
@@ -181,6 +182,10 @@ export type EforgeEvent =
   | { type: 'validation:complete'; passed: boolean }
   | { type: 'validation:fix:start'; attempt: number; maxAttempts: number }
   | { type: 'validation:fix:complete'; attempt: number }
+
+  // Cleanup (post-build)
+  | { type: 'cleanup:start'; planSet: string }
+  | { type: 'cleanup:complete'; planSet: string }
 
   // User interaction
   | { type: 'approval:needed'; planId?: string; action: string; details: string }

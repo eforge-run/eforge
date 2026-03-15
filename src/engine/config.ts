@@ -22,7 +22,7 @@ export interface PluginConfig {
 export interface EforgeConfig {
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
   agents: { maxTurns: number; permissionMode: 'bypass' | 'default'; settingSources?: string[] };
-  build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number };
+  build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
   plugins: PluginConfig;
   hooks: readonly HookConfig[];
@@ -40,7 +40,7 @@ export type PartialEforgeConfig = {
 export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({ maxTurns: 30, permissionMode: 'bypass' as const, settingSources: ['project'] as string[] }),
-  build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2 }),
+  build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
   plan: Object.freeze({ outputDir: 'plans' }),
   plugins: Object.freeze({ enabled: true }),
   hooks: Object.freeze([]),
@@ -100,6 +100,7 @@ export function resolveConfig(
       worktreeDir: fileConfig.build?.worktreeDir ?? DEFAULT_CONFIG.build.worktreeDir,
       postMergeCommands: fileConfig.build?.postMergeCommands ?? DEFAULT_CONFIG.build.postMergeCommands,
       maxValidationRetries: fileConfig.build?.maxValidationRetries ?? DEFAULT_CONFIG.build.maxValidationRetries,
+      cleanupPlanFiles: fileConfig.build?.cleanupPlanFiles ?? DEFAULT_CONFIG.build.cleanupPlanFiles,
     }),
     plan: Object.freeze({
       outputDir: fileConfig.plan?.outputDir ?? DEFAULT_CONFIG.plan.outputDir,
@@ -163,6 +164,7 @@ function parseRawConfig(data: Record<string, unknown>): PartialEforgeConfig {
       ...(typeof bd.maxValidationRetries === 'number' && bd.maxValidationRetries >= 0
         ? { maxValidationRetries: bd.maxValidationRetries }
         : {}),
+      ...(typeof bd.cleanupPlanFiles === 'boolean' ? { cleanupPlanFiles: bd.cleanupPlanFiles } : {}),
     };
   }
 

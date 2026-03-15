@@ -417,6 +417,15 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(event.approved ? chalk.green('  \u2713 Approved') : chalk.red('  \u2717 Denied'));
       break;
 
+    // Cleanup (post-build)
+    case 'cleanup:start':
+      startSpinner('cleanup', `Cleaning up plan files for ${chalk.cyan(event.planSet)}...`);
+      break;
+
+    case 'cleanup:complete':
+      succeedSpinner('cleanup', `Plan files removed for ${chalk.cyan(event.planSet)}`);
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));
