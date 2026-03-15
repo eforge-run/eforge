@@ -2,3 +2,8 @@ postMergeCommands:
   - pnpm install
   - pnpm type-check
   - pnpm test
+
+hooks:
+  - event: "eforge:*"
+    command: 'echo "{\"event\":\"$EFORGE_EVENT_TYPE\",\"cwd\":\"$EFORGE_CWD\",\"git_remote\":\"$EFORGE_GIT_REMOTE\"}" >> .eforge/hook-events.log'
+    timeout: 5000

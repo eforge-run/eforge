@@ -10,6 +10,7 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
+      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add GET /health endpoint to Express API"
 
   - id: todo-api-auth
@@ -19,4 +20,5 @@ scenarios:
       - pnpm install
       - pnpm type-check
       - pnpm test
+      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add JWT auth middleware + protected routes"

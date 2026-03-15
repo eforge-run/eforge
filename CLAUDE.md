@@ -154,6 +154,16 @@ eforge loads config from two levels, merged together:
 - `hooks` array: **concatenate** (global hooks fire first, then project hooks)
 - Arrays inside objects (`postMergeCommands`, `plugins.include/exclude/paths`, `settingSources`): project replaces global
 
+**Hook env vars**: Hook commands receive the full `EforgeEvent` JSON on stdin plus these environment variables:
+
+| Env var | Description |
+|---------|-------------|
+| `EFORGE_EVENT_TYPE` | Event type string (e.g., `eforge:start`, `plan:complete`) |
+| `EFORGE_CWD` | Working directory for the eforge run |
+| `EFORGE_GIT_REMOTE` | Git origin remote URL (empty string if not a git repo or no origin) |
+
+`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event.
+
 ## Conventions
 
 - Use Mermaid diagrams instead of ASCII art in documentation

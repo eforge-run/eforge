@@ -1,6 +1,22 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { EforgeEvent } from './events.js';
 import type { HookConfig } from './config.js';
+
+const execAsync = promisify(execFile);
+
+/**
+ * Resolve the git origin remote URL for the given directory.
+ * Returns empty string if not a git repo or no origin configured.
+ */
+async function resolveGitRemote(cwd: string): Promise<string> {
+  try {
+    const { stdout } = await execAsync('git', ['remote', 'get-url', 'origin'], { cwd });
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
 
 /**
  * Convert a glob pattern to a RegExp.
@@ -29,6 +45,7 @@ export function matchesPattern(pattern: string, eventType: string): boolean {
 function executeHook(
   hook: HookConfig,
   event: EforgeEvent,
+  baseEnv: Record<string, string | undefined>,
   cwd: string,
   inflight: Set<Promise<void>>,
 ): void {
@@ -39,7 +56,7 @@ function executeHook(
         cwd,
         stdio: ['pipe', 'ignore', 'pipe'],
         shell: true,
-        env: { ...process.env, EFORGE_EVENT_TYPE: event.type },
+        env: { ...baseEnv, EFORGE_EVENT_TYPE: event.type },
       });
     } catch {
       resolve();
@@ -109,6 +126,14 @@ export async function* withHooks(
     hook,
   }));
 
+  // Resolve session-level env vars once
+  const gitRemote = await resolveGitRemote(cwd);
+  const hookEnv: Record<string, string | undefined> = {
+    ...process.env,
+    EFORGE_CWD: cwd,
+    EFORGE_GIT_REMOTE: gitRemote,
+  };
+
   const inflight = new Set<Promise<void>>();
 
   try {
@@ -116,7 +141,7 @@ export async function* withHooks(
       // Fire matching hooks (non-blocking)
       for (const { regex, hook } of compiled) {
         if (regex.test(event.type)) {
-          executeHook(hook, event, cwd, inflight);
+          executeHook(hook, event, hookEnv, cwd, inflight);
         }
       }
 

@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { compilePattern, matchesPattern, withHooks } from '../src/engine/hooks.js';
 import type { EforgeEvent } from '../src/engine/events.js';
 import type { HookConfig } from '../src/engine/config.js';
@@ -100,5 +103,34 @@ describe('withHooks', () => {
       withHooks(asyncIterableFrom(sampleEvents), hooks, '/tmp'),
     );
     expect(events).toEqual(sampleEvents);
+  });
+
+  it('passes EFORGE_CWD, EFORGE_GIT_REMOTE, and EFORGE_EVENT_TYPE env vars to hook', async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-hook-test-'));
+    const outFile = join(tmpDir, 'env-out.txt');
+
+    try {
+      const hooks: HookConfig[] = [
+        {
+          event: 'eforge:start',
+          command: `echo "CWD=$EFORGE_CWD" > "${outFile}" && echo "REMOTE=$EFORGE_GIT_REMOTE" >> "${outFile}" && echo "TYPE=$EFORGE_EVENT_TYPE" >> "${outFile}"`,
+          timeout: 5000,
+        },
+      ];
+
+      const events: EforgeEvent[] = [
+        { type: 'eforge:start', runId: '1', planSet: 'test', command: 'plan', timestamp: new Date().toISOString() },
+      ];
+
+      // Consume all events so hooks fire and drain
+      await collectEvents(withHooks(asyncIterableFrom(events), hooks, tmpDir));
+
+      const content = await readFile(outFile, 'utf-8');
+      expect(content).toContain(`CWD=${tmpDir}`);
+      expect(content).toContain('REMOTE=');
+      expect(content).toContain('TYPE=eforge:start');
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
   });
 });
