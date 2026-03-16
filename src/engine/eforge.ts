@@ -615,6 +615,7 @@ export class EforgeEngine {
                 dependencyPlanContent,
                 verbose,
                 onClarification,
+                abortController,
               })) {
                 modTracker.handleEvent(event);
                 yield event;
@@ -653,12 +654,12 @@ export class EforgeEngine {
         reviewer: {
           role: 'cohesion-reviewer',
           metadata: { planSet: planSetName },
-          run: () => runCohesionReview({ backend: this.backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
+          run: () => runCohesionReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
         },
         evaluator: {
           role: 'cohesion-evaluator',
           metadata: { planSet: planSetName },
-          run: () => runCohesionEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
+          run: () => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController }),
         },
       });
     } catch (err) {

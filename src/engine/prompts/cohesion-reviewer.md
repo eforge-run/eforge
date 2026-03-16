@@ -118,5 +118,5 @@ Rules:
 - Do NOT run `git add` — fixes must remain unstaged
 - Do NOT run `git commit` — the evaluator decides what to accept
 - Do NOT modify files outside `plans/{{plan_set_name}}/`
-- Review ONLY the plan files — do not review or modify source code
+- Review ONLY the module plan files — do not review or modify source code
 - Do NOT restructure plans (split, merge, reorder) — only fix individual issues within existing plans

@@ -35,7 +35,7 @@ export async function* runModulePlanner(
     moduleDescription: options.moduleDescription,
     moduleDependsOn: options.moduleDependsOn.join(', ') || 'none',
     architectureContent: options.architectureContent,
-    dependencyPlans: options.dependencyPlanContent || 'No dependencies — this module is planned independently.',
+    dependencyPlans: options.dependencyPlanContent || 'No dependencies - this module is planned independently.',
     cwd: options.cwd,
   });
 

@@ -6,7 +6,7 @@ You are evaluating fixes from a blind cohesion reviewer. Your job is to inspect 
 
 - **Plan Set**: {{plan_set_name}}
 
-A planner agent generated plan files and committed them. A blind cohesion reviewer then reviewed the plan files for cross-module issues (file overlaps, integration contracts, dependency errors, vague criteria) and left fixes as unstaged changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.
+A planner agent generated module plans and committed them. A blind cohesion reviewer then reviewed the module plans for cross-module issues (file overlaps, integration contracts, dependency errors, vague criteria) and left fixes as unstaged changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.
 
 ## Source / PRD
 
@@ -28,7 +28,7 @@ This puts the planner's original artifacts as **staged changes** (`git diff --ca
 
 Compare the two sets of changes:
 
-1. **Staged changes** (`git diff --cached`) — the planner's original plan files. This represents the planner's intent.
+1. **Staged changes** (`git diff --cached`) — the planner's original module plans. This represents the planner's intent.
 2. **Unstaged changes** (`git diff`) — the reviewer's fixes. These are proposed modifications to the plans.
 
 For each file with unstaged changes, understand what the reviewer changed and why.
