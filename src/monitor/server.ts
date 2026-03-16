@@ -4,8 +4,8 @@ import {
   type IncomingMessage,
   type ServerResponse,
 } from 'node:http';
-import { readFile, stat } from 'node:fs/promises';
-import { resolve, dirname, extname, join } from 'node:path';
+import { readFile, readdir, stat } from 'node:fs/promises';
+import { resolve, dirname, extname, join, basename } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { MonitorDB } from './db.js';
 
@@ -218,39 +218,119 @@ export async function startServer(
     }
   }
 
-  function servePlans(_req: IncomingMessage, res: ServerResponse, id: string): void {
-    const sessionId = resolveSessionId(id);
-    const events = db.getEventsByTypeForSession(sessionId, 'plan:complete');
-    if (events.length === 0) {
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      });
-      res.end(JSON.stringify([]));
-      return;
-    }
+  type PlanResponse = { id: string; name: string; body: string; dependsOn: string[]; type: 'architecture' | 'module' | 'plan' };
 
+  async function readExpeditionFiles(
+    planDir: string,
+    moduleMap: Map<string, { id: string; description: string; dependsOn: string[] }>,
+  ): Promise<PlanResponse[]> {
+    const files: PlanResponse[] = [];
+
+    // Read architecture.md
     try {
-      const data = JSON.parse(events[0].data);
-      const plans = (data.plans || []).map((p: { id: string; name: string; body: string; dependsOn?: string[] }) => ({
-        id: p.id,
-        name: p.name,
-        body: p.body,
-        dependsOn: p.dependsOn || [],
-      }));
-
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
+      const archBody = await readFile(resolve(planDir, 'architecture.md'), 'utf-8');
+      files.push({
+        id: '__architecture__',
+        name: 'Architecture',
+        body: archBody,
+        dependsOn: [],
+        type: 'architecture',
       });
-      res.end(JSON.stringify(plans));
     } catch {
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      });
-      res.end(JSON.stringify([]));
+      // file may not exist yet
     }
+
+    // Read module plan files — only include files that match known modules
+    try {
+      const moduleFiles = await readdir(resolve(planDir, 'modules'));
+      for (const file of moduleFiles.sort()) {
+        if (!file.endsWith('.md')) continue;
+        const moduleId = basename(file, '.md');
+        if (moduleMap.size > 0 && !moduleMap.has(moduleId)) continue;
+        try {
+          const body = await readFile(resolve(planDir, 'modules', file), 'utf-8');
+          const meta = moduleMap.get(moduleId);
+          files.push({
+            id: `__module__${moduleId}`,
+            name: meta?.description ?? moduleId,
+            body,
+            dependsOn: meta?.dependsOn ?? [],
+            type: 'module',
+          });
+        } catch {
+          // skip unreadable files
+        }
+      }
+    } catch {
+      // modules directory may not exist yet
+    }
+
+    return files;
+  }
+
+  async function servePlans(_req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
+    const sessionId = resolveSessionId(id);
+
+    // Compiled plans from plan:complete event
+    const planEvents = db.getEventsByTypeForSession(sessionId, 'plan:complete');
+    let compiledPlans: PlanResponse[] = [];
+
+    if (planEvents.length > 0) {
+      try {
+        const data = JSON.parse(planEvents[0].data);
+        compiledPlans = (data.plans || []).map((p: { id: string; name: string; body: string; dependsOn?: string[] }) => ({
+          id: p.id,
+          name: p.name,
+          body: p.body,
+          dependsOn: p.dependsOn || [],
+          type: 'plan' as const,
+        }));
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    // Check for expedition files (architecture + module plans)
+    let expeditionFiles: PlanResponse[] = [];
+    const archEvents = db.getEventsByTypeForSession(sessionId, 'expedition:architecture:complete');
+
+    if (archEvents.length > 0) {
+      const sessionRuns = db.getSessionRuns(sessionId);
+      const compileRun = [...sessionRuns].reverse().find((r) => r.command === 'compile');
+
+      if (compileRun) {
+        const { cwd, planSet } = compileRun;
+        const planDir = resolve(cwd, 'plans', planSet);
+        const expectedBase = resolve(cwd, 'plans');
+        if (!planDir.startsWith(expectedBase + '/')) {
+          // planSet contains path traversal — skip expedition files
+          sendJson(res, compiledPlans);
+          return;
+        }
+
+        // Parse module metadata from the architecture event
+        let modules: Array<{ id: string; description: string; dependsOn: string[] }> = [];
+        try {
+          const archData = JSON.parse(archEvents[0].data);
+          modules = archData.modules || [];
+        } catch {
+          // ignore
+        }
+
+        expeditionFiles = await readExpeditionFiles(planDir, new Map(modules.map((m) => [m.id, m])));
+      }
+    }
+
+    const allPlans = [...expeditionFiles, ...compiledPlans];
+    sendJson(res, allPlans);
+  }
+
+  function sendJson(res: ServerResponse, data: unknown): void {
+    res.writeHead(200, {
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*',
+    });
+    res.end(JSON.stringify(data));
   }
 
   const server = createServer(async (req, res) => {
@@ -305,13 +385,13 @@ export async function startServer(
       });
       res.end(JSON.stringify({ status, events }));
     } else if (url.startsWith('/api/plans/')) {
-      const runId = url.slice('/api/plans/'.length);
+      const runId = url.slice('/api/plans/'.length).split('?')[0];
       if (!runId || !/^[\w-]+$/.test(runId)) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('Invalid runId');
         return;
       }
-      servePlans(req, res, runId);
+      await servePlans(req, res, runId);
     } else {
       // Serve static files (SPA)
       await serveStaticFile(req, res, url);

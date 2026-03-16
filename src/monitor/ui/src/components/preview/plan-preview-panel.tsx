@@ -5,12 +5,7 @@ import { PlanBodyHighlight } from './plan-body-highlight';
 import { splitPlanContent, parseFrontmatterFields } from '@/lib/plan-content';
 import { useApi } from '@/hooks/use-api';
 import { cn } from '@/lib/utils';
-
-interface PlanData {
-  id: string;
-  name: string;
-  body: string;
-}
+import type { PlanData } from '@/lib/types';
 
 interface PlanPreviewPanelProps {
   sessionId: string | null;
@@ -20,14 +15,15 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
   const { selectedPlanId, closePreview } = usePlanPreview();
   const isOpen = selectedPlanId !== null;
   const { data: plans, loading, error } = useApi<PlanData[]>(
-    sessionId ? `/api/plans/${sessionId}` : null,
+    isOpen && sessionId ? `/api/plans/${sessionId}` : null,
   );
 
   // Find selected plan
   const selectedPlan = plans?.find((p) => p.id === selectedPlanId) ?? null;
+  const planType = selectedPlan?.type ?? 'plan';
 
-  // Parse frontmatter from body for metadata
-  const metadata = selectedPlan
+  // Parse frontmatter from body for metadata (only for compiled plans)
+  const metadata = selectedPlan && planType === 'plan'
     ? (() => {
         const { frontmatter } = splitPlanContent(selectedPlan.body);
         if (frontmatter) {
@@ -85,9 +81,19 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground truncate">
-            {selectedPlan?.name ?? 'Plan Preview'}
-          </h2>
+          <div className="flex items-center gap-2 min-w-0">
+            {planType !== 'plan' && (
+              <span className={cn(
+                'text-[10px] font-medium px-1.5 py-0.5 rounded-sm shrink-0',
+                planType === 'architecture' ? 'bg-cyan/15 text-cyan' : 'bg-yellow/15 text-yellow',
+              )}>
+                {planType === 'architecture' ? 'Architecture' : 'Module'}
+              </span>
+            )}
+            <h2 className="text-sm font-semibold text-foreground truncate">
+              {selectedPlan?.name ?? 'Plan Preview'}
+            </h2>
+          </div>
           <button
             onClick={closePreview}
             className="bg-transparent border-none text-text-dim hover:text-foreground cursor-pointer text-lg leading-none p-1"
@@ -118,9 +124,9 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
             </div>
           )}
 
-          {!loading && !error && selectedPlan && metadata && (
+          {!loading && !error && selectedPlan && (
             <>
-              <PlanMetadata {...metadata} />
+              {metadata && <PlanMetadata {...metadata} />}
               <PlanBodyHighlight content={selectedPlan.body} />
             </>
           )}

@@ -5,7 +5,7 @@
  * Usage: pnpm dev:mock
  * Then: pnpm dev:monitor (Vite proxy forwards /api to :4567)
  */
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openDatabase } from './db.js';
@@ -14,6 +14,136 @@ import type { EforgeEvent } from '../engine/events.js';
 
 const TEMP_DIR = mkdtempSync(join(tmpdir(), 'eforge-mock-'));
 const DB_PATH = join(TEMP_DIR, 'monitor.db');
+
+// Write mock expedition plan files to disk so servePlans() can read them
+const MOCK_PLAN_DIR = join(TEMP_DIR, 'plans', 'build-notification-system');
+mkdirSync(join(MOCK_PLAN_DIR, 'modules'), { recursive: true });
+
+writeFileSync(join(MOCK_PLAN_DIR, 'architecture.md'), `# Notification System Architecture
+
+## Overview
+
+A multi-module notification system that provides a data model for storing notifications, an email delivery provider with template rendering and retry logic, and REST API endpoints for managing notifications.
+
+## Module Dependency Graph
+
+\`\`\`
+notification-model (foundation)
+├── email-provider (depends on model)
+└── notification-api (depends on model)
+\`\`\`
+
+## Cross-Cutting Concerns
+
+- **Error handling**: All modules should use shared error types from the model layer
+- **Type safety**: Notification types defined in model module are the single source of truth
+- **Testing**: Each module should have unit tests; integration tests validate cross-module flows
+
+## Data Flow
+
+1. API receives notification request via REST endpoints
+2. Notification is persisted via the model layer
+3. Email provider picks up pending notifications and delivers them
+4. Delivery status is updated back in the model
+
+## Key Decisions
+
+- Email provider uses a retry queue with exponential backoff
+- API supports pagination for listing notifications
+- Model uses a migration-based schema approach
+`);
+
+writeFileSync(join(MOCK_PLAN_DIR, 'modules', 'notification-model.md'), `## Notification Model Module
+
+### Scope
+Core notification data model, storage layer, and CRUD operations.
+
+### Implementation Details
+
+1. **Schema** (\`src/models/notification.ts\`)
+   - \`Notification\` interface: id, userId, type, title, body, status, createdAt, readAt
+   - \`NotificationStatus\` enum: pending, sent, failed, read
+   - \`CreateNotificationInput\` type for validated input
+
+2. **Database Migration** (\`src/db/migrations/001-notifications.sql\`)
+   - Create \`notifications\` table with indexes on userId and status
+   - Add \`notification_templates\` table for reusable templates
+
+3. **Repository** (\`src/db/notification-repo.ts\`)
+   - \`create(input)\`: Insert new notification
+   - \`findById(id)\`: Get single notification
+   - \`findByUser(userId, opts)\`: Paginated listing
+   - \`markAsRead(id)\`: Update status and readAt timestamp
+   - \`updateStatus(id, status)\`: Generic status update
+
+### Dependencies
+None - this is the foundation module.
+
+### Verification
+- Unit tests for repository methods
+- Migration runs cleanly on empty database
+`);
+
+writeFileSync(join(MOCK_PLAN_DIR, 'modules', 'email-provider.md'), `## Email Provider Module
+
+### Scope
+Email delivery provider with template rendering and retry logic.
+
+### Implementation Details
+
+1. **Provider Interface** (\`src/providers/email.ts\`)
+   - \`EmailProvider\` class with \`send(notification)\` method
+   - Template rendering via Handlebars
+   - Configurable SMTP transport (dev: Ethereal, prod: SES)
+
+2. **Retry Logic**
+   - Exponential backoff: 1s, 5s, 30s, 5m
+   - Max 4 retry attempts per notification
+   - Dead letter queue for permanently failed deliveries
+
+3. **Templates** (\`src/templates/\`)
+   - \`notification.html\`: Default notification email template
+   - \`digest.html\`: Daily digest template
+   - Template variables: \`{{title}}\`, \`{{body}}\`, \`{{actionUrl}}\`
+
+### Dependencies
+- \`notification-model\`: Uses \`Notification\` type and \`updateStatus()\` for delivery tracking
+
+### Verification
+- Unit tests with mocked SMTP transport
+- Template rendering tests with snapshot comparison
+`);
+
+writeFileSync(join(MOCK_PLAN_DIR, 'modules', 'notification-api.md'), `## Notification API Module
+
+### Scope
+REST endpoints for sending, listing, and marking notifications as read.
+
+### Implementation Details
+
+1. **Routes** (\`src/routes/notifications.ts\`)
+   - \`POST /notifications\`: Create and optionally send a notification
+   - \`GET /notifications\`: List notifications for authenticated user (paginated)
+   - \`GET /notifications/:id\`: Get single notification
+   - \`PATCH /notifications/:id/read\`: Mark as read
+
+2. **Middleware**
+   - Authentication required on all routes
+   - Request validation via Zod schemas
+   - Rate limiting: 100 req/min per user
+
+3. **Integration** (\`src/app.ts\`)
+   - Mount notification routes at \`/api/v1/notifications\`
+   - Register email provider as singleton
+
+### Dependencies
+- \`notification-model\`: Uses repository for all data access
+
+### Verification
+- Integration tests for each endpoint
+- Auth middleware tests
+- Pagination and filtering tests
+`);
 
 const db = openDatabase(DB_PATH);
 
@@ -535,7 +665,7 @@ db.insertRun({
   command: 'compile',
   status: 'completed',
   startedAt: makeTimestamp(1_000_000),
-  cwd: '/mock/todo-api',
+  cwd: TEMP_DIR,
 });
 db.updateRunStatus(RUN6A_ID, 'completed', makeTimestamp(1_200_000));
 
@@ -604,7 +734,7 @@ db.insertRun({
   command: 'build',
   status: 'completed',
   startedAt: makeTimestamp(1_210_000),
-  cwd: '/mock/todo-api',
+  cwd: TEMP_DIR,
 });
 db.updateRunStatus(RUN6B_ID, 'completed', makeTimestamp(1_400_000));
 

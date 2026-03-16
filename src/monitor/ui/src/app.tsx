@@ -34,6 +34,25 @@ export function App() {
   const hasEvents = runState.events.length > 0;
   const isMultiPlan = Object.keys(runState.planStatuses).length > 1;
   const hasPlans = runState.events.some((e) => e.event.type === 'plan:complete');
+  const hasExpeditionContent = runState.expeditionModules.length > 0;
+  const hasAnyPlanContent = hasPlans || hasExpeditionContent;
+
+  // Refetch trigger for expedition files — increments as modules complete.
+  // Derive from a stable string key to avoid recomputing on every SSE event
+  // (the reducer spreads moduleStatuses into a new object on each ADD_EVENT).
+  const completedModuleKey = useMemo(
+    () => Object.entries(runState.moduleStatuses)
+      .filter(([, s]) => s === 'complete')
+      .map(([id]) => id)
+      .sort()
+      .join(','),
+    [runState.moduleStatuses],
+  );
+  const expeditionRefetchTrigger = useMemo(() => {
+    if (!hasExpeditionContent) return 0;
+    const completedCount = completedModuleKey ? completedModuleKey.split(',').length : 0;
+    return completedCount + 1; // +1 so architecture shows up immediately
+  }, [hasExpeditionContent, completedModuleKey]);
 
   // Select session handler — marks as user-selected to prevent auto-switch
   const handleSelectSession = useCallback((sessionId: string) => {
@@ -217,11 +236,13 @@ export function App() {
 
               {/* Tab content */}
               {activeTab === 'plans' ? (
-                hasPlans ? (
+                hasAnyPlanContent ? (
                   <PlanCards
                     sessionId={currentSessionId}
                     planStatuses={runState.planStatuses}
                     fileChanges={runState.fileChanges}
+                    moduleStatuses={runState.moduleStatuses}
+                    refetchTrigger={expeditionRefetchTrigger}
                   />
                 ) : (
                   <div className="text-text-dim text-xs py-8 text-center">

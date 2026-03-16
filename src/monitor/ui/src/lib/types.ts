@@ -18,6 +18,16 @@ export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
 export type PipelineStage = 'plan' | 'implement' | 'review' | 'evaluate' | 'complete' | 'failed';
 
+export type PlanType = 'architecture' | 'module' | 'plan';
+
+export interface PlanData {
+  id: string;
+  name: string;
+  body: string;
+  dependsOn?: string[];
+  type?: PlanType;
+}
+
 export interface PlanStatus {
   planId: string;
   stage: PipelineStage;
