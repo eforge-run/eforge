@@ -2,9 +2,13 @@ import { useMemo } from 'react';
 import { usePlanPreview } from '@/components/preview';
 import { formatDuration } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { ReviewGauge } from './review-gauge';
 import type { AgentThread } from '@/lib/reducer';
 import type { PipelineStage, ReviewIssue } from '@/lib/types';
+
+const REVIEW_AGENTS = new Set([
+  'reviewer', 'plan-reviewer', 'cohesion-reviewer',
+  'evaluator', 'plan-evaluator', 'cohesion-evaluator',
+]);
 
 /** Map agent roles to pipeline-stage color classes */
 const AGENT_COLORS: Record<string, { bg: string; border: string }> = {
@@ -97,7 +101,7 @@ export function ThreadPipeline({ agentThreads, startTime, planStatuses, reviewIs
               threads={threadsByPlan.get(planId) ?? EMPTY_THREADS}
               sessionStart={sessionStart}
               totalSpan={totalSpan}
-              reviewIssues={reviewIssues?.[planId]}
+              issues={reviewIssues?.[planId]}
             />
           ))}
         </div>
@@ -111,11 +115,32 @@ interface PlanRowProps {
   threads: AgentThread[];
   sessionStart: number;
   totalSpan: number;
-  reviewIssues?: ReviewIssue[];
+  issues?: ReviewIssue[];
   disablePreview?: boolean;
 }
 
-function PlanRow({ planId, threads, sessionStart, totalSpan, reviewIssues, disablePreview }: PlanRowProps) {
+function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
+  const critical = issues.filter((i) => i.severity === 'critical').length;
+  const warning = issues.filter((i) => i.severity === 'warning').length;
+  const suggestion = issues.filter((i) => i.severity === 'suggestion').length;
+  const parts: React.ReactNode[] = [];
+  if (critical > 0) parts.push(<span key="c" className="text-red">{critical} critical</span>);
+  if (warning > 0) parts.push(<span key="w" className="text-yellow">{warning} warning</span>);
+  if (suggestion > 0) parts.push(<span key="s" className="text-text-dim">{suggestion} suggestion</span>);
+  if (parts.length === 0) return null;
+  return (
+    <div className="text-[10px] mt-0.5 flex items-center gap-1">
+      {parts.map((part, i) => (
+        <span key={i} className="flex items-center gap-1">
+          {i > 0 && <span className="opacity-30">·</span>}
+          {part}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function PlanRow({ planId, threads, sessionStart, totalSpan, issues, disablePreview }: PlanRowProps) {
   const { openPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -173,6 +198,9 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, reviewIssues, disab
                   <TooltipContent side="top">
                     <div className="font-medium">{thread.agent}</div>
                     <div className="opacity-70">{duration}</div>
+                    {REVIEW_AGENTS.has(thread.agent) && issues && issues.length > 0 && (
+                      <IssuesSummary issues={issues} />
+                    )}
                   </TooltipContent>
                 </Tooltip>
               </div>
@@ -180,11 +208,6 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, reviewIssues, disab
           })}
         </div>
       </div>
-      {reviewIssues && reviewIssues.length > 0 && (
-        <div className="ml-[148px]">
-          <ReviewGauge issues={reviewIssues} />
-        </div>
-      )}
     </div>
   );
 }

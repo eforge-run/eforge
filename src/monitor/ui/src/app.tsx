@@ -22,7 +22,7 @@ type ContentTab = 'plans' | 'timeline' | 'graph' | 'heatmap';
 export function App() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [sidebarRefresh, setSidebarRefresh] = useState(0);
-  const [activeTab, setActiveTab] = useState<ContentTab>('plans');
+  const [activeTab, setActiveTab] = useState<ContentTab>('graph');
   const [orchestration, setOrchestration] = useState<OrchestrationConfig | null>(null);
   const [mergedPlanIds, setMergedPlanIds] = useState<Set<string>>(new Set());
   const knownLatestRef = useRef<string | null>(null);
@@ -160,8 +160,8 @@ export function App() {
 
   // Reset active tab if its feature becomes unavailable
   useEffect(() => {
-    if (activeTab === 'graph' && !graphEnabled) setActiveTab('plans');
-    if (activeTab === 'heatmap' && !heatmapEnabled) setActiveTab('plans');
+    if (activeTab === 'graph' && !graphEnabled) setActiveTab('timeline');
+    if (activeTab === 'heatmap' && !heatmapEnabled) setActiveTab('timeline');
   }, [graphEnabled, heatmapEnabled, activeTab]);
 
   // Update duration every second while running
@@ -210,12 +210,6 @@ export function App() {
 
               {/* Content tabs */}
               <div className="flex gap-2 border-b border-border pb-px">
-                <button onClick={() => setActiveTab('plans')} className={tabClass('plans')}>
-                  Plans
-                </button>
-                <button onClick={() => setActiveTab('timeline')} className={tabClass('timeline')}>
-                  Timeline
-                </button>
                 <button
                   onClick={() => setActiveTab('graph')}
                   disabled={!graphEnabled}
@@ -224,6 +218,9 @@ export function App() {
                 >
                   Graph
                 </button>
+                <button onClick={() => setActiveTab('timeline')} className={tabClass('timeline')}>
+                  Timeline
+                </button>
                 <button
                   onClick={() => setActiveTab('heatmap')}
                   disabled={!heatmapEnabled}
@@ -231,6 +228,9 @@ export function App() {
                   title={heatmapEnabled ? undefined : 'Available for multi-plan runs'}
                 >
                   Heatmap
+                </button>
+                <button onClick={() => setActiveTab('plans')} className={tabClass('plans')}>
+                  Plans
                 </button>
               </div>
 

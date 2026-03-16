@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { usePlanPreview } from '@/components/preview';
-import type { PipelineStage, ReviewIssue } from '@/lib/types';
-import { ReviewGauge } from './review-gauge';
+import type { PipelineStage } from '@/lib/types';
 
 const STAGES: PipelineStage[] = ['plan', 'implement', 'review', 'evaluate', 'complete'];
 
@@ -16,10 +15,9 @@ const STAGE_COLORS: Record<string, { bg: string; text: string; glow: string }> =
 interface PipelineRowProps {
   planId: string;
   currentStage: PipelineStage;
-  reviewIssues?: ReviewIssue[];
 }
 
-export function PipelineRow({ planId, currentStage, reviewIssues }: PipelineRowProps) {
+export function PipelineRow({ planId, currentStage }: PipelineRowProps) {
   const { openPreview } = usePlanPreview();
   const prevStageRef = useRef<PipelineStage>(currentStage);
   const [poppingStage, setPoppingStage] = useState<PipelineStage | null>(null);
@@ -109,11 +107,6 @@ export function PipelineRow({ planId, currentStage, reviewIssues }: PipelineRowP
           })}
         </div>
       </div>
-      {reviewIssues && reviewIssues.length > 0 && (
-        <div className="ml-[148px]">
-          <ReviewGauge issues={reviewIssues} />
-        </div>
-      )}
     </div>
   );
 }
