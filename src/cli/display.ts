@@ -353,6 +353,18 @@ export function renderEvent(event: EforgeEvent): void {
       }
       break;
 
+    case 'expedition:wave:start':
+      console.log('');
+      console.log(
+        chalk.magenta(`\u2501\u2501 Module wave ${event.wave} \u2501\u2501`) +
+          chalk.dim(` [${event.moduleIds.join(', ')}]`),
+      );
+      break;
+
+    case 'expedition:wave:complete':
+      console.log(chalk.magenta(`\u2501\u2501 Module wave ${event.wave} complete \u2501\u2501`));
+      break;
+
     case 'expedition:module:start':
       startSpinner(`mod:${event.moduleId}`, `Planning module ${chalk.cyan(event.moduleId)}...`);
       break;

@@ -16,9 +16,9 @@ The original source material used to generate these plans:
 
 # Scope
 
-1. Read all plan files in `plans/{{plan_set_name}}/` (the `.md` files with YAML frontmatter).
-2. Read `plans/{{plan_set_name}}/orchestration.yaml` for the dependency structure and execution order.
-3. Review the plan set against the architecture above and the criteria below.
+1. Read all module plan files in `plans/{{plan_set_name}}/modules/` (the `.md` files - these are the source module plans, not compiled plan files).
+2. Read the architecture document above for the dependency structure and module boundaries.
+3. Review the module plans against the architecture and the criteria below.
 
 # Review Categories
 

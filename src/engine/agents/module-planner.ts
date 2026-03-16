@@ -11,6 +11,8 @@ export interface ModulePlannerOptions {
   moduleDependsOn: string[];
   architectureContent: string;
   sourceContent: string;
+  /** Concatenated plan content from completed dependency modules */
+  dependencyPlanContent?: string;
   verbose?: boolean;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   abortController?: AbortController;
@@ -33,6 +35,7 @@ export async function* runModulePlanner(
     moduleDescription: options.moduleDescription,
     moduleDependsOn: options.moduleDependsOn.join(', ') || 'none',
     architectureContent: options.architectureContent,
+    dependencyPlans: options.dependencyPlanContent || 'No dependencies — this module is planned independently.',
     cwd: options.cwd,
   });
 

@@ -35,7 +35,6 @@ import { createTracingContext, type SpanHandle, type ToolCallHandle, type Tracin
 import { runPlanner } from './agents/planner.js';
 import { runModulePlanner } from './agents/module-planner.js';
 import { builderImplement, builderEvaluate } from './agents/builder.js';
-import { runReview } from './agents/reviewer.js';
 import { runParallelReview } from './agents/parallel-reviewer.js';
 import { runReviewFixer } from './agents/review-fixer.js';
 import { runPlanReview } from './agents/plan-reviewer.js';
@@ -46,7 +45,7 @@ import { runValidationFixer } from './agents/validation-fixer.js';
 import { runAssessor } from './agents/assessor.js';
 import { runParallel, type ParallelTask } from './concurrency.js';
 import { Orchestrator, type ValidationFixer } from './orchestrator.js';
-import { deriveNameFromSource, deriveNameFromContent, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName, extractPlanTitle, detectValidationCommands, writePlanArtifacts } from './plan.js';
+import { deriveNameFromSource, deriveNameFromContent, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName, extractPlanTitle, detectValidationCommands, writePlanArtifacts, resolveDependencyGraph } from './plan.js';
 import { compileExpedition } from './compiler.js';
 import { parseModulesBlock } from './agents/common.js';
 import { loadState } from './state.js';
@@ -253,38 +252,8 @@ export class EforgeEngine {
         await exec('git', ['add', planDir], { cwd });
         await exec('git', ['commit', '-m', `plan(${planSetName}): initial planning artifacts`], { cwd });
 
-        // Cohesion review cycle: cross-module validation (expedition only, non-fatal)
-        if (scopeAssessment === 'expedition') {
-          try {
-            // Read architecture content for cohesion reviewer
-            let architectureContent = '';
-            try {
-              architectureContent = await readFile(resolve(cwd, 'plans', planSetName, 'architecture.md'), 'utf-8');
-            } catch {
-              // Architecture file may not exist
-            }
-
-            yield* runReviewCycle({
-              tracing,
-              cwd,
-              reviewer: {
-                role: 'cohesion-reviewer',
-                metadata: { planSet: planSetName },
-                run: () => runCohesionReview({ backend: this.backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
-              },
-              evaluator: {
-                role: 'cohesion-evaluator',
-                metadata: { planSet: planSetName },
-                run: () => runCohesionEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
-              },
-            });
-          } catch (err) {
-            // Cohesion review failure is non-fatal — plan artifacts are already committed
-            yield { type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
-          }
-        }
-
         // Plan review cycle: blind review → evaluate (non-fatal)
+        // (Cohesion review already ran inside planExpeditionModules, before compilation)
         try {
           yield* runReviewCycle({
             tracing,
@@ -528,36 +497,8 @@ export class EforgeEngine {
           await exec('git', ['add', planDir], { cwd });
           await exec('git', ['commit', '-m', `plan(${planSetName}): adopt existing implementation plan`], { cwd });
 
-          // Cohesion review cycle (expedition only, non-fatal)
-          if (scopeAssessment === 'expedition') {
-            try {
-              let architectureContent = '';
-              try {
-                architectureContent = await readFile(resolve(cwd, 'plans', planSetName, 'architecture.md'), 'utf-8');
-              } catch {
-                // Architecture file may not exist
-              }
-
-              yield* runReviewCycle({
-                tracing,
-                cwd,
-                reviewer: {
-                  role: 'cohesion-reviewer',
-                  metadata: { planSet: planSetName },
-                  run: () => runCohesionReview({ backend: this.backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
-                },
-                evaluator: {
-                  role: 'cohesion-evaluator',
-                  metadata: { planSet: planSetName },
-                  run: () => runCohesionEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
-                },
-              });
-            } catch (err) {
-              yield { type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
-            }
-          }
-
           // Plan review cycle (non-fatal, skippable)
+          // (Cohesion review already ran inside planExpeditionModules, before compilation)
           if (!options.skipReview) {
             try {
               yield* runReviewCycle({
@@ -596,7 +537,13 @@ export class EforgeEngine {
   }
 
   /**
-   * Run module planners for each expedition module, then compile to plan files.
+   * Run module planners in dependency waves, cohesion review, then compile to plan files.
+   *
+   * Flow mirrors the EEE plugin's expedition workflow:
+   * 1. Compute dependency waves from module graph
+   * 2. Plan each wave (parallel within wave, sequential across waves)
+   * 3. Cohesion review on module plans (before compilation)
+   * 4. Compile modules into plan files + orchestration.yaml
    */
   private async *planExpeditionModules(
     planSetName: string,
@@ -606,6 +553,8 @@ export class EforgeEngine {
   ): AsyncGenerator<EforgeEvent> {
     const cwd = options.cwd;
     const sourceContent = options.sourceContent;
+    const verbose = options.verbose;
+    const abortController = options.abortController;
     const planDir = resolve(cwd, 'plans', planSetName);
 
     // Read architecture content for module planners
@@ -616,45 +565,107 @@ export class EforgeEngine {
       // Architecture file may not exist if planner didn't create it
     }
 
-    // Run module planners in parallel
+    // 1. Compute dependency waves via topological sort
+    const plansForGraph = modules.map((mod) => ({
+      id: mod.id,
+      name: mod.id,
+      dependsOn: mod.dependsOn,
+      branch: mod.id,
+    }));
+    const { waves } = resolveDependencyGraph(plansForGraph);
+    const moduleMap = new Map(modules.map((m) => [m.id, m]));
+    const completedPlans = new Map<string, string>(); // moduleId → plan file content
+
+    // 2. Plan each wave (parallel within wave, sequential across waves)
     const backend = this.backend;
     const onClarification = this.onClarification;
-    const moduleTasks: ParallelTask<EforgeEvent>[] = modules.map((mod) => ({
-      id: mod.id,
-      run: async function* () {
-        const modSpan = tracing.createSpan('module-planner', { moduleId: mod.id });
-        modSpan.setInput({ moduleId: mod.id, description: mod.description });
 
-        const modTracker = createToolTracker(modSpan);
+    for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
+      const waveModuleIds = waves[waveIdx];
+      yield { type: 'expedition:wave:start', wave: waveIdx + 1, moduleIds: waveModuleIds };
+
+      const waveTasks: ParallelTask<EforgeEvent>[] = waveModuleIds.map((modId) => {
+        const mod = moduleMap.get(modId)!;
+
+        // Gather completed dependency plan content from earlier waves
+        const depContent = mod.dependsOn
+          .map((depId) => completedPlans.get(depId))
+          .filter((c): c is string => c !== undefined);
+        const dependencyPlanContent = depContent.length > 0
+          ? depContent.join('\n\n---\n\n')
+          : undefined;
+
+        return {
+          id: mod.id,
+          run: async function* () {
+            const modSpan = tracing.createSpan('module-planner', { moduleId: mod.id });
+            modSpan.setInput({ moduleId: mod.id, description: mod.description });
+
+            const modTracker = createToolTracker(modSpan);
+            try {
+              for await (const event of runModulePlanner({
+                backend,
+                cwd,
+                planSetName,
+                moduleId: mod.id,
+                moduleDescription: mod.description,
+                moduleDependsOn: mod.dependsOn,
+                architectureContent,
+                sourceContent,
+                dependencyPlanContent,
+                verbose,
+                onClarification,
+              })) {
+                modTracker.handleEvent(event);
+                yield event;
+              }
+              modTracker.cleanup();
+              modSpan.end();
+            } catch (err) {
+              // Module planning failure is non-fatal — continue with other modules
+              modTracker.cleanup();
+              modSpan.error(err as Error);
+            }
+          },
+        };
+      });
+
+      yield* runParallel(waveTasks);
+
+      // Read completed module plan files for this wave (context for later waves)
+      for (const modId of waveModuleIds) {
         try {
-          for await (const event of runModulePlanner({
-            backend,
-            cwd,
-            planSetName,
-            moduleId: mod.id,
-            moduleDescription: mod.description,
-            moduleDependsOn: mod.dependsOn,
-            architectureContent,
-            sourceContent,
-            verbose: options.verbose,
-            onClarification,
-          })) {
-            modTracker.handleEvent(event);
-            yield event;
-          }
-          modTracker.cleanup();
-          modSpan.end();
-        } catch (err) {
-          // Module planning failure is non-fatal — continue with other modules
-          modTracker.cleanup();
-          modSpan.error(err as Error);
+          const content = await readFile(resolve(planDir, 'modules', `${modId}.md`), 'utf-8');
+          completedPlans.set(modId, content);
+        } catch {
+          // Module planner may have failed — skip
         }
-      },
-    }));
+      }
 
-    yield* runParallel(moduleTasks);
+      yield { type: 'expedition:wave:complete', wave: waveIdx + 1 };
+    }
 
-    // Compile modules into plan files + orchestration.yaml
+    // 3. Cohesion review on module plans (before compilation, non-fatal)
+    try {
+      yield* runReviewCycle({
+        tracing,
+        cwd,
+        reviewer: {
+          role: 'cohesion-reviewer',
+          metadata: { planSet: planSetName },
+          run: () => runCohesionReview({ backend: this.backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController }),
+        },
+        evaluator: {
+          role: 'cohesion-evaluator',
+          metadata: { planSet: planSetName },
+          run: () => runCohesionEvaluate({ backend: this.backend, planSetName, sourceContent, cwd, verbose, abortController }),
+        },
+      });
+    } catch (err) {
+      yield { type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
+    }
+
+    // 4. Compile modules into plan files + orchestration.yaml
     yield { type: 'expedition:compile:start' };
     const plans = await compileExpedition(cwd, planSetName);
     yield { type: 'expedition:compile:complete', plans };

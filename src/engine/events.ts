@@ -177,6 +177,8 @@ export type EforgeEvent = { sessionId?: string } & (
 
   // Expedition planning phases
   | { type: 'expedition:architecture:complete'; modules: ExpeditionModule[] }
+  | { type: 'expedition:wave:start'; wave: number; moduleIds: string[] }
+  | { type: 'expedition:wave:complete'; wave: number }
   | { type: 'expedition:module:start'; moduleId: string }
   | { type: 'expedition:module:complete'; moduleId: string }
   | { type: 'expedition:compile:start' }

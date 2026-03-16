@@ -14,6 +14,12 @@ The following architecture document defines the overall design, principles, and 
 
 {{architectureContent}}
 
+### Dependency Module Plans
+
+The following detailed plans have been completed by modules this module depends on. Use them for concrete file paths, interfaces, implementation decisions, and integration points:
+
+{{dependencyPlans}}
+
 ### Module to Plan
 
 - **Module ID**: `{{moduleId}}`
