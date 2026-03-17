@@ -17,8 +17,10 @@ eforge-plugin/
     │   └── SKILL.md          # /eforge:plan — conversational PRD authoring
     ├── run/
     │   └── SKILL.md          # /eforge:run — compile + build + validate delegation
-    └── status/
-        └── SKILL.md          # /eforge:status — state file rendering
+    ├── status/
+    │   └── SKILL.md          # /eforge:status — state file rendering
+    └── config/
+        └── config.md         # /eforge:config — initialize or edit eforge.yaml
 ```
 
 No internal coordinator skills. No bash scripts. No completion markers. The eforge CLI handles all of that internally.
@@ -99,7 +101,7 @@ This is the only skill that doesn't invoke the eforge CLI — it just reads and 
 ## Primary Flow
 
 ```
-/eforge:plan → writes PRD → /eforge:run <prd> → monitor with /eforge:status
+/eforge:config → (config exists) → /eforge:plan → writes PRD → /eforge:run <prd> → monitor with /eforge:status
 ```
 
 ## CLI Reference
@@ -109,6 +111,8 @@ Commands the plugin wraps:
 ```
 eforge run <source>       # Compile + build + validate in one step
 eforge status             # Check running builds
+eforge config validate    # Validate eforge.yaml (schema + profile stage names)
+eforge config show        # Print resolved config as YAML
 ```
 
 Key flags:
