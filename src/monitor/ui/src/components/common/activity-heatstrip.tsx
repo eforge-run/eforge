@@ -4,6 +4,7 @@ import type { StoredEvent } from '@/lib/reducer';
 interface ActivityHeatstripProps {
   events: StoredEvent[];
   startTime: number | null;
+  endTime: number | null;
 }
 
 const BUCKET_MS = 30_000; // 30 seconds per bucket
@@ -28,12 +29,12 @@ function getDensityColor(count: number, maxCount: number): string {
   return DENSITY_COLORS[4];
 }
 
-export function ActivityHeatstrip({ events, startTime }: ActivityHeatstripProps) {
+export function ActivityHeatstrip({ events, startTime, endTime }: ActivityHeatstripProps) {
   const buckets = useMemo(() => {
     if (!startTime || events.length === 0) return [];
 
-    const now = Date.now();
-    const totalBuckets = Math.max(1, Math.ceil((now - startTime) / BUCKET_MS));
+    const end = endTime ?? Date.now();
+    const totalBuckets = Math.max(1, Math.ceil((end - startTime) / BUCKET_MS));
     const counts = new Array(totalBuckets).fill(0);
 
     for (const { event } of events) {
@@ -54,7 +55,7 @@ export function ActivityHeatstrip({ events, startTime }: ActivityHeatstripProps)
       minutes: Math.floor((i * BUCKET_MS) / 60_000),
       showLabel: i % LABEL_INTERVAL === 0 && i > 0,
     }));
-  }, [events, startTime]);
+  }, [events, startTime, endTime]);
 
   if (buckets.length === 0) return null;
 

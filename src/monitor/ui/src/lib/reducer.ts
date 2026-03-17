@@ -37,6 +37,7 @@ export interface RunState {
   expeditionModules: ExpeditionModule[];
   moduleStatuses: Record<string, ModuleStatus>;
   earlyOrchestration: OrchestrationConfig | null;
+  endTime: number | null;
 }
 
 export const initialRunState: RunState = {
@@ -55,6 +56,7 @@ export const initialRunState: RunState = {
   expeditionModules: [],
   moduleStatuses: {},
   earlyOrchestration: null,
+  endTime: null,
 };
 
 export type RunAction =
@@ -67,6 +69,7 @@ function processEvent(
   event: EforgeEvent,
   state: {
     startTime: number | null;
+    endTime: number | null;
     isComplete: boolean;
     resultStatus: 'completed' | 'failed' | null;
     tokensIn: number;
@@ -88,6 +91,9 @@ function processEvent(
 
   if (event.type === 'session:end') {
     state.isComplete = true;
+    if ('timestamp' in event && event.timestamp) {
+      state.endTime = new Date(event.timestamp as string).getTime();
+    }
     if ('result' in event && event.result) {
       state.resultStatus = (event.result as { status: 'completed' | 'failed' }).status;
     }
@@ -216,6 +222,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
     case 'BATCH_LOAD': {
       const acc = {
         startTime: null as number | null,
+        endTime: null as number | null,
         isComplete: false,
         resultStatus: null as 'completed' | 'failed' | null,
         tokensIn: 0,
@@ -276,8 +283,9 @@ export function getSummaryStats(state: RunState): {
   plansFailed: number;
   plansTotal: number;
 } {
+  const end = state.endTime ?? Date.now();
   const duration = state.startTime
-    ? formatDuration(Date.now() - state.startTime)
+    ? formatDuration(end - state.startTime)
     : '--';
 
   const statuses = Object.values(state.planStatuses);

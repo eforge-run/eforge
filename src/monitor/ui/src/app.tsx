@@ -205,8 +205,8 @@ export function App() {
           ) : (
             <>
               <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} />
-              <ActivityHeatstrip events={runState.events} startTime={runState.startTime} />
-              <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} />
+              <ActivityHeatstrip events={runState.events} startTime={runState.startTime} endTime={runState.endTime} />
+              <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} />
 
               {/* Content tabs */}
               <div className="flex gap-2 border-b border-border pb-px">

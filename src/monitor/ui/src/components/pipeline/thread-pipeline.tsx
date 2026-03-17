@@ -35,17 +35,19 @@ function getAgentColor(agent: string) {
 interface ThreadPipelineProps {
   agentThreads: AgentThread[];
   startTime: number | null;
+  endTime: number | null;
   planStatuses: Record<string, PipelineStage>;
   reviewIssues?: Record<string, ReviewIssue[]>;
 }
 
-export function ThreadPipeline({ agentThreads, startTime, planStatuses, reviewIssues }: ThreadPipelineProps) {
+export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues }: ThreadPipelineProps) {
   const entries = Object.entries(planStatuses);
 
   // Compute the time span across all threads
   const { sessionStart, totalSpan } = useMemo(() => {
-    const start = startTime ?? Date.now();
-    let maxEnd = Date.now();
+    const fallbackNow = endTime ?? Date.now();
+    const start = startTime ?? fallbackNow;
+    let maxEnd = fallbackNow;
     for (const thread of agentThreads) {
       if (thread.endedAt) {
         const end = new Date(thread.endedAt).getTime();
@@ -53,7 +55,7 @@ export function ThreadPipeline({ agentThreads, startTime, planStatuses, reviewIs
       }
     }
     return { sessionStart: start, totalSpan: Math.max(maxEnd - start, 1) };
-  }, [agentThreads, startTime]);
+  }, [agentThreads, startTime, endTime]);
 
   // Group threads by planId (threads without planId go under a synthetic key)
   const threadsByPlan = useMemo(() => {
@@ -91,6 +93,7 @@ export function ThreadPipeline({ agentThreads, startTime, planStatuses, reviewIs
               threads={globalThreads}
               sessionStart={sessionStart}
               totalSpan={totalSpan}
+              endTime={endTime}
               disablePreview
             />
           )}
@@ -101,6 +104,7 @@ export function ThreadPipeline({ agentThreads, startTime, planStatuses, reviewIs
               threads={threadsByPlan.get(planId) ?? EMPTY_THREADS}
               sessionStart={sessionStart}
               totalSpan={totalSpan}
+              endTime={endTime}
               issues={reviewIssues?.[planId]}
             />
           ))}
@@ -115,6 +119,7 @@ interface PlanRowProps {
   threads: AgentThread[];
   sessionStart: number;
   totalSpan: number;
+  endTime: number | null;
   issues?: ReviewIssue[];
   disablePreview?: boolean;
 }
@@ -140,7 +145,7 @@ function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
   );
 }
 
-function PlanRow({ planId, threads, sessionStart, totalSpan, issues, disablePreview }: PlanRowProps) {
+function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview }: PlanRowProps) {
   const { openPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -167,7 +172,7 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, issues, disablePrev
             const threadStart = new Date(thread.startedAt).getTime();
             const threadEnd = thread.endedAt
               ? new Date(thread.endedAt).getTime()
-              : Date.now();
+              : (endTime ?? Date.now());
             const leftPercent = Math.max(0, ((threadStart - sessionStart) / totalSpan) * 100);
             const widthPercent = Math.max(0, Math.min(((threadEnd - threadStart) / totalSpan) * 100, 100 - leftPercent));
             const isRunning = thread.endedAt === null;
