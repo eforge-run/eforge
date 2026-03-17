@@ -16,7 +16,19 @@ export interface BuilderOptions {
   abortController?: AbortController;
   /** Override max conversation turns (defaults: implement=50, evaluate=30) */
   maxTurns?: number;
+  /** Evaluator strictness level — controls the accept/reject threshold text injected into the prompt */
+  strictness?: 'strict' | 'standard' | 'lenient';
 }
+
+/**
+ * Strictness text blocks injected into the evaluator prompt via {{strictness}}.
+ * Exported for testability.
+ */
+export const STRICTNESS_BLOCKS: Record<string, string> = {
+  strict: `\n### Strictness: Strict\n\nApply a high bar for acceptance. Only accept fixes that are unambiguously correct — fixing a clear bug, crash, or security vulnerability. When in doubt, reject. Treat "review" verdicts as rejects.\n`,
+  standard: '',
+  lenient: `\n### Strictness: Lenient\n\nApply a low bar for acceptance. Accept fixes unless they clearly damage the implementation's intent or remove functionality. When in doubt, accept. Treat "review" verdicts as accepts.\n`,
+};
 
 /**
  * Structured evidence extracted from evaluation verdict child elements.
@@ -96,9 +108,11 @@ export async function* builderEvaluate(
 ): AsyncGenerator<EforgeEvent> {
   yield { type: 'build:evaluate:start', planId: plan.id };
 
+  const strictnessKey = options.strictness ?? 'standard';
   const prompt = await loadPrompt('evaluator', {
     plan_id: plan.id,
     plan_name: plan.name,
+    strictness: STRICTNESS_BLOCKS[strictnessKey] ?? '',
   });
 
   let fullText = '';

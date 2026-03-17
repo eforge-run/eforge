@@ -210,6 +210,34 @@ export function getAgentMaxTurns(
 }
 
 // ---------------------------------------------------------------------------
+// Issue severity filtering
+// ---------------------------------------------------------------------------
+
+const SEVERITY_ORDER: Record<ReviewIssue['severity'], number> = {
+  critical: 0,
+  warning: 1,
+  suggestion: 2,
+};
+
+/**
+ * Filter review issues by severity threshold.
+ * `autoAcceptBelow: 'warning'` means issues at warning and below (warning, suggestion)
+ * are auto-accepted. Only critical issues reach the fixer.
+ * `autoAcceptBelow: 'suggestion'` means only suggestion-severity issues are auto-accepted.
+ * Critical and warning reach the fixer.
+ */
+export function filterIssuesBySeverity(
+  issues: ReviewIssue[],
+  autoAcceptBelow?: 'suggestion' | 'warning',
+): { filtered: ReviewIssue[]; autoAccepted: ReviewIssue[] } {
+  if (!autoAcceptBelow) return { filtered: issues, autoAccepted: [] };
+  const threshold = SEVERITY_ORDER[autoAcceptBelow];
+  const filtered = issues.filter(i => SEVERITY_ORDER[i.severity] < threshold);
+  const autoAccepted = issues.filter(i => SEVERITY_ORDER[i.severity] >= threshold);
+  return { filtered, autoAccepted };
+}
+
+// ---------------------------------------------------------------------------
 // Built-in Compile Stages
 // ---------------------------------------------------------------------------
 
@@ -535,6 +563,16 @@ registerBuildStage('implement', async function* implementStage(ctx) {
 });
 
 registerBuildStage('review', async function* reviewStage(ctx) {
+  yield* reviewStageInner(ctx);
+});
+
+async function* reviewStageInner(
+  ctx: BuildStageContext,
+  overrides?: { strategy?: 'auto' | 'single' | 'parallel'; perspectives?: string[] },
+): AsyncGenerator<EforgeEvent> {
+  const strategy = overrides?.strategy ?? ctx.profile.review.strategy;
+  const perspectives = overrides?.perspectives ?? (ctx.profile.review.perspectives.length > 0 ? ctx.profile.review.perspectives : undefined);
+
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
   const reviewTracker = createToolTracker(reviewSpan);
@@ -548,6 +586,8 @@ registerBuildStage('review', async function* reviewStage(ctx) {
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
+      strategy,
+      perspectives,
     })) {
       reviewTracker.handleEvent(event);
       yield event;
@@ -561,14 +601,29 @@ registerBuildStage('review', async function* reviewStage(ctx) {
     reviewTracker.cleanup();
     reviewSpan.error(err as Error);
   }
-});
+}
 
 registerBuildStage('review-fix', async function* reviewFixStage(ctx) {
-  // Only runs if review found issues
+  yield* reviewFixStageInner(ctx);
+});
+
+async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
+  // Filter issues by autoAcceptBelow threshold
+  const { filtered, autoAccepted } = filterIssuesBySeverity(
+    ctx.reviewIssues,
+    ctx.profile.review.autoAcceptBelow,
+  );
+  ctx.reviewIssues = filtered;
+
+  // Only runs if review found actionable issues after filtering
   if (ctx.reviewIssues.length === 0) return;
 
   const fixerSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
-  fixerSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
+  fixerSpan.setInput({
+    planId: ctx.planId,
+    issueCount: ctx.reviewIssues.length,
+    autoAccepted: autoAccepted.length,
+  });
   const fixerTracker = createToolTracker(fixerSpan);
 
   try {
@@ -589,11 +644,20 @@ registerBuildStage('review-fix', async function* reviewFixStage(ctx) {
     fixerTracker.cleanup();
     fixerSpan.error(err as Error);
   }
-});
+}
 
 registerBuildStage('evaluate', async function* evaluateStage(ctx) {
+  yield* evaluateStageInner(ctx);
+});
+
+async function* evaluateStageInner(
+  ctx: BuildStageContext,
+  overrides?: { strictness?: 'strict' | 'standard' | 'lenient' },
+): AsyncGenerator<EforgeEvent> {
   // Only runs if there are unstaged changes from review/fixer
   if (!(await hasUnstagedChanges(ctx.worktreePath))) return;
+
+  const strictness = overrides?.strictness ?? ctx.profile.review.evaluatorStrictness;
 
   const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId });
   evalSpan.setInput({ planId: ctx.planId });
@@ -605,6 +669,7 @@ registerBuildStage('evaluate', async function* evaluateStage(ctx) {
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
+      strictness,
     })) {
       evalTracker.handleEvent(event);
       yield event;
@@ -614,6 +679,31 @@ registerBuildStage('evaluate', async function* evaluateStage(ctx) {
   } catch (err) {
     evalTracker.cleanup();
     evalSpan.error(err as Error);
+  }
+}
+
+registerBuildStage('review-cycle', async function* reviewCycleStage(ctx) {
+  const maxRounds = ctx.profile.review.maxRounds;
+  const strategy = ctx.profile.review.strategy;
+  const perspectives = ctx.profile.review.perspectives.length > 0 ? ctx.profile.review.perspectives : undefined;
+  const autoAcceptBelow = ctx.profile.review.autoAcceptBelow;
+  const strictness = ctx.profile.review.evaluatorStrictness;
+
+  for (let round = 0; round < maxRounds; round++) {
+    // 1. Review
+    yield* reviewStageInner(ctx, { strategy, perspectives });
+
+    // 2. Filter issues
+    const { filtered } = filterIssuesBySeverity(ctx.reviewIssues, autoAcceptBelow);
+    ctx.reviewIssues = filtered;
+
+    if (filtered.length === 0) break; // No actionable issues
+
+    // 3. Review-fix
+    yield* reviewFixStageInner(ctx);
+
+    // 4. Evaluate
+    yield* evaluateStageInner(ctx, { strictness });
   }
 });
 

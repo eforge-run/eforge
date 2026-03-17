@@ -29,7 +29,7 @@ Compare the two sets of changes:
 For each file with unstaged changes, understand what the reviewer changed and why.
 
 ## Fix Evaluation Policy
-
+{{strictness}}
 ### Core Principle: Strict Improvement
 
 A change is a **strict improvement** if and only if:

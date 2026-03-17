@@ -31,6 +31,10 @@ export interface ParallelReviewerOptions {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Override review strategy. 'auto' = existing heuristic, 'single' = always single, 'parallel' = always parallel */
+  strategy?: 'auto' | 'single' | 'parallel';
+  /** Override which review perspectives to use (only applies when parallel path is taken) */
+  perspectives?: string[];
 }
 
 /** Map perspective names to prompt file names */
@@ -51,7 +55,21 @@ const PERSPECTIVE_PROMPTS: Record<ReviewPerspective, string> = {
 export async function* runParallelReview(
   options: ParallelReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, planContent, baseBranch, planId, cwd, verbose, abortController } = options;
+  const { backend, planContent, baseBranch, planId, cwd, verbose, abortController, strategy, perspectives: perspectivesOverride } = options;
+
+  // Short-circuit: strategy 'single' always delegates to single reviewer
+  if (strategy === 'single') {
+    yield* runReview({
+      backend,
+      planContent,
+      baseBranch,
+      planId,
+      cwd,
+      verbose,
+      abortController,
+    });
+    return;
+  }
 
   // Get changed files
   let changedFiles: string[];
@@ -76,8 +94,8 @@ export async function* runParallelReview(
     // Non-critical - default to 0
   }
 
-  // Check threshold
-  if (!shouldParallelizeReview(changedFiles, { lines: changedLines })) {
+  // Check threshold: strategy 'parallel' skips the heuristic, 'auto' (default) uses it
+  if (strategy !== 'parallel' && !shouldParallelizeReview(changedFiles, { lines: changedLines })) {
     // Below threshold - delegate to existing single reviewer
     yield* runReview({
       backend,
@@ -91,9 +109,15 @@ export async function* runParallelReview(
     return;
   }
 
-  // Above threshold - run parallel specialist reviewers
-  const categories = categorizeFiles(changedFiles);
-  const perspectives = determineApplicableReviews(categories);
+  // Above threshold (or forced parallel) - run parallel specialist reviewers
+  // Use perspectives override if provided, otherwise determine from file categories
+  let perspectives: ReviewPerspective[];
+  if (perspectivesOverride) {
+    perspectives = perspectivesOverride as ReviewPerspective[];
+  } else {
+    const categories = categorizeFiles(changedFiles);
+    perspectives = determineApplicableReviews(categories);
+  }
 
   if (perspectives.length === 0) {
     // No applicable perspectives - fall back to single reviewer
