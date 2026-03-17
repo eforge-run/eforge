@@ -13,6 +13,8 @@ export interface PlannerOptions extends CompileOptions {
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Available workflow profiles for profile selection. When provided, the planner selects a profile. */
   profiles?: Record<string, ResolvedProfileConfig>;
+  /** Override max conversation turns (default: 30) */
+  maxTurns?: number;
 }
 
 /**
@@ -131,7 +133,7 @@ export async function* runPlanner(
     let needsRestart = false;
 
     for await (const event of backend.run(
-      { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: options.abortController?.signal },
+      { prompt, cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal },
       'planner',
     )) {
       if (event.type === 'agent:message') {

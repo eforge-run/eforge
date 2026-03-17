@@ -16,6 +16,8 @@ export interface ModulePlannerOptions {
   verbose?: boolean;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   abortController?: AbortController;
+  /** Override max conversation turns (default: 20) */
+  maxTurns?: number;
 }
 
 /**
@@ -40,7 +42,7 @@ export async function* runModulePlanner(
   });
 
   for await (const event of options.backend.run(
-    { prompt, cwd: options.cwd, maxTurns: 20, tools: 'coding', abortSignal: options.abortController?.signal },
+    { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 20, tools: 'coding', abortSignal: options.abortController?.signal },
     'module-planner',
   )) {
     // Always yield agent:result + tool events for tracing; gate streaming text on verbose

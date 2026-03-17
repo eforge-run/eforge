@@ -14,6 +14,8 @@ export interface BuilderOptions {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Override max conversation turns (defaults: implement=50, evaluate=30) */
+  maxTurns?: number;
 }
 
 /**
@@ -66,7 +68,7 @@ export async function* builderImplement(
 
   try {
     for await (const event of options.backend.run(
-      { prompt, cwd: options.cwd, maxTurns: 50, tools: 'coding', abortSignal: options.abortController?.signal },
+      { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 50, tools: 'coding', abortSignal: options.abortController?.signal },
       'builder',
       plan.id,
     )) {
@@ -102,7 +104,7 @@ export async function* builderEvaluate(
   let fullText = '';
   try {
     for await (const event of options.backend.run(
-      { prompt, cwd: options.cwd, maxTurns: 30, tools: 'coding', abortSignal: options.abortController?.signal },
+      { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal },
       'evaluator',
       plan.id,
     )) {
