@@ -1,7 +1,7 @@
 ---
 title: Add `/eforge:config` Skill + `eforge config` CLI Commands
 created: 2026-03-17
-status: failed
+status: running
 ---
 
 ## Problem / Motivation

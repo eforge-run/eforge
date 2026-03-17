@@ -1,0 +1,17 @@
+name: add-eforge-config-skill-eforge-config-cli-commands
+description: Add eforge config validate/show CLI commands and /eforge:config plugin skill for guided config creation and editing
+created: 2026-03-17
+compiled: 2026-03-17
+mode: errand
+base_branch: main
+
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+
+plans:
+  - id: plan-01-config-commands
+    name: Config CLI Commands and Plugin Skill
+    depends_on: []
+    branch: add-eforge-config-skill-eforge-config-cli-commands/config-commands
