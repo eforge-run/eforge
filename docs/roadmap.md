@@ -15,6 +15,7 @@
 
 - **Profile engine** — Declarative workflow configs that define the agent pipeline: which agents run, in what order, with what prompts and constraints. Expedition/excursion/errand become built-in profiles alongside user-defined ones (migration, security-audit, refactor-only, etc.)
 - **Pluggable review strategies** — Review cycle parameters as config: number of rounds, severity thresholds for auto-accept, evaluator strictness, specialized reviewer prompts (correctness vs style vs security)
+- **Dynamic profile generation** — Agent reads the PRD, picks a base profile, and generates per-run overrides (or a full profile from scratch when no base fits). Same ResolvedProfileConfig output, but tailored to the specific work rather than selected from a menu.
 - **Eval-driven tuning** — Extend the eval framework to compare profiles head-to-head on the same PRDs. Track pass rate, code quality, token cost, and time. Use outcome data to refine profiles from intuition toward evidence.
 
 ---

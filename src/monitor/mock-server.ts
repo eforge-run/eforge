@@ -237,7 +237,7 @@ insertEvent(RUN1_ID, { type: 'phase:start', runId: RUN1_ID, planSet: RUN1_PLAN_S
 insertEvent(RUN1_ID, { type: 'plan:start', source: 'docs/add-health-check.md' }, 1000);
 insertAgentRun(RUN1_ID, 'planner', 2000, 30000);
 insertEvent(RUN1_ID, { type: 'plan:scope', assessment: 'errand', justification: 'Single endpoint addition with no dependencies' }, 5000);
-insertEvent(RUN1_ID, { type: 'plan:profile', profileName: 'errand', rationale: 'Single endpoint addition with no dependencies — errand profile fits best' } as unknown as EforgeEvent, 5500);
+insertEvent(RUN1_ID, { type: 'plan:profile', profileName: 'errand', rationale: 'Single endpoint addition with no dependencies — errand profile fits best', config: { description: 'Small, self-contained changes.', compile: ['planner', 'plan-review-cycle'], build: ['implement', 'review', 'review-fix', 'evaluate'], agents: {}, review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } } } as unknown as EforgeEvent, 5500);
 insertEvent(RUN1_ID, { type: 'plan:progress', message: 'Exploring codebase structure...' }, 10000);
 insertEvent(RUN1_ID, { type: 'plan:progress', message: 'Analyzing existing route patterns...' }, 20000);
 insertEvent(RUN1_ID, {
@@ -320,7 +320,7 @@ insertEvent(RUN2_ID, { type: 'phase:start', runId: RUN2_ID, planSet: RUN2_PLAN_S
 insertEvent(RUN2_ID, { type: 'plan:start', source: 'docs/add-jwt-auth.md' }, 201000);
 insertAgentRun(RUN2_ID, 'planner', 202000, 240000);
 insertEvent(RUN2_ID, { type: 'plan:scope', assessment: 'excursion', justification: 'Multi-file auth middleware + protected routes + tests' }, 210000);
-insertEvent(RUN2_ID, { type: 'plan:profile', profileName: 'excursion', rationale: 'Multi-file auth work spanning middleware, routes, and tests — excursion profile for medium-complexity cross-file changes' } as unknown as EforgeEvent, 210500);
+insertEvent(RUN2_ID, { type: 'plan:profile', profileName: 'excursion', rationale: 'Multi-file auth work spanning middleware, routes, and tests — excursion profile for medium-complexity cross-file changes', config: { description: 'Multi-file feature work or refactors.', compile: ['planner', 'plan-review-cycle'], build: ['implement', 'review', 'review-fix', 'evaluate'], agents: {}, review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } } } as unknown as EforgeEvent, 210500);
 insertEvent(RUN2_ID, {
   type: 'plan:complete',
   plans: [
@@ -508,7 +508,7 @@ insertEvent(RUN3_ID, { type: 'phase:start', runId: RUN3_ID, planSet: RUN3_PLAN_S
 insertEvent(RUN3_ID, { type: 'plan:start', source: 'docs/add-rate-limiting.md' }, 601000);
 insertAgentRun(RUN3_ID, 'planner', 602000, 630000);
 insertEvent(RUN3_ID, { type: 'plan:scope', assessment: 'errand', justification: 'Single middleware addition' }, 610000);
-insertEvent(RUN3_ID, { type: 'plan:profile', profileName: 'errand', rationale: 'Single middleware addition — errand profile for low-risk single-area change' } as unknown as EforgeEvent, 610500);
+insertEvent(RUN3_ID, { type: 'plan:profile', profileName: 'errand', rationale: 'Single middleware addition — errand profile for low-risk single-area change', config: { description: 'Small, self-contained changes.', compile: ['planner', 'plan-review-cycle'], build: ['implement', 'review', 'review-fix', 'evaluate'], agents: {}, review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } } } as unknown as EforgeEvent, 610500);
 insertEvent(RUN3_ID, {
   type: 'plan:complete',
   plans: [{
@@ -562,7 +562,7 @@ insertEvent(RUN5_ID, { type: 'phase:start', runId: RUN5_ID, planSet: RUN5_PLAN_S
 insertEvent(RUN5_ID, { type: 'plan:start', source: 'docs/add-caching.md' }, 751000);
 insertAgentRun(RUN5_ID, 'planner', 752000, 770000);
 insertEvent(RUN5_ID, { type: 'plan:scope', assessment: 'errand', justification: 'Add Redis caching layer to GET endpoints' }, 755000);
-insertEvent(RUN5_ID, { type: 'plan:profile', profileName: 'errand', rationale: 'Caching layer addition to existing endpoints — errand profile fits' } as unknown as EforgeEvent, 755500);
+insertEvent(RUN5_ID, { type: 'plan:profile', profileName: 'errand', rationale: 'Caching layer addition to existing endpoints — errand profile fits', config: { description: 'Small, self-contained changes.', compile: ['planner', 'plan-review-cycle'], build: ['implement', 'review', 'review-fix', 'evaluate'], agents: {}, review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } } } as unknown as EforgeEvent, 755500);
 insertEvent(RUN5_ID, {
   type: 'plan:complete',
   plans: [{
@@ -677,7 +677,7 @@ insertEvent(RUN6A_ID, { type: 'phase:start', runId: RUN6A_ID, planSet: RUN6_PLAN
 insertEvent(RUN6A_ID, { type: 'plan:start', source: 'docs/build-notification-system.md' }, 1001000);
 insertAgentRun(RUN6A_ID, 'planner', 1002000, 1050000);
 insertEvent(RUN6A_ID, { type: 'plan:scope', assessment: 'expedition', justification: 'Multi-module system: data model, email provider, and REST API with cross-cutting concerns' } as unknown as EforgeEvent, 1010000);
-insertEvent(RUN6A_ID, { type: 'plan:profile', profileName: 'expedition', rationale: 'Multi-module system with data model, email provider, and API — expedition profile for cross-cutting parallel work' } as unknown as EforgeEvent, 1010500);
+insertEvent(RUN6A_ID, { type: 'plan:profile', profileName: 'expedition', rationale: 'Multi-module system with data model, email provider, and API — expedition profile for cross-cutting parallel work', config: { description: 'Large cross-cutting work spanning multiple modules.', compile: ['planner', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'], build: ['implement', 'review', 'review-fix', 'evaluate'], agents: {}, review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } } } as unknown as EforgeEvent, 1010500);
 insertEvent(RUN6A_ID, { type: 'plan:progress', message: 'Exploring existing codebase architecture...' }, 1020000);
 insertEvent(RUN6A_ID, { type: 'plan:progress', message: 'Identifying module boundaries and dependencies...' }, 1035000);
 
@@ -839,7 +839,7 @@ db.insertEvent({ runId: RUN4_ID, type: 'phase:start', data: JSON.stringify({ typ
 db.insertEvent({ runId: RUN4_ID, type: 'plan:start', data: JSON.stringify({ type: 'plan:start', source: 'docs/add-pagination.md' }), timestamp: runTs(2000) });
 db.insertEvent({ runId: RUN4_ID, type: 'agent:start', agent: 'planner', data: JSON.stringify({ type: 'agent:start', agentId: plannerAgentId, agent: 'planner', timestamp: runTs(3000) }), timestamp: runTs(3000) });
 db.insertEvent({ runId: RUN4_ID, type: 'plan:scope', data: JSON.stringify({ type: 'plan:scope', assessment: 'excursion', justification: 'Pagination touches list routes + query parsing + tests' }), timestamp: runTs(8000) });
-db.insertEvent({ runId: RUN4_ID, type: 'plan:profile', data: JSON.stringify({ type: 'plan:profile', profileName: 'excursion', rationale: 'Pagination across routes, query parsing, and tests — excursion profile for multi-file feature work' }), timestamp: runTs(8500) });
+db.insertEvent({ runId: RUN4_ID, type: 'plan:profile', data: JSON.stringify({ type: 'plan:profile', profileName: 'excursion', rationale: 'Pagination across routes, query parsing, and tests — excursion profile for multi-file feature work', config: { description: 'Multi-file feature work or refactors.', compile: ['planner', 'plan-review-cycle'], build: ['implement', 'review', 'review-fix', 'evaluate'], agents: {}, review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } } }), timestamp: runTs(8500) });
 db.insertEvent({ runId: RUN4_ID, type: 'plan:progress', data: JSON.stringify({ type: 'plan:progress', message: 'Exploring existing route patterns and query handling...' }), timestamp: runTs(15000) });
 
 // Trickle in events for the running run

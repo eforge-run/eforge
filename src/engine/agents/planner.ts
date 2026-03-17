@@ -149,7 +149,12 @@ export async function* runPlanner(
           const profile = parseProfileBlock(event.content);
           if (profile) {
             profileEmitted = true;
-            yield { type: 'plan:profile', profileName: profile.profileName, rationale: profile.rationale };
+            yield {
+              type: 'plan:profile',
+              profileName: profile.profileName,
+              rationale: profile.rationale,
+              config: options.profiles?.[profile.profileName],
+            };
 
             // Derive plan:scope if profile name matches a built-in scope
             if (!scopeEmitted && (SCOPE_ASSESSMENTS as readonly string[]).includes(profile.profileName)) {

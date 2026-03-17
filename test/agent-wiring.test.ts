@@ -300,6 +300,7 @@ describe('runPlanner profile emission', () => {
     expect(profile).toBeDefined();
     expect(profile!.profileName).toBe('excursion');
     expect(profile!.rationale).toBe('Multi-file feature work across 8 files.');
+    expect(profile!.config).toBe(stubProfile);
   });
 
   it('emits both plan:profile and plan:scope when profile name matches a built-in scope', async () => {
@@ -398,6 +399,7 @@ describe('runAssessor profile emission', () => {
     expect(profile).toBeDefined();
     expect(profile!.profileName).toBe('excursion');
     expect(profile!.rationale).toBe('Multi-file work.');
+    expect(profile!.config).toBe(stubProfile);
   });
 
   it('emits plan:scope without plan:profile when no profile block present (backwards compatible)', async () => {

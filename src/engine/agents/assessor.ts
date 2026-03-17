@@ -64,7 +64,12 @@ export async function* runAssessor(
   // Parse profile block from accumulated text
   const profile = parseProfileBlock(fullText);
   if (profile) {
-    yield { type: 'plan:profile', profileName: profile.profileName, rationale: profile.rationale };
+    yield {
+      type: 'plan:profile',
+      profileName: profile.profileName,
+      rationale: profile.rationale,
+      config: options.profiles?.[profile.profileName],
+    };
   }
 
   // Parse scope block from accumulated text

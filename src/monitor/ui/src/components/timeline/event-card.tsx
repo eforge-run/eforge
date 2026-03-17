@@ -76,8 +76,33 @@ function eventSummary(event: EforgeEvent): string {
 
 function eventDetail(event: EforgeEvent): string | null {
   switch (event.type) {
-    case 'plan:profile':
-      return event.rationale;
+    case 'plan:profile': {
+      if (!event.config) return event.rationale;
+      const parts: string[] = [];
+      {
+        const c = event.config;
+        parts.push(`Compile: ${c.compile?.join(' → ') ?? '—'}`);
+        parts.push(`Build:   ${c.build?.join(' → ') ?? '—'}`);
+        if (c.review) {
+          const r = c.review;
+          parts.push(`Review:  strategy=${r.strategy}, rounds=${r.maxRounds}, strictness=${r.evaluatorStrictness}`);
+          if (r.perspectives?.length) parts.push(`         perspectives: ${r.perspectives.join(', ')}`);
+        }
+        const agents = Object.entries(c.agents ?? {});
+        if (agents.length > 0) {
+          parts.push('Agents:');
+          for (const [role, cfg] of agents) {
+            const fields = [];
+            if (cfg.maxTurns) fields.push(`turns=${cfg.maxTurns}`);
+            if (cfg.tools) fields.push(`tools=${cfg.tools}`);
+            if (cfg.model) fields.push(`model=${cfg.model}`);
+            if (cfg.prompt) fields.push(`prompt=${cfg.prompt}`);
+            if (fields.length > 0) parts.push(`  ${role}: ${fields.join(', ')}`);
+          }
+        }
+      }
+      return parts.join('\n');
+    }
     case 'plan:clarification':
       return event.questions?.map((q) => `Q: ${q.question}${q.context ? '\n   ' + q.context : ''}`).join('\n\n') ?? null;
     case 'plan:review:complete':
