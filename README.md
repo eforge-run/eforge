@@ -97,6 +97,7 @@ Once installed, the primary entrypoint is `/eforge:run` - it takes a PRD or prom
 | `/eforge:enqueue` | Normalize input and add to queue |
 | `/eforge:run` | Enqueue + compile + build + validate in one step |
 | `/eforge:status` | Check build progress |
+| `/eforge:config` | Initialize or edit `eforge.yaml` with interactive guidance |
 
 ### CLI Usage
 
@@ -113,6 +114,12 @@ eforge run --queue
 
 # Check running builds
 eforge status
+
+# Validate eforge.yaml configuration
+eforge config validate
+
+# Show resolved configuration (all layers merged)
+eforge config show
 
 # Start or connect to the monitor dashboard
 eforge monitor

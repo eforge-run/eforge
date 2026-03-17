@@ -67,7 +67,7 @@ node --env-file=.env dist/cli.js run some-prd.md --verbose
 ```
 .claude-plugin/
   marketplace.json                  # Claude Code marketplace manifest
-eforge-plugin/                      # Claude Code plugin (skills for enqueue, run, status, roadmap)
+eforge-plugin/                      # Claude Code plugin (skills for enqueue, run, status, config, roadmap)
   .claude-plugin/plugin.json
   skills/
 .mcp.json                           # MCP server config (gitignored, auto-loaded by engine)
@@ -109,7 +109,7 @@ src/
       plan-reviewer.md
       plan-evaluator.md
       validation-fixer.md
-    config.ts                 # eforge.yaml + global config loading & merging
+    config.ts                 # eforge.yaml + global config loading, merging & validation (exports eforgeConfigSchema, validateConfigFile)
 
   monitor/                    # Web monitor (event persistence + dashboard)
     db.ts                     # SQLite: open, schema, CRUD (better-sqlite3)
@@ -204,6 +204,8 @@ eforge enqueue <source>   # Normalize input and add to PRD queue
 eforge run <source>       # Enqueue + compile + build + validate in one step
 eforge run --queue        # Process all PRDs from the queue
 eforge status             # Check running builds
+eforge config validate    # Validate eforge.yaml (schema + profile stage names)
+eforge config show        # Print resolved config (all layers merged) as YAML
 ```
 
 Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--queue` (process all PRDs from the queue), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading), `--profiles <path>` (add custom workflow profiles from a YAML file)

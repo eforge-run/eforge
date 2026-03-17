@@ -506,6 +506,38 @@ export function createProgram(abortController?: AbortController): Command {
       },
     );
 
+  // Config commands
+  const config = program
+    .command('config')
+    .description('Manage eforge configuration');
+
+  config
+    .command('validate')
+    .description('Validate eforge.yaml configuration')
+    .action(async () => {
+      const { validateConfigFile } = await import('../engine/config.js');
+      const result = await validateConfigFile();
+      if (result.valid) {
+        console.log(chalk.green('✔') + ' Config valid');
+      } else {
+        console.error(chalk.red('✘') + ' Config invalid:');
+        for (const err of result.errors) {
+          console.error(chalk.red(`  - ${err}`));
+        }
+        process.exit(1);
+      }
+    });
+
+  config
+    .command('show')
+    .description('Show resolved eforge configuration')
+    .action(async () => {
+      const { loadConfig } = await import('../engine/config.js');
+      const { stringify } = await import('yaml');
+      const resolved = await loadConfig();
+      console.log(stringify(resolved));
+    });
+
   return program;
 }
 

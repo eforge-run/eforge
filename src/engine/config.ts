@@ -11,7 +11,7 @@ import type { AgentRole } from './events.js';
 // ---------------------------------------------------------------------------
 
 /** Agent roles matching the AgentRole union in events.ts. */
-const AGENT_ROLES = [
+export const AGENT_ROLES = [
   'planner', 'builder', 'reviewer', 'evaluator', 'module-planner',
   'plan-reviewer', 'plan-evaluator', 'cohesion-reviewer', 'cohesion-evaluator',
   'validation-fixer', 'assessor', 'review-fixer', 'merge-conflict-resolver',
@@ -76,7 +76,7 @@ const pluginConfigSchema = z.object({
 
 const SETTING_SOURCES = ['user', 'project', 'local'] as const;
 
-const eforgeConfigSchema = z.object({
+export const eforgeConfigSchema = z.object({
   langfuse: z.object({
     enabled: z.boolean().optional(),
     publicKey: z.string().optional(),
@@ -655,4 +655,74 @@ export function resolveGeneratedProfile(
     agents: { ...base.agents, ...(overrides.agents as Partial<Record<AgentRole, AgentProfileConfig>> ?? {}) },
     review: { ...base.review, ...(overrides.review ?? {}) } as ReviewProfileConfig,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Config File Validation
+// ---------------------------------------------------------------------------
+
+/**
+ * Validate the eforge config file found from the given directory.
+ * Loads the raw YAML, runs schema validation, then validates each resolved
+ * profile against the stage registries from pipeline.ts.
+ */
+export async function validateConfigFile(
+  cwd?: string,
+): Promise<{ valid: boolean; errors: string[] }> {
+  const { getCompileStageNames, getBuildStageNames } = await import('./pipeline.js');
+  const errors: string[] = [];
+
+  const startDir = cwd ?? process.cwd();
+  const configPath = await findConfigFile(startDir);
+  if (!configPath) {
+    return { valid: true, errors: [] }; // No config file is valid (defaults apply)
+  }
+
+  let raw: string;
+  try {
+    raw = await readFile(configPath, 'utf-8');
+  } catch (err) {
+    return { valid: false, errors: [`Failed to read config file: ${(err as Error).message}`] };
+  }
+
+  let data: unknown;
+  try {
+    data = parseYaml(raw);
+  } catch (err) {
+    return { valid: false, errors: [`Invalid YAML: ${(err as Error).message}`] };
+  }
+
+  if (!data || typeof data !== 'object') {
+    return { valid: true, errors: [] }; // Empty file is valid
+  }
+
+  // Schema validation
+  const result = eforgeConfigSchema.safeParse(data);
+  if (!result.success) {
+    for (const issue of result.error.issues) {
+      const path = issue.path.map(String).join('.');
+      errors.push(`${path}: ${issue.message}`);
+    }
+  }
+
+  // Profile validation against stage registries
+  const parsed = result.success ? result.data : {};
+  if (parsed.profiles) {
+    const compileStageNames = getCompileStageNames();
+    const buildStageNames = getBuildStageNames();
+
+    try {
+      const resolved = resolveProfileExtensions(parsed.profiles, BUILTIN_PROFILES);
+      for (const [name, profile] of Object.entries(resolved)) {
+        const profileResult = validateProfileConfig(profile, compileStageNames, buildStageNames);
+        for (const err of profileResult.errors) {
+          errors.push(`profile "${name}": ${err}`);
+        }
+      }
+    } catch (err) {
+      errors.push(`Profile resolution failed: ${(err as Error).message}`);
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
 }
