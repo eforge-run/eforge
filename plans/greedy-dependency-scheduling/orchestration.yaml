@@ -1,0 +1,21 @@
+name: greedy-dependency-scheduling
+description: Replace wave-based orchestration with greedy dependency-driven scheduling for maximum throughput
+created: 2026-03-16
+compiled: 2026-03-16
+mode: excursion
+base_branch: main
+
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+
+plans:
+  - id: plan-01-greedy-scheduler-engine
+    name: Greedy Dependency Scheduler Engine
+    depends_on: []
+    branch: greedy-dependency-scheduling/engine
+  - id: plan-02-consumer-updates
+    name: Consumer Updates for Greedy Scheduling Events
+    depends_on: [plan-01-greedy-scheduler-engine]
+    branch: greedy-dependency-scheduling/consumers
