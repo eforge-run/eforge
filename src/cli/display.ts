@@ -474,9 +474,16 @@ export function renderEvent(event: EforgeEvent): void {
       succeedSpinner('cleanup', `Plan files removed for ${chalk.cyan(event.planSet)}`);
       break;
 
-    // Profile selection (display handled by separate module)
-    case 'plan:profile':
+    case 'plan:profile': {
+      const profileColors: Record<string, (s: string) => string> = {
+        errand: chalk.green,
+        excursion: chalk.yellow,
+        expedition: chalk.magenta,
+      };
+      const colorFn = profileColors[event.profileName] ?? chalk.cyan;
+      console.log(`  Profile: ${colorFn(event.profileName)} \u2014 ${chalk.dim(event.rationale)}`);
       break;
+    }
 
     // Agent lifecycle (consumed by hooks, monitor, tracing — no CLI display)
     case 'agent:start':
