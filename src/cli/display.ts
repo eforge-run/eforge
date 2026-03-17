@@ -502,6 +502,15 @@ export function renderEvent(event: EforgeEvent): void {
       }
       break;
 
+    // Queue events (display handled in plan-02)
+    case 'queue:start':
+    case 'queue:prd:start':
+    case 'queue:prd:stale':
+    case 'queue:prd:skip':
+    case 'queue:prd:complete':
+    case 'queue:complete':
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

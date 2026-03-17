@@ -4,6 +4,7 @@
 export { isAlwaysYieldedAgentEvent } from './events.js';
 export type {
   EforgeEvent,
+  QueueEvent,
   AgentRole,
   EforgeResult,
   ClarificationQuestion,
@@ -17,6 +18,7 @@ export type {
   AdoptOptions,
   EforgeStatus,
   ScopeAssessment,
+  StalenessVerdict,
 } from './events.js';
 
 // --- plan ---
@@ -42,8 +44,9 @@ export { ClaudeSDKBackend } from './backends/claude-sdk.js';
 export type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
 
 // --- agents/common ---
-export { parseClarificationBlocks, parseProfileBlock, parseGeneratedProfileBlock } from './agents/common.js';
+export { parseClarificationBlocks, parseProfileBlock, parseGeneratedProfileBlock, parseStalenessBlock } from './agents/common.js';
 export type { ProfileSelection, GeneratedProfileBlock } from './agents/common.js';
+export type { StalenessVerdict as StalenessVerdictResult } from './agents/common.js';
 
 // --- state ---
 export { loadState, saveState, updatePlanStatus, isResumable } from './state.js';
@@ -124,6 +127,14 @@ export { createTracingContext, createNoopTracingContext } from './tracing.js';
 export type { PipelineContext, BuildStageContext, CompileStage, BuildStage } from './pipeline.js';
 export { getCompileStage, getBuildStage, registerCompileStage, registerBuildStage, runCompilePipeline, runBuildPipeline, getCompileStageNames, getBuildStageNames } from './pipeline.js';
 
+// --- prd-queue ---
+export { loadQueue, resolveQueueOrder, validatePrdFrontmatter } from './prd-queue.js';
+export type { QueuedPrd, PrdFrontmatter, PrdStatus } from './prd-queue.js';
+
+// --- staleness-assessor ---
+export { runStalenessAssessor } from './agents/staleness-assessor.js';
+export type { StalenessAssessorOptions } from './agents/staleness-assessor.js';
+
 // --- eforge-core ---
 export { EforgeEngine } from './eforge.js';
-export type { EforgeEngineOptions } from './eforge.js';
+export type { EforgeEngineOptions, QueueOptions } from './eforge.js';

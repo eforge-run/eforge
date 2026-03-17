@@ -6,7 +6,7 @@ export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as cons
 export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
 export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor' | 'review-fixer' | 'merge-conflict-resolver';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor' | 'review-fixer' | 'merge-conflict-resolver' | 'staleness-assessor';
 
 export interface ExpeditionModule {
   id: string;
@@ -213,7 +213,20 @@ export type EforgeEvent = { sessionId?: string } & (
   // User interaction
   | { type: 'approval:needed'; planId?: string; action: string; details: string }
   | { type: 'approval:response'; approved: boolean }
+
+  // Queue
+  | QueueEvent
 );
+
+export type StalenessVerdict = 'proceed' | 'revise' | 'obsolete';
+
+export type QueueEvent =
+  | { type: 'queue:start'; prdCount: number; dir: string }
+  | { type: 'queue:prd:start'; prdId: string; title: string }
+  | { type: 'queue:prd:stale'; verdict: StalenessVerdict; justification: string; revision?: string }
+  | { type: 'queue:prd:skip'; prdId: string; reason: string }
+  | { type: 'queue:prd:complete'; prdId: string; status: 'completed' | 'failed' }
+  | { type: 'queue:complete'; processed: number; skipped: number };
 
 /** Agent event types that runners always yield (not gated on verbose). */
 export function isAlwaysYieldedAgentEvent(event: EforgeEvent): boolean {

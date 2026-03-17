@@ -15,6 +15,7 @@ const AGENT_ROLES = [
   'planner', 'builder', 'reviewer', 'evaluator', 'module-planner',
   'plan-reviewer', 'plan-evaluator', 'cohesion-reviewer', 'cohesion-evaluator',
   'validation-fixer', 'assessor', 'review-fixer', 'merge-conflict-resolver',
+  'staleness-assessor',
 ] as const;
 
 const agentRoleSchema = z.enum(AGENT_ROLES);
@@ -95,6 +96,11 @@ const eforgeConfigSchema = z.object({
     outputDir: z.string().optional(),
   }).optional(),
   plugins: pluginConfigSchema.optional(),
+  prdQueue: z.object({
+    dir: z.string().optional(),
+    stalenessThresholdDays: z.number().int().positive().optional(),
+    autoRevise: z.boolean().optional(),
+  }).optional(),
   hooks: z.array(hookConfigSchema).optional(),
   profiles: z.record(z.string(), partialProfileConfigSchema).optional(),
 });
@@ -119,6 +125,7 @@ export interface EforgeConfig {
   build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
   plugins: PluginConfig;
+  prdQueue: { dir: string; stalenessThresholdDays: number; autoRevise: boolean };
   hooks: readonly HookConfig[];
   profiles: Record<string, ResolvedProfileConfig>;
 }
@@ -167,6 +174,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
   plan: Object.freeze({ outputDir: 'plans' }),
   plugins: Object.freeze({ enabled: true }),
+  prdQueue: Object.freeze({ dir: 'docs/prd-queue', stalenessThresholdDays: 14, autoRevise: false }),
   hooks: Object.freeze([]),
   profiles: BUILTIN_PROFILES,
 });
@@ -236,6 +244,11 @@ export function resolveConfig(
       exclude: fileConfig.plugins?.exclude,
       paths: fileConfig.plugins?.paths,
     }),
+    prdQueue: Object.freeze({
+      dir: fileConfig.prdQueue?.dir ?? DEFAULT_CONFIG.prdQueue.dir,
+      stalenessThresholdDays: fileConfig.prdQueue?.stalenessThresholdDays ?? DEFAULT_CONFIG.prdQueue.stalenessThresholdDays,
+      autoRevise: fileConfig.prdQueue?.autoRevise ?? DEFAULT_CONFIG.prdQueue.autoRevise,
+    }),
     hooks: Object.freeze(fileConfig.hooks ?? DEFAULT_CONFIG.hooks) as HookConfig[],
     profiles: Object.freeze(
       resolveProfileExtensions(fileConfig.profiles ?? {}, BUILTIN_PROFILES),
@@ -266,7 +279,7 @@ function parseRawConfig(data: Record<string, unknown>): PartialEforgeConfig {
  */
 function parseRawConfigFallback(data: Record<string, unknown>): PartialEforgeConfig {
   const result: PartialEforgeConfig = {};
-  const sections = ['langfuse', 'agents', 'build', 'plan', 'plugins', 'hooks', 'profiles'] as const;
+  const sections = ['langfuse', 'agents', 'build', 'plan', 'plugins', 'prdQueue', 'hooks', 'profiles'] as const;
   for (const key of sections) {
     if (data[key] === undefined) continue;
     const sectionSchema = eforgeConfigSchema.shape[key];
@@ -290,6 +303,7 @@ function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfi
   if (config.build !== undefined) out.build = config.build;
   if (config.plan !== undefined) out.plan = config.plan;
   if (config.plugins !== undefined) out.plugins = config.plugins;
+  if (config.prdQueue !== undefined) out.prdQueue = config.prdQueue;
   if (config.hooks !== undefined) out.hooks = config.hooks;
   if (config.profiles !== undefined) out.profiles = config.profiles;
   return out;
@@ -334,6 +348,9 @@ export function mergePartialConfigs(
   }
   if (global.plugins || project.plugins) {
     result.plugins = { ...global.plugins, ...project.plugins };
+  }
+  if (global.prdQueue || project.prdQueue) {
+    result.prdQueue = { ...global.prdQueue, ...project.prdQueue };
   }
 
   // hooks: concatenate (global first, then project)

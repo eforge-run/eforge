@@ -6,7 +6,7 @@
 
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFile, readdir, rm, stat } from 'node:fs/promises';
+import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -21,6 +21,8 @@ import type {
   ClarificationQuestion,
   ScopeAssessment,
 } from './events.js';
+import { loadQueue, resolveQueueOrder, getPrdDiffSummary, updatePrdStatus, type QueuedPrd } from './prd-queue.js';
+import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import type { EforgeConfig, PluginConfig, PartialProfileConfig } from './config.js';
 import type { AgentBackend } from './backend.js';
 import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
@@ -58,6 +60,21 @@ export interface EforgeEngineOptions {
   onApproval?: (action: string, details: string) => Promise<boolean>;
   /** Additional profiles to add to the palette (from --profiles files) */
   profileOverrides?: Record<string, PartialProfileConfig>;
+}
+
+export interface QueueOptions {
+  /** Plan set name override */
+  name?: string;
+  /** Process all PRDs (including non-pending) */
+  all?: boolean;
+  /** Bypass approval gates */
+  auto?: boolean;
+  /** Stream verbose agent output */
+  verbose?: boolean;
+  /** Disable web monitor */
+  noMonitor?: boolean;
+  /** AbortController for cancellation */
+  abortController?: AbortController;
 }
 
 export class EforgeEngine {
@@ -630,6 +647,143 @@ export class EforgeEngine {
   }
 
   /**
+   * Queue: process PRDs from a queue directory sequentially.
+   * For each PRD: staleness check → compile → build.
+   * Updates frontmatter status as PRDs are processed.
+   */
+  async *runQueue(options: QueueOptions = {}): AsyncGenerator<EforgeEvent> {
+    const cwd = this.cwd;
+    const queueDir = this.config.prdQueue.dir;
+    const verbose = options.verbose;
+    const abortController = options.abortController;
+
+    // Load and order queue
+    const allPrds = await loadQueue(queueDir, cwd);
+    const orderedPrds = resolveQueueOrder(allPrds);
+
+    yield {
+      type: 'queue:start',
+      prdCount: orderedPrds.length,
+      dir: queueDir,
+    };
+
+    let processed = 0;
+    let skipped = 0;
+
+    for (const prd of orderedPrds) {
+      // Check for abort
+      if (abortController?.signal.aborted) break;
+
+      yield {
+        type: 'queue:prd:start',
+        prdId: prd.id,
+        title: prd.frontmatter.title,
+      };
+
+      // Staleness check — only if PRD has a commit hash and threshold is configured
+      if (prd.lastCommitHash && this.config.prdQueue.stalenessThresholdDays > 0) {
+        const daysSinceCommit = prd.lastCommitDate
+          ? Math.floor((Date.now() - new Date(prd.lastCommitDate).getTime()) / (1000 * 60 * 60 * 24))
+          : 0;
+
+        if (daysSinceCommit >= this.config.prdQueue.stalenessThresholdDays) {
+          const diffSummary = await getPrdDiffSummary(prd.lastCommitHash, cwd);
+
+          let stalenessVerdict: 'proceed' | 'revise' | 'obsolete' = 'proceed';
+          let revision: string | undefined;
+
+          for await (const event of runStalenessAssessor({
+            backend: this.backend,
+            prdContent: prd.content,
+            diffSummary,
+            staleDays: daysSinceCommit,
+            cwd,
+            verbose,
+            abortController,
+          })) {
+            if (event.type === 'queue:prd:stale') {
+              stalenessVerdict = event.verdict;
+              revision = event.revision;
+            }
+            yield event;
+          }
+
+          if (stalenessVerdict === 'obsolete') {
+            await updatePrdStatus(prd.filePath, 'skipped');
+            yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
+            skipped++;
+            continue;
+          }
+
+          if (stalenessVerdict === 'revise') {
+            if (this.config.prdQueue.autoRevise && revision) {
+              // Auto-apply revision
+              await writeFile(prd.filePath, revision, 'utf-8');
+            } else {
+              // Skip — needs manual revision
+              yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
+              skipped++;
+              continue;
+            }
+          }
+        }
+      }
+
+      // Update status to running
+      await updatePrdStatus(prd.filePath, 'running');
+
+      // Compile (plan) the PRD
+      let compileFailed = false;
+      const planSetName = options.name ?? prd.id;
+
+      for await (const event of this.compile(prd.filePath, {
+        name: planSetName,
+        auto: options.auto,
+        verbose,
+        cwd,
+        abortController,
+      })) {
+        yield event;
+        if (event.type === 'phase:end' && event.result.status === 'failed') {
+          compileFailed = true;
+        }
+      }
+
+      if (compileFailed) {
+        await updatePrdStatus(prd.filePath, 'failed');
+        yield { type: 'queue:prd:complete', prdId: prd.id, status: 'failed' };
+        processed++;
+        continue;
+      }
+
+      // Build the plan
+      let buildFailed = false;
+      for await (const event of this.build(planSetName, {
+        auto: options.auto,
+        verbose,
+        cwd,
+        abortController,
+      })) {
+        yield event;
+        if (event.type === 'phase:end' && event.result.status === 'failed') {
+          buildFailed = true;
+        }
+      }
+
+      const finalStatus = buildFailed ? 'failed' : 'completed';
+      await updatePrdStatus(prd.filePath, finalStatus);
+      yield { type: 'queue:prd:complete', prdId: prd.id, status: finalStatus };
+      processed++;
+    }
+
+    yield {
+      type: 'queue:complete',
+      processed,
+      skipped,
+    };
+  }
+
+  /**
    * Status: synchronous state file read.
    */
   status(): EforgeStatus {
@@ -697,6 +851,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     build: overrides.build ? { ...base.build, ...overrides.build } : base.build,
     plan: overrides.plan ? { ...base.plan, ...overrides.plan } : base.plan,
     plugins: overrides.plugins ? { ...base.plugins, ...overrides.plugins } : base.plugins,
+    prdQueue: overrides.prdQueue ? { ...base.prdQueue, ...overrides.prdQueue } : base.prdQueue,
     hooks: overrides.hooks ?? base.hooks,
     profiles: overrides.profiles ?? base.profiles,
   };

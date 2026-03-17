@@ -201,3 +201,51 @@ export function parseGeneratedProfileBlock(text: string): GeneratedProfileBlock 
     return null;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Staleness Assessment Parsing
+// ---------------------------------------------------------------------------
+
+const VALID_STALENESS_VERDICTS = new Set(['proceed', 'revise', 'obsolete']);
+
+export interface StalenessVerdict {
+  verdict: 'proceed' | 'revise' | 'obsolete';
+  justification: string;
+  revision?: string;
+}
+
+/**
+ * Parse a <staleness verdict="..."> XML block from assistant text.
+ *
+ * Expected format:
+ *   <staleness verdict="proceed">All good</staleness>
+ *   <staleness verdict="revise">Needs update<revision>new content</revision></staleness>
+ *
+ * Returns null if no valid block found.
+ */
+export function parseStalenessBlock(text: string): StalenessVerdict | null {
+  const match = text.match(/<staleness\s+verdict="([^"]+)">([\s\S]*?)<\/staleness>/);
+  if (!match) return null;
+
+  const verdict = match[1].trim();
+  if (!VALID_STALENESS_VERDICTS.has(verdict)) return null;
+
+  const inner = match[2];
+
+  // Extract revision content if present
+  const revisionMatch = inner.match(/<revision>([\s\S]*?)<\/revision>/);
+  const revision = revisionMatch ? revisionMatch[1].trim() : undefined;
+
+  // Justification is the inner content with <revision> tag stripped
+  const justification = inner
+    .replace(/<revision>[\s\S]*?<\/revision>/g, '')
+    .trim();
+
+  if (!justification) return null;
+
+  return {
+    verdict: verdict as 'proceed' | 'revise' | 'obsolete',
+    justification,
+    ...(revision !== undefined && { revision }),
+  };
+}
