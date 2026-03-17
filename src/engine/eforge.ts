@@ -268,6 +268,14 @@ export class EforgeEngine {
       cwd,
     });
 
+    // Commit the enqueued PRD
+    try {
+      await exec('git', ['add', enqueueResult.filePath], { cwd });
+      await exec('git', ['commit', '-m', `enqueue(${enqueueResult.id}): ${title}`], { cwd });
+    } catch {
+      // Not a git repo or nothing to commit — non-fatal
+    }
+
     yield {
       type: 'enqueue:complete',
       id: enqueueResult.id,
