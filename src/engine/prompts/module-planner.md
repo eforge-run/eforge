@@ -93,6 +93,46 @@ Key constraints from architecture:
 - [ ] {Another criterion}
 ```
 
+## Shared Files and Edit Region Markers
+
+When this module modifies a file that another module also touches, you must declare edit region boundaries.
+
+### Process
+
+1. **Check the architecture document** for the "Shared File Registry" section. It lists files shared across modules and their region assignments.
+2. **For each shared file** listed in your module's "Files > Modify" section, annotate the entry with a `[region: {module-id}, {location description}]` tag that specifies exactly where in the file this module's changes go.
+3. **In code examples** within the plan, wrap the module's code in region markers using the format:
+
+```
+// --- eforge:region {module-id} ---
+{code this module owns}
+// --- eforge:endregion {module-id} ---
+```
+
+### Example
+
+If the architecture declares that `src/index.ts` is shared between `auth` and `api` modules, and you are planning the `auth` module:
+
+In the "Files > Modify" section:
+```markdown
+- `src/index.ts` — add auth exports `[region: auth, after existing exports]`
+```
+
+In code examples:
+```typescript
+// --- eforge:region auth ---
+export { AuthProvider } from './auth/provider.js'
+export { validateToken } from './auth/token.js'
+// --- eforge:endregion auth ---
+```
+
+### Rules
+
+- Only annotate files that appear in the architecture's shared file registry or that you know another module also modifies
+- The region ID must match this module's ID (`{{moduleId}}`)
+- Region boundaries must not overlap with regions declared by other modules (check dependency module plans for their region declarations)
+- If a file is shared but the architecture does not declare regions for it, flag this as an issue in the plan and propose region boundaries
+
 ## Quality Criteria
 
 - Reference specific sections from the architecture document

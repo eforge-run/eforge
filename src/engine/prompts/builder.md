@@ -20,8 +20,19 @@ You are working in a git worktree. All changes should be made within this workin
 2. **Read before writing** — always read existing files before modifying them. Understand the codebase context.
 3. **Create files listed under "Create"** — implement each file as described in the plan.
 4. **Modify files listed under "Modify"** — make only the changes specified in the plan.
-5. **No out-of-scope changes** — do not refactor, improve, or fix anything not mentioned in the plan.
-6. **Follow existing conventions** — match the code style, patterns, and conventions already present in the codebase.
+5. **Respect edit region markers** — when working in shared files:
+   - Look for existing `// --- eforge:region {id} ---` / `// --- eforge:endregion {id} ---` markers in files before editing.
+   - Only edit code within this plan's declared region. Your plan's module ID determines which regions belong to you.
+   - Never modify or remove another plan's region markers or the code within them.
+   - When adding new code to a shared file (a file that multiple plans modify), wrap your additions in region markers matching this plan's module ID:
+     ```
+     // --- eforge:region {your-module-id} ---
+     {your code here}
+     // --- eforge:endregion {your-module-id} ---
+     ```
+   - If the plan's "Files > Modify" entries include `[region: ...]` annotations, follow them to determine the exact placement of your region within the file.
+6. **No out-of-scope changes** — do not refactor, improve, or fix anything not mentioned in the plan.
+7. **Follow existing conventions** — match the code style, patterns, and conventions already present in the codebase.
 
 ## Verification
 
