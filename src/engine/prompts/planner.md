@@ -70,6 +70,8 @@ Rules:
 
 {{profileGeneration}}
 
+{{parallelLanes}}
+
 ### Phase 3: Scope Assessment
 
 Based on your exploration, classify the **actual work remaining** (not the source's ambition):

@@ -322,6 +322,20 @@ agents:
   });
 });
 
+// --- doc-updater agent role validation ---
+
+describe('doc-updater agent role', () => {
+  it('doc-updater is accepted as a valid agent role in profile config', () => {
+    const profile: ResolvedProfileConfig = {
+      ...BUILTIN_PROFILES.excursion,
+      agents: { 'doc-updater': { maxTurns: 15 } },
+    };
+    const { valid, errors } = validateProfileConfig(profile);
+    expect(errors).toEqual([]);
+    expect(valid).toBe(true);
+  });
+});
+
 // --- nested array (parallel stage group) schema validation ---
 
 describe('nested array schema validation for build field', () => {

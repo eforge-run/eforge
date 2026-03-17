@@ -6,7 +6,7 @@ export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as cons
 export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
 export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor' | 'review-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor' | 'review-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater';
 
 export interface ExpeditionModule {
   id: string;
@@ -162,6 +162,8 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'build:review:fix:complete'; planId: string }
   | { type: 'build:evaluate:start'; planId: string }
   | { type: 'build:evaluate:complete'; planId: string; accepted: number; rejected: number }
+  | { type: 'build:doc-update:start'; planId: string }
+  | { type: 'build:doc-update:complete'; planId: string; docsUpdated: number }
   | { type: 'build:complete'; planId: string }
   | { type: 'build:failed'; planId: string; error: string }
 

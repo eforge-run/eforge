@@ -34,6 +34,8 @@ You are working in a git worktree. All changes should be made within this workin
 6. **No out-of-scope changes** — do not refactor, improve, or fix anything not mentioned in the plan.
 7. **Follow existing conventions** — match the code style, patterns, and conventions already present in the codebase.
 
+{{parallelLanes}}
+
 ## Verification
 
 Before committing, run the verification commands specified in the plan's "Verification" section. If the plan specifies:

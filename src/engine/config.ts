@@ -15,7 +15,7 @@ const AGENT_ROLES = [
   'planner', 'builder', 'reviewer', 'evaluator', 'module-planner',
   'plan-reviewer', 'plan-evaluator', 'cohesion-reviewer', 'cohesion-evaluator',
   'validation-fixer', 'assessor', 'review-fixer', 'merge-conflict-resolver',
-  'staleness-assessor', 'formatter',
+  'staleness-assessor', 'formatter', 'doc-updater',
 ] as const;
 
 const agentRoleSchema = z.enum(AGENT_ROLES);
@@ -145,8 +145,8 @@ const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
 });
 
 const DEFAULT_BUILD_STAGES = Object.freeze([
-  'implement', 'review', 'review-fix', 'evaluate',
-]) as unknown as string[];
+  Object.freeze(['implement', 'doc-update']), 'review', 'review-fix', 'evaluate',
+]) as unknown as BuildStageSpec[];
 
 export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.freeze({
   errand: Object.freeze({

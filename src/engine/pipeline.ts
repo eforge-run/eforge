@@ -28,6 +28,7 @@ import type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
 import { runModulePlanner } from './agents/module-planner.js';
 import { builderImplement, builderEvaluate } from './agents/builder.js';
+import { runDocUpdater } from './agents/doc-updater.js';
 import { runParallelReview } from './agents/parallel-reviewer.js';
 import { runReviewFixer } from './agents/review-fixer.js';
 import { runPlanReview } from './agents/plan-reviewer.js';
@@ -214,6 +215,7 @@ const AGENT_MAX_TURNS_DEFAULTS: Partial<Record<AgentRole, number>> = {
   builder: 50,
   assessor: 20,
   'module-planner': 20,
+  'doc-updater': 20,
 };
 
 /**
@@ -549,6 +551,10 @@ registerBuildStage('implement', async function* implementStage(ctx) {
   const implTracker = createToolTracker(implSpan);
   let implFailed = false;
 
+  // Extract parallel stage groups from the profile for lane awareness
+  const parallelStages = ctx.profile.build
+    .filter((spec): spec is string[] => Array.isArray(spec));
+
   try {
     for await (const event of builderImplement(ctx.planFile, {
       backend: ctx.backend,
@@ -556,6 +562,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       maxTurns,
+      parallelStages,
     })) {
       implTracker.handleEvent(event);
       yield event;
@@ -743,6 +750,36 @@ registerBuildStage('validate', async function* validateStage(_ctx) {
   // Placeholder for inline validation (not used in default profiles).
   // Post-merge validation continues to be handled by the Orchestrator.
   // Custom profiles can include this stage for inline validation.
+});
+
+registerBuildStage('doc-update', async function* docUpdateStage(ctx) {
+  const agentConfig = resolveAgentConfig(ctx.profile, 'doc-updater', ctx.config);
+  const docSpan = ctx.tracing.createSpan('doc-updater', { planId: ctx.planId });
+  docSpan.setInput({ planId: ctx.planId });
+  const docTracker = createToolTracker(docSpan);
+
+  try {
+    for await (const event of runDocUpdater({
+      backend: ctx.backend,
+      cwd: ctx.worktreePath,
+      planId: ctx.planId,
+      planContent: ctx.planFile.body,
+      verbose: ctx.verbose,
+      abortController: ctx.abortController,
+      maxTurns: agentConfig.maxTurns,
+    })) {
+      docTracker.handleEvent(event);
+      yield event;
+    }
+    docTracker.cleanup();
+    docSpan.end();
+  } catch (err) {
+    docTracker.cleanup();
+    docSpan.error(err as Error);
+    // Re-throw abort errors so the pipeline can respect cancellation
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    // Doc-update failure is non-fatal — don't propagate
+  }
 });
 
 // ---------------------------------------------------------------------------

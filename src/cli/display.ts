@@ -313,6 +313,20 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
+    case 'build:doc-update:start': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} — updating docs...`;
+      break;
+    }
+
+    case 'build:doc-update:complete': {
+      if (event.docsUpdated > 0) {
+        const s = spinners.get(`build:${event.planId}`);
+        if (s) s.text = `${chalk.cyan(event.planId)} — ${event.docsUpdated} doc(s) updated`;
+      }
+      break;
+    }
+
     case 'build:files_changed':
       console.log(chalk.dim(`  ${chalk.cyan(event.planId)} — ${event.files.length} file(s) changed`));
       break;

@@ -18,6 +18,34 @@ export interface BuilderOptions {
   maxTurns?: number;
   /** Evaluator strictness level — controls the accept/reject threshold text injected into the prompt */
   strictness?: 'strict' | 'standard' | 'lenient';
+  /** Parallel stage groups from the profile build config — used for lane awareness */
+  parallelStages?: string[][];
+}
+
+/**
+ * Format a parallel execution notice for the builder prompt.
+ * Returns empty string when the builder is not in a parallel group.
+ * When the builder runs alongside other stages, returns a notice instructing
+ * it to stay in its lane (code only, no docs, use targeted `git add`).
+ */
+export function formatBuilderParallelNotice(parallelStages: string[][]): string {
+  // Find a parallel group that contains 'implement' (the builder's stage)
+  const builderGroup = parallelStages.find((group) => group.includes('implement'));
+  if (!builderGroup) return '';
+
+  const otherStages = builderGroup.filter((s) => s !== 'implement');
+  if (otherStages.length === 0) return '';
+
+  const stageList = otherStages.map((s) => `\`${s}\``).join(', ');
+
+  return `## Parallel Execution Notice
+
+You are running in parallel with: ${stageList}
+
+**Stay in your lane:**
+- Focus on code implementation only - do not modify documentation files (.md files in docs/, README.md, etc.)
+- Use targeted \`git add <file>\` for specific files instead of \`git add -A\` or \`git add .\`
+- Documentation updates are handled by a separate agent running alongside you`;
 }
 
 /**
@@ -71,11 +99,16 @@ export async function* builderImplement(
 ): AsyncGenerator<EforgeEvent> {
   yield { type: 'build:implement:start', planId: plan.id };
 
+  const parallelLanes = options.parallelStages
+    ? formatBuilderParallelNotice(options.parallelStages)
+    : '';
+
   const prompt = await loadPrompt('builder', {
     plan_id: plan.id,
     plan_name: plan.name,
     plan_content: plan.body,
     plan_branch: plan.branch,
+    parallelLanes,
   });
 
   try {

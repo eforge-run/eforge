@@ -113,6 +113,10 @@ function processEvent(
       case 'build:implement:start':
         state.planStatuses[planId] = 'implement';
         break;
+      case 'build:doc-update:start':
+      case 'build:doc-update:complete':
+        // Doc-update runs in parallel with implement — don't advance stage
+        break;
       case 'build:implement:complete':
       case 'build:review:start':
         state.planStatuses[planId] = 'review';

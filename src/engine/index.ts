@@ -52,11 +52,11 @@ export type { StalenessVerdict as StalenessVerdictResult } from './agents/common
 export { loadState, saveState, updatePlanStatus, isResumable } from './state.js';
 
 // --- planner ---
-export { runPlanner } from './agents/planner.js';
+export { runPlanner, formatParallelLanes } from './agents/planner.js';
 export type { PlannerOptions } from './agents/planner.js';
 
 // --- builder ---
-export { builderImplement, builderEvaluate, parseEvaluationBlock } from './agents/builder.js';
+export { builderImplement, builderEvaluate, parseEvaluationBlock, formatBuilderParallelNotice } from './agents/builder.js';
 export type { BuilderOptions, EvaluationVerdict, EvaluationEvidence } from './agents/builder.js';
 
 // --- reviewer ---
@@ -94,6 +94,10 @@ export type { CohesionEvaluatorOptions } from './agents/cohesion-evaluator.js';
 // --- validation-fixer ---
 export { runValidationFixer } from './agents/validation-fixer.js';
 export type { ValidationFixerOptions } from './agents/validation-fixer.js';
+
+// --- doc-updater ---
+export { runDocUpdater } from './agents/doc-updater.js';
+export type { DocUpdaterOptions } from './agents/doc-updater.js';
 
 // --- orchestration ---
 export { Orchestrator } from './orchestrator.js';
