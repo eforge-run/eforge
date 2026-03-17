@@ -224,6 +224,23 @@ export function resolveQueueOrder(prds: QueuedPrd[]): QueuedPrd[] {
 }
 
 // ---------------------------------------------------------------------------
+// Git helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Get the current HEAD commit hash.
+ * Returns empty string if not a git repo.
+ */
+export async function getHeadHash(cwd: string): Promise<string> {
+  try {
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
+    return stdout.trim();
+  } catch {
+    return '';
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Git diff summary
 // ---------------------------------------------------------------------------
 

@@ -13,8 +13,6 @@ export interface StalenessAssessorOptions {
   prdContent: string;
   /** Git diff --stat summary since the PRD was last committed */
   diffSummary: string;
-  /** Number of days since the PRD was last modified */
-  staleDays: number;
   /** Working directory */
   cwd: string;
   /** Whether to emit verbose agent-level events */
@@ -37,12 +35,11 @@ export interface StalenessAssessorOptions {
 export async function* runStalenessAssessor(
   options: StalenessAssessorOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { backend, prdContent, diffSummary, staleDays, cwd, verbose, abortController } = options;
+  const { backend, prdContent, diffSummary, cwd, verbose, abortController } = options;
 
   const prompt = await loadPrompt('staleness-assessor', {
     prdContent,
     diffSummary,
-    staleDays: String(staleDays),
     cwd,
   });
 

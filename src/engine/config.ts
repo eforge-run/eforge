@@ -98,7 +98,6 @@ const eforgeConfigSchema = z.object({
   plugins: pluginConfigSchema.optional(),
   prdQueue: z.object({
     dir: z.string().optional(),
-    stalenessThresholdDays: z.number().int().positive().optional(),
     autoRevise: z.boolean().optional(),
   }).optional(),
   hooks: z.array(hookConfigSchema).optional(),
@@ -125,7 +124,7 @@ export interface EforgeConfig {
   build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
   plugins: PluginConfig;
-  prdQueue: { dir: string; stalenessThresholdDays: number; autoRevise: boolean };
+  prdQueue: { dir: string; autoRevise: boolean };
   hooks: readonly HookConfig[];
   profiles: Record<string, ResolvedProfileConfig>;
 }
@@ -174,7 +173,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
   plan: Object.freeze({ outputDir: 'plans' }),
   plugins: Object.freeze({ enabled: true }),
-  prdQueue: Object.freeze({ dir: 'docs/prd-queue', stalenessThresholdDays: 14, autoRevise: false }),
+  prdQueue: Object.freeze({ dir: 'docs/prd-queue', autoRevise: false }),
   hooks: Object.freeze([]),
   profiles: BUILTIN_PROFILES,
 });
@@ -246,7 +245,6 @@ export function resolveConfig(
     }),
     prdQueue: Object.freeze({
       dir: fileConfig.prdQueue?.dir ?? DEFAULT_CONFIG.prdQueue.dir,
-      stalenessThresholdDays: fileConfig.prdQueue?.stalenessThresholdDays ?? DEFAULT_CONFIG.prdQueue.stalenessThresholdDays,
       autoRevise: fileConfig.prdQueue?.autoRevise ?? DEFAULT_CONFIG.prdQueue.autoRevise,
     }),
     hooks: Object.freeze(fileConfig.hooks ?? DEFAULT_CONFIG.hooks) as HookConfig[],

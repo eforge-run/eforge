@@ -314,21 +314,18 @@ describe('prdQueue config', () => {
       {
         prdQueue: {
           dir: 'custom/queue',
-          stalenessThresholdDays: 7,
           autoRevise: true,
         },
       },
       {},
     );
     expect(config.prdQueue.dir).toBe('custom/queue');
-    expect(config.prdQueue.stalenessThresholdDays).toBe(7);
     expect(config.prdQueue.autoRevise).toBe(true);
   });
 
   it('applies defaults when prdQueue is omitted', () => {
     const config = resolveConfig({}, {});
     expect(config.prdQueue.dir).toBe(DEFAULT_CONFIG.prdQueue.dir);
-    expect(config.prdQueue.stalenessThresholdDays).toBe(DEFAULT_CONFIG.prdQueue.stalenessThresholdDays);
     expect(config.prdQueue.autoRevise).toBe(DEFAULT_CONFIG.prdQueue.autoRevise);
   });
 
@@ -336,18 +333,14 @@ describe('prdQueue config', () => {
     const global: PartialEforgeConfig = {
       prdQueue: {
         dir: 'global/queue',
-        stalenessThresholdDays: 30,
       },
     };
     const project: PartialEforgeConfig = {
       prdQueue: {
-        stalenessThresholdDays: 7,
         autoRevise: true,
       },
     };
     const merged = mergePartialConfigs(global, project);
-    // Project overrides stalenessThresholdDays and adds autoRevise
-    expect(merged.prdQueue?.stalenessThresholdDays).toBe(7);
     expect(merged.prdQueue?.autoRevise).toBe(true);
     // Global dir survives since project didn't override it
     expect(merged.prdQueue?.dir).toBe('global/queue');

@@ -12,7 +12,6 @@ You are a staleness assessor for a PRD (Product Requirements Document). Your job
 
 ## Context
 
-- The PRD was last modified **{{staleDays}} days ago**
 - Working directory: `{{cwd}}`
 
 ## Instructions

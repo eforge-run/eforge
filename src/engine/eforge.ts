@@ -20,7 +20,7 @@ import type {
   PlanFile,
   ClarificationQuestion,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getPrdDiffSummary, updatePrdStatus, enqueuePrd, inferTitle, type QueuedPrd } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, updatePrdStatus, enqueuePrd, inferTitle, type QueuedPrd } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runFormatter } from './agents/formatter.js';
 import type { EforgeConfig, PluginConfig, PartialProfileConfig } from './config.js';
@@ -518,51 +518,45 @@ export class EforgeEngine {
         title: prd.frontmatter.title,
       };
 
-      // Staleness check — only if PRD has a commit hash and threshold is configured
-      if (prd.lastCommitHash && this.config.prdQueue.stalenessThresholdDays > 0) {
-        const daysSinceCommit = prd.lastCommitDate
-          ? Math.floor((Date.now() - new Date(prd.lastCommitDate).getTime()) / (1000 * 60 * 60 * 24))
-          : 0;
+      // Staleness check — skip only if PRD was added in the most recent commit
+      const headHash = await getHeadHash(cwd);
+      if (prd.lastCommitHash && prd.lastCommitHash !== headHash) {
+        const diffSummary = await getPrdDiffSummary(prd.lastCommitHash, cwd);
 
-        if (daysSinceCommit >= this.config.prdQueue.stalenessThresholdDays) {
-          const diffSummary = await getPrdDiffSummary(prd.lastCommitHash, cwd);
+        let stalenessVerdict: 'proceed' | 'revise' | 'obsolete' = 'proceed';
+        let revision: string | undefined;
 
-          let stalenessVerdict: 'proceed' | 'revise' | 'obsolete' = 'proceed';
-          let revision: string | undefined;
-
-          for await (const event of runStalenessAssessor({
-            backend: this.backend,
-            prdContent: prd.content,
-            diffSummary,
-            staleDays: daysSinceCommit,
-            cwd,
-            verbose,
-            abortController,
-          })) {
-            if (event.type === 'queue:prd:stale') {
-              stalenessVerdict = event.verdict;
-              revision = event.revision;
-            }
-            yield event;
+        for await (const event of runStalenessAssessor({
+          backend: this.backend,
+          prdContent: prd.content,
+          diffSummary,
+          cwd,
+          verbose,
+          abortController,
+        })) {
+          if (event.type === 'queue:prd:stale') {
+            stalenessVerdict = event.verdict;
+            revision = event.revision;
           }
+          yield event;
+        }
 
-          if (stalenessVerdict === 'obsolete') {
-            await updatePrdStatus(prd.filePath, 'skipped');
-            yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
+        if (stalenessVerdict === 'obsolete') {
+          await updatePrdStatus(prd.filePath, 'skipped');
+          yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
+          skipped++;
+          continue;
+        }
+
+        if (stalenessVerdict === 'revise') {
+          if (this.config.prdQueue.autoRevise && revision) {
+            // Auto-apply revision
+            await writeFile(prd.filePath, revision, 'utf-8');
+          } else {
+            // Skip — needs manual revision
+            yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
             skipped++;
             continue;
-          }
-
-          if (stalenessVerdict === 'revise') {
-            if (this.config.prdQueue.autoRevise && revision) {
-              // Auto-apply revision
-              await writeFile(prd.filePath, revision, 'utf-8');
-            } else {
-              // Skip — needs manual revision
-              yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
-              skipped++;
-              continue;
-            }
           }
         }
       }

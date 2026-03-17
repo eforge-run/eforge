@@ -35,7 +35,6 @@ describe('runStalenessAssessor wiring', () => {
       backend,
       prdContent: '# Add auth\n\nImplement user authentication.',
       diffSummary: 'src/utils.ts | 5 ++',
-      staleDays: 20,
       cwd: '/tmp',
     }));
 
@@ -55,7 +54,6 @@ describe('runStalenessAssessor wiring', () => {
       backend,
       prdContent: '# Old feature\n\nOutdated content.',
       diffSummary: 'src/api.ts | 50 +++---',
-      staleDays: 30,
       cwd: '/tmp',
     }));
 
@@ -75,7 +73,6 @@ describe('runStalenessAssessor wiring', () => {
       backend,
       prdContent: '# Feature X\n\nBuild feature X.',
       diffSummary: 'src/feature-x.ts | 200 ++++++',
-      staleDays: 45,
       cwd: '/tmp',
     }));
 
@@ -94,7 +91,6 @@ describe('runStalenessAssessor wiring', () => {
       backend,
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
-      staleDays: 15,
       cwd: '/tmp',
     }));
 
@@ -114,7 +110,6 @@ describe('runStalenessAssessor wiring', () => {
       backend,
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
-      staleDays: 15,
       cwd: '/tmp',
       verbose: false,
     }));
@@ -134,7 +129,6 @@ describe('runStalenessAssessor wiring', () => {
       backend,
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
-      staleDays: 15,
       cwd: '/tmp',
       verbose: true,
     }));
