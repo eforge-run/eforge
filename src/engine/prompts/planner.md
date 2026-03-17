@@ -132,8 +132,44 @@ For expeditions, you are performing the **architecture phase**. Do NOT generate 
    - Core architectural principles
    - Shared data model (if applicable)
    - Integration contracts between modules
+   - **Shared file registry with edit region declarations** (see below)
    - Technical decisions with rationale
    - Quality attributes
+
+##### Shared Files and Edit Region Markers
+
+During codebase exploration, identify files that multiple modules will need to modify (barrel/index files, config registries, route files, shared type files, etc.). For each shared file, declare **non-overlapping edit regions** in the architecture document's integration contracts section.
+
+Use this format in `architecture.md`:
+
+```markdown
+### Shared File Registry
+
+| File | Modules | Region Strategy |
+|------|---------|-----------------|
+| `src/index.ts` | auth, api, storage | Each module owns a region for its exports |
+| `src/config.ts` | auth, api | auth owns auth config block, api owns api config block |
+
+#### Region Declarations
+
+**`src/index.ts`**:
+- `auth`: after existing exports, before api exports
+- `api`: after auth exports
+- `storage`: after api exports
+
+**`src/config.ts`**:
+- `auth`: auth configuration section
+- `api`: api configuration section
+```
+
+Region markers use the format `// --- eforge:region {module-id} ---` / `// --- eforge:endregion {module-id} ---`. These markers are instructions for module planners and builders - you do not write the actual marker comments into code. You declare which module owns which section of each shared file so that module planners can emit precise region boundaries in their plans.
+
+Rules for shared file identification:
+- Any file listed under "Modify" by two or more modules MUST have region declarations
+- Barrel files (`index.ts`) that re-export from multiple modules are the most common case
+- Config files, route registries, and type aggregation files are also common shared files
+- Each region must be non-overlapping - no two modules may claim the same section of a file
+- Prefer append-style regions (each module appends its section) over interleaved regions
 
 2. Write `plans/{{planSetName}}/index.yaml` with module list (see format below)
 

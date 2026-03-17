@@ -33,6 +33,22 @@ Build a `file_path → [plan_ids]` overlap map:
   - **Safe** (one plan creates, another adds to it, and they have a dependency relationship) → no issue
   - **Missing dependency** (two plans touch the same file but neither depends on the other) → `critical` / `dependency`
 
+### Edit Region Marker Validation
+
+When two or more plans list the same file under "Modify", check for edit region declarations:
+
+1. **Look for `[region: ...]` annotations** in each plan's "Files > Modify" entries for the shared file. Also check for `// --- eforge:region {id} ---` markers in any code examples within the plan.
+
+2. **Classify the overlap** using these rules:
+   - **Regions declared and non-overlapping** → `safe` regardless of dependency relationship. Both plans declare distinct regions for the shared file, and the regions do not cover the same section of the file.
+   - **Regions overlap** → `critical` / `cohesion`. Two plans declare regions that cover the same section of the shared file.
+   - **Regions missing** → `critical` / `cohesion` if the plans have no dependency relationship. A shared file is listed by multiple plans but one or more plans do not declare a region for it, and the plans are in the same execution wave (no dependency edge between them).
+   - **Regions missing but dependency exists** → `safe` (existing behavior preserved). When plans have a dependency relationship, the dependent plan builds after the dependency completes, so region markers are not required.
+
+3. **Validate region IDs** match plan module IDs. If a plan with module ID `auth` declares a region with ID `api`, emit a `warning` / `cohesion` issue — region IDs must match the declaring plan's module ID.
+
+4. **Cross-reference with architecture** if an architecture document exists. Check that the shared file registry in `architecture.md` accounts for all file overlaps detected in the plans. Flag any shared file that appears in plans but is missing from the architecture's shared file registry as `warning` / `completeness`.
+
 ## 2. Architecture Integration Contracts
 
 For each integration contract or cross-module boundary defined in `architecture.md`:
