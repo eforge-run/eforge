@@ -490,6 +490,18 @@ export function renderEvent(event: EforgeEvent): void {
     case 'agent:stop':
       break;
 
+    // Merge conflict resolution
+    case 'merge:resolve:start':
+      console.log(chalk.yellow(`  ⚡ Resolving merge conflicts for ${event.planId}...`));
+      break;
+    case 'merge:resolve:complete':
+      if (event.resolved) {
+        console.log(chalk.green(`  ✓ Merge conflicts resolved for ${event.planId}`));
+      } else {
+        console.log(chalk.red(`  ✗ Failed to resolve merge conflicts for ${event.planId}`));
+      }
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

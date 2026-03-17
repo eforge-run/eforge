@@ -76,6 +76,14 @@ export interface MergeConflictInfo {
   conflictedFiles: string[];
   /** Full diff showing conflict markers for each file */
   conflictDiff: string;
+  /** Name of the plan whose branch is being merged */
+  planName?: string;
+  /** Summary of what the plan being merged intended to accomplish */
+  planSummary?: string;
+  /** Name of a plan that already merged and may have caused the conflict */
+  otherPlanName?: string;
+  /** Summary of the other plan's intent */
+  otherPlanSummary?: string;
 }
 
 /**

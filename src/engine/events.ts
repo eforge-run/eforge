@@ -6,7 +6,7 @@ export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as cons
 export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
 export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor' | 'review-fixer';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor' | 'review-fixer' | 'merge-conflict-resolver';
 
 export interface ExpeditionModule {
   id: string;
@@ -175,6 +175,8 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'wave:complete'; wave: number }
   | { type: 'merge:start'; planId: string }
   | { type: 'merge:complete'; planId: string }
+  | { type: 'merge:resolve:start'; planId: string }
+  | { type: 'merge:resolve:complete'; planId: string; resolved: boolean }
 
   // Expedition planning phases
   | { type: 'expedition:architecture:complete'; modules: ExpeditionModule[] }

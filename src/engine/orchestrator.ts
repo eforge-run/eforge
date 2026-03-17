@@ -293,7 +293,30 @@ export class Orchestrator {
 
           try {
             const plan = planMap.get(planId)!;
-            await mergeWorktree(repoRoot, plan.branch, config.baseBranch, this.options.mergeResolver);
+
+            // Wrap mergeResolver to inject plan context into MergeConflictInfo
+            const baseResolver = this.options.mergeResolver;
+            const contextResolver: MergeResolver | undefined = baseResolver
+              ? async (repoRoot, conflict) => {
+                  // Enrich conflict info with plan context
+                  conflict.planName = plan.name;
+
+                  // Find the most recently merged same-wave plan as the likely conflict source
+                  const mergedWavePlans = wave
+                    .filter((wId) => wId !== planId && state.plans[wId]?.status === 'merged');
+                  if (mergedWavePlans.length > 0) {
+                    const lastMergedId = mergedWavePlans[mergedWavePlans.length - 1];
+                    const otherPlan = planMap.get(lastMergedId);
+                    if (otherPlan) {
+                      conflict.otherPlanName = otherPlan.name;
+                    }
+                  }
+
+                  return baseResolver(repoRoot, conflict);
+                }
+              : undefined;
+
+            await mergeWorktree(repoRoot, plan.branch, config.baseBranch, contextResolver);
 
             updatePlanStatus(state, planId, 'merged');
             planState.merged = true;

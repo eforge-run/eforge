@@ -29,8 +29,10 @@ import { loadConfig, resolveProfileExtensions } from './config.js';
 import { ClaudeSDKBackend } from './backends/claude-sdk.js';
 import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
+import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
 import { runAssessor } from './agents/assessor.js';
 import { Orchestrator, type ValidationFixer } from './orchestrator.js';
+import type { MergeResolver } from './worktree.js';
 import { deriveNameFromSource, deriveNameFromContent, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName, extractPlanTitle, detectValidationCommands, writePlanArtifacts } from './plan.js';
 import { loadState } from './state.js';
 import { runCompilePipeline, runBuildPipeline, createToolTracker, type PipelineContext, type BuildStageContext } from './pipeline.js';
@@ -527,6 +529,40 @@ export class EforgeEngine {
         }
       };
 
+      // Create merge conflict resolver closure
+      const mergeEvents: EforgeEvent[] = [];
+      const mergeEventSink = (event: EforgeEvent) => { mergeEvents.push(event); };
+
+      const mergeResolver: MergeResolver = async (repoRoot, conflict) => {
+        const resolverSpan = tracing.createSpan('merge-conflict-resolver', {
+          branch: conflict.branch,
+          files: conflict.conflictedFiles,
+        });
+        const resolverTracker = createToolTracker(resolverSpan);
+        let resolved = false;
+        try {
+          for await (const event of runMergeConflictResolver({
+            backend,
+            cwd: repoRoot,
+            conflict,
+            verbose,
+            abortController,
+          })) {
+            resolverTracker.handleEvent(event);
+            mergeEventSink(event);
+            if (event.type === 'merge:resolve:complete') {
+              resolved = event.resolved;
+            }
+          }
+          resolverTracker.cleanup();
+          resolverSpan.end();
+        } catch (err) {
+          resolverTracker.cleanup();
+          resolverSpan.error(err as Error);
+        }
+        return resolved;
+      };
+
       // Create and run orchestrator
       const parallelism = config.build.parallelism;
       const signal = abortController?.signal;
@@ -540,9 +576,14 @@ export class EforgeEngine {
         validateCommands: orchConfig.validate,
         validationFixer,
         maxValidationRetries: config.build.maxValidationRetries,
+        mergeResolver,
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {
+        // Drain any buffered merge resolution events before yielding the orchestrator event
+        while (mergeEvents.length > 0) {
+          yield mergeEvents.shift()!;
+        }
         yield event;
         if (event.type === 'build:failed') {
           status = 'failed';
@@ -559,6 +600,11 @@ export class EforgeEngine {
             summary = 'Post-merge validation failed';
           }
         }
+      }
+
+      // Drain any remaining merge resolution events after orchestrator completes
+      while (mergeEvents.length > 0) {
+        yield mergeEvents.shift()!;
       }
 
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
