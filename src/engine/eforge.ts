@@ -16,13 +16,13 @@ import type {
   EforgeStatus,
   CompileOptions,
   BuildOptions,
-  AdoptOptions,
+  EnqueueOptions,
   PlanFile,
   ClarificationQuestion,
-  ScopeAssessment,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getPrdDiffSummary, updatePrdStatus, type QueuedPrd } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getPrdDiffSummary, updatePrdStatus, enqueuePrd, inferTitle, type QueuedPrd } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
+import { runFormatter } from './agents/formatter.js';
 import type { EforgeConfig, PluginConfig, PartialProfileConfig } from './config.js';
 import type { AgentBackend } from './backend.js';
 import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
@@ -32,10 +32,9 @@ import { ClaudeSDKBackend } from './backends/claude-sdk.js';
 import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
-import { runAssessor } from './agents/assessor.js';
 import { Orchestrator, type ValidationFixer } from './orchestrator.js';
 import type { MergeResolver } from './worktree.js';
-import { deriveNameFromSource, deriveNameFromContent, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName, extractPlanTitle, detectValidationCommands, writePlanArtifacts } from './plan.js';
+import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
 import { loadState } from './state.js';
 import { runCompilePipeline, runBuildPipeline, createToolTracker, type PipelineContext, type BuildStageContext } from './pipeline.js';
 
@@ -225,15 +224,16 @@ export class EforgeEngine {
   }
 
   /**
-   * Adopt: wrap an existing implementation plan (e.g., from Claude Code plan mode)
-   * into eforge plan format. Runs scope assessment first — errands wrap as-is,
-   * excursion/expedition delegates to the full planner for proper decomposition.
+   * Enqueue: format a source document and add it to the PRD queue.
+   * Runs the formatter agent to normalize content, then writes the
+   * PRD file with frontmatter to the queue directory.
    */
-  async *adopt(source: string, options: Partial<AdoptOptions> = {}): AsyncGenerator<EforgeEvent> {
-    const cwd = options.cwd ?? this.cwd;
-    const runId = randomUUID();
+  async *enqueue(source: string, options: Partial<EnqueueOptions> = {}): AsyncGenerator<EforgeEvent> {
+    const cwd = this.cwd;
+    const verbose = options.verbose;
+    const abortController = options.abortController;
 
-    // Resolve source content
+    // Resolve source content (file path or inline text)
     let sourceContent: string;
     try {
       const sourcePath = resolve(cwd, source);
@@ -243,199 +243,37 @@ export class EforgeEngine {
       sourceContent = source;
     }
 
-    // Derive plan set name from content H1, fall back to filename
-    const planSetName = options.name
-      ?? deriveNameFromContent(sourceContent)
-      ?? deriveNameFromSource(source);
-    validatePlanSetName(planSetName);
-    const tracing = createTracingContext(this.config, runId, 'adopt', planSetName);
+    yield { type: 'enqueue:start', source };
+
+    // Infer title from content (or from name override)
+    const title = options.name ?? inferTitle(sourceContent, !source.includes('\n') ? source : undefined);
+
+    // Run formatter agent to normalize content
+    let formattedBody = sourceContent;
+    const gen = runFormatter({ backend: this.backend, sourceContent, verbose, abortController });
+    let result = await gen.next();
+    while (!result.done) {
+      yield result.value;
+      result = await gen.next();
+    }
+    if (result.value?.body) {
+      formattedBody = result.value.body;
+    }
+
+    // Write to queue
+    const enqueueResult = await enqueuePrd({
+      body: formattedBody,
+      title,
+      queueDir: this.config.prdQueue.dir,
+      cwd,
+    });
 
     yield {
-      type: 'phase:start',
-      runId,
-      planSet: planSetName,
-      command: 'adopt',
-      timestamp: new Date().toISOString(),
+      type: 'enqueue:complete',
+      id: enqueueResult.id,
+      filePath: enqueueResult.filePath,
+      title,
     };
-
-    let status: 'completed' | 'failed' = 'completed';
-    let summary = 'Adoption complete';
-
-    tracing.setInput({ source, planSet: planSetName });
-
-    try {
-      // Derive plan title from first H1 heading
-      const planName = extractPlanTitle(sourceContent)
-        ?? planSetName.replace(/-/g, ' ').replace(/\b\w/, (c) => c.toUpperCase());
-
-      // Detect base branch
-      let baseBranch = 'main';
-      try {
-        const { stdout } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
-        baseBranch = stdout.trim();
-      } catch {
-        // Fall back to main
-      }
-
-      // Resolve validation commands
-      let validate = options.validate;
-      if (!validate || validate.length === 0) {
-        validate = this.config.build.postMergeCommands;
-      }
-      if (!validate || validate.length === 0) {
-        validate = await detectValidationCommands(cwd);
-      }
-
-      const verbose = options.verbose;
-      const abortController = options.abortController;
-
-      const sourceLabel = extractPlanTitle(sourceContent)
-        ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
-      yield { type: 'plan:start', source, ...(sourceLabel && { label: sourceLabel }) };
-
-      // Run assessor agent to determine scope
-      const assessorSpan = tracing.createSpan('assessor', { planSet: planSetName });
-      assessorSpan.setInput({ source, planSet: planSetName });
-      const assessorTracker = createToolTracker(assessorSpan);
-
-      let scopeAssessment: ScopeAssessment = 'errand';
-
-      try {
-        for await (const event of runAssessor({ backend: this.backend, sourceContent, cwd, verbose, abortController })) {
-          assessorTracker.handleEvent(event);
-
-          if (event.type === 'plan:scope') {
-            scopeAssessment = event.assessment;
-          }
-
-          yield event;
-        }
-        assessorTracker.cleanup();
-        assessorSpan.end();
-      } catch (err) {
-        assessorTracker.cleanup();
-        assessorSpan.error(err as Error);
-        // On assessor failure, default to errand (safe fallback)
-        yield { type: 'plan:scope', assessment: 'errand', justification: `Assessor failed: ${(err as Error).message} — defaulting to errand.` };
-      }
-
-      // Branch on scope
-      if (scopeAssessment === 'complete') {
-        // Nothing to do — source is fully implemented
-        yield { type: 'plan:complete', plans: [] };
-      } else if (scopeAssessment === 'errand') {
-        // Wrap as-is (current behavior)
-        yield { type: 'plan:progress', message: `Adopting plan as ${planSetName}...` };
-
-        const planFile = await writePlanArtifacts({
-          cwd,
-          planSetName,
-          sourceContent,
-          planName,
-          baseBranch,
-          validate,
-          mode: 'errand',
-        });
-
-        // Commit plan artifacts
-        const planDir = resolve(cwd, 'plans', planSetName);
-        await exec('git', ['add', planDir], { cwd });
-        await exec('git', ['commit', '-m', `plan(${planSetName}): adopt existing implementation plan`], { cwd });
-
-        yield { type: 'plan:complete', plans: [planFile] };
-
-        // Plan review cycle (non-fatal, skippable) — uses the errand profile's compile pipeline
-        if (!options.skipReview) {
-          const errandProfile = this.config.profiles['errand'];
-          const reviewCtx: PipelineContext = {
-            backend: this.backend,
-            config: this.config,
-            profile: errandProfile,
-            tracing,
-            cwd,
-            planSetName,
-            sourceContent,
-            verbose,
-            abortController,
-            onClarification: this.onClarification,
-            plans: [planFile],
-            expeditionModules: [],
-          };
-
-          // Run only the plan-review-cycle stage if it exists in the profile
-          if (errandProfile.compile.includes('plan-review-cycle')) {
-            const { getCompileStage } = await import('./pipeline.js');
-            try {
-              yield* getCompileStage('plan-review-cycle')(reviewCtx);
-            } catch (err) {
-              yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
-            }
-          }
-        }
-      } else {
-        // excursion or expedition — delegate to the full planner via compile pipeline
-        yield { type: 'plan:progress', message: `Scope is ${scopeAssessment} — running planner...` };
-
-        // Resolve profile based on scope assessment
-        const selectedProfile = this.config.profiles[scopeAssessment] ?? this.config.profiles['excursion'];
-
-        const ctx: PipelineContext = {
-          backend: this.backend,
-          config: this.config,
-          profile: selectedProfile,
-          tracing,
-          cwd,
-          planSetName,
-          sourceContent,
-          verbose,
-          auto: options.auto,
-          abortController,
-          onClarification: this.onClarification,
-          plans: [],
-          expeditionModules: [],
-        };
-
-        // Run compile pipeline (planner + expedition stages as needed)
-        // Filter out plan:start (adopt already emitted one) and plan:scope
-        // (assessor already emitted scope — planner may upgrade it but we
-        // suppress the duplicate yield; scope is still tracked on ctx)
-        for await (const event of runCompilePipeline(ctx)) {
-          if (event.type === 'plan:start') continue;
-          if (event.type === 'plan:scope') continue;
-          yield event;
-        }
-
-        // Commit plan artifacts
-        if (ctx.plans.length > 0 && !selectedProfile.compile.includes('plan-review-cycle')) {
-          const planDir = resolve(cwd, 'plans', planSetName);
-          await exec('git', ['add', planDir], { cwd });
-          await exec('git', ['commit', '-m', `plan(${planSetName}): adopt existing implementation plan`], { cwd });
-        }
-
-        // Plan review cycle (non-fatal, skippable) — run separately if not in compile pipeline
-        // Plan artifacts were already committed above, so plan review can read them.
-        if (!options.skipReview && !selectedProfile.compile.includes('plan-review-cycle') && ctx.plans.length > 0) {
-          const { getCompileStage } = await import('./pipeline.js');
-          try {
-            yield* getCompileStage('plan-review-cycle')(ctx);
-          } catch (err) {
-            yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
-          }
-        }
-      }
-    } catch (err) {
-      status = 'failed';
-      summary = (err as Error).message;
-    } finally {
-      tracing.setOutput({ status, summary });
-      yield {
-        type: 'phase:end',
-        runId,
-        result: { status, summary },
-        timestamp: new Date().toISOString(),
-      };
-      await tracing.flush();
-    }
   }
 
   /**

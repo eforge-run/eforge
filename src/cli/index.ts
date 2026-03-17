@@ -211,15 +211,7 @@ export function createProgram(abortController?: AbortController): Command {
           let planResult: 'completed' | 'failed' = 'completed';
           let scopeComplete = false;
 
-          const phase1Events = options.adopt
-            ? engine.adopt(source, {
-                verbose: options.verbose,
-                name: options.name,
-                auto: options.auto,
-                skipReview: options.review === false,
-                abortController,
-              })
-            : engine.compile(source, {
+          const phase1Events = engine.compile(source, {
                 auto: options.auto,
                 verbose: options.verbose,
                 name: options.name,

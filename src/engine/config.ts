@@ -15,7 +15,7 @@ const AGENT_ROLES = [
   'planner', 'builder', 'reviewer', 'evaluator', 'module-planner',
   'plan-reviewer', 'plan-evaluator', 'cohesion-reviewer', 'cohesion-evaluator',
   'validation-fixer', 'assessor', 'review-fixer', 'merge-conflict-resolver',
-  'staleness-assessor',
+  'staleness-assessor', 'formatter',
 ] as const;
 
 const agentRoleSchema = z.enum(AGENT_ROLES);

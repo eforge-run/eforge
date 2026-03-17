@@ -6,7 +6,7 @@ export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as cons
 export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
 export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor' | 'review-fixer' | 'merge-conflict-resolver' | 'staleness-assessor';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'assessor' | 'review-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter';
 
 export interface ExpeditionModule {
   id: string;
@@ -103,17 +103,11 @@ export interface BuildOptions {
   abortController?: AbortController;
 }
 
-export interface AdoptOptions {
-  verbose?: boolean;
+export interface EnqueueOptions {
   name?: string;
-  cwd?: string;
-  abortController?: AbortController;
-  /** Skip the plan review cycle after adoption */
-  skipReview?: boolean;
-  /** Explicit validation commands for orchestration.yaml */
-  validate?: string[];
-  /** Run without approval gates (used when delegating to planner for excursion/expedition) */
+  verbose?: boolean;
   auto?: boolean;
+  abortController?: AbortController;
 }
 
 export interface EforgeStatus {
@@ -128,8 +122,8 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'session:start'; sessionId: string; timestamp: string }
   | { type: 'session:end'; sessionId: string; result: EforgeResult; timestamp: string }
 
-  // Phase lifecycle (one per compile/build/adopt phase)
-  | { type: 'phase:start'; runId: string; planSet: string; command: 'compile' | 'build' | 'adopt'; timestamp: string }
+  // Phase lifecycle (one per compile/build phase)
+  | { type: 'phase:start'; runId: string; planSet: string; command: 'compile' | 'build'; timestamp: string }
   | { type: 'phase:end'; runId: string; result: EforgeResult; timestamp: string }
 
   // Planning
@@ -213,6 +207,10 @@ export type EforgeEvent = { sessionId?: string } & (
   // User interaction
   | { type: 'approval:needed'; planId?: string; action: string; details: string }
   | { type: 'approval:response'; approved: boolean }
+
+  // Enqueue
+  | { type: 'enqueue:start'; source: string }
+  | { type: 'enqueue:complete'; id: string; filePath: string; title: string }
 
   // Queue
   | QueueEvent

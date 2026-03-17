@@ -549,6 +549,14 @@ export function renderEvent(event: EforgeEvent): void {
       console.log('');
       break;
 
+    case 'enqueue:start':
+      console.log(chalk.cyan('Enqueuing: ') + chalk.dim(event.source));
+      break;
+
+    case 'enqueue:complete':
+      console.log(chalk.green('Enqueued: ') + chalk.bold(event.title) + chalk.dim(` → ${event.filePath}`));
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

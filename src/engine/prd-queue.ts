@@ -5,7 +5,7 @@
  * same dependency graph algorithm as plan orchestration.
  */
 
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { resolve, basename } from 'node:path';
 import { promisify } from 'node:util';
@@ -268,4 +268,140 @@ export async function updatePrdStatus(filePath: string, newStatus: PrdStatus): P
   }
 
   await writeFile(filePath, updated, 'utf-8');
+}
+
+// ---------------------------------------------------------------------------
+// Title inference
+// ---------------------------------------------------------------------------
+
+/**
+ * Infer a title from PRD content.
+ * Extracts the first `# ` heading if present, otherwise deslugifies
+ * a filename-like string (e.g., "my-feature" -> "My Feature").
+ */
+export function inferTitle(content: string, fallbackSlug?: string): string {
+  const headingMatch = content.match(/^#\s+(.+)$/m);
+  if (headingMatch) {
+    return headingMatch[1].trim();
+  }
+
+  if (fallbackSlug) {
+    return fallbackSlug
+      .replace(/\.md$/, '')
+      .replace(/[-_]/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  return 'Untitled PRD';
+}
+
+// ---------------------------------------------------------------------------
+// Enqueue
+// ---------------------------------------------------------------------------
+
+export interface EnqueuePrdOptions {
+  /** Formatted PRD body content */
+  body: string;
+  /** PRD title */
+  title: string;
+  /** Queue directory (absolute or relative to cwd) */
+  queueDir: string;
+  /** Working directory for resolving relative paths */
+  cwd: string;
+  /** Optional priority (lower = higher priority) */
+  priority?: number;
+  /** Optional dependency list */
+  depends_on?: string[];
+}
+
+export interface EnqueuePrdResult {
+  /** Slug-based id (filename without extension) */
+  id: string;
+  /** Absolute path to the written file */
+  filePath: string;
+  /** The frontmatter that was written */
+  frontmatter: PrdFrontmatter;
+}
+
+/**
+ * Generate a URL-safe slug from a title.
+ * Lowercases, replaces non-alphanumeric chars with hyphens,
+ * collapses consecutive hyphens, trims leading/trailing hyphens.
+ */
+function slugify(title: string): string {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+/**
+ * Write a formatted PRD to the queue directory with YAML frontmatter.
+ *
+ * Pure file I/O - no agent calls, no events. Handles:
+ * - Frontmatter generation (title, created=today, status=pending)
+ * - Slug generation from title
+ * - Duplicate slug handling (-2, -3 suffix)
+ * - Queue directory auto-creation
+ */
+export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrdResult> {
+  const { body, title, queueDir, cwd, priority, depends_on } = options;
+
+  const absDir = resolve(cwd, queueDir);
+
+  // Create queue dir if needed
+  await mkdir(absDir, { recursive: true });
+
+  // Generate slug and handle duplicates
+  const baseSlug = slugify(title) || 'untitled';
+  let slug = baseSlug;
+  let suffix = 1;
+
+  // Read existing files to check for duplicates
+  let existing: string[];
+  try {
+    existing = await readdir(absDir);
+  } catch {
+    existing = [];
+  }
+
+  const existingSet = new Set(existing.map((f) => basename(f, '.md')));
+  while (existingSet.has(slug)) {
+    suffix++;
+    slug = `${baseSlug}-${suffix}`;
+  }
+
+  // Build frontmatter
+  const created = new Date().toISOString().split('T')[0];
+  const frontmatter: PrdFrontmatter = {
+    title,
+    created,
+    status: 'pending',
+    ...(priority !== undefined && { priority }),
+    ...(depends_on !== undefined && depends_on.length > 0 && { depends_on }),
+  };
+
+  // Serialize frontmatter
+  const fmLines: string[] = [
+    `title: ${title}`,
+    `created: ${created}`,
+    `status: pending`,
+  ];
+  if (priority !== undefined) {
+    fmLines.push(`priority: ${priority}`);
+  }
+  if (depends_on !== undefined && depends_on.length > 0) {
+    fmLines.push(`depends_on: [${depends_on.map((d) => `"${d}"`).join(', ')}]`);
+  }
+
+  const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;
+  const filePath = resolve(absDir, `${slug}.md`);
+  await writeFile(filePath, fileContent, 'utf-8');
+
+  return {
+    id: slug,
+    filePath,
+    frontmatter,
+  };
 }

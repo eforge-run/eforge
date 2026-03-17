@@ -15,7 +15,7 @@ export type {
   PlanState,
   CompileOptions,
   BuildOptions,
-  AdoptOptions,
+  EnqueueOptions,
   EforgeStatus,
   ScopeAssessment,
   StalenessVerdict,
@@ -128,8 +128,12 @@ export type { PipelineContext, BuildStageContext, CompileStage, BuildStage } fro
 export { getCompileStage, getBuildStage, registerCompileStage, registerBuildStage, runCompilePipeline, runBuildPipeline, getCompileStageNames, getBuildStageNames } from './pipeline.js';
 
 // --- prd-queue ---
-export { loadQueue, resolveQueueOrder, validatePrdFrontmatter } from './prd-queue.js';
-export type { QueuedPrd, PrdFrontmatter, PrdStatus } from './prd-queue.js';
+export { loadQueue, resolveQueueOrder, validatePrdFrontmatter, enqueuePrd, inferTitle } from './prd-queue.js';
+export type { QueuedPrd, PrdFrontmatter, PrdStatus, EnqueuePrdOptions, EnqueuePrdResult } from './prd-queue.js';
+
+// --- formatter ---
+export { runFormatter } from './agents/formatter.js';
+export type { FormatterOptions, FormatterResult } from './agents/formatter.js';
 
 // --- staleness-assessor ---
 export { runStalenessAssessor } from './agents/staleness-assessor.js';
