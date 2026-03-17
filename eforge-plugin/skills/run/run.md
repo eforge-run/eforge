@@ -84,8 +84,8 @@ Tell the user:
 > **Monitor**: http://localhost:4567
 >
 > Your implementation plan was adopted into eforge format. The run executes:
-> 1. **Scope assessment** — analyzes the plan against the codebase to determine scope (errand/excursion/expedition)
-> 2. **Adoption** — wraps your plan in eforge format (errands wrap as-is; larger scopes delegate to the planner for proper decomposition)
+> 1. **Profile selection** — analyzes the plan against the codebase to select a workflow profile (errand/excursion/expedition, or custom profiles from eforge.yaml)
+> 2. **Adoption** — wraps your plan in eforge format (errands wrap as-is; larger profiles delegate to the planner for proper decomposition)
 > 3. **Plan review** — blind review of the plan artifacts
 > 4. **Building** — implements each plan on feature branches (parallel for multi-plan scopes)
 > 5. **Code review** — blind code review of the implementation

@@ -21,7 +21,7 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type.endsWith(':failed')) return { cls: 'failed', label: type };
   if (type.endsWith(':progress')) return { cls: 'progress', label: type };
   if (type.startsWith('agent:')) return { cls: 'agent', label: type };
-  if (type === 'plan:scope' || type === 'plan:clarification') return { cls: 'info', label: type };
+  if (type === 'plan:scope' || type === 'plan:profile' || type === 'plan:clarification') return { cls: 'info', label: type };
   return { cls: 'info', label: type };
 }
 
@@ -31,6 +31,7 @@ function eventSummary(event: EforgeEvent): string {
     case 'phase:end': return `Run ${event.result?.status}: ${event.result?.summary || ''}`;
     case 'plan:start': return `Planning from: ${event.source}`;
     case 'plan:scope': return `Scope: ${event.assessment} — ${event.justification}`;
+    case 'plan:profile': return `Profile: ${event.profileName} — ${event.rationale}`;
     case 'plan:clarification': return `${event.questions?.length || 0} clarification question(s)`;
     case 'plan:progress': return event.message;
     case 'plan:complete': return `${event.plans?.length || 0} plan(s) generated`;
@@ -75,6 +76,8 @@ function eventSummary(event: EforgeEvent): string {
 
 function eventDetail(event: EforgeEvent): string | null {
   switch (event.type) {
+    case 'plan:profile':
+      return event.rationale;
     case 'plan:clarification':
       return event.questions?.map((q) => `Q: ${q.question}${q.context ? '\n   ' + q.context : ''}`).join('\n\n') ?? null;
     case 'plan:review:complete':
