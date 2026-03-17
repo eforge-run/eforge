@@ -278,31 +278,32 @@ export function createProgram(abortController?: AbortController): Command {
           ...(profileOverrides && { profileOverrides }),
         });
 
+        // Shared sessionId across enqueue+compile+build so tracking sees one session
+        const sessionId = randomUUID();
+
+        // Phase 0: Enqueue — format and add to queue, capture file path
+        // Runs without monitor to avoid idle timeout during formatter agent
+        let enqueuedFilePath: string | undefined;
+        const enqueueEvents = engine.enqueue(source, {
+          name: options.name,
+          verbose: options.verbose,
+          abortController,
+        });
+
+        for await (const event of wrapEvents(enqueueEvents, undefined, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: false })) {
+          renderEvent(event);
+          if (event.type === 'enqueue:complete') {
+            enqueuedFilePath = event.filePath;
+          }
+        }
+
+        if (!enqueuedFilePath) {
+          console.error(chalk.red('Enqueue failed — no file path returned'));
+          process.exit(1);
+        }
+
+        // Phase 1+2: Compile and Build (with monitor — starts right before first phase:start)
         await withMonitor(options.monitor === false, async (monitor) => {
-          // Shared sessionId across enqueue+compile+build so tracking sees one session
-          const sessionId = randomUUID();
-
-          // Phase 0: Enqueue — format and add to queue, capture file path
-          let enqueuedFilePath: string | undefined;
-          const enqueueEvents = engine.enqueue(source, {
-            name: options.name,
-            verbose: options.verbose,
-            abortController,
-          });
-
-          for await (const event of wrapEvents(enqueueEvents, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: false })) {
-            renderEvent(event);
-            if (event.type === 'enqueue:complete') {
-              enqueuedFilePath = event.filePath;
-            }
-          }
-
-          if (!enqueuedFilePath) {
-            console.error(chalk.red('Enqueue failed — no file path returned'));
-            process.exit(1);
-          }
-
-          // Phase 1: Compile from the enqueued file
           let planSetName: string | undefined;
           let planFiles: PlanFile[] = [];
           let planResult: 'completed' | 'failed' = 'completed';
