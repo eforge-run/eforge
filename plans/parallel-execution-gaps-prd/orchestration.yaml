@@ -1,0 +1,35 @@
+name: parallel-execution-gaps-prd
+description: Close gaps between profile/orchestration infrastructure and runtime
+  behavior - wire review strategy config, add merge conflict resolver agent,
+  implement edit region markers, and enable dynamic profile generation
+created: 2026-03-16
+compiled: 2026-03-17
+mode: expedition
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-edit-region-markers
+    name: Prompt-level mechanism for preventing merge conflicts via non-overlapping
+      edit regions in shared files during expedition planning and building
+    depends_on: []
+    branch: parallel-execution-gaps-prd/edit-region-markers
+  - id: plan-02-merge-conflict-resolver
+    name: New one-shot coding agent to resolve merge conflicts during orchestrated
+      builds, backed by the existing MergeResolver callback infrastructure
+    depends_on: []
+    branch: parallel-execution-gaps-prd/merge-conflict-resolver
+  - id: plan-03-review-strategy-wiring
+    name: Wire ReviewProfileConfig fields (strategy, perspectives, maxRounds,
+      autoAcceptBelow, evaluatorStrictness) into pipeline stages, parallel
+      reviewer, and evaluator prompt
+    depends_on: []
+    branch: parallel-execution-gaps-prd/review-strategy-wiring
+  - id: plan-04-dynamic-profile-generation
+    name: Agent-generated workflow profiles with config validation and CLI
+      integration, using the existing plan:profile event inline config path
+    depends_on:
+      - plan-03-review-strategy-wiring
+    branch: parallel-execution-gaps-prd/dynamic-profile-generation
