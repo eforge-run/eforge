@@ -5,7 +5,7 @@
  * same dependency graph algorithm as plan orchestration.
  */
 
-import { readFile, readdir, writeFile, mkdir } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir, rm, rmdir } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { resolve, basename } from 'node:path';
 import { promisify } from 'node:util';
@@ -256,6 +256,39 @@ export async function getPrdDiffSummary(hash: string, cwd: string): Promise<stri
   } catch {
     return '';
   }
+}
+
+// ---------------------------------------------------------------------------
+// PRD removal
+// ---------------------------------------------------------------------------
+
+/**
+ * Remove a completed PRD file from disk and git.
+ * Handles `git rm`, empty queue directory cleanup, and commit.
+ * Throws on failure — callers should catch and fall back to `updatePrdStatus`.
+ */
+export async function cleanupCompletedPrd(filePath: string, queueDir: string, cwd: string): Promise<void> {
+  // Guard: filePath must reside within the queue directory
+  const absFilePath = resolve(filePath);
+  const absQueueDir = resolve(cwd, queueDir);
+  if (!absFilePath.startsWith(absQueueDir + '/')) {
+    throw new Error(`filePath ${filePath} is outside queue directory ${absQueueDir}`);
+  }
+
+  // git rm (tracked files), fall back to fs rm (untracked)
+  try {
+    await exec('git', ['rm', '--', filePath], { cwd });
+  } catch {
+    await rm(absFilePath);
+  }
+
+  // Remove empty queue directory (non-recursive — fails safely if not empty)
+  try {
+    await rmdir(absQueueDir);
+  } catch { /* not empty or already gone */ }
+
+  const prdId = basename(filePath, '.md');
+  await exec('git', ['commit', '-m', `cleanup(${prdId}): remove completed PRD`, '--', filePath], { cwd });
 }
 
 // ---------------------------------------------------------------------------

@@ -128,7 +128,7 @@ export type { PipelineContext, BuildStageContext, CompileStage, BuildStage } fro
 export { getCompileStage, getBuildStage, registerCompileStage, registerBuildStage, runCompilePipeline, runBuildPipeline, getCompileStageNames, getBuildStageNames } from './pipeline.js';
 
 // --- prd-queue ---
-export { loadQueue, resolveQueueOrder, validatePrdFrontmatter, enqueuePrd, inferTitle } from './prd-queue.js';
+export { loadQueue, resolveQueueOrder, validatePrdFrontmatter, enqueuePrd, cleanupCompletedPrd, inferTitle } from './prd-queue.js';
 export type { QueuedPrd, PrdFrontmatter, PrdStatus, EnqueuePrdOptions, EnqueuePrdResult } from './prd-queue.js';
 
 // --- formatter ---

@@ -20,7 +20,7 @@ import type {
   PlanFile,
   ClarificationQuestion,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, updatePrdStatus, enqueuePrd, inferTitle, type QueuedPrd } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, updatePrdStatus, cleanupCompletedPrd, enqueuePrd, inferTitle, type QueuedPrd } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runFormatter } from './agents/formatter.js';
 import type { EforgeConfig, PluginConfig, PartialProfileConfig } from './config.js';
@@ -603,7 +603,18 @@ export class EforgeEngine {
       }
 
       const finalStatus = buildFailed ? 'failed' : 'completed';
-      await updatePrdStatus(prd.filePath, finalStatus);
+
+      if (!buildFailed && this.config.build.cleanupPlanFiles) {
+        try {
+          await cleanupCompletedPrd(prd.filePath, queueDir, cwd);
+        } catch {
+          // Non-fatal — fall back to marking completed
+          await updatePrdStatus(prd.filePath, finalStatus);
+        }
+      } else {
+        await updatePrdStatus(prd.filePath, finalStatus);
+      }
+
       yield { type: 'queue:prd:complete', prdId: prd.id, status: finalStatus };
       processed++;
     }
