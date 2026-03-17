@@ -399,23 +399,21 @@ describe('agent config threading', () => {
     expect(observedMaxTurns).toBe(25);
   });
 
-  it('profile without agent config falls back to config.agents.maxTurns via getAgentMaxTurns', async () => {
-    // Import getAgentMaxTurns
-    const { getAgentMaxTurns } = await import('../src/engine/pipeline.js');
+  it('resolveAgentConfig returns role default when no profile config set', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
 
     const profile: ResolvedProfileConfig = {
       ...BUILTIN_PROFILES['excursion'],
       agents: {}, // No builder config
     };
 
-    const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 42 } };
-    const result = getAgentMaxTurns(profile, 'builder', config);
-
-    expect(result).toBe(42);
+    // Builder has a role default of 50, so it should return 50 (not the global 30)
+    const result = resolveAgentConfig(profile, 'builder', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(50);
   });
 
-  it('getAgentMaxTurns returns profile value when set', async () => {
-    const { getAgentMaxTurns } = await import('../src/engine/pipeline.js');
+  it('resolveAgentConfig returns profile value when set', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
 
     const profile: ResolvedProfileConfig = {
       ...BUILTIN_PROFILES['excursion'],
@@ -424,9 +422,22 @@ describe('agent config threading', () => {
       },
     };
 
-    const result = getAgentMaxTurns(profile, 'builder', DEFAULT_CONFIG);
+    const result = resolveAgentConfig(profile, 'builder', DEFAULT_CONFIG);
+    expect(result.maxTurns).toBe(25);
+  });
 
-    expect(result).toBe(25);
+  it('resolveAgentConfig falls back to global maxTurns for roles without a specific default', async () => {
+    const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
+
+    const profile: ResolvedProfileConfig = {
+      ...BUILTIN_PROFILES['excursion'],
+      agents: {},
+    };
+
+    const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 42 } };
+    // reviewer has no role default, so it should fall back to the global config value
+    const result = resolveAgentConfig(profile, 'reviewer', config);
+    expect(result.maxTurns).toBe(42);
   });
 });
 

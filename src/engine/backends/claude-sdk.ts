@@ -191,7 +191,7 @@ export async function* mapSDKMessages(
           yield { type: 'agent:result', planId, agent, result: extractResultData(result, result.result) };
         } else {
           const errorResult = result as SDKResultMessage & { errors?: string[] };
-          const errorMsg = errorResult.errors?.join('; ') ?? `Agent ${agent} failed: ${result.subtype}`;
+          const errorMsg = errorResult.errors?.join('; ') || `Agent ${agent} failed: ${result.subtype}`;
           // Yield result data even on error (usage is still tracked)
           yield { type: 'agent:result', planId, agent, result: extractResultData(result) };
           throw new Error(errorMsg);

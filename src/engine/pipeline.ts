@@ -209,15 +209,32 @@ export async function hasUnstagedChanges(cwd: string): Promise<boolean> {
   }
 }
 
+/** Per-role default maxTurns. Agents that need more/fewer turns than the global default declare it here. */
+const AGENT_MAX_TURNS_DEFAULTS: Partial<Record<AgentRole, number>> = {
+  builder: 50,
+  assessor: 20,
+  'module-planner': 20,
+};
+
 /**
- * Read maxTurns from profile for a given agent role, with fallback to global config.
+ * Resolve agent config for a given role.
+ * Priority (highest → lowest): profile per-agent config → role defaults → global config
  */
-export function getAgentMaxTurns(
+export function resolveAgentConfig(
   profile: ResolvedProfileConfig,
   role: AgentRole,
   config: EforgeConfig,
-): number {
-  return profile.agents[role]?.maxTurns ?? config.agents.maxTurns;
+): { maxTurns: number; prompt?: string; tools?: 'coding' | 'none'; model?: string } {
+  const roleDefault = AGENT_MAX_TURNS_DEFAULTS[role];
+  const globalMaxTurns = config.agents.maxTurns;
+  const profileAgent = profile.agents[role];
+
+  return {
+    maxTurns: profileAgent?.maxTurns ?? roleDefault ?? globalMaxTurns,
+    prompt: profileAgent?.prompt,
+    tools: profileAgent?.tools,
+    model: profileAgent?.model,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -253,7 +270,7 @@ export function filterIssuesBySeverity(
 // ---------------------------------------------------------------------------
 
 registerCompileStage('planner', async function* plannerStage(ctx) {
-  const agentConfig = ctx.profile.agents.planner;
+  const agentConfig = resolveAgentConfig(ctx.profile, 'planner', ctx.config);
   const span = ctx.tracing.createSpan('planner', { source: ctx.sourceContent, planSet: ctx.planSetName });
   span.setInput({ source: ctx.sourceContent, planSet: ctx.planSetName });
   const tracker = createToolTracker(span);
@@ -269,7 +286,7 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
       backend: ctx.backend,
       onClarification: ctx.onClarification,
       profiles: ctx.config.profiles,
-      ...(agentConfig?.maxTurns && { maxTurns: agentConfig.maxTurns }),
+      maxTurns: agentConfig.maxTurns,
     })) {
       // Track scope assessment
       if (event.type === 'plan:scope') {
@@ -395,7 +412,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
   const tracing = ctx.tracing;
   const sourceContent = ctx.sourceContent;
   const planSetName = ctx.planSetName;
-  const agentConfig = ctx.profile.agents['module-planner'];
+  const agentConfig = resolveAgentConfig(ctx.profile, 'module-planner', ctx.config);
 
   // 2. Plan each wave (parallel within wave, sequential across waves)
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
@@ -434,7 +451,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
               verbose,
               onClarification,
               abortController,
-              ...(agentConfig?.maxTurns && { maxTurns: agentConfig.maxTurns }),
+              maxTurns: agentConfig.maxTurns,
             })) {
               modTracker.handleEvent(event);
               yield event;
@@ -524,7 +541,8 @@ registerCompileStage('compile-expedition', async function* compileExpeditionStag
 // ---------------------------------------------------------------------------
 
 registerBuildStage('implement', async function* implementStage(ctx) {
-  const maxTurns = getAgentMaxTurns(ctx.profile, 'builder', ctx.config);
+  const agentConfig = resolveAgentConfig(ctx.profile, 'builder', ctx.config);
+  const maxTurns = agentConfig.maxTurns;
 
   const implSpan = ctx.tracing.createSpan('builder', { planId: ctx.planId, phase: 'implement' });
   implSpan.setInput({ planId: ctx.planId, phase: 'implement' });
@@ -676,11 +694,13 @@ async function* evaluateStageInner(
   const evalTracker = createToolTracker(evalSpan);
 
   try {
+    const evalAgentConfig = resolveAgentConfig(ctx.profile, 'evaluator', ctx.config);
     for await (const event of builderEvaluate(ctx.planFile, {
       backend: ctx.backend,
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
+      maxTurns: evalAgentConfig.maxTurns,
       strictness,
     })) {
       evalTracker.handleEvent(event);

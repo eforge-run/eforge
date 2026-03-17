@@ -16,12 +16,12 @@ describe('resolveConfig', () => {
   it('propagates file config values', () => {
     const config = resolveConfig(
       {
-        agents: { maxTurns: 50, permissionMode: 'default' },
+        agents: { maxTurns: 40, permissionMode: 'default' },
         plan: { outputDir: 'custom-plans' },
       },
       {},
     );
-    expect(config.agents.maxTurns).toBe(50);
+    expect(config.agents.maxTurns).toBe(40);
     expect(config.agents.permissionMode).toBe('default');
     expect(config.plan.outputDir).toBe('custom-plans');
   });
