@@ -480,8 +480,8 @@ export function renderEvent(event: EforgeEvent): void {
         excursion: chalk.yellow,
         expedition: chalk.magenta,
       };
-      const colorFn = profileColors[event.profileName] ?? chalk.cyan;
-      console.log(`  Profile: ${colorFn(event.profileName)} \u2014 ${chalk.dim(event.rationale)}`);
+      const profileColorFn = profileColors[event.profileName] ?? chalk.cyan;
+      console.log(`  Profile: ${profileColorFn(event.profileName)} \u2014 ${chalk.dim(event.rationale)}`);
       break;
     }
 

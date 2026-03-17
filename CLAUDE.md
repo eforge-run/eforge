@@ -31,7 +31,11 @@ node --env-file=.env dist/cli.js run docs/init-prd.md --verbose
 
 **Design principle**: Engine emits, consumers render. The engine never writes to stdout — all communication flows through `EforgeEvent`s.
 
-**Agent loop**: planner → plan-reviewer → plan-evaluator → builder → reviewer → evaluator, each consuming the `AgentBackend` interface. Planning and building both use a shared `runReviewCycle()` for the review→evaluate pattern.
+**Agent loop**: profile-selection → planner → plan-reviewer → plan-evaluator → builder → reviewer → evaluator, each consuming the `AgentBackend` interface. Profile selection is a pre-pipeline step where the planner picks the best workflow profile for the work. Planning and building both use a shared `runReviewCycle()` for the review→evaluate pattern.
+
+**Workflow profiles**: Pipeline behavior is config-driven through profiles. A profile declares which compile/build stages run and with what agent parameters. Built-in profiles (`errand`, `excursion`, `expedition`) encode the default behavior. Custom profiles can be defined in `eforge.yaml` or via `--profiles` files. Profile config lives in `DEFAULT_CONFIG.profiles` and participates in the standard merge chain.
+
+**Pipeline stages**: Compile and build pipelines are composed of named stages registered in a stage registry (`src/engine/pipeline.ts`). Each stage is an async generator that accepts a `PipelineContext` and yields `EforgeEvent`s. The engine iterates the stage list from the resolved profile.
 
 **Backend abstraction**: Agent runners never import the AI SDK directly. All LLM interaction goes through the `AgentBackend` interface (`src/engine/backend.ts`). The sole SDK adapter lives in `src/engine/backends/claude-sdk.ts`. New agents must accept an `AgentBackend` via their options — do not import `@anthropic-ai/claude-agent-sdk` outside of `src/engine/backends/`. The backend emits `agent:start`/`agent:stop` lifecycle events (with a UUID `agentId`) around every agent invocation — agent runners must pass these through via `isAlwaysYieldedAgentEvent()` from `events.ts`.
 
@@ -73,6 +77,7 @@ src/
     events.ts                 # EforgeEvent type definitions
     index.ts                  # Barrel re-exports for engine public API
     backend.ts                # AgentBackend interface (provider abstraction)
+    pipeline.ts               # Pipeline context, stage registry, compile/build stage implementations
     backends/
       claude-sdk.ts           # Claude Agent SDK adapter (sole SDK import point)
     agents/
@@ -160,6 +165,8 @@ eforge loads config from two levels, merged together:
 - `hooks` array: **concatenate** (global hooks fire first, then project hooks)
 - Arrays inside objects (`postMergeCommands`, `plugins.include/exclude/paths`, `settingSources`): project replaces global
 
+**Profiles** (`profiles` section): Workflow profiles declared as named entries. Each profile has `description`, optional `extends`, `compile`/`build` stage lists, per-agent `agents` config, and `review` strategy. Profiles merge by name across config layers. `extends` chains resolve at config load time (cycles rejected). Built-in profiles (`errand`, `excursion`, `expedition`) can be overridden by defining a profile with the same name.
+
 **Hook env vars**: Hook commands receive the full `EforgeEvent` JSON on stdin plus these environment variables:
 
 | Env var | Description |
@@ -196,7 +203,7 @@ eforge run <source>       # Compile + build + validate in one step
 eforge status             # Check running builds
 ```
 
-Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--adopt` (wrap existing plan), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading)
+Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--adopt` (wrap existing plan), `--no-monitor` (disable web monitor), `--no-plugins` (disable plugin loading), `--profiles <path>` (add custom workflow profiles from a YAML file)
 
 ## Roadmap
 
