@@ -2,6 +2,7 @@ import chalk from 'chalk';
 import ora, { type Ora } from 'ora';
 import type { EforgeEvent, EforgeStatus, OrchestrationConfig } from '../engine/events.js';
 import type { EforgeConfig } from '../engine/config.js';
+import type { QueuedPrd } from '../engine/prd-queue.js';
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();
@@ -502,13 +503,50 @@ export function renderEvent(event: EforgeEvent): void {
       }
       break;
 
-    // Queue events (display handled in plan-02)
+    // Queue events
     case 'queue:start':
+      console.log('');
+      console.log(chalk.bold(`\u{1F4CB} PRD Queue`));
+      console.log(chalk.dim(`  Directory: ${event.dir}`));
+      console.log(chalk.dim(`  PRDs to process: ${event.prdCount}`));
+      console.log('');
+      break;
+
     case 'queue:prd:start':
-    case 'queue:prd:stale':
+      startSpinner(`queue:${event.prdId}`, `Processing ${chalk.cyan(event.title)}...`);
+      break;
+
+    case 'queue:prd:stale': {
+      const verdictColors: Record<string, (s: string) => string> = {
+        proceed: chalk.green,
+        revise: chalk.yellow,
+        obsolete: chalk.red,
+      };
+      const verdictFn = verdictColors[event.verdict] ?? chalk.dim;
+      console.log(`  Staleness: ${verdictFn(event.verdict)} \u2014 ${chalk.dim(event.justification)}`);
+      break;
+    }
+
     case 'queue:prd:skip':
+      console.log(chalk.dim(`  Skipped: ${event.prdId} \u2014 ${event.reason}`));
+      break;
+
     case 'queue:prd:complete':
+      if (event.status === 'completed') {
+        succeedSpinner(`queue:${event.prdId}`, `${chalk.cyan(event.prdId)} \u2014 completed`);
+      } else {
+        failSpinner(`queue:${event.prdId}`, `${chalk.cyan(event.prdId)} \u2014 ${chalk.red('failed')}`);
+      }
+      break;
+
     case 'queue:complete':
+      console.log('');
+      console.log(
+        chalk.bold('Queue complete: ') +
+        chalk.green(`${event.processed} processed`) +
+        (event.skipped > 0 ? chalk.dim(`, ${event.skipped} skipped`) : ''),
+      );
+      console.log('');
       break;
 
     default: {
@@ -551,6 +589,75 @@ export function renderStatus(status: EforgeStatus): void {
     console.log('');
     console.log(chalk.dim(`Completed: ${status.completedPlans.join(', ')}`));
   }
+}
+
+/**
+ * Render the PRD queue as a formatted table, grouped by status.
+ */
+export function renderQueueList(prds: QueuedPrd[]): void {
+  if (prds.length === 0) {
+    console.log(chalk.dim('No PRDs in queue.'));
+    return;
+  }
+
+  // Group by status
+  const pending = prds.filter((p) => (p.frontmatter.status ?? 'pending') === 'pending');
+  const completed = prds.filter((p) => p.frontmatter.status === 'completed');
+  const other = prds.filter((p) => {
+    const s = p.frontmatter.status;
+    return s === 'failed' || s === 'skipped' || s === 'running';
+  });
+
+  function staleDaysColor(days: number): string {
+    const padded = String(days).padStart(5);
+    if (days < 7) return chalk.green(padded);
+    if (days <= 14) return chalk.yellow(padded);
+    return chalk.red(padded);
+  }
+
+  function renderGroup(group: QueuedPrd[], label: string, dim: boolean): void {
+    if (group.length === 0) return;
+
+    console.log('');
+    console.log(dim ? chalk.dim(label) : chalk.bold(label));
+    console.log(
+      dim
+        ? chalk.dim('  Priority  Title                          Created      Stale  Depends On')
+        : '  Priority  Title                          Created      Stale  Depends On',
+    );
+    console.log(chalk.dim('  --------  -----------------------------  -----------  -----  ----------'));
+
+    const TITLE_COL_WIDTH = 29;
+
+    for (const prd of group) {
+      const pri = prd.frontmatter.priority !== undefined ? String(prd.frontmatter.priority) : '-';
+      const title = prd.frontmatter.title.length > TITLE_COL_WIDTH
+        ? prd.frontmatter.title.slice(0, TITLE_COL_WIDTH - 1) + '\u2026'
+        : prd.frontmatter.title;
+      const created = prd.frontmatter.created ?? '-';
+      const deps = prd.frontmatter.depends_on?.join(', ') ?? '-';
+
+      // Calculate stale days from created date.
+      // Pad the raw number BEFORE applying chalk colors,
+      // since ANSI escape codes break padStart alignment.
+      let staleDaysStr: string;
+      if (prd.frontmatter.created) {
+        const createdDate = new Date(prd.frontmatter.created);
+        const days = Math.floor((Date.now() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+        const padded = String(days).padStart(5);
+        staleDaysStr = dim ? chalk.dim(padded) : staleDaysColor(days);
+      } else {
+        staleDaysStr = '    -';
+      }
+
+      const line = `  ${pri.padEnd(10)}${title.padEnd(TITLE_COL_WIDTH + 2)}  ${created.padEnd(13)}${staleDaysStr}  ${deps}`;
+      console.log(dim ? chalk.dim(line) : line);
+    }
+  }
+
+  renderGroup(pending, 'Pending', false);
+  renderGroup(completed, 'Completed', true);
+  renderGroup(other, 'Other', true);
 }
 
 /**

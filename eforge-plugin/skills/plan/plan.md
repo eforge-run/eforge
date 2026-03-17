@@ -61,22 +61,31 @@ Keep this conversational — 2-4 rounds of questions is typical. Don't over-inte
 Based on the conversation, write a structured PRD markdown file:
 
 - **If refining an existing file**: Suggest specific edits to strengthen it. Apply with the Edit tool after user approval.
-- **If starting fresh**: Write a new PRD file. Ask the user where to save it, or use a sensible default (e.g., `docs/prd-<name>.md`).
+- **If starting fresh**: Write a new PRD file. Default output to `docs/prd-queue/<name>.md` (or the configured queue directory from `eforge.yaml` `prdQueue.dir`). Ask the user if they'd prefer a different location.
 
-The PRD should be clear, specific, and complete enough for eforge to plan from. Include:
+Include YAML frontmatter at the top of the file:
+```yaml
+---
+title: <descriptive title>
+created: <today's ISO date, e.g. 2026-03-17>
+priority: <ask user, or omit if no preference>
+status: pending
+---
+```
+
+The PRD body should be clear, specific, and complete enough for eforge to plan from. Encourage these sections:
 - Problem statement / motivation
-- Requirements (functional and non-functional)
+- Goal
+- Design / approach
+- Scope (in scope and out of scope)
 - Acceptance criteria
 - Relevant technical context from codebase exploration
-- Out of scope (if applicable)
 
 ### Step 5: Suggest Next Step
 
 After the PRD is written:
 
-> PRD saved to **{path}**. To plan and build, run:
->
-> `/eforge:run {path}`
+> PRD enqueued to **{path}**. Run `eforge queue list` to see the queue, or `eforge queue run <name>` to build it now.
 
 ## Error Handling
 

@@ -14,7 +14,7 @@ import type { EforgeConfig, HookConfig } from '../engine/config.js';
 import type { EforgeEvent, PlanFile } from '../engine/events.js';
 import { withHooks } from '../engine/hooks.js';
 import { withSessionId } from '../engine/session.js';
-import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, stopAllSpinners } from './display.js';
+import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { ensureMonitor, type Monitor } from '../monitor/index.js';
 import { readLockfile, isServerAlive } from '../monitor/lockfile.js';
@@ -338,6 +338,74 @@ export function createProgram(abortController?: AbortController): Command {
       const engine = await EforgeEngine.create();
       renderStatus(engine.status());
     });
+
+  // Queue commands
+  const queue = program
+    .command('queue')
+    .description('Manage PRD queue');
+
+  queue
+    .command('list')
+    .description('Show PRDs in the queue')
+    .action(async () => {
+      const { loadQueue } = await import('../engine/prd-queue.js');
+      const { loadConfig } = await import('../engine/config.js');
+      const config = await loadConfig();
+      const prds = await loadQueue(config.prdQueue.dir, process.cwd());
+      renderQueueList(prds);
+    });
+
+  queue
+    .command('run [name]')
+    .description('Process PRDs from the queue')
+    .option('--all', 'Process all pending PRDs')
+    .option('--auto', 'Run without approval gates')
+    .option('--verbose', 'Stream agent output')
+    .option('--no-monitor', 'Disable web monitor')
+    .option('--no-plugins', 'Disable plugin loading')
+    .option('--parallelism <n>', 'Max parallel plans', parseInt)
+    .action(
+      async (
+        name: string | undefined,
+        options: {
+          all?: boolean;
+          auto?: boolean;
+          verbose?: boolean;
+          monitor?: boolean;
+          plugins?: boolean;
+          parallelism?: number;
+        },
+      ) => {
+        initDisplay({ verbose: options.verbose });
+
+        const configOverrides = buildConfigOverrides(options);
+
+        const engine = await EforgeEngine.create({
+          onClarification: createClarificationHandler(options.auto ?? false),
+          onApproval: createApprovalHandler(options.auto ?? false),
+          ...(configOverrides && { config: configOverrides }),
+        });
+
+        await withMonitor(options.monitor === false, async (monitor) => {
+          const sessionId = randomUUID();
+
+          const queueEvents = engine.runQueue({
+            name,
+            all: options.all,
+            auto: options.auto,
+            verbose: options.verbose,
+            abortController,
+          });
+
+          const result = await consumeEvents(
+            wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: true }),
+            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
+          );
+
+          process.exit(result === 'completed' ? 0 : 1);
+        });
+      },
+    );
 
   return program;
 }

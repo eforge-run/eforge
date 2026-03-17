@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseClarificationBlocks, parseScopeBlock, parseModulesBlock, parseProfileBlock } from '../src/engine/agents/common.js';
+import { parseClarificationBlocks, parseScopeBlock, parseModulesBlock, parseProfileBlock, parseStalenessBlock } from '../src/engine/agents/common.js';
 import { parseReviewIssues } from '../src/engine/agents/reviewer.js';
 import { parseEvaluationBlock } from '../src/engine/agents/builder.js';
 import { formatPriorClarifications } from '../src/engine/agents/planner.js';
@@ -595,5 +595,49 @@ describe('parseEvaluationBlock', () => {
     const result = parseEvaluationBlock(text);
     expect(result).toHaveLength(1);
     expect(result[0].hunk).toBeUndefined();
+  });
+});
+
+describe('parseStalenessBlock', () => {
+  it('parses proceed verdict', () => {
+    const text = '<staleness verdict="proceed">PRD is still relevant.</staleness>';
+    const result = parseStalenessBlock(text);
+    expect(result).toEqual({
+      verdict: 'proceed',
+      justification: 'PRD is still relevant.',
+    });
+  });
+
+  it('parses revise verdict with revision content', () => {
+    const text = '<staleness verdict="revise">API changed.<revision>Updated PRD content here.</revision></staleness>';
+    const result = parseStalenessBlock(text);
+    expect(result).toEqual({
+      verdict: 'revise',
+      justification: 'API changed.',
+      revision: 'Updated PRD content here.',
+    });
+  });
+
+  it('parses obsolete verdict', () => {
+    const text = '<staleness verdict="obsolete">Feature was already built.</staleness>';
+    const result = parseStalenessBlock(text);
+    expect(result).toEqual({
+      verdict: 'obsolete',
+      justification: 'Feature was already built.',
+    });
+  });
+
+  it('returns null when no staleness block present', () => {
+    expect(parseStalenessBlock('just plain text')).toBeNull();
+  });
+
+  it('returns null for malformed verdict (not proceed/revise/obsolete)', () => {
+    const text = '<staleness verdict="maybe">Unsure about this.</staleness>';
+    expect(parseStalenessBlock(text)).toBeNull();
+  });
+
+  it('returns null for empty justification', () => {
+    const text = '<staleness verdict="proceed">   </staleness>';
+    expect(parseStalenessBlock(text)).toBeNull();
   });
 });
