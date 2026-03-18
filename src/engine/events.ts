@@ -4,8 +4,6 @@ import type { ResolvedProfileConfig } from './config.js';
 import type { ReviewPerspective } from './review-heuristics.js';
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
-export const SCOPE_ASSESSMENTS = ['complete', ...ORCHESTRATION_MODES] as const;
-export type ScopeAssessment = (typeof SCOPE_ASSESSMENTS)[number];
 
 export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'review-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater';
 
@@ -137,7 +135,7 @@ export type EforgeEvent = { sessionId?: string } & (
 
   // Planning
   | { type: 'plan:start'; source: string; label?: string }
-  | { type: 'plan:scope'; assessment: ScopeAssessment; justification: string }
+  | { type: 'plan:skip'; reason: string }
   | { type: 'plan:profile'; profileName: string; rationale: string; config?: import('./config.js').ResolvedProfileConfig }
   | { type: 'plan:clarification'; questions: ClarificationQuestion[] }
   | { type: 'plan:clarification:answer'; answers: Record<string, string> }

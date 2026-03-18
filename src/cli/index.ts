@@ -291,7 +291,7 @@ export function createProgram(abortController?: AbortController): Command {
         // State tracked across phases for exit code determination
         let planSetName: string | undefined;
         let planFiles: PlanFile[] = [];
-        let scopeComplete = false;
+        let skipReason: string | undefined;
         let planResult: 'completed' | 'failed' = 'completed';
         let enqueuedFilePath: string | undefined;
         let finalResult: 'completed' | 'failed' = 'completed';
@@ -331,8 +331,8 @@ export function createProgram(abortController?: AbortController): Command {
             if (event.type === 'phase:start') {
               planSetName = event.planSet;
             }
-            if (event.type === 'plan:scope' && event.assessment === 'complete') {
-              scopeComplete = true;
+            if (event.type === 'plan:skip') {
+              skipReason = event.reason;
             }
             if (event.type === 'plan:complete') {
               planFiles = event.plans;
@@ -343,8 +343,8 @@ export function createProgram(abortController?: AbortController): Command {
             yield event;
           }
 
-          // Scope "complete" means the work is already implemented — return early
-          if (scopeComplete) {
+          // plan:skip means the work is already implemented — return early
+          if (skipReason) {
             return;
           }
 
@@ -394,7 +394,7 @@ export function createProgram(abortController?: AbortController): Command {
             await showDryRun(planSetName);
           }
 
-          process.exit(scopeComplete ? 0 : (finalResult === 'completed' ? 0 : 1));
+          process.exit(skipReason ? 0 : (finalResult === 'completed' ? 0 : 1));
         });
       },
     );

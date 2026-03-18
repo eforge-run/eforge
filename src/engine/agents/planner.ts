@@ -2,8 +2,8 @@ import { readFile, readdir, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AgentBackend } from '../backend.js';
-import { isAlwaysYieldedAgentEvent, SCOPE_ASSESSMENTS, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile, type ScopeAssessment } from '../events.js';
-import { parseClarificationBlocks, parseScopeBlock, parseProfileBlock, parseGeneratedProfileBlock } from './common.js';
+import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type ClarificationQuestion, type PlanFile } from '../events.js';
+import { parseClarificationBlocks, parseSkipBlock, parseProfileBlock, parseGeneratedProfileBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
 import { parsePlanFile, deriveNameFromSource, extractPlanTitle } from '../plan.js';
 import type { ResolvedProfileConfig, BuildStageSpec } from '../config.js';
@@ -104,8 +104,7 @@ Available review fields:
 Rules:
 - When a base profile fits with minor tweaks, use \`extends\` + \`overrides\`
 - Only override fields that differ from the base — omit fields you want to inherit
-- When the \`<generated-profile>\` block is present, skip the \`<profile>\` block
-- After generating a profile, still emit the \`<scope>\` block (both are required)`;
+- When the \`<generated-profile>\` block is present, skip the \`<profile>\` block`;
 }
 
 /**
@@ -200,7 +199,7 @@ export async function* runPlanner(
     });
   }
 
-  let scopeEmitted = false;
+  let skipEmitted = false;
   let profileEmitted = false;
 
   // Main loop: run agent, collect clarifications, restart with answers baked in
@@ -225,11 +224,11 @@ export async function* runPlanner(
       'planner',
     )) {
       if (event.type === 'agent:message') {
-        if (!scopeEmitted) {
-          const scope = parseScopeBlock(event.content);
-          if (scope) {
-            scopeEmitted = true;
-            yield { type: 'plan:scope', assessment: scope.assessment, justification: scope.justification };
+        if (!skipEmitted) {
+          const skipReason = parseSkipBlock(event.content);
+          if (skipReason) {
+            skipEmitted = true;
+            yield { type: 'plan:skip', reason: skipReason };
           }
         }
 
@@ -266,16 +265,6 @@ export async function* runPlanner(
               rationale: profile.rationale,
               config: options.profiles?.[profile.profileName],
             };
-
-            // Derive plan:scope if profile name matches a built-in scope
-            if (!scopeEmitted && (SCOPE_ASSESSMENTS as readonly string[]).includes(profile.profileName)) {
-              scopeEmitted = true;
-              yield {
-                type: 'plan:scope',
-                assessment: profile.profileName as ScopeAssessment,
-                justification: profile.rationale,
-              };
-            }
           }
         }
 

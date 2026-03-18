@@ -17,7 +17,6 @@ export type {
   BuildOptions,
   EnqueueOptions,
   EforgeStatus,
-  ScopeAssessment,
   StalenessVerdict,
 } from './events.js';
 

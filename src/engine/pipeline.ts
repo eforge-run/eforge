@@ -20,7 +20,6 @@ import {
   type PlanFile,
   type ClarificationQuestion,
   type ExpeditionModule,
-  type ScopeAssessment,
   type ReviewIssue,
   type OrchestrationConfig,
 } from './events.js';
@@ -65,7 +64,6 @@ export interface PipelineContext {
 
   // Mutable state passed between stages
   plans: PlanFile[];
-  scopeAssessment?: ScopeAssessment;
   expeditionModules: ExpeditionModule[];
 }
 
@@ -316,9 +314,6 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
   // Extract title and body from PRD
   const { title, body } = extractPrdMetadata(ctx.sourceContent, ctx.planSetName);
 
-  // Scope assessment: always errand for passthrough
-  yield { type: 'plan:scope', assessment: 'errand' as const, justification: 'PRD passthrough — skipping planner agent' };
-
   // Profile event
   yield { type: 'plan:profile', profileName: 'errand', rationale: 'PRD passthrough uses errand profile' };
 
@@ -372,11 +367,6 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
       profiles: ctx.config.profiles,
       maxTurns: agentConfig.maxTurns,
     })) {
-      // Track scope assessment
-      if (event.type === 'plan:scope') {
-        ctx.scopeAssessment = event.assessment;
-      }
-
       // Update active profile when planner selects one.
       // Prefer inline config (future: agent-generated profiles), fall back to named lookup.
       if (event.type === 'plan:profile') {
@@ -404,7 +394,7 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
       tracker.handleEvent(event);
 
       // Suppress planner's plan:complete in expedition mode (compilation emits the real one)
-      if (event.type === 'plan:complete' && ctx.scopeAssessment === 'expedition' && ctx.expeditionModules.length > 0) {
+      if (event.type === 'plan:complete' && ctx.expeditionModules.length > 0) {
         continue;
       }
 

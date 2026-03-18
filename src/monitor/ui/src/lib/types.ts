@@ -10,7 +10,6 @@ export type {
   OrchestrationConfig,
   PlanState,
   EforgeState,
-  ScopeAssessment,
   ExpeditionModule,
 } from '../../../../engine/events.js';
 

@@ -71,7 +71,7 @@ Tell the user:
 >
 > The run executes the full lifecycle:
 > 1. **Enqueue** - formats and normalizes your source into a structured PRD
-> 2. **Profile selection** - analyzes scope to select a workflow profile
+> 2. **Profile selection** - selects a workflow profile based on task complexity
 > 3. **Planning** - generates plan files from your source
 > 4. **Plan review** - blind review of the plan artifacts
 > 5. **Building** - implements each plan in parallel on feature branches

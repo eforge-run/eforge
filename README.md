@@ -2,7 +2,7 @@
 
 You plan, eforge builds - an autonomous plan-build-review CLI that handles the engineering methodology so you can focus on intent.
 
-The name combines **E** from the [Expedition-Excursion-Errand (EEE) methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) with **forge**, reflecting the tool's role in shaping code from plans. eforge assesses your task's scope (errand, excursion, or expedition) and adapts its planning and execution strategy accordingly.
+The name combines **E** from the [Expedition-Excursion-Errand (EEE) methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) with **forge**, reflecting the tool's role in shaping code from plans. eforge selects a workflow profile based on your task's complexity (errand, excursion, or expedition) and adapts its planning and execution strategy accordingly.
 
 ## Status
 
@@ -14,7 +14,7 @@ AI coding tools can produce code fast, but without structure the quality is unpr
 
 eforge codifies a methodology that evolved through extensive real-world use with Claude Code - first as hand-crafted skills, then as battle-tested plugins, now as a standalone engine:
 
-1. **Plan** - a detailed, scope-aware planning session with clarification for ambiguities
+1. **Plan** - a detailed, profile-aware planning session with clarification for ambiguities
 2. **Implement** - execute the plan, with documentation updates running in parallel
 3. **Blind review** - a fresh context reviews the work with zero knowledge of the builder's reasoning
 4. **Fix & evaluate** - a fixer agent applies reviewer suggestions, then the evaluator applies per-hunk verdicts - accepting strict improvements while rejecting anything that alters intent
@@ -62,7 +62,7 @@ flowchart TD
     end
 ```
 
-- **Planning** - The planner explores the codebase, assesses scope (errand = 1 plan, excursion = 2-3, expedition = 4+), asks clarifying questions, and writes plan files. Plans go through a blind review cycle before building starts.
+- **Planning** - The planner explores the codebase, selects a workflow profile (errand = 1 plan, excursion = 2-3, expedition = 4+), asks clarifying questions, and writes plan files. If the work is already complete, the planner emits a skip signal and exits early. Plans go through a blind review cycle before building starts.
 - **Building** - Each plan runs in an isolated git worktree. The builder implements the plan, a blind reviewer proposes fixes in a fresh context, and the evaluator applies per-hunk verdicts - accepting strict improvements while rejecting anything that alters intent.
 - **Validation** - Runs configured commands (type-check, tests, linting). If validation fails, a fixer agent attempts minimal repairs automatically.
 - **Orchestration** - Multi-plan sets are resolved into a dependency graph, executed in parallel waves, and merged in topological order.

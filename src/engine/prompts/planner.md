@@ -42,7 +42,11 @@ Your planning is **strictly bounded by the source document**. The source is your
 - **DO NOT**: Plan work that isn't described in the source document
 - **DO NOT**: Substitute the source with alternative tasks you discover during exploration
 
-If the source is fully implemented (zero gaps), emit `<scope assessment="complete">` and do NOT write any plan files.
+If the source is fully implemented (zero gaps), emit a `<skip>` block explaining why and do NOT write any plan files:
+
+```xml
+<skip>All requirements from the source are already implemented — no gaps remain.</skip>
+```
 
 ### Profile Selection
 
@@ -65,67 +69,15 @@ Emit a `<profile>` block declaring your selection:
 Rules:
 - The `name` attribute must exactly match one of the profile names listed above
 - The body contains your rationale for selecting this profile
-- If no profiles are listed above, skip this section and proceed to Scope Assessment
-- After selecting a profile, still emit the `<scope>` block in Phase 3 (both are required)
+- If no profiles are listed above, skip this section and proceed to Plan Generation
 
 {{profileGeneration}}
 
 {{parallelLanes}}
 
-### Phase 3: Scope Assessment
+### Phase 3: Plan Generation
 
-Based on your exploration, classify the **actual work remaining** (not the source's ambition):
-
-| Level | Plans | When to use |
-|-------|-------|-------------|
-| **complete** | 0 | The source document is fully implemented. No gaps remain. Do NOT write any plan files. |
-| **errand** | 1 | Focused change in one area. No migrations, no architecture decisions. |
-| **excursion** | 2-3 | Cross-cutting change with natural phasing — e.g., a migration must land before a feature, or backend/frontend have a real dependency edge. |
-| **expedition** | 4+ | Large initiative spanning multiple subsystems with a meaningful dependency graph. Requires architectural decisions. |
-
-**Weigh these dimensions together** — no single dimension determines scope:
-
-| Dimension | What to look at |
-|-----------|----------------|
-| **Dependency structure** | Do changes have ordering constraints (migrations before features, types before consumers)? More dependency edges → higher scope. |
-| **Execution volume** | How many files need changes? How many lines of code? High-volume mechanical changes (renaming, migrating APIs across many files) strain a single builder session even when logically simple. |
-| **Independence** | Can changes be done in one pass, or do independent subsystems exist that can be parallelized? |
-| **Risk surface** | Database migrations, new architectural patterns, or cross-cutting integration points increase risk. |
-
-Use these file count indicators as a concrete signal for execution volume:
-
-| Files to change | Typical scope |
-|-----------------|---------------|
-| 1-5 | errand |
-| 5-15 | excursion |
-| 15+ | expedition |
-
-**Critical**: Assess based on the **delta between the source and the current codebase**. If the source describes a large system but exploration shows it's already 80% built, identify the specific gaps that remain and scope those — the remaining work may be an errand. If the source is 100% implemented with no gaps, use `assessment="complete"`.
-
-**Decision criteria for splitting into multiple plans:**
-- A database migration must complete before dependent code can be built
-- Independent subsystems with zero shared files can be parallelized
-- There is a genuine dependency ordering that the orchestrator needs to know about
-- Total execution volume would strain a single builder session (many files, many mechanical changes)
-
-**Do NOT split when:**
-- Different files are involved but the change is atomic — a single plan handles multiple files fine
-- Backend and frontend changes can be done in one pass
-- Tests or docs accompany a feature — they belong in the same plan as the code they test/document
-
-Assess scope based on your own codebase exploration, not on labels or scope claims in the source document.
-
-After assessment, emit a `<scope>` block declaring your assessment:
-
-```xml
-<scope assessment="errand">
-  Adding a single CLI flag to an existing command — one area, no migrations, no architecture impact.
-</scope>
-```
-
-### Phase 4: Plan Generation
-
-Output depends on your scope assessment:
+Determine how many plans the work requires based on your codebase exploration:
 
 #### Errand / Excursion
 
@@ -328,7 +280,7 @@ plans:
 
 Important:
 - Determine the current git branch for `base_branch` (run `git rev-parse --abbrev-ref HEAD`)
-- `mode` must match your scope assessment: `errand` for 1 plan, `excursion` for 2-3 plans
+- `mode` must match the plan count: `errand` for 1 plan, `excursion` for 2-3 plans
 - Plan entries must match the plan files exactly
 - `depends_on` in orchestration.yaml must use the same IDs as in plan file frontmatter
 

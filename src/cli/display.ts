@@ -113,17 +113,9 @@ export function renderEvent(event: EforgeEvent): void {
       startSpinner('plan', `Planning from ${chalk.cyan(event.label ?? event.source)}...`);
       break;
 
-    case 'plan:scope': {
-      const scopeColors: Record<string, (s: string) => string> = {
-        complete: chalk.dim,
-        errand: chalk.green,
-        excursion: chalk.yellow,
-        expedition: chalk.magenta,
-      };
-      const colorFn = scopeColors[event.assessment] ?? chalk.dim;
-      console.log(`  Scope: ${colorFn(event.assessment)} \u2014 ${chalk.dim(event.justification)}`);
+    case 'plan:skip':
+      console.log(chalk.dim(`  Skipped: ${event.reason}`));
       break;
-    }
 
     case 'plan:clarification': {
       const spinner = spinners.get('plan');

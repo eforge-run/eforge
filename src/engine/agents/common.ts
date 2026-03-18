@@ -3,8 +3,7 @@
  * These parse structured blocks from free-text agent responses
  * regardless of which LLM backend produced them.
  */
-import { SCOPE_ASSESSMENTS } from '../events.js';
-import type { ClarificationQuestion, ScopeAssessment, ExpeditionModule } from '../events.js';
+import type { ClarificationQuestion, ExpeditionModule } from '../events.js';
 import type { ResolvedProfileConfig, ReviewProfileConfig } from '../config.js';
 
 /**
@@ -77,16 +76,6 @@ export function parseClarificationBlocks(text: string): ClarificationQuestion[] 
 }
 
 /**
- * Scope assessment from planner.
- */
-export interface ScopeDeclaration {
-  assessment: ScopeAssessment;
-  justification: string;
-}
-
-const VALID_ASSESSMENTS = new Set<string>(SCOPE_ASSESSMENTS);
-
-/**
  * Parse a <modules> XML block from assistant text into ExpeditionModule[].
  *
  * Expected format:
@@ -123,14 +112,6 @@ export function parseModulesBlock(text: string): ExpeditionModule[] {
   return modules;
 }
 
-/**
- * Parse a <scope> XML block from assistant text into a ScopeDeclaration.
- *
- * Expected format:
- *   <scope assessment="errand">
- *     Focused change adding a single CLI flag — one area, no migrations.
- *   </scope>
- */
 export interface ProfileSelection {
   profileName: string;
   rationale: string;
@@ -151,17 +132,19 @@ export function parseProfileBlock(text: string): ProfileSelection | null {
   return { profileName, rationale };
 }
 
-export function parseScopeBlock(text: string): ScopeDeclaration | null {
-  const match = text.match(/<scope\s+assessment="([^"]+)">([\s\S]*?)<\/scope>/);
+/**
+ * Parse a <skip> XML block from assistant text.
+ *
+ * Expected format:
+ *   <skip>Already implemented</skip>
+ *
+ * Returns the reason string or null if no block found.
+ */
+export function parseSkipBlock(text: string): string | null {
+  const match = text.match(/<skip>([\s\S]*?)<\/skip>/);
   if (!match) return null;
-
-  const assessment = match[1].trim();
-  const justification = match[2].trim();
-
-  if (!VALID_ASSESSMENTS.has(assessment)) return null;
-  if (!justification) return null;
-
-  return { assessment: assessment as ScopeAssessment, justification };
+  const reason = match[1].trim();
+  return reason || null;
 }
 
 // ---------------------------------------------------------------------------

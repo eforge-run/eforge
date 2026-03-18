@@ -21,7 +21,7 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type.endsWith(':failed')) return { cls: 'failed', label: type };
   if (type.endsWith(':progress')) return { cls: 'progress', label: type };
   if (type.startsWith('agent:')) return { cls: 'agent', label: type };
-  if (type === 'plan:scope' || type === 'plan:profile' || type === 'plan:clarification') return { cls: 'info', label: type };
+  if (type === 'plan:skip' || type === 'plan:profile' || type === 'plan:clarification') return { cls: 'info', label: type };
   return { cls: 'info', label: type };
 }
 
@@ -33,7 +33,7 @@ function eventSummary(event: EforgeEvent): string {
       const display = event.label ?? (event.source.length > 80 ? event.source.slice(0, 77) + '...' : event.source);
       return `Planning from: ${display}`;
     }
-    case 'plan:scope': return `Scope: ${event.assessment} — ${event.justification}`;
+    case 'plan:skip': return `Skipped: ${event.reason}`;
     case 'plan:profile': return `Profile: ${event.profileName} — ${event.rationale}`;
     case 'plan:clarification': return `${event.questions?.length || 0} clarification question(s)`;
     case 'plan:progress': return event.message;
