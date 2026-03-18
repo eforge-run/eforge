@@ -1,0 +1,33 @@
+name: fix-stale-state-json-from-failed-run-poisons-re-runs-gh-1
+description: Fix stale state.json from failed runs poisoning re-runs by falling
+  through to fresh state creation on non-resumable branch
+created: 2026-03-18
+compiled: 2026-03-18
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-fix-stale-state
+    name: Fix stale state.json poisoning re-runs
+    depends_on: []
+    branch: fix-stale-state-json-from-failed-run-poisons-re-runs-gh-1/fix-stale-state
+profile:
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
