@@ -129,7 +129,7 @@ describe('stage registry', () => {
   });
 
   it('all built-in compile stages are registered', () => {
-    const builtinCompileStages = ['planner', 'plan-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
+    const builtinCompileStages = ['prd-passthrough', 'planner', 'plan-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
     for (const name of builtinCompileStages) {
       expect(() => getCompileStage(name)).not.toThrow();
       expect(typeof getCompileStage(name)).toBe('function');
@@ -558,9 +558,9 @@ describe('default profile behavior', () => {
     expect(excursion.build).toEqual([['implement', 'doc-update'], 'review', 'review-fix', 'evaluate']);
   });
 
-  it('errand profile compile stages include planner and plan-review-cycle', () => {
+  it('errand profile compile stages use prd-passthrough', () => {
     const errand = BUILTIN_PROFILES['errand'];
-    expect(errand.compile).toEqual(['planner', 'plan-review-cycle']);
+    expect(errand.compile).toEqual(['prd-passthrough']);
   });
 
   it('expedition profile compile stages include module-planning and compile-expedition', () => {

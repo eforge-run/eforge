@@ -10,6 +10,7 @@ import { execFile } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
+import { parse as parseYaml } from 'yaml';
 
 import type {
   EforgeEvent,
@@ -37,7 +38,7 @@ import { runCohesionReview } from './agents/cohesion-reviewer.js';
 import { runCohesionEvaluate } from './agents/cohesion-evaluator.js';
 import { parseModulesBlock } from './agents/common.js';
 import { compileExpedition } from './compiler.js';
-import { resolveDependencyGraph, injectProfileIntoOrchestrationYaml } from './plan.js';
+import { resolveDependencyGraph, injectProfileIntoOrchestrationYaml, writePlanArtifacts, extractPlanTitle, detectValidationCommands } from './plan.js';
 import { runParallel, type ParallelTask } from './concurrency.js';
 import { forgeCommit } from './git.js';
 
@@ -269,8 +270,94 @@ export function filterIssuesBySeverity(
 }
 
 // ---------------------------------------------------------------------------
+// Helpers — PRD metadata extraction
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract metadata from PRD content: title from YAML frontmatter or H1 heading,
+ * and body with frontmatter stripped.
+ */
+export function extractPrdMetadata(
+  content: string,
+  fallbackName: string,
+): { title: string; body: string } {
+  // Try YAML frontmatter title
+  const fmMatch = content.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (fmMatch) {
+    const frontmatter = parseYaml(fmMatch[1]) as Record<string, unknown>;
+    const body = fmMatch[2].trim();
+    if (typeof frontmatter.title === 'string' && frontmatter.title.trim()) {
+      return { title: frontmatter.title.trim(), body };
+    }
+    // No title in frontmatter — try H1 in body
+    const h1Title = extractPlanTitle(body);
+    if (h1Title) return { title: h1Title, body };
+    // Fall back to humanized planSetName
+    return { title: humanizeName(fallbackName), body };
+  }
+
+  // No frontmatter — try H1 heading
+  const h1Title = extractPlanTitle(content);
+  if (h1Title) return { title: h1Title, body: content };
+
+  // Fall back to humanized planSetName
+  return { title: humanizeName(fallbackName), body: content };
+}
+
+/** Convert kebab-case name to a human-readable title. */
+function humanizeName(name: string): string {
+  return name
+    .split('-')
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+}
+
+// ---------------------------------------------------------------------------
 // Built-in Compile Stages
 // ---------------------------------------------------------------------------
+
+registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx) {
+  yield { type: 'plan:start', source: ctx.sourceContent, label: 'prd-passthrough' };
+
+  // Extract title and body from PRD
+  const { title, body } = extractPrdMetadata(ctx.sourceContent, ctx.planSetName);
+
+  // Scope assessment: always errand for passthrough
+  yield { type: 'plan:scope', assessment: 'errand' as const, justification: 'PRD passthrough — skipping planner agent' };
+
+  // Profile event
+  yield { type: 'plan:profile', profileName: 'errand', rationale: 'PRD passthrough uses errand profile' };
+
+  yield { type: 'plan:progress', message: 'Writing plan artifacts from PRD content' };
+
+  // Get base branch
+  const { stdout: baseBranch } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ctx.cwd });
+
+  // Detect validation commands from project
+  const validate = await detectValidationCommands(ctx.cwd);
+
+  // Write plan artifacts using the shared helper
+  const planFile = await writePlanArtifacts({
+    cwd: ctx.cwd,
+    planSetName: ctx.planSetName,
+    sourceContent: body,
+    planName: title,
+    baseBranch: baseBranch.trim(),
+    profile: ctx.profile,
+    validate: validate.length > 0 ? validate : undefined,
+    mode: 'errand',
+  });
+
+  ctx.plans = [planFile];
+
+  // Commit plan artifacts (prd-passthrough replaces both planner + review,
+  // so it must commit its own artifacts for the build phase to create worktrees)
+  const planDir = resolve(ctx.cwd, 'plans', ctx.planSetName);
+  await exec('git', ['add', planDir], { cwd: ctx.cwd });
+  await forgeCommit(ctx.cwd, `plan(${ctx.planSetName}): PRD passthrough artifacts`);
+
+  yield { type: 'plan:complete', plans: [planFile] };
+});
 
 registerCompileStage('planner', async function* plannerStage(ctx) {
   const agentConfig = resolveAgentConfig(ctx.profile, 'planner', ctx.config);

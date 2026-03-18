@@ -37,12 +37,12 @@ node --env-file=.env dist/cli.js run some-prd.md --verbose
 
 **Pipeline stages**: Compile and build pipelines are composed of named stages registered in a stage registry (`src/engine/pipeline.ts`). Each stage is an async generator that accepts a `PipelineContext` and yields `EforgeEvent`s. The engine iterates the stage list from the resolved profile.
 
-Compile stages: `planner`, `plan-review-cycle`, `module-planning`, `cohesion-review-cycle`, `compile-expedition`
+Compile stages: `prd-passthrough`, `planner`, `plan-review-cycle`, `module-planning`, `cohesion-review-cycle`, `compile-expedition`
 
 Build stages: `implement`, `review`, `review-fix`, `evaluate`, `review-cycle`, `validate`, `doc-update`
 
 **Built-in profiles** (defined in `BUILTIN_PROFILES` in `src/engine/config.ts`):
-- **errand** — Small, self-contained changes. Compile: `[planner, plan-review-cycle]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
+- **errand** — Small, self-contained changes. Compile: `[prd-passthrough]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
 - **excursion** — Multi-file feature work. Compile: `[planner, plan-review-cycle]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
 - **expedition** — Large cross-cutting work. Compile: `[planner, module-planning, cohesion-review-cycle, compile-expedition]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
 

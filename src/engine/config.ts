@@ -151,7 +151,7 @@ const DEFAULT_BUILD_STAGES = Object.freeze([
 export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.freeze({
   errand: Object.freeze({
     description: 'Small, self-contained changes. Single file or a few lines. Low risk, no architectural impact.',
-    compile: Object.freeze(['planner', 'plan-review-cycle']) as unknown as string[],
+    compile: Object.freeze(['prd-passthrough']) as unknown as string[],
     build: DEFAULT_BUILD_STAGES,
     agents: Object.freeze({}),
     review: DEFAULT_REVIEW,
