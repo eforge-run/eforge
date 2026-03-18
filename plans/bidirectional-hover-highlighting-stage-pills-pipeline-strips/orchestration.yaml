@@ -1,0 +1,33 @@
+name: bidirectional-hover-highlighting-stage-pills-pipeline-strips
+description: Add bidirectional hover highlighting between stage pills and agent
+  timeline strips in the monitor pipeline card
+created: 2026-03-18
+compiled: 2026-03-18
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-hover-state
+    name: Bidirectional Hover Highlighting
+    depends_on: []
+    branch: bidirectional-hover-highlighting-stage-pills-pipeline-strips/hover-state
+profile:
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: lenient
