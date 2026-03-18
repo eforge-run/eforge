@@ -9,10 +9,10 @@ validate:
   - pnpm type-check
   - pnpm test
 plans:
-  - id: plan-01-deduplicate
+  - id: plan-01-deduplicate-shared-patterns
     name: Deduplicate Repeated Patterns Across Engine and Tests
     depends_on: []
-    branch: errand-deduplicate-repeated-patterns-across-engine-tests/deduplicate
+    branch: errand-deduplicate-repeated-patterns-across-engine-tests/deduplicate-shared-patterns
 profile:
   description: Small, self-contained changes. Single file or a few lines. Low
     risk, no architectural impact.
