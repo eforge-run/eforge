@@ -1,0 +1,36 @@
+name: remove-plan-scope-event-replace-complete-signal-with-plan-skip
+description: Remove plan:scope event type and replace the "already complete"
+  early-exit signal with a purpose-built plan:skip event
+created: 2026-03-18
+compiled: 2026-03-18
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-remove-scope-add-skip
+    name: Remove plan:scope event, replace complete signal with plan:skip
+    depends_on: []
+    branch: remove-plan-scope-event-replace-complete-signal-with-plan-skip/remove-scope-add-skip
+profile:
+  description: Multi-file feature work or refactors that need planning and review
+    but fit in a single plan. Use for medium-complexity tasks with cross-file
+    changes.
+  compile:
+    - planner
+    - plan-review-cycle
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
