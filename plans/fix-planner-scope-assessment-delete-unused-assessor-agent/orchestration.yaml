@@ -1,0 +1,33 @@
+name: fix-planner-scope-assessment-delete-unused-assessor-agent
+description: Fix planner scope assessment to weigh multiple dimensions and
+  delete unused assessor agent
+created: 2026-03-18
+compiled: 2026-03-18
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-fix-scope-and-delete-assessor
+    name: Fix Planner Scope Assessment and Delete Unused Assessor Agent
+    depends_on: []
+    branch: fix-planner-scope-assessment-delete-unused-assessor-agent/fix-scope-and-delete-assessor
+profile:
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
