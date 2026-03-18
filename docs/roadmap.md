@@ -13,7 +13,7 @@
 
 **Goal**: Use evaluation data and runtime observability to drive continuous improvement of workflow profiles and agent behavior.
 
-- **Eval-driven tuning** — Extend the eval framework to compare profiles head-to-head on the same PRDs. Track pass rate, code quality, token cost, and time. Use outcome data to refine profiles from intuition toward evidence.
+- **Comparative profile tuning** — Run profiles head-to-head on the same PRDs (the scenario harness and pass/fail tracking already exist). Add code quality, token cost, and time metrics. Use outcome data to refine profiles from intuition toward evidence.
 
 ---
 
@@ -29,10 +29,9 @@
 
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
 
-- **Headless/CI** — `--json` CLI output flag, webhook notifications
 - **Provider abstraction** — Second `AgentBackend` implementation for non-SDK environments
 - **npm distribution** — Publish CLI + library to npm, configure exports and files field
-- **Plugin consolidation** — Deprecate orchestrate + EEE plugins, migration guide
+- **Remove roadmap skills** — Remove the roadmap-policy skill from the eforge plugin
 
 ---
 
