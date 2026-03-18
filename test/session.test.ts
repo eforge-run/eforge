@@ -214,6 +214,23 @@ describe('withSessionId', () => {
     expect(allEvents.every((e) => e.sessionId === 'run-session')).toBe(true);
   });
 
+  it('preserves engine-emitted sessionId in queue mode passthrough', async () => {
+    const events: EforgeEvent[] = [
+      { type: 'session:start', sessionId: 'queue-session-1', timestamp: '2024-01-01T00:00:00Z' },
+      { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:01Z' },
+      { type: 'phase:end', runId: 'run-1', result: { status: 'completed', summary: 'done' }, timestamp: '2024-01-01T00:01:00Z' },
+      { type: 'session:end', sessionId: 'queue-session-1', result: { status: 'completed', summary: 'done' }, timestamp: '2024-01-01T00:02:00Z' },
+    ];
+
+    const result = await collect(withSessionId(asyncIterableFrom(events), {
+      emitSessionStart: false,
+      emitSessionEnd: false,
+    }));
+
+    expect(result).toHaveLength(4);
+    expect(result.every(e => e.sessionId === 'queue-session-1')).toBe(true);
+  });
+
   it('preserves runIds on phase events', async () => {
     const events: EforgeEvent[] = [
       { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' },

@@ -31,8 +31,12 @@ export async function* withSessionId(
 
   try {
     for await (const event of events) {
-      if (!sessionId && event.type === 'phase:start') {
-        sessionId = event.runId;
+      if (!sessionId) {
+        if (event.sessionId) {
+          sessionId = event.sessionId;
+        } else if (event.type === 'phase:start') {
+          sessionId = event.runId;
+        }
       }
 
       // Emit session:start before the first event (once we have a sessionId)
@@ -41,7 +45,7 @@ export async function* withSessionId(
         sessionStartEmitted = true;
       }
 
-      yield { ...event, sessionId } as EforgeEvent;
+      yield { ...event, sessionId: sessionId ?? event.sessionId } as EforgeEvent;
 
       if (event.type === 'phase:end') {
         lastResult = event.result;
