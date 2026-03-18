@@ -13,7 +13,7 @@ import {
 import type { EforgeConfig, HookConfig } from '../engine/config.js';
 import type { EforgeEvent, PlanFile } from '../engine/events.js';
 import { withHooks } from '../engine/hooks.js';
-import { withSessionId } from '../engine/session.js';
+import { withSessionId, runSession } from '../engine/session.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { ensureMonitor, type Monitor } from '../monitor/index.js';
@@ -75,7 +75,7 @@ function wrapEvents(
   hooks: readonly HookConfig[],
   sessionOpts?: import('../engine/session.js').SessionOptions,
 ): AsyncGenerator<EforgeEvent> {
-  let wrapped = withSessionId(events, sessionOpts);
+  let wrapped = sessionOpts ? withSessionId(events, sessionOpts) : events;
   if (hooks.length > 0) {
     wrapped = withHooks(wrapped, hooks, process.cwd());
   }
@@ -167,7 +167,7 @@ export function createProgram(abortController?: AbortController): Command {
           });
 
           await consumeEvents(
-            wrapEvents(enqueueEvents, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: true }),
+            wrapEvents(runSession(enqueueEvents, sessionId), monitor, engine.resolvedConfig.hooks),
           );
         });
       },
@@ -235,7 +235,7 @@ export function createProgram(abortController?: AbortController): Command {
               : engine.runQueue(queueOpts);
 
             const result = await consumeEvents(
-              wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks, { emitSessionStart: false, emitSessionEnd: false }),
+              wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks),
               { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
             );
 
@@ -288,46 +288,47 @@ export function createProgram(abortController?: AbortController): Command {
         // Shared sessionId across enqueue+compile+build so tracking sees one session
         const sessionId = randomUUID();
 
-        // Phase 0: Enqueue — format and add to queue, capture file path
-        // Runs without monitor to avoid idle timeout during formatter agent
+        // State tracked across phases for exit code determination
+        let planSetName: string | undefined;
+        let planFiles: PlanFile[] = [];
+        let scopeComplete = false;
+        let planResult: 'completed' | 'failed' = 'completed';
         let enqueuedFilePath: string | undefined;
-        const enqueueEvents = engine.enqueue(source, {
-          name: options.name,
-          verbose: options.verbose,
-          abortController,
-        });
+        let finalResult: 'completed' | 'failed' = 'completed';
 
-        for await (const event of wrapEvents(enqueueEvents, undefined, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: true, emitSessionEnd: false })) {
-          renderEvent(event);
-          if (event.type === 'enqueue:complete') {
-            enqueuedFilePath = event.filePath;
+        // All phases as a single async generator — early returns instead of process.exit()
+        async function* allPhases(): AsyncGenerator<EforgeEvent> {
+          // Phase 0: Enqueue — format and add to queue, capture file path
+          const enqueueEvents = engine.enqueue(source!, {
+            name: options.name,
+            verbose: options.verbose,
+            abortController,
+          });
+
+          for await (const event of enqueueEvents) {
+            if (event.type === 'enqueue:complete') {
+              enqueuedFilePath = event.filePath;
+            }
+            yield event;
           }
-        }
 
-        if (!enqueuedFilePath) {
-          console.error(chalk.red('Enqueue failed — no file path returned'));
-          process.exit(1);
-        }
+          if (!enqueuedFilePath) {
+            console.error(chalk.red('Enqueue failed — no file path returned'));
+            finalResult = 'failed';
+            return;
+          }
 
-        // Phase 1+2: Compile and Build (with monitor — starts right before first phase:start)
-        await withMonitor(options.monitor === false, async (monitor) => {
-          let planSetName: string | undefined;
-          let planFiles: PlanFile[] = [];
-          let planResult: 'completed' | 'failed' = 'completed';
-          let scopeComplete = false;
+          // Phase 1: Compile
+          const compileEvents = engine.compile(enqueuedFilePath, {
+            auto: options.auto,
+            verbose: options.verbose,
+            name: options.name,
+            generateProfile: options.generateProfile,
+            abortController,
+          });
 
-          const phase1Events = engine.compile(enqueuedFilePath, {
-                auto: options.auto,
-                verbose: options.verbose,
-                name: options.name,
-                generateProfile: options.generateProfile,
-                abortController,
-              });
-
-          for await (const event of wrapEvents(phase1Events, monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: false, emitSessionEnd: false })) {
-            renderEvent(event);
+          for await (const event of compileEvents) {
             if (event.type === 'phase:start') {
-              renderLangfuseStatus(engine.resolvedConfig);
               planSetName = event.planSet;
             }
             if (event.type === 'plan:scope' && event.assessment === 'complete') {
@@ -339,35 +340,61 @@ export function createProgram(abortController?: AbortController): Command {
             if (event.type === 'phase:end') {
               planResult = event.result.status;
             }
+            yield event;
           }
 
-          // Scope "complete" means the work is already implemented — exit successfully
+          // Scope "complete" means the work is already implemented — return early
           if (scopeComplete) {
-            process.exit(0);
+            return;
           }
 
           if (planResult === 'failed' || planFiles.length === 0 || !planSetName) {
-            process.exit(1);
+            finalResult = 'failed';
+            return;
           }
 
-          // Handle --dry-run: show execution plan and exit
+          // Handle --dry-run: return early from generator (consumer handles showDryRun)
           if (options.dryRun) {
+            return;
+          }
+
+          // Phase 2: Build
+          const buildEvents = engine.build(planSetName, {
+            auto: options.auto,
+            verbose: options.verbose,
+            cleanup: options.cleanup,
+            abortController,
+            prdFilePath: enqueuedFilePath,
+          });
+
+          yield* buildEvents;
+        }
+
+        // Wrap all phases in runSession for guaranteed session:start/session:end,
+        // then through hooks and monitor
+        await withMonitor(options.monitor === false, async (monitor) => {
+          const wrapped = wrapEvents(
+            runSession(allPhases(), sessionId),
+            monitor,
+            engine.resolvedConfig.hooks,
+          );
+
+          for await (const event of wrapped) {
+            renderEvent(event);
+            if (event.type === 'phase:start') {
+              renderLangfuseStatus(engine.resolvedConfig);
+            }
+            if (event.type === 'phase:end') {
+              finalResult = event.result.status;
+            }
+          }
+
+          // --dry-run: show execution plan after session ends cleanly
+          if (options.dryRun && planSetName) {
             await showDryRun(planSetName);
           }
 
-          // Phase 2: Build (same sessionId as previous phases)
-          const buildResult = await consumeEvents(
-            wrapEvents(engine.build(planSetName, {
-              auto: options.auto,
-              verbose: options.verbose,
-              cleanup: options.cleanup,
-              abortController,
-              prdFilePath: enqueuedFilePath,
-            }), monitor, engine.resolvedConfig.hooks, { sessionId, emitSessionStart: false, emitSessionEnd: true }),
-            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-          );
-
-          process.exit(buildResult === 'completed' ? 0 : 1);
+          process.exit(scopeComplete ? 0 : (finalResult === 'completed' ? 0 : 1));
         });
       },
     );
@@ -503,7 +530,7 @@ export function createProgram(abortController?: AbortController): Command {
             : engine.runQueue(queueOpts);
 
           const result = await consumeEvents(
-            wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks, { emitSessionStart: false, emitSessionEnd: false }),
+            wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks),
             { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
           );
 

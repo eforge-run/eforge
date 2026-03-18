@@ -115,7 +115,7 @@ export { Semaphore, AsyncEventQueue, runParallel } from './concurrency.js';
 export type { ParallelTask, RunParallelOptions } from './concurrency.js';
 
 // --- session ---
-export { withSessionId } from './session.js';
+export { withSessionId, runSession } from './session.js';
 export type { SessionOptions } from './session.js';
 
 // --- hooks ---
