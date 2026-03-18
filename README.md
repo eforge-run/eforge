@@ -1,18 +1,20 @@
 # eforge
 
-You plan, eforge builds - an autonomous plan-build-review CLI that handles the engineering methodology so you can focus on intent.
+You plan, eforge builds - a CLI that turns intent into reviewed, validated code without supervision.
 
-The name combines **E** from the [Expedition-Excursion-Errand (EEE) methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) with **forge**, reflecting the tool's role in shaping code from plans. eforge selects a workflow profile based on your task's complexity (errand, excursion, or expedition) and adapts its planning and execution strategy accordingly.
-
-## Status
-
-I built eforge for my professional work and use it daily. The source is public so others can learn from it, adapt it, or fork it. I don't accept pull requests. Issues are welcome for bug reports and questions — I read them, but may not respond or act on them. If you want to take it in a different direction, please fork freely.
+The name combines **E** from the [Expedition-Excursion-Errand (EEE) methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) with **forge** - shaping code from plans.
 
 ## Why eforge?
 
-AI coding tools can produce code fast, but without structure the quality is unpredictable. A single agent that writes and reviews its own work is like a developer merging their own PRs without review - it works sometimes, but there's no systemic quality guarantee.
+eforge is focused on one thing: converting intent into working code through reliable engineering workflows you don't have to supervise. It doesn't try to solve the planning side - no brainstorming, no specification guidance, no opinionated project structure. That's the highest-leverage work and eforge stays out of your way to do it however you see fit. You express intent - a PRD, a markdown file, a one-line prompt - and eforge handles the entire engineering workflow autonomously: implementation, review, validation, and merge. The developer stays at the planning layer, adding plan after plan while eforge works through the queue - on through the night if needed. Queued work is re-assessed before execution so changes from earlier builds are accounted for, not blindly applied to a codebase that has moved on.
 
-eforge codifies a methodology that evolved through extensive real-world use with Claude Code - first as hand-crafted skills, then as battle-tested plugins, now as a standalone engine:
+Two design choices make this work:
+
+**Scope-aware execution.** A typo fix and a multi-module feature shouldn't go through the same process. The planner reads the codebase and selects a workflow profile automatically - errand (1 plan), excursion (2-3 plans), expedition (4+). The pipeline adapts rather than forcing every task through a heavyweight process or requiring you to manually choose the right mode.
+
+**Independent review.** A single agent writing and reviewing its own work is a developer merging their own PRs. eforge separates building from review architecturally - the reviewer gets a fresh context with zero knowledge of the builder's reasoning, and an evaluator applies per-hunk verdicts on the resulting fixes, accepting only strict improvements.
+
+The methodology evolved through real-world use with Claude Code - first as hand-crafted skills, then as battle-tested plugins, now as a standalone engine:
 
 1. **Plan** - a detailed, profile-aware planning session with clarification for ambiguities
 2. **Implement** - execute the plan, with documentation updates running in parallel
@@ -20,7 +22,7 @@ eforge codifies a methodology that evolved through extensive real-world use with
 4. **Fix & evaluate** - a fixer agent applies reviewer suggestions, then the evaluator applies per-hunk verdicts - accepting strict improvements while rejecting anything that alters intent
 5. **Validate** - verify against the original plan, fix any failures
 
-You bring the "what" and "why." eforge handles the "how" - structured, independent review cycles that produce consistently high-quality results. Plan interactively in Claude Code, then hand off to eforge for build, review, and validation. Agents inherit your project's plugins, skills, and MCP servers automatically, and git worktree isolation makes it safe to run multiple eforge builds in parallel on the same project. The engine is backend-flexible - the sole implementation today uses the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk), but the `AgentBackend` abstraction means it can be extended to support other systems.
+Plan interactively in Claude Code, then hand off to eforge. Or queue multiple PRDs and let eforge process them continuously. Agents inherit your project's plugins, skills, and MCP servers automatically, each build runs in an isolated git worktree for clean feature development, and the engine is backend-flexible - the sole implementation today uses the [Claude Agent SDK](https://docs.anthropic.com/en/docs/agents-and-tools/claude-agent-sdk), but the `AgentBackend` abstraction means it can be extended to support other systems.
 
 ## How It Works
 
