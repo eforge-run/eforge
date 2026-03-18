@@ -1,0 +1,33 @@
+name: plan-delete-worktree-branches-after-successful-merge
+description: Delete plan branches after orchestrated builds so redundant branch
+  refs don't accumulate
+created: 2026-03-18
+compiled: 2026-03-18
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-delete-branches
+    name: Delete worktree branches after merge and on cleanup
+    depends_on: []
+    branch: plan-delete-worktree-branches-after-successful-merge/delete-branches
+profile:
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
