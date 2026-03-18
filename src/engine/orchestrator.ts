@@ -380,6 +380,13 @@ export class Orchestrator {
               const commitMessage = `${prefix}(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}`;
               await mergeWorktree(repoRoot, plan.branch, config.baseBranch, commitMessage, contextResolver);
 
+              // Best-effort branch deletion — squash merges leave branches "unmerged" so use -D (force)
+              try {
+                await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot });
+              } catch {
+                // Branch may already be deleted or never created
+              }
+
               updatePlanStatus(state, planId, 'merged');
               planState.merged = true;
               recentlyMergedIds.push(planId);
@@ -497,6 +504,16 @@ export class Orchestrator {
       } catch {
         // Best-effort cleanup
       }
+
+      // Sweep all plan branches (catches failed, skipped, blocked plans that never reached merge)
+      for (const [, plan] of planMap) {
+        try {
+          await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot });
+        } catch {
+          // Best-effort — branch may already be deleted or never created
+        }
+      }
+
       saveState(stateDir, state);
     }
   }
