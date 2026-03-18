@@ -1,7 +1,7 @@
 ---
 title: Fix: Add "Forged by eforge" attribution to all engine commits
 created: 2026-03-18
-status: pending
+status: running
 ---
 
 ## Problem / Motivation
