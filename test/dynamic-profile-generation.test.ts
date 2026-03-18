@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
+import { parse as parseYaml } from 'yaml';
 import type { ResolvedProfileConfig } from '../src/engine/config.js';
-import { validateProfileConfig, resolveGeneratedProfile, BUILTIN_PROFILES } from '../src/engine/config.js';
+import { validateProfileConfig, resolveGeneratedProfile, BUILTIN_PROFILES, getProfileSchemaYaml } from '../src/engine/config.js';
 import { parseGeneratedProfileBlock, type GeneratedProfileBlock } from '../src/engine/agents/common.js';
-import { runPlanner } from '../src/engine/agents/planner.js';
+import { formatProfileGenerationSection, runPlanner } from '../src/engine/agents/planner.js';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -388,6 +389,31 @@ describe('runPlanner with generateProfile', () => {
     expect(profileEvent!.config).toBe(profiles.excursion); // name-based
   });
 
+  it('uses custom name as profileName in plan:profile event', async () => {
+    const generatedJson = JSON.stringify({
+      extends: 'excursion',
+      name: 'security-focused',
+      overrides: { review: { maxRounds: 2, perspectives: ['code', 'security'] } },
+    });
+    const backend = new StubBackend([{
+      text: `<generated-profile>${generatedJson}</generated-profile>\n<scope assessment="excursion">Security review.</scope>`,
+    }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runPlanner('Secure the API', {
+      backend,
+      cwd,
+      generateProfile: true,
+      profiles,
+    }));
+
+    const profileEvent = findEvent(events, 'plan:profile');
+    expect(profileEvent).toBeDefined();
+    expect(profileEvent!.profileName).toBe('security-focused');
+    expect(profileEvent!.config).toBeDefined();
+    expect(profileEvent!.config!.review.maxRounds).toBe(2);
+  });
+
   it('emits plan:progress warning when generated profile fails validation', async () => {
     // Generate a profile with empty compile array (invalid)
     const generatedJson = JSON.stringify({
@@ -425,5 +451,111 @@ describe('runPlanner with generateProfile', () => {
     const profileEvent = findEvent(events, 'plan:profile');
     expect(profileEvent).toBeDefined();
     expect(profileEvent!.profileName).toBe('errand');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getProfileSchemaYaml
+// ---------------------------------------------------------------------------
+
+describe('getProfileSchemaYaml', () => {
+  it('returns valid YAML with key profile fields and descriptions', () => {
+    const yaml = getProfileSchemaYaml();
+    const parsed = parseYaml(yaml);
+    expect(parsed).toBeDefined();
+    expect(typeof parsed).toBe('object');
+
+    // Should contain the top-level profile fields
+    const props = parsed.properties;
+    expect(props).toBeDefined();
+    expect(props.description).toBeDefined();
+    expect(props.compile).toBeDefined();
+    expect(props.build).toBeDefined();
+    expect(props.agents).toBeDefined();
+    expect(props.review).toBeDefined();
+  });
+
+  it('caching returns the same string reference', () => {
+    const first = getProfileSchemaYaml();
+    const second = getProfileSchemaYaml();
+    expect(first).toBe(second); // strict reference equality
+  });
+});
+
+// ---------------------------------------------------------------------------
+// parseGeneratedProfileBlock with name
+// ---------------------------------------------------------------------------
+
+describe('parseGeneratedProfileBlock name capture', () => {
+  it('captures name in extends mode', () => {
+    const text = `<generated-profile>${JSON.stringify({
+      extends: 'excursion',
+      name: 'my-custom',
+      overrides: { review: { maxRounds: 2 } },
+    })}</generated-profile>`;
+    const result = parseGeneratedProfileBlock(text);
+    expect(result).toEqual({
+      extends: 'excursion',
+      name: 'my-custom',
+      overrides: { review: { maxRounds: 2 } },
+    });
+  });
+
+  it('captures name in full-config mode', () => {
+    const fullConfig: ResolvedProfileConfig = {
+      description: 'Full custom',
+      compile: ['planner'],
+      build: ['implement'],
+      agents: {},
+      review: {
+        strategy: 'auto',
+        perspectives: ['code'],
+        maxRounds: 1,
+        evaluatorStrictness: 'standard',
+      },
+    };
+    const text = `<generated-profile>${JSON.stringify({
+      config: fullConfig,
+      name: 'full-custom',
+    })}</generated-profile>`;
+    const result = parseGeneratedProfileBlock(text);
+    expect(result).toEqual({ config: fullConfig, name: 'full-custom' });
+  });
+
+  it('returns undefined for name when absent', () => {
+    const text = `<generated-profile>${JSON.stringify({
+      extends: 'excursion',
+      overrides: {},
+    })}</generated-profile>`;
+    const result = parseGeneratedProfileBlock(text);
+    expect(result).toBeDefined();
+    expect(result!.name).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatProfileGenerationSection schema-driven output
+// ---------------------------------------------------------------------------
+
+describe('formatProfileGenerationSection', () => {
+  it('does not contain the old hardcoded "Available review fields:" string', () => {
+    const output = formatProfileGenerationSection(BUILTIN_PROFILES);
+    expect(output).not.toContain('Available review fields:');
+  });
+
+  it('contains profile schema YAML documentation', () => {
+    const output = formatProfileGenerationSection(BUILTIN_PROFILES);
+    expect(output).toContain('Profile schema:');
+    expect(output).toContain('```yaml');
+  });
+
+  it('includes the name field in the XML example', () => {
+    const output = formatProfileGenerationSection(BUILTIN_PROFILES);
+    expect(output).toContain('"name"');
+  });
+
+  it('includes the kebab-case naming rule', () => {
+    const output = formatProfileGenerationSection(BUILTIN_PROFILES);
+    expect(output).toContain('kebab-case');
   });
 });

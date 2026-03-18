@@ -153,6 +153,7 @@ export function parseSkipBlock(text: string): string | null {
 
 export interface GeneratedProfileBlock {
   extends?: string;
+  name?: string;
   overrides?: Partial<{
     description: string;
     compile: string[];
@@ -166,8 +167,8 @@ export interface GeneratedProfileBlock {
 /**
  * Parse a <generated-profile> XML block from assistant text.
  * The block contains JSON with either:
- * - `{ extends: "base-name", overrides: { ... } }`
- * - `{ config: { description, compile, build, agents, review } }`
+ * - `{ extends: "base-name", name?: "...", overrides: { ... } }`
+ * - `{ config: { description, compile, build, agents, review }, name?: "..." }`
  *
  * Returns a typed object or null if no block found or parse failure.
  */
@@ -177,8 +178,8 @@ export function parseGeneratedProfileBlock(text: string): GeneratedProfileBlock 
 
   try {
     const parsed = JSON.parse(match[1].trim());
-    if (parsed.config) return { config: parsed.config };
-    if (parsed.extends || parsed.overrides) return { extends: parsed.extends, overrides: parsed.overrides };
+    if (parsed.config) return { config: parsed.config, name: parsed.name };
+    if (parsed.extends || parsed.overrides) return { extends: parsed.extends, overrides: parsed.overrides, name: parsed.name };
     return null;
   } catch {
     return null;

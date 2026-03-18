@@ -1,7 +1,7 @@
 import { readFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { availableParallelism, homedir } from 'node:os';
-import { parse as parseYaml } from 'yaml';
+import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
 import type { AgentRole } from './events.js';
@@ -23,10 +23,10 @@ const agentRoleSchema = z.enum(AGENT_ROLES);
 const toolPresetConfigSchema = z.enum(['coding', 'none']);
 
 const agentProfileConfigSchema = z.object({
-  maxTurns: z.number().int().positive().optional(),
-  prompt: z.string().optional(),
-  tools: toolPresetConfigSchema.optional(),
-  model: z.string().optional(),
+  maxTurns: z.number().int().positive().optional().describe('Maximum conversation turns for this agent'),
+  prompt: z.string().optional().describe('Custom prompt override for this agent'),
+  tools: toolPresetConfigSchema.optional().describe('Tool preset: "coding" for full tools or "none" for read-only'),
+  model: z.string().optional().describe('Model override for this agent'),
 });
 
 const STRATEGIES = ['auto', 'single', 'parallel'] as const;
@@ -34,15 +34,18 @@ const STRICTNESS = ['strict', 'standard', 'lenient'] as const;
 const AUTO_ACCEPT = ['suggestion', 'warning'] as const;
 
 const reviewProfileConfigSchema = z.object({
-  strategy: z.enum(STRATEGIES),
-  perspectives: z.array(z.string()).nonempty(),
-  maxRounds: z.number().int().positive(),
-  autoAcceptBelow: z.enum(AUTO_ACCEPT).optional(),
-  evaluatorStrictness: z.enum(STRICTNESS),
+  strategy: z.enum(STRATEGIES).describe('Review strategy: "auto" picks based on perspective count, "single" uses one reviewer, "parallel" runs all perspectives concurrently'),
+  perspectives: z.array(z.string()).nonempty().describe('Review perspective names, e.g. ["code", "security", "performance"]'),
+  maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles (default 1)'),
+  autoAcceptBelow: z.enum(AUTO_ACCEPT).optional().describe('Auto-accept issues at or below this severity'),
+  evaluatorStrictness: z.enum(STRICTNESS).describe('How strictly the evaluator judges fixes: "strict", "standard", or "lenient"'),
 });
 
 /** A build stage spec: either a single stage name or an array of stage names to run in parallel. */
-const buildStageSpecSchema = z.union([z.string(), z.array(z.string())]);
+const buildStageSpecSchema = z.union([
+  z.string().describe('A single stage name'),
+  z.array(z.string()).describe('Stage names to run in parallel'),
+]).describe('A stage name or array of stage names to run in parallel');
 
 const partialProfileConfigSchema = z.object({
   description: z.string().optional(),
@@ -54,12 +57,54 @@ const partialProfileConfigSchema = z.object({
 });
 
 export const resolvedProfileConfigSchema = z.object({
-  description: z.string().min(1),
-  compile: z.array(z.string()).nonempty(),
-  build: z.array(buildStageSpecSchema).nonempty(),
-  agents: z.partialRecord(agentRoleSchema, agentProfileConfigSchema),
-  review: reviewProfileConfigSchema,
+  description: z.string().min(1).describe('Human-readable description of what this profile is for'),
+  compile: z.array(z.string()).nonempty().describe('Ordered list of compile stage names to run'),
+  build: z.array(buildStageSpecSchema).nonempty().describe('Ordered list of build stages; arrays within denote parallel execution'),
+  agents: z.partialRecord(agentRoleSchema, agentProfileConfigSchema).describe('Per-agent configuration overrides keyed by agent role'),
+  review: reviewProfileConfigSchema.describe('Review cycle configuration'),
 });
+
+// ---------------------------------------------------------------------------
+// Schema-derived YAML documentation for profile generation prompts
+// ---------------------------------------------------------------------------
+
+let _profileSchemaYamlCache: string | undefined;
+
+/**
+ * Convert the resolved profile config schema to a YAML string documenting
+ * all fields and their descriptions. Uses z.toJSONSchema() and strips
+ * internal keys ($schema, ~standard). Module-level cached since the schema
+ * is static.
+ */
+export function getProfileSchemaYaml(): string {
+  if (_profileSchemaYamlCache !== undefined) return _profileSchemaYamlCache;
+
+  const jsonSchema = z.toJSONSchema(resolvedProfileConfigSchema);
+
+  // Strip internal keys that aren't useful for prompt documentation
+  function stripInternalKeys(obj: Record<string, unknown>): Record<string, unknown> {
+    const result: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (key === '$schema' || key === '~standard') continue;
+      if (Array.isArray(value)) {
+        result[key] = value.map((item) =>
+          item && typeof item === 'object' && !Array.isArray(item)
+            ? stripInternalKeys(item as Record<string, unknown>)
+            : item,
+        );
+      } else if (value && typeof value === 'object') {
+        result[key] = stripInternalKeys(value as Record<string, unknown>);
+      } else {
+        result[key] = value;
+      }
+    }
+    return result;
+  }
+
+  const cleaned = stripInternalKeys(jsonSchema as Record<string, unknown>);
+  _profileSchemaYamlCache = stringifyYaml(cleaned);
+  return _profileSchemaYamlCache;
+}
 
 const hookConfigSchema = z.object({
   event: z.string(),

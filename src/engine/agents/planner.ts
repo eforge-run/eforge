@@ -7,7 +7,7 @@ import { parseClarificationBlocks, parseSkipBlock, parseProfileBlock, parseGener
 import { loadPrompt } from '../prompts.js';
 import { parsePlanFile, deriveNameFromSource, extractPlanTitle } from '../plan.js';
 import type { ResolvedProfileConfig, BuildStageSpec } from '../config.js';
-import { validateProfileConfig, resolveGeneratedProfile } from '../config.js';
+import { validateProfileConfig, resolveGeneratedProfile, getProfileSchemaYaml } from '../config.js';
 
 export interface PlannerOptions extends CompileOptions {
   backend: AgentBackend;
@@ -67,6 +67,7 @@ export function formatProfileDescriptions(profiles: Record<string, ResolvedProfi
  */
 export function formatProfileGenerationSection(profiles: Record<string, ResolvedProfileConfig>): string {
   const profilesJson = JSON.stringify(profiles, null, 2);
+  const schemaYaml = getProfileSchemaYaml();
 
   return `### Profile Generation
 
@@ -78,6 +79,7 @@ Output a \`<generated-profile>\` block with JSON content. Prefer extending a bas
 <generated-profile>
 {
   "extends": "excursion",
+  "name": "security-focused",
   "overrides": {
     "review": {
       "perspectives": ["code", "security"],
@@ -94,14 +96,12 @@ Available base profiles:
 ${profilesJson}
 \`\`\`
 
-Available review fields:
-- \`strategy\`: "auto" | "single" | "parallel"
-- \`perspectives\`: array of review perspective names (e.g. ["code", "security", "performance"])
-- \`maxRounds\`: number of review-fix-evaluate cycles (default 1)
-- \`autoAcceptBelow\`: auto-accept issues at or below this severity — "suggestion" | "warning"
-- \`evaluatorStrictness\`: "strict" | "standard" | "lenient"
+Profile schema:
+\`\`\`yaml
+${schemaYaml}\`\`\`
 
 Rules:
+- Give the profile a descriptive kebab-case name reflecting its purpose (e.g. "security-focused", "perf-tuning", "api-migration")
 - When a base profile fits with minor tweaks, use \`extends\` + \`overrides\`
 - Only override fields that differ from the base — omit fields you want to inherit
 - When the \`<generated-profile>\` block is present, skip the \`<profile>\` block`;
@@ -242,7 +242,7 @@ export async function* runPlanner(
                 profileEmitted = true;
                 yield {
                   type: 'plan:profile',
-                  profileName: generatedBlock.extends ?? 'generated',
+                  profileName: generatedBlock.name ?? generatedBlock.extends ?? 'generated',
                   rationale: `Generated profile${generatedBlock.extends ? ` extending ${generatedBlock.extends}` : ''} tailored to this PRD`,
                   config: resolved,
                 };
