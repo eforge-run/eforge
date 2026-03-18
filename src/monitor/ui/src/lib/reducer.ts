@@ -1,4 +1,4 @@
-import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, ReviewIssue } from './types';
+import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, ProfileInfo, ReviewIssue } from './types';
 import type { PipelineStage } from './types';
 import { formatDuration } from './format';
 
@@ -33,6 +33,7 @@ export interface RunState {
   expeditionModules: ExpeditionModule[];
   moduleStatuses: Record<string, ModuleStatus>;
   earlyOrchestration: OrchestrationConfig | null;
+  profileInfo: ProfileInfo | null;
   endTime: number | null;
 }
 
@@ -51,6 +52,7 @@ export const initialRunState: RunState = {
   expeditionModules: [],
   moduleStatuses: {},
   earlyOrchestration: null,
+  profileInfo: null,
   endTime: null,
 };
 
@@ -77,6 +79,7 @@ function processEvent(
     expeditionModules: ExpeditionModule[];
     moduleStatuses: Record<string, ModuleStatus>;
     earlyOrchestration: OrchestrationConfig | null;
+    profileInfo: ProfileInfo | null;
   },
 ): void {
   if (event.type === 'phase:start' && 'timestamp' in event && state.startTime === null) {
@@ -97,6 +100,11 @@ function processEvent(
     state.tokensIn += event.result.usage?.input || 0;
     state.tokensOut += event.result.usage?.output || 0;
     state.totalCost += event.result.totalCostUsd || 0;
+  }
+
+  if (event.type === 'plan:profile' && 'profileName' in event && 'config' in event) {
+    const e = event as unknown as { profileName: string; rationale: string; config: ProfileInfo['config'] };
+    state.profileInfo = { profileName: e.profileName, rationale: e.rationale, config: e.config };
   }
 
   if (event.type === 'plan:complete' && 'plans' in event) {
@@ -212,7 +220,7 @@ function processEvent(
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -230,6 +238,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         expeditionModules: [] as ExpeditionModule[],
         moduleStatuses: {} as Record<string, ModuleStatus>,
         earlyOrchestration: null as OrchestrationConfig | null,
+        profileInfo: null as ProfileInfo | null,
       };
 
       for (const { event } of action.events) {
@@ -255,6 +264,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         expeditionModules: state.expeditionModules,
         moduleStatuses: { ...state.moduleStatuses },
         earlyOrchestration: state.earlyOrchestration,
+        profileInfo: state.profileInfo,
       };
 
       processEvent(event, newState);

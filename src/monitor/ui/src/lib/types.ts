@@ -52,3 +52,26 @@ export interface RunInfo {
   cwd: string;
   sessionId?: string;
 }
+
+export type BuildStageSpec = string | string[];
+
+export interface ReviewProfileConfig {
+  strategy: string;
+  perspectives: string[];
+  maxRounds: number;
+  evaluatorStrictness: string;
+}
+
+export interface ProfileConfig {
+  description: string;
+  compile: string[];
+  build: BuildStageSpec[];
+  agents: Record<string, unknown>;
+  review: ReviewProfileConfig;
+}
+
+export interface ProfileInfo {
+  profileName: string;
+  rationale: string;
+  config: ProfileConfig;
+}
