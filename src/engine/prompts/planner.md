@@ -141,7 +141,17 @@ Rules for shared file identification:
 
 3. Create the `plans/{{planSetName}}/modules/` directory
 
-4. Emit a `<modules>` XML block listing the modules you defined:
+4. Emit a `<modules>` XML block listing the modules you defined.
+
+### Module Schema
+
+The following YAML documents the fields for each module:
+
+```yaml
+{{module_schema}}
+```
+
+Module XML format:
 
 ```xml
 <modules>
@@ -159,6 +169,14 @@ Rules for modules:
 - Dependencies should form a DAG (no cycles)
 
 ## Clarification Format
+
+### Clarification Question Schema
+
+The following YAML documents the fields and allowed values for each clarification question:
+
+```yaml
+{{clarification_schema}}
+```
 
 When you need to ask the user questions before proceeding, output a `<clarification>` XML block. The system will parse this and present the questions to the user. You will receive answers and can continue planning.
 
@@ -183,6 +201,14 @@ Rules:
 - Group related questions in a single `<clarification>` block
 
 ## Plan File Format
+
+### Plan Frontmatter Schema
+
+The following YAML documents the fields for plan file YAML frontmatter:
+
+```yaml
+{{plan_frontmatter_schema}}
+```
 
 Each plan file must be a markdown file with YAML frontmatter:
 

@@ -3,27 +3,17 @@
 import type { z } from 'zod/v4';
 import type { ResolvedProfileConfig } from './config.js';
 import type { ReviewPerspective } from './review-heuristics.js';
-import type { reviewIssueSchema } from './schemas.js';
+import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSchema } from './schemas.js';
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 
 export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'review-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater';
 
-export interface ExpeditionModule {
-  id: string;
-  description: string;
-  dependsOn: string[];
-}
+export type ExpeditionModule = z.output<typeof expeditionModuleSchema>;
 
 export type EforgeResult = { status: 'completed' | 'failed'; summary: string };
 
-export interface ClarificationQuestion {
-  id: string;
-  question: string;
-  context?: string;
-  options?: string[];
-  default?: string;
-}
+export type ClarificationQuestion = z.output<typeof clarificationQuestionSchema>;
 
 export type ReviewIssue = z.output<typeof reviewIssueSchema>;
 

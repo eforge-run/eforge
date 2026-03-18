@@ -111,6 +111,14 @@ For each file with unstaged changes, apply your verdict:
   git checkout -- <file>
   ```
 
+## Evaluation Verdict Schema
+
+The following YAML documents the fields and allowed values for each evaluation verdict:
+
+```yaml
+{{evaluation_schema}}
+```
+
 ## Output
 
 After inspecting all files, output your verdicts in an `<evaluation>` XML block. Each verdict must include structured evidence as child elements:

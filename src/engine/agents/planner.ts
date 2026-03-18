@@ -8,6 +8,7 @@ import { loadPrompt } from '../prompts.js';
 import { parsePlanFile, deriveNameFromSource, extractPlanTitle } from '../plan.js';
 import type { ResolvedProfileConfig, BuildStageSpec } from '../config.js';
 import { validateProfileConfig, resolveGeneratedProfile, getProfileSchemaYaml } from '../config.js';
+import { getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml } from '../schemas.js';
 
 export interface PlannerOptions extends CompileOptions {
   backend: AgentBackend;
@@ -196,6 +197,9 @@ export async function* runPlanner(
       profiles: options.profiles ? formatProfileDescriptions(options.profiles) : '',
       profileGeneration,
       parallelLanes,
+      clarification_schema: getClarificationSchemaYaml(),
+      module_schema: getModuleSchemaYaml(),
+      plan_frontmatter_schema: getPlanFrontmatterSchemaYaml(),
     });
   }
 

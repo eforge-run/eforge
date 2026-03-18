@@ -1,6 +1,8 @@
+import type { z } from 'zod/v4';
 import type { AgentBackend } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { getEvaluationSchemaYaml, evaluationEvidenceSchema, evaluationVerdictSchema } from '../schemas.js';
 
 /**
  * Options for builder agent functions.
@@ -63,31 +65,12 @@ export const STRICTNESS_BLOCKS: Record<string, string> = {
  * Present when the evaluator uses the structured format with `<staged>`/`<original>`,
  * `<fix>`, `<rationale>`, `<if-accepted>`, and `<if-rejected>` child elements.
  */
-export interface EvaluationEvidence {
-  /** What the staged/original code does (from `<staged>` or `<original>` tag) */
-  staged: string;
-  /** What the reviewer's fix does */
-  fix: string;
-  /** Why the verdict was chosen */
-  rationale: string;
-  /** Consequence if the fix is accepted */
-  ifAccepted: string;
-  /** Consequence if the fix is rejected */
-  ifRejected: string;
-}
+export type EvaluationEvidence = z.output<typeof evaluationEvidenceSchema>;
 
 /**
  * A single evaluation verdict from the evaluator's XML output.
  */
-export interface EvaluationVerdict {
-  file: string;
-  action: 'accept' | 'reject' | 'review';
-  reason: string;
-  /** Structured evidence when the evaluator uses child elements */
-  evidence?: EvaluationEvidence;
-  /** Hunk number for per-hunk evaluation (1-indexed) */
-  hunk?: number;
-}
+export type EvaluationVerdict = z.output<typeof evaluationVerdictSchema>;
 
 /**
  * Turn 1: Implement a plan. The agent reads the plan, implements it,
@@ -146,6 +129,7 @@ export async function* builderEvaluate(
     plan_id: plan.id,
     plan_name: plan.name,
     strictness: STRICTNESS_BLOCKS[strictnessKey] ?? '',
+    evaluation_schema: getEvaluationSchemaYaml(),
   });
 
   let fullText = '';

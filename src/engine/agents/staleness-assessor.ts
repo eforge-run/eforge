@@ -1,6 +1,7 @@
 import type { AgentBackend } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { getStalenessSchemaYaml } from '../schemas.js';
 import { parseStalenessBlock } from './common.js';
 
 /**
@@ -41,6 +42,7 @@ export async function* runStalenessAssessor(
     prdContent,
     diffSummary,
     cwd,
+    staleness_schema: getStalenessSchemaYaml(),
   });
 
   let fullText = '';

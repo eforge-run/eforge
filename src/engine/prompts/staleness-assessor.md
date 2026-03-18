@@ -24,6 +24,14 @@ You are a staleness assessor for a PRD (Product Requirements Document). Your job
    - **revise** — the PRD's goals are still relevant but some details need updating to reflect codebase changes
    - **obsolete** — the work described in the PRD has already been implemented or is no longer needed
 
+## Staleness Verdict Schema
+
+The following YAML documents the fields and allowed values for the staleness verdict:
+
+```yaml
+{{staleness_schema}}
+```
+
 ## Output
 
 Emit exactly one `<staleness>` block with your verdict and justification:

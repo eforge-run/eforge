@@ -1,6 +1,7 @@
 import type { AgentBackend } from '../backend.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { getEvaluationSchemaYaml } from '../schemas.js';
 import { parseEvaluationBlock } from './builder.js';
 
 /**
@@ -41,6 +42,7 @@ export async function* runCohesionEvaluate(
   const prompt = await loadPrompt('cohesion-evaluator', {
     plan_set_name: planSetName,
     source_content: sourceContent,
+    evaluation_schema: getEvaluationSchemaYaml(),
   });
 
   let fullText = '';

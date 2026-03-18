@@ -14,6 +14,11 @@ import {
   getApiReviewIssueSchemaYaml,
   getDocsReviewIssueSchemaYaml,
   getPlanReviewIssueSchemaYaml,
+  getEvaluationSchemaYaml,
+  getClarificationSchemaYaml,
+  getStalenessSchemaYaml,
+  getModuleSchemaYaml,
+  getPlanFrontmatterSchemaYaml,
 } from '../src/engine/schemas.js';
 
 describe('getSchemaYaml', () => {
@@ -196,5 +201,155 @@ describe('other schemas export and validate', () => {
       branch: 'feat/auth',
     });
     expect(result.success).toBe(true);
+  });
+
+  it('evaluationVerdictSchema rejects invalid action', () => {
+    const result = evaluationVerdictSchema.safeParse({
+      file: 'src/foo.ts',
+      action: 'skip',
+      reason: 'Not relevant',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('evaluationVerdictSchema accepts verdict with evidence and hunk', () => {
+    const result = evaluationVerdictSchema.safeParse({
+      file: 'src/bar.ts',
+      action: 'reject',
+      reason: 'Alters intent',
+      evidence: {
+        staged: 'Original code',
+        fix: 'Fix code',
+        rationale: 'Changes approach',
+        ifAccepted: 'Different behavior',
+        ifRejected: 'Original behavior preserved',
+      },
+      hunk: 2,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('evaluationEvidenceSchema rejects missing required fields', () => {
+    const result = evaluationEvidenceSchema.safeParse({
+      staged: 'Code',
+      fix: 'Fix',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('clarificationQuestionSchema accepts minimal question', () => {
+    const result = clarificationQuestionSchema.safeParse({
+      id: 'q1',
+      question: 'Which database?',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('clarificationQuestionSchema rejects missing id', () => {
+    const result = clarificationQuestionSchema.safeParse({
+      question: 'Which database?',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('stalenessVerdictSchema accepts revise with revision', () => {
+    const result = stalenessVerdictSchema.safeParse({
+      verdict: 'revise',
+      justification: 'API changed',
+      revision: 'Updated PRD content',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('stalenessVerdictSchema rejects invalid verdict value', () => {
+    const result = stalenessVerdictSchema.safeParse({
+      verdict: 'maybe',
+      justification: 'Not sure',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('stalenessVerdictSchema rejects empty justification', () => {
+    const result = stalenessVerdictSchema.safeParse({
+      verdict: 'proceed',
+      justification: '',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('expeditionModuleSchema rejects missing dependsOn', () => {
+    const result = expeditionModuleSchema.safeParse({
+      id: 'auth',
+      description: 'Auth module',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('planFileFrontmatterSchema accepts frontmatter with migrations', () => {
+    const result = planFileFrontmatterSchema.safeParse({
+      id: 'plan-02-db',
+      name: 'Database Migration',
+      dependsOn: ['plan-01-auth'],
+      branch: 'feat/db',
+      migrations: [
+        { timestamp: '20260318120000', description: 'Add users table' },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('planFileFrontmatterSchema rejects missing branch', () => {
+    const result = planFileFrontmatterSchema.safeParse({
+      id: 'plan-01-auth',
+      name: 'Auth Setup',
+      dependsOn: [],
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('remaining schema YAML getters', () => {
+  it('getEvaluationSchemaYaml contains verdict fields', () => {
+    const yaml = getEvaluationSchemaYaml();
+    expect(yaml).toContain('file');
+    expect(yaml).toContain('action');
+    expect(yaml).toContain('reason');
+    expect(yaml).toContain('accept');
+    expect(yaml).toContain('reject');
+    expect(yaml).toContain('review');
+  });
+
+  it('getClarificationSchemaYaml contains question fields', () => {
+    const yaml = getClarificationSchemaYaml();
+    expect(yaml).toContain('id');
+    expect(yaml).toContain('question');
+    expect(yaml).toContain('context');
+    expect(yaml).toContain('options');
+    expect(yaml).toContain('default');
+  });
+
+  it('getStalenessSchemaYaml contains verdict values', () => {
+    const yaml = getStalenessSchemaYaml();
+    expect(yaml).toContain('verdict');
+    expect(yaml).toContain('justification');
+    expect(yaml).toContain('proceed');
+    expect(yaml).toContain('revise');
+    expect(yaml).toContain('obsolete');
+  });
+
+  it('getModuleSchemaYaml contains module fields', () => {
+    const yaml = getModuleSchemaYaml();
+    expect(yaml).toContain('id');
+    expect(yaml).toContain('description');
+    expect(yaml).toContain('dependsOn');
+  });
+
+  it('getPlanFrontmatterSchemaYaml contains frontmatter fields', () => {
+    const yaml = getPlanFrontmatterSchemaYaml();
+    expect(yaml).toContain('id');
+    expect(yaml).toContain('name');
+    expect(yaml).toContain('dependsOn');
+    expect(yaml).toContain('branch');
+    expect(yaml).toContain('migrations');
   });
 });

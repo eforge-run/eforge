@@ -233,3 +233,32 @@ export function getDocsReviewIssueSchemaYaml(): string {
 export function getPlanReviewIssueSchemaYaml(): string {
   return getSchemaYaml('review-issue-plan-review', planReviewIssueSchema);
 }
+
+// ---------------------------------------------------------------------------
+// Non-review schema YAML getters
+// ---------------------------------------------------------------------------
+
+/** Schema YAML for evaluation verdicts (used by evaluator, plan-evaluator, cohesion-evaluator). */
+export function getEvaluationSchemaYaml(): string {
+  return getSchemaYaml('evaluation-verdict', evaluationVerdictSchema);
+}
+
+/** Schema YAML for clarification questions (used by planner). */
+export function getClarificationSchemaYaml(): string {
+  return getSchemaYaml('clarification-question', clarificationQuestionSchema);
+}
+
+/** Schema YAML for staleness verdicts (used by staleness-assessor). */
+export function getStalenessSchemaYaml(): string {
+  return getSchemaYaml('staleness-verdict', stalenessVerdictSchema);
+}
+
+/** Schema YAML for expedition modules (used by planner). */
+export function getModuleSchemaYaml(): string {
+  return getSchemaYaml('expedition-module', expeditionModuleSchema);
+}
+
+/** Schema YAML for plan file frontmatter (used by planner). */
+export function getPlanFrontmatterSchemaYaml(): string {
+  return getSchemaYaml('plan-file-frontmatter', planFileFrontmatterSchema);
+}

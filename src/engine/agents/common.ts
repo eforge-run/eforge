@@ -3,8 +3,10 @@
  * These parse structured blocks from free-text agent responses
  * regardless of which LLM backend produced them.
  */
+import type { z } from 'zod/v4';
 import type { ClarificationQuestion, ExpeditionModule } from '../events.js';
 import type { ResolvedProfileConfig, ReviewProfileConfig } from '../config.js';
+import type { stalenessVerdictSchema } from '../schemas.js';
 
 /**
  * Parse <clarification> XML blocks from assistant text into structured questions.
@@ -192,11 +194,7 @@ export function parseGeneratedProfileBlock(text: string): GeneratedProfileBlock 
 
 const VALID_STALENESS_VERDICTS = new Set(['proceed', 'revise', 'obsolete']);
 
-export interface StalenessVerdict {
-  verdict: 'proceed' | 'revise' | 'obsolete';
-  justification: string;
-  revision?: string;
-}
+export type StalenessVerdict = z.output<typeof stalenessVerdictSchema>;
 
 /**
  * Parse a <staleness verdict="..."> XML block from assistant text.

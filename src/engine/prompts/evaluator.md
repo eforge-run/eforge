@@ -142,6 +142,14 @@ When a file has multiple distinct hunks (contiguous blocks of changes) from the 
 
 This prevents a single bad hunk from causing rejection of an otherwise good fix, or a single good hunk from causing acceptance of unrelated changes.
 
+## Evaluation Verdict Schema
+
+The following YAML documents the fields and allowed values for each evaluation verdict:
+
+```yaml
+{{evaluation_schema}}
+```
+
 ## Output
 
 After inspecting all files, output your verdicts in an `<evaluation>` XML block. Each verdict must include structured evidence as child elements:
