@@ -30,6 +30,7 @@
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
 
 - **Codex backend** — `AgentBackend` implementation targeting OpenAI's Codex as the second provider, proving out the backend abstraction with a meaningfully different runtime
+- **Monorepo** — Migrate to pnpm workspaces so the engine, eval harness, eforge-plugin, monitor UI, and marketing site each get their own package with isolated deps and build configs
 - **npm distribution** — Publish CLI + library to npm, configure exports and files field
 
 ---
