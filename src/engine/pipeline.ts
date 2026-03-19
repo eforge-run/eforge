@@ -177,10 +177,14 @@ export function populateSpan(span: SpanHandle, data: AgentResultData): void {
     input: data.usage.input,
     output: data.usage.output,
     total: data.usage.total,
+    cacheRead: data.usage.cacheRead,
+    cacheCreation: data.usage.cacheCreation,
   };
   for (const [model, mu] of Object.entries(data.modelUsage)) {
     usageDetails[`${model}:input`] = mu.inputTokens;
     usageDetails[`${model}:output`] = mu.outputTokens;
+    usageDetails[`${model}:cacheRead`] = mu.cacheReadInputTokens;
+    usageDetails[`${model}:cacheCreation`] = mu.cacheCreationInputTokens;
   }
   span.setUsageDetails(usageDetails);
 

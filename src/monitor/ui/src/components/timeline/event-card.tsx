@@ -126,13 +126,18 @@ function eventDetail(event: EforgeEvent): string | null {
       if (!event.result) return null;
       const r = event.result;
       let detail = `Duration: ${(r.durationMs / 1000).toFixed(1)}s (API: ${(r.durationApiMs / 1000).toFixed(1)}s)`;
-      detail += `\nTokens: ${formatNumber(r.usage?.input || 0)} in / ${formatNumber(r.usage?.output || 0)} out`;
+      const cacheRead = r.usage?.cacheRead || 0;
+      const inputTokens = r.usage?.input || 0;
+      const cachePct = cacheRead > 0 && inputTokens > 0 ? ` (${Math.round(cacheRead / inputTokens * 100)}% cached)` : '';
+      detail += `\nTokens: ${formatNumber(inputTokens)} in / ${formatNumber(r.usage?.output || 0)} out${cachePct}`;
       detail += `\nTurns: ${r.numTurns}`;
       if (r.totalCostUsd) detail += `\nCost: $${r.totalCostUsd.toFixed(4)}`;
       if (r.modelUsage) {
         detail += '\nModels:';
         for (const [model, usage] of Object.entries(r.modelUsage)) {
-          detail += `\n  ${model}: ${formatNumber(usage.inputTokens)} in / ${formatNumber(usage.outputTokens)} out ($${usage.costUSD.toFixed(4)})`;
+          const modelCacheRead = usage.cacheReadInputTokens || 0;
+          const modelCachePct = modelCacheRead > 0 && usage.inputTokens > 0 ? ` (${Math.round(modelCacheRead / usage.inputTokens * 100)}% cached)` : '';
+          detail += `\n  ${model}: ${formatNumber(usage.inputTokens)} in / ${formatNumber(usage.outputTokens)} out${modelCachePct} ($${usage.costUSD.toFixed(4)})`;
         }
       }
       return detail;

@@ -251,16 +251,24 @@ function extractResultData(result: SDKResultMessage, resultText?: string): Agent
   const modelUsage: AgentResultData['modelUsage'] = {};
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheReadTokens = 0;
+  let cacheCreationTokens = 0;
 
   if (result.modelUsage) {
     for (const [model, usage] of Object.entries(result.modelUsage)) {
+      const cacheRead = usage.cacheReadInputTokens ?? 0;
+      const cacheCreation = usage.cacheCreationInputTokens ?? 0;
       modelUsage[model] = {
-        inputTokens: usage.inputTokens,
+        inputTokens: usage.inputTokens + cacheRead + cacheCreation,
         outputTokens: usage.outputTokens,
+        cacheReadInputTokens: cacheRead,
+        cacheCreationInputTokens: cacheCreation,
         costUSD: usage.costUSD,
       };
-      inputTokens += usage.inputTokens;
+      inputTokens += usage.inputTokens + cacheRead + cacheCreation;
       outputTokens += usage.outputTokens;
+      cacheReadTokens += cacheRead;
+      cacheCreationTokens += cacheCreation;
     }
   }
 
@@ -279,6 +287,8 @@ function extractResultData(result: SDKResultMessage, resultText?: string): Agent
       input: inputTokens,
       output: outputTokens,
       total: inputTokens + outputTokens,
+      cacheRead: cacheReadTokens,
+      cacheCreation: cacheCreationTokens,
     },
     modelUsage,
     resultText,

@@ -8,6 +8,8 @@ interface SummaryCardsProps {
   duration: string;
   tokensIn: number;
   tokensOut: number;
+  cacheRead: number;
+  cacheCreation: number;
   totalCost: number;
   plansCompleted: number;
   plansFailed: number;
@@ -16,11 +18,12 @@ interface SummaryCardsProps {
   isFailed?: boolean;
 }
 
-function SummaryCard({ label, value, icon, accent, children }: {
+function SummaryCard({ label, value, icon, accent, subtitle, children }: {
   label: string;
   value?: string;
   icon?: React.ReactNode;
   accent?: 'green' | 'red' | 'blue';
+  subtitle?: string;
   children?: React.ReactNode;
 }) {
   return (
@@ -44,6 +47,9 @@ function SummaryCard({ label, value, icon, accent, children }: {
       )}>
         {children ?? value}
       </div>
+      {subtitle && (
+        <div className="text-[10px] text-text-dim mt-0.5">{subtitle}</div>
+      )}
     </div>
   );
 }
@@ -52,6 +58,8 @@ export function SummaryCards({
   duration,
   tokensIn,
   tokensOut,
+  cacheRead,
+  cacheCreation,
   totalCost,
   plansCompleted,
   plansFailed,
@@ -95,6 +103,7 @@ export function SummaryCards({
         <SummaryCard
           label="Tokens"
           icon={<Zap className="w-3 h-3 text-text-dim" />}
+          subtitle={cacheRead > 0 && tokensIn > 0 ? `${Math.round(cacheRead / tokensIn * 100)}% cached` : undefined}
         >
           <AnimatedCounter value={tokensIn + tokensOut} format={formatTokens} />
         </SummaryCard>

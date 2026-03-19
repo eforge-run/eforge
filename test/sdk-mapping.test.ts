@@ -87,8 +87,10 @@ describe('mapSDKMessages', () => {
         usage: { input_tokens: 100, output_tokens: 200 },
         modelUsage: {
           'claude-sonnet-4-20250514': {
-            inputTokens: 100,
+            inputTokens: 60,
             outputTokens: 200,
+            cacheReadInputTokens: 30,
+            cacheCreationInputTokens: 10,
             costUSD: 0.05,
           },
         },
@@ -106,7 +108,7 @@ describe('mapSDKMessages', () => {
         durationMs: 5000,
         numTurns: 3,
         totalCostUsd: 0.05,
-        usage: { input: 100, output: 200, total: 300 },
+        usage: { input: 100, output: 200, total: 300, cacheRead: 30, cacheCreation: 10 },
         resultText: 'Final result text',
       },
     });
@@ -128,11 +130,15 @@ describe('mapSDKMessages', () => {
           'claude-opus-4-6': {
             inputTokens: 7,
             outputTokens: 11267,
+            cacheReadInputTokens: 500,
+            cacheCreationInputTokens: 100,
             costUSD: 0.53,
           },
           'claude-haiku-4-5-20251001': {
             inputTokens: 126,
             outputTokens: 12591,
+            cacheReadInputTokens: 200,
+            cacheCreationInputTokens: 50,
             costUSD: 0.34,
           },
         },
@@ -144,10 +150,28 @@ describe('mapSDKMessages', () => {
     expect(resultEvent).toBeDefined();
     if (resultEvent?.type === 'agent:result') {
       // Aggregate should sum ALL models, not just the SDK's primary model usage
+      // input = uncached + cacheRead + cacheCreation across all models
       expect(resultEvent.result.usage).toEqual({
-        input: 7 + 126,
+        input: (7 + 500 + 100) + (126 + 200 + 50),
         output: 11267 + 12591,
-        total: 7 + 126 + 11267 + 12591,
+        total: (7 + 500 + 100) + (126 + 200 + 50) + 11267 + 12591,
+        cacheRead: 500 + 200,
+        cacheCreation: 100 + 50,
+      });
+      // Per-model entries should include cache fields
+      expect(resultEvent.result.modelUsage['claude-opus-4-6']).toEqual({
+        inputTokens: 7 + 500 + 100,
+        outputTokens: 11267,
+        cacheReadInputTokens: 500,
+        cacheCreationInputTokens: 100,
+        costUSD: 0.53,
+      });
+      expect(resultEvent.result.modelUsage['claude-haiku-4-5-20251001']).toEqual({
+        inputTokens: 126 + 200 + 50,
+        outputTokens: 12591,
+        cacheReadInputTokens: 200,
+        cacheCreationInputTokens: 50,
+        costUSD: 0.34,
       });
     }
   });

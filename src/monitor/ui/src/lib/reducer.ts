@@ -24,6 +24,8 @@ export interface RunState {
   planStatuses: Record<string, PipelineStage>;
   tokensIn: number;
   tokensOut: number;
+  cacheRead: number;
+  cacheCreation: number;
   totalCost: number;
   isComplete: boolean;
   resultStatus: 'completed' | 'failed' | null;
@@ -43,6 +45,8 @@ export const initialRunState: RunState = {
   planStatuses: {},
   tokensIn: 0,
   tokensOut: 0,
+  cacheRead: 0,
+  cacheCreation: 0,
   totalCost: 0,
   isComplete: false,
   resultStatus: null,
@@ -71,6 +75,8 @@ function processEvent(
     resultStatus: 'completed' | 'failed' | null;
     tokensIn: number;
     tokensOut: number;
+    cacheRead: number;
+    cacheCreation: number;
     totalCost: number;
     planStatuses: Record<string, PipelineStage>;
     fileChanges: Map<string, string[]>;
@@ -99,6 +105,8 @@ function processEvent(
   if (event.type === 'agent:result' && event.result) {
     state.tokensIn += event.result.usage?.input || 0;
     state.tokensOut += event.result.usage?.output || 0;
+    state.cacheRead += event.result.usage?.cacheRead || 0;
+    state.cacheCreation += event.result.usage?.cacheCreation || 0;
     state.totalCost += event.result.totalCostUsd || 0;
   }
 
@@ -230,6 +238,8 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         resultStatus: null as 'completed' | 'failed' | null,
         tokensIn: 0,
         tokensOut: 0,
+        cacheRead: 0,
+        cacheCreation: 0,
         totalCost: 0,
         planStatuses: {} as Record<string, PipelineStage>,
         fileChanges: new Map<string, string[]>(),
@@ -281,6 +291,8 @@ export function getSummaryStats(state: RunState): {
   duration: string;
   tokensIn: number;
   tokensOut: number;
+  cacheRead: number;
+  cacheCreation: number;
   totalCost: number;
   plansCompleted: number;
   plansFailed: number;
@@ -296,6 +308,8 @@ export function getSummaryStats(state: RunState): {
     duration,
     tokensIn: state.tokensIn,
     tokensOut: state.tokensOut,
+    cacheRead: state.cacheRead,
+    cacheCreation: state.cacheCreation,
     totalCost: state.totalCost,
     plansCompleted: statuses.filter((s) => s === 'complete').length,
     plansFailed: statuses.filter((s) => s === 'failed').length,

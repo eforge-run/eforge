@@ -65,28 +65,34 @@ print_summary() {
     console.log('Eforge Eval Results (' + s.timestamp + ')');
     console.log('eforge@' + s.eforgeVersion + ' (' + s.eforgeCommit + ')');
     console.log('');
-    console.log(pad('Scenario', 35) + pad('Eforge', 10) + pad('Validate', 12) + pad('Tokens', 10) + pad('Cost', 10) + 'Duration');
-    console.log('-'.repeat(90));
+    console.log(pad('Scenario', 35) + pad('Eforge', 10) + pad('Validate', 12) + pad('Tokens', 10) + pad('Cache', 10) + pad('Cost', 10) + 'Duration');
+    console.log('-'.repeat(100));
     for (const r of s.scenarios) {
       const eforge = r.eforgeExitCode === 0 ? 'PASS' : 'FAIL';
       const allValid = r.validation && Object.values(r.validation).every(v => v.passed);
       const validate = r.eforgeExitCode !== 0 ? '-' : (allValid ? 'PASS' : 'FAIL');
       const tokens = r.metrics && r.metrics.tokens ? Math.round(r.metrics.tokens.total / 1000) + 'k' : '-';
+      const cache = r.metrics && r.metrics.tokens && r.metrics.tokens.input > 0 && r.metrics.tokens.cacheRead
+        ? Math.round(r.metrics.tokens.cacheRead / r.metrics.tokens.input * 100) + '%'
+        : '-';
       const cost = r.metrics && r.metrics.costUsd != null ? '\$' + r.metrics.costUsd.toFixed(2) : '-';
       const mins = Math.floor(r.durationSeconds / 60);
       const secs = r.durationSeconds % 60;
       const duration = mins + 'm ' + secs + 's';
-      console.log(pad(r.scenario, 35) + pad(eforge, 10) + pad(validate, 12) + pad(tokens, 10) + pad(cost, 10) + duration);
+      console.log(pad(r.scenario, 35) + pad(eforge, 10) + pad(validate, 12) + pad(tokens, 10) + pad(cache, 10) + pad(cost, 10) + duration);
     }
     console.log('');
     console.log('Passed: ' + s.passed + '/' + s.totalScenarios);
     if (s.totals) {
       const t = s.totals;
       const totalTokens = t.tokens ? Math.round(t.tokens.total / 1000) + 'k' : '-';
+      const totalCache = t.tokens && t.tokens.input > 0 && t.tokens.cacheRead
+        ? Math.round(t.tokens.cacheRead / t.tokens.input * 100) + '%'
+        : '-';
       const totalCost = t.costUsd != null ? '\$' + t.costUsd.toFixed(2) : '-';
       const totalMins = Math.floor(t.durationSeconds / 60);
       const totalSecs = t.durationSeconds % 60;
-      console.log('Totals: ' + totalTokens + ' tokens, ' + totalCost + ' cost, ' + totalMins + 'm ' + totalSecs + 's');
+      console.log('Totals: ' + totalTokens + ' tokens, ' + totalCache + ' cached, ' + totalCost + ' cost, ' + totalMins + 'm ' + totalSecs + 's');
     }
   "
   echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -69,9 +69,9 @@ export interface AgentResultData {
   durationApiMs: number;
   numTurns: number;
   totalCostUsd: number;
-  usage: { input: number; output: number; total: number };
+  usage: { input: number; output: number; total: number; cacheRead: number; cacheCreation: number };
   /** Per-model token and cost breakdown, keyed by model name */
-  modelUsage: Record<string, { inputTokens: number; outputTokens: number; costUSD: number }>;
+  modelUsage: Record<string, { inputTokens: number; outputTokens: number; cacheReadInputTokens: number; cacheCreationInputTokens: number; costUSD: number }>;
   /** Final result text from the agent (used as generation output in traces) */
   resultText?: string;
 }

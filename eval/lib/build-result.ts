@@ -37,6 +37,8 @@ interface AgentAggregate {
   inputTokens: number;
   outputTokens: number;
   totalTokens: number;
+  cacheRead: number;
+  cacheCreation: number;
   costUsd: number;
   durationMs: number;
   turns: number;
@@ -45,12 +47,14 @@ interface AgentAggregate {
 interface ModelAggregate {
   inputTokens: number;
   outputTokens: number;
+  cacheReadInputTokens: number;
+  cacheCreationInputTokens: number;
   costUsd: number;
 }
 
 interface Metrics {
   profile?: string;
-  tokens: { input: number; output: number; total: number };
+  tokens: { input: number; output: number; total: number; cacheRead: number; cacheCreation: number };
   costUsd: number;
   phases: Record<string, { durationMs: number }>;
   agents: Record<string, AgentAggregate>;
@@ -99,6 +103,8 @@ function extractMetrics(dbPath: string): Metrics | undefined {
     let totalInput = 0;
     let totalOutput = 0;
     let totalTotal = 0;
+    let totalCacheRead = 0;
+    let totalCacheCreation = 0;
     let totalCost = 0;
     const agents: Record<string, AgentAggregate> = {};
     const models: Record<string, ModelAggregate> = {};
@@ -119,16 +125,20 @@ function extractMetrics(dbPath: string): Metrics | undefined {
       totalInput += result.usage.input;
       totalOutput += result.usage.output;
       totalTotal += result.usage.total;
+      totalCacheRead += result.usage.cacheRead ?? 0;
+      totalCacheCreation += result.usage.cacheCreation ?? 0;
       totalCost += result.totalCostUsd;
 
       // Per-agent aggregates
       if (!agents[role]) {
-        agents[role] = { count: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, costUsd: 0, durationMs: 0, turns: 0 };
+        agents[role] = { count: 0, inputTokens: 0, outputTokens: 0, totalTokens: 0, cacheRead: 0, cacheCreation: 0, costUsd: 0, durationMs: 0, turns: 0 };
       }
       agents[role].count += 1;
       agents[role].inputTokens += result.usage.input;
       agents[role].outputTokens += result.usage.output;
       agents[role].totalTokens += result.usage.total;
+      agents[role].cacheRead += result.usage.cacheRead ?? 0;
+      agents[role].cacheCreation += result.usage.cacheCreation ?? 0;
       agents[role].costUsd += result.totalCostUsd;
       agents[role].durationMs += result.durationMs;
       agents[role].turns += result.numTurns;
@@ -137,10 +147,12 @@ function extractMetrics(dbPath: string): Metrics | undefined {
       if (result.modelUsage) {
         for (const [model, usage] of Object.entries(result.modelUsage)) {
           if (!models[model]) {
-            models[model] = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+            models[model] = { inputTokens: 0, outputTokens: 0, cacheReadInputTokens: 0, cacheCreationInputTokens: 0, costUsd: 0 };
           }
           models[model].inputTokens += usage.inputTokens;
           models[model].outputTokens += usage.outputTokens;
+          models[model].cacheReadInputTokens += usage.cacheReadInputTokens ?? 0;
+          models[model].cacheCreationInputTokens += usage.cacheCreationInputTokens ?? 0;
           models[model].costUsd += usage.costUSD;
         }
       }
@@ -218,7 +230,7 @@ function extractMetrics(dbPath: string): Metrics | undefined {
 
     return {
       ...(profile && { profile }),
-      tokens: { input: totalInput, output: totalOutput, total: totalTotal },
+      tokens: { input: totalInput, output: totalOutput, total: totalTotal, cacheRead: totalCacheRead, cacheCreation: totalCacheCreation },
       costUsd: totalCost,
       phases,
       agents,

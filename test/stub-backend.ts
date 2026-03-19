@@ -26,7 +26,7 @@ const STUB_RESULT: AgentResultData = {
   durationApiMs: 80,
   numTurns: 1,
   totalCostUsd: 0,
-  usage: { input: 0, output: 0, total: 0 },
+  usage: { input: 0, output: 0, total: 0, cacheRead: 0, cacheCreation: 0 },
   modelUsage: {},
 };
 
