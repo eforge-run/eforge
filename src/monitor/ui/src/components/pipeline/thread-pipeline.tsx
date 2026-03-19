@@ -243,6 +243,11 @@ function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStag
             {profileInfo.rationale}
           </TooltipContent>
         </Tooltip>
+        {profileInfo.config.extends && (
+          <span className={`text-[11px] ${getTierColor(profileInfo.config.extends).text}`}>
+            extends <span className="font-medium">{profileInfo.config.extends}</span>
+          </span>
+        )}
         <span className="text-[11px] text-text-dim">{profileInfo.config.description}</span>
       </div>
       <StageOverview compile={profileInfo.config.compile} build={profileInfo.config.build} activeStages={activeStages} completedStages={completedStages} hoveredStage={hoveredStage} onStageHover={onStageHover} />

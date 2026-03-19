@@ -59,6 +59,7 @@ const partialProfileConfigSchema = z.object({
 
 export const resolvedProfileConfigSchema = z.object({
   description: z.string().min(1).describe('Human-readable description of what this profile is for'),
+  extends: z.string().optional().describe('Name of the base profile this profile extends'),
   compile: z.array(z.string()).nonempty().describe('Ordered list of compile stage names to run'),
   build: z.array(buildStageSpecSchema).nonempty().describe('Ordered list of build stages; arrays within denote parallel execution'),
   agents: z.partialRecord(agentRoleSchema, agentProfileConfigSchema).describe('Per-agent configuration overrides keyed by agent role'),
@@ -550,8 +551,16 @@ export function resolveProfileExtensions(
       ...(partial.review ?? {}),
     } as ReviewProfileConfig;
 
+    // Determine the extends value for the resolved config
+    const extendsValue = partial.extends
+      ? partial.extends
+      : builtins[name]
+        ? undefined // built-in override inherits from itself, no extends
+        : 'excursion'; // custom profile with no explicit extends fell through to excursion fallback
+
     const result: ResolvedProfileConfig = {
       description: partial.description ?? base.description,
+      ...(extendsValue ? { extends: extendsValue } : {}),
       compile: partial.compile ?? base.compile,
       build: partial.build ?? base.build,
       agents: mergedAgents,

@@ -64,6 +64,7 @@ export interface ReviewProfileConfig {
 
 export interface ProfileConfig {
   description: string;
+  extends?: string;
   compile: string[];
   build: BuildStageSpec[];
   agents: Record<string, unknown>;
