@@ -1,0 +1,40 @@
+name: r3-r4-test-reviewer-perspective-architecture-review-stage
+description: Add test reviewer perspective to parallel reviewer and
+  architecture-review-cycle compile stage to expedition profile
+created: 2026-03-19
+compiled: 2026-03-19
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-test-reviewer-perspective
+    name: Test Reviewer Perspective
+    depends_on: []
+    branch: r3-r4-test-reviewer-perspective-architecture-review-stage/test-reviewer-perspective
+  - id: plan-02-architecture-review-stage
+    name: Architecture Review Stage
+    depends_on: []
+    branch: r3-r4-test-reviewer-perspective-architecture-review-stage/architecture-review-stage
+profile:
+  description: Multi-file feature work or refactors that need planning and review
+    but fit in a single plan. Use for medium-complexity tasks with cross-file
+    changes.
+  compile:
+    - planner
+    - plan-review-cycle
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+      - test
+    maxRounds: 1
+    evaluatorStrictness: standard
