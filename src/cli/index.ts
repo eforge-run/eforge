@@ -293,6 +293,7 @@ export function createProgram(abortController?: AbortController): Command {
         let planResult: 'completed' | 'failed' = 'completed';
         let enqueuedFilePath: string | undefined;
         let finalResult: 'completed' | 'failed' = 'completed';
+        let preCompileHead: string | undefined;
 
         // All phases as a single async generator — early returns instead of process.exit()
         async function* allPhases(): AsyncGenerator<EforgeEvent> {
@@ -315,6 +316,14 @@ export function createProgram(abortController?: AbortController): Command {
             finalResult = 'failed';
             return;
           }
+
+          // Record HEAD before compile so we can reset on build failure
+          try {
+            const { execFile } = await import('node:child_process');
+            const { promisify } = await import('node:util');
+            const exec = promisify(execFile);
+            preCompileHead = (await exec('git', ['rev-parse', 'HEAD'], { cwd: process.cwd() })).stdout.trim();
+          } catch { /* best effort */ }
 
           // Phase 1: Compile
           const compileEvents = engine.compile(enqueuedFilePath, {
@@ -390,6 +399,16 @@ export function createProgram(abortController?: AbortController): Command {
           // --dry-run: show execution plan after session ends cleanly
           if (options.dryRun && planSetName) {
             await showDryRun(planSetName);
+          }
+
+          // Reset HEAD to before compile if build failed (unwind plan file commits)
+          if (finalResult === 'failed' && preCompileHead) {
+            try {
+              const { execFile } = await import('node:child_process');
+              const { promisify } = await import('node:util');
+              const exec = promisify(execFile);
+              await exec('git', ['reset', '--hard', preCompileHead], { cwd: process.cwd() });
+            } catch { /* best effort */ }
           }
 
           process.exit(skipReason ? 0 : (finalResult === 'completed' ? 0 : 1));

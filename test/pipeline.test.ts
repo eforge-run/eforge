@@ -386,18 +386,18 @@ describe('agent config threading', () => {
   it('resolveAgentConfig returns role default when no profile config set', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
 
-    // Builder has a role default of 50, so it should return 50 (not the global 30)
+    // Builder has a role default of 75, so it should return 75 (not the global 30)
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(50);
+    expect(result.maxTurns).toBe(75);
   });
 
   it('resolveAgentConfig returns role default over global config', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
 
-    // Builder has a role default of 50 — even with global maxTurns set differently
+    // Builder has a role default of 75 — even with global maxTurns set differently
     const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 25 } };
     const result = resolveAgentConfig('builder', config);
-    expect(result.maxTurns).toBe(50);
+    expect(result.maxTurns).toBe(75);
   });
 
   it('resolveAgentConfig falls back to global maxTurns for roles without a specific default', async () => {

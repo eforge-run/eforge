@@ -627,6 +627,9 @@ export class EforgeEngine {
         timestamp: new Date().toISOString(),
       } as EforgeEvent;
 
+      // Record HEAD before compile so we can reset on build failure
+      const preCompileHead = (await exec('git', ['rev-parse', 'HEAD'], { cwd })).stdout.trim();
+
       // Compile (plan) the PRD
       let compileFailed = false;
       const planSetName = options.name ?? prd.id;
@@ -677,6 +680,8 @@ export class EforgeEngine {
 
       if (buildFailed) {
         await updatePrdStatus(prd.filePath, finalStatus);
+        // Reset HEAD to before compile so plan file commits are unwound
+        try { await exec('git', ['reset', '--hard', preCompileHead], { cwd }); } catch { /* best effort */ }
       }
 
       yield {
