@@ -1,5 +1,25 @@
 import { defineConfig } from "tsup";
-import { cp } from "node:fs/promises";
+import { cp, readFile, writeFile } from "node:fs/promises";
+import { globSync } from "node:fs";
+
+// esbuild resolves `node:` protocol imports internally and strips the `node:`
+// prefix for newer builtins (like `node:sqlite`) that aren't in its hardcoded
+// list. We restore the prefix in onSuccess, which runs after ALL builds finish.
+async function restoreNodePrefixes() {
+  const builtins = ["sqlite"];
+  for (const file of globSync("dist/**/*.js")) {
+    let content = await readFile(file, "utf8");
+    let changed = false;
+    for (const mod of builtins) {
+      const fixed = content.split(`from "${mod}"`).join(`from "node:${mod}"`);
+      if (fixed !== content) {
+        content = fixed;
+        changed = true;
+      }
+    }
+    if (changed) await writeFile(file, content);
+  }
+}
 
 export default defineConfig([
   {
@@ -14,6 +34,7 @@ export default defineConfig([
     },
     async onSuccess() {
       await cp("src/engine/prompts", "dist/prompts", { recursive: true });
+      await restoreNodePrefixes();
     },
   },
   {
@@ -22,7 +43,6 @@ export default defineConfig([
     target: "node22",
     clean: false,
     dts: false,
-    external: [],
     outDir: "dist",
   },
 ]);
