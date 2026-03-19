@@ -257,6 +257,28 @@ pnpm type-check   # Type check
 pnpm test         # Run unit tests
 ```
 
+### Dogfooding
+
+eforge builds itself. Since builds modify source code, the running Node.js process would use stale code - so local development uses project-specific Claude Code skills that rebuild between runs.
+
+**Setup** (one-time):
+
+```bash
+pnpm install && pnpm build
+pnpm link --global   # puts eforge on PATH from local build
+```
+
+After making changes, rebuild with `pnpm build` before running. The dogfood skills handle this automatically.
+
+**Skills** (available in Claude Code when working in this repo):
+
+| Skill | Description |
+|-------|-------------|
+| `/eforge-dogfood-run` | Rebuild from source, then run a single PRD or queue cycle using the local binary |
+| `/eforge-dogfood-watch` | Rebuild between each queue cycle - continuous processing with fresh builds |
+
+These are separate from the plugin skills (`/eforge:run`, etc.) which are designed for end users. The dogfood skills use the local binary on PATH so you're always testing the latest source.
+
 ## License
 
 Apache-2.0

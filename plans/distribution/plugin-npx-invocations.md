@@ -36,6 +36,8 @@ The `--yes` flag skips npx's interactive "Install the following packages?" confi
 
 No Node.js availability guard is needed - Claude Code itself requires Node.js, so it's always present.
 
+**Local development note**: A project-specific `/eforge-dogfood-run` skill (`.claude/skills/eforge-dogfood-run/SKILL.md`) already exists for local development. It rebuilds from source and delegates to the plugin's `/eforge:run` skill using the local binary instead of npx. When updating the plugin skill, the dogfood skill stays in sync automatically since it reads the plugin skill file at runtime. The README Development section documents this workflow.
+
 ## Scope
 
 **In scope**:
@@ -49,6 +51,7 @@ No Node.js availability guard is needed - Claude Code itself requires Node.js, s
 - `/eforge:setup` skill for global install preference (nice-to-have follow-up)
 - Version pinning strategy (using `@latest` for now, revisit if stability concerns arise)
 - `status.md` changes (doesn't use CLI)
+- `/eforge-dogfood-run` and `/eforge-dogfood-watch` skills (already exist, no changes needed)
 
 ## Acceptance Criteria
 
