@@ -58,28 +58,38 @@ prune_old_runs() {
 print_summary() {
   local summary_file="$1"
   echo ""
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
   node -e "
     const s = JSON.parse(require('fs').readFileSync('$summary_file', 'utf8'));
     const pad = (str, len) => str.padEnd(len);
     console.log('Eforge Eval Results (' + s.timestamp + ')');
     console.log('eforge@' + s.eforgeVersion + ' (' + s.eforgeCommit + ')');
     console.log('');
-    console.log(pad('Scenario', 35) + pad('Eforge', 10) + pad('Validate', 12) + 'Duration');
-    console.log('-'.repeat(70));
+    console.log(pad('Scenario', 35) + pad('Eforge', 10) + pad('Validate', 12) + pad('Tokens', 10) + pad('Cost', 10) + 'Duration');
+    console.log('-'.repeat(90));
     for (const r of s.scenarios) {
       const eforge = r.eforgeExitCode === 0 ? 'PASS' : 'FAIL';
       const allValid = r.validation && Object.values(r.validation).every(v => v.passed);
       const validate = r.eforgeExitCode !== 0 ? '-' : (allValid ? 'PASS' : 'FAIL');
+      const tokens = r.metrics && r.metrics.tokens ? Math.round(r.metrics.tokens.total / 1000) + 'k' : '-';
+      const cost = r.metrics && r.metrics.costUsd != null ? '\$' + r.metrics.costUsd.toFixed(2) : '-';
       const mins = Math.floor(r.durationSeconds / 60);
       const secs = r.durationSeconds % 60;
       const duration = mins + 'm ' + secs + 's';
-      console.log(pad(r.scenario, 35) + pad(eforge, 10) + pad(validate, 12) + duration);
+      console.log(pad(r.scenario, 35) + pad(eforge, 10) + pad(validate, 12) + pad(tokens, 10) + pad(cost, 10) + duration);
     }
     console.log('');
     console.log('Passed: ' + s.passed + '/' + s.totalScenarios);
+    if (s.totals) {
+      const t = s.totals;
+      const totalTokens = t.tokens ? Math.round(t.tokens.total / 1000) + 'k' : '-';
+      const totalCost = t.costUsd != null ? '\$' + t.costUsd.toFixed(2) : '-';
+      const totalMins = Math.floor(t.durationSeconds / 60);
+      const totalSecs = t.durationSeconds % 60;
+      console.log('Totals: ' + totalTokens + ' tokens, ' + totalCost + ' cost, ' + totalMins + 'm ' + totalSecs + 's');
+    }
   "
-  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+  echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 }
 
 # Main
@@ -196,13 +206,31 @@ main() {
       const rf = path.join('$run_dir', d.name, 'result.json');
       if (fs.existsSync(rf)) scenarios.push(JSON.parse(fs.readFileSync(rf, 'utf8')));
     }
+    // Aggregate totals across all scenarios
+    let totalInputTokens = 0, totalOutputTokens = 0, totalTokens = 0, totalCostUsd = 0, totalDurationSeconds = 0;
+    for (const r of scenarios) {
+      totalDurationSeconds += r.durationSeconds || 0;
+      if (r.metrics) {
+        if (r.metrics.tokens) {
+          totalInputTokens += r.metrics.tokens.input || 0;
+          totalOutputTokens += r.metrics.tokens.output || 0;
+          totalTokens += r.metrics.tokens.total || 0;
+        }
+        totalCostUsd += r.metrics.costUsd || 0;
+      }
+    }
     const summary = {
       timestamp: '$timestamp',
       eforgeVersion: '$eforge_version',
       eforgeCommit: '$eforge_commit',
       totalScenarios: $total,
       passed: $passed,
-      scenarios
+      scenarios,
+      totals: {
+        tokens: { input: totalInputTokens, output: totalOutputTokens, total: totalTokens },
+        costUsd: totalCostUsd,
+        durationSeconds: totalDurationSeconds
+      }
     };
     fs.writeFileSync('$summary_file', JSON.stringify(summary, null, 2));
   "

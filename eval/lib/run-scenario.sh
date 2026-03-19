@@ -82,12 +82,17 @@ run_scenario() {
     validation_results=$(run_validations "$workspace" "$validate" "$scenario_dir")
   fi
 
+  # Step 4b: Preserve monitor DB before workspace cleanup
+  if [[ -f "$workspace/.eforge/monitor.db" ]]; then
+    cp "$workspace/.eforge/monitor.db" "$scenario_dir/monitor.db"
+  fi
+
   local end_time
   end_time=$(date +%s)
   local duration=$((end_time - start_time))
 
   # Step 5: Write result.json
-  node "$SCRIPT_DIR/lib/build-result.mjs" \
+  npx tsx "$SCRIPT_DIR/lib/build-result.ts" \
     "$scenario_dir/result.json" \
     "$id" \
     "$eforge_version" \
@@ -95,7 +100,8 @@ run_scenario() {
     "$eforge_exit" \
     "$duration" \
     "$scenario_dir/eforge.log" \
-    "$validation_results"
+    "$validation_results" \
+    "$scenario_dir/monitor.db"
 
   echo "  Result: $scenario_dir/result.json"
   echo "  Duration: $((duration / 60))m $((duration % 60))s"

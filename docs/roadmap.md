@@ -13,7 +13,7 @@
 
 **Goal**: Use evaluation data and runtime observability to drive continuous improvement of workflow profiles and agent behavior.
 
-- **Comparative profile tuning** — Run profiles head-to-head on the same PRDs (the scenario harness and pass/fail tracking already exist). Add code quality, token cost, and time metrics. Use outcome data to refine profiles from intuition toward evidence.
+- **Comparative profile tuning** — Run profiles head-to-head on the same PRDs (the scenario harness already tracks pass/fail, token usage, cost, and duration per scenario). Add code quality metrics. Use outcome data to refine profiles from intuition toward evidence.
 
 ---
 
