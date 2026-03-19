@@ -127,7 +127,7 @@ export { withHooks, matchesPattern } from './hooks.js';
 
 // --- config ---
 export type { EforgeConfig, PartialEforgeConfig, PluginConfig, ProfileConfig, ResolvedProfileConfig, AgentProfileConfig, ReviewProfileConfig, PartialProfileConfig, BuildStageSpec } from './config.js';
-export { DEFAULT_CONFIG, BUILTIN_PROFILES, AGENT_ROLES, eforgeConfigSchema, resolvedProfileConfigSchema, findConfigFile, resolveConfig, loadConfig, getUserConfigPath, mergePartialConfigs, resolveProfileExtensions, parseProfilesFile, validateProfileConfig, validateConfigFile, resolveGeneratedProfile } from './config.js';
+export { DEFAULT_CONFIG, DEFAULT_BUILD, DEFAULT_BUILD_WITH_DOCS, DEFAULT_REVIEW, BUILTIN_PROFILES, AGENT_ROLES, eforgeConfigSchema, resolvedProfileConfigSchema, buildStageSpecSchema, reviewProfileConfigSchema, findConfigFile, resolveConfig, loadConfig, getUserConfigPath, mergePartialConfigs, resolveProfileExtensions, parseProfilesFile, validateProfileConfig, validateConfigFile, resolveGeneratedProfile } from './config.js';
 export type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 export { createTracingContext, createNoopTracingContext } from './tracing.js';
 

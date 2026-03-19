@@ -5,8 +5,9 @@ import { resolve, dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { PlanFile, OrchestrationConfig, ExpeditionModule } from './events.js';
-import type { ResolvedProfileConfig } from './config.js';
-import { resolvedProfileConfigSchema } from './config.js';
+import type { ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
+import { resolvedProfileConfigSchema, buildStageSpecSchema, reviewProfileConfigSchema } from './config.js';
+import { z } from 'zod/v4';
 
 const execAsync = promisify(execFile);
 
@@ -172,12 +173,34 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
   }
 
   const plans = Array.isArray(data.plans)
-    ? (data.plans as Array<Record<string, unknown>>).map((p) => ({
-        id: typeof p.id === 'string' ? p.id : String(p.id ?? ''),
-        name: typeof p.name === 'string' ? p.name : String(p.name ?? ''),
-        dependsOn: Array.isArray(p.depends_on) ? (p.depends_on as string[]) : [],
-        branch: typeof p.branch === 'string' ? p.branch : '',
-      }))
+    ? (data.plans as Array<Record<string, unknown>>).map((p) => {
+        const entry: OrchestrationConfig['plans'][number] = {
+          id: typeof p.id === 'string' ? p.id : String(p.id ?? ''),
+          name: typeof p.name === 'string' ? p.name : String(p.name ?? ''),
+          dependsOn: Array.isArray(p.depends_on) ? (p.depends_on as string[]) : [],
+          branch: typeof p.branch === 'string' ? p.branch : '',
+        };
+
+        // Parse optional per-plan build/review
+        if (p.build !== undefined) {
+          const buildResult = z.array(buildStageSpecSchema).safeParse(p.build);
+          if (buildResult.success) {
+            entry.build = buildResult.data;
+          } else {
+            throw new Error(`Plan '${entry.id}' has invalid 'build' config: ${buildResult.error.message}`);
+          }
+        }
+        if (p.review !== undefined) {
+          const reviewResult = reviewProfileConfigSchema.safeParse(p.review);
+          if (reviewResult.success) {
+            entry.review = reviewResult.data;
+          } else {
+            throw new Error(`Plan '${entry.id}' has invalid 'review' config: ${reviewResult.error.message}`);
+          }
+        }
+
+        return entry;
+      })
     : [];
 
   const validate = Array.isArray(data.validate)
@@ -310,6 +333,18 @@ export async function validatePlanSet(
 
     if (!plan.name) errors.push(`Plan '${plan.id}' missing name`);
     if (!plan.branch) errors.push(`Plan '${plan.id}' missing branch`);
+
+    // Validate per-plan build stage names against the registry
+    if (plan.build) {
+      const { getBuildStageNames } = await import('./pipeline.js');
+      const buildStageNames = getBuildStageNames();
+      const flatStages = plan.build.flatMap((spec) => Array.isArray(spec) ? spec : [spec]);
+      for (const name of flatStages) {
+        if (!buildStageNames.has(name)) {
+          errors.push(`Plan '${plan.id}' has unknown build stage: "${name}"`);
+        }
+      }
+    }
   }
 
   // Check dependency graph is valid
@@ -450,6 +485,10 @@ export interface WritePlanArtifactsOptions {
   profile: ResolvedProfileConfig;
   validate?: string[];
   mode?: 'errand' | 'excursion';
+  /** Per-plan build stage sequence (written to orchestration.yaml plan entry). */
+  build?: BuildStageSpec[];
+  /** Per-plan review config (written to orchestration.yaml plan entry). */
+  review?: ReviewProfileConfig;
 }
 
 export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Promise<PlanFile> {
@@ -486,6 +525,8 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
       name: planName,
       depends_on: [] as string[],
       branch,
+      ...(options.build && { build: options.build }),
+      ...(options.review && { review: options.review }),
     }],
   };
 

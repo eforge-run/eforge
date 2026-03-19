@@ -23,7 +23,8 @@ import {
   type ReviewIssue,
   type OrchestrationConfig,
 } from './events.js';
-import type { EforgeConfig, ResolvedProfileConfig } from './config.js';
+import type { EforgeConfig, ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
+import { DEFAULT_REVIEW, DEFAULT_BUILD } from './config.js';
 import type { AgentBackend } from './backend.js';
 import type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
@@ -65,6 +66,7 @@ export interface PipelineContext {
   // Mutable state passed between stages
   plans: PlanFile[];
   expeditionModules: ExpeditionModule[];
+  moduleBuildConfigs: Map<string, { build: BuildStageSpec[]; review: ReviewProfileConfig }>;
 }
 
 /** Context for build stages, extends PipelineContext with per-plan fields. */
@@ -74,6 +76,10 @@ export interface BuildStageContext extends PipelineContext {
   planFile: PlanFile;
   orchConfig: OrchestrationConfig;
   reviewIssues: ReviewIssue[];
+  /** Per-plan build stage sequence (resolved from per-plan config or profile fallback). */
+  build: BuildStageSpec[];
+  /** Per-plan review config (resolved from per-plan config or profile fallback). */
+  review: ReviewProfileConfig;
   /** Set to true by the implement stage on failure — signals the pipeline runner to stop. */
   buildFailed?: boolean;
 }
@@ -224,22 +230,17 @@ const AGENT_MAX_TURNS_DEFAULTS: Partial<Record<AgentRole, number>> = {
 
 /**
  * Resolve agent config for a given role.
- * Priority (highest → lowest): profile per-agent config → role defaults → global config
+ * Priority (highest → lowest): role defaults → global config
  */
 export function resolveAgentConfig(
-  profile: ResolvedProfileConfig,
   role: AgentRole,
   config: EforgeConfig,
-): { maxTurns: number; prompt?: string; tools?: 'coding' | 'none'; model?: string } {
+): { maxTurns: number } {
   const roleDefault = AGENT_MAX_TURNS_DEFAULTS[role];
   const globalMaxTurns = config.agents.maxTurns;
-  const profileAgent = profile.agents[role];
 
   return {
-    maxTurns: profileAgent?.maxTurns ?? roleDefault ?? globalMaxTurns,
-    prompt: profileAgent?.prompt,
-    tools: profileAgent?.tools,
-    model: profileAgent?.model,
+    maxTurns: roleDefault ?? globalMaxTurns,
   };
 }
 
@@ -362,6 +363,8 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
     profile: ctx.profile,
     validate: validate.length > 0 ? validate : undefined,
     mode: 'errand',
+    build: DEFAULT_BUILD,
+    review: DEFAULT_REVIEW,
   });
 
   ctx.plans = [planFile];
@@ -376,7 +379,7 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
 });
 
 registerCompileStage('planner', async function* plannerStage(ctx) {
-  const agentConfig = resolveAgentConfig(ctx.profile, 'planner', ctx.config);
+  const agentConfig = resolveAgentConfig('planner', ctx.config);
   const span = ctx.tracing.createSpan('planner', { source: ctx.sourceContent, planSet: ctx.planSetName });
   span.setInput({ source: ctx.sourceContent, planSet: ctx.planSetName });
   const tracker = createToolTracker(span);
@@ -571,7 +574,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
   const tracing = ctx.tracing;
   const sourceContent = ctx.sourceContent;
   const planSetName = ctx.planSetName;
-  const agentConfig = resolveAgentConfig(ctx.profile, 'module-planner', ctx.config);
+  const agentConfig = resolveAgentConfig('module-planner', ctx.config);
 
   // 2. Plan each wave (parallel within wave, sequential across waves)
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
@@ -687,7 +690,7 @@ registerCompileStage('compile-expedition', async function* compileExpeditionStag
   if (ctx.expeditionModules.length === 0) return;
 
   yield { type: 'expedition:compile:start' };
-  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.profile);
+  const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.profile, ctx.moduleBuildConfigs);
   yield { type: 'expedition:compile:complete', plans };
   yield { type: 'plan:complete', plans };
 
@@ -700,7 +703,7 @@ registerCompileStage('compile-expedition', async function* compileExpeditionStag
 // ---------------------------------------------------------------------------
 
 registerBuildStage('implement', async function* implementStage(ctx) {
-  const agentConfig = resolveAgentConfig(ctx.profile, 'builder', ctx.config);
+  const agentConfig = resolveAgentConfig('builder', ctx.config);
   const maxTurns = agentConfig.maxTurns;
 
   const implSpan = ctx.tracing.createSpan('builder', { planId: ctx.planId, phase: 'implement' });
@@ -708,8 +711,8 @@ registerBuildStage('implement', async function* implementStage(ctx) {
   const implTracker = createToolTracker(implSpan);
   let implFailed = false;
 
-  // Extract parallel stage groups from the profile for lane awareness
-  const parallelStages = ctx.profile.build
+  // Extract parallel stage groups from ctx.build for lane awareness
+  const parallelStages = ctx.build
     .filter((spec): spec is string[] => Array.isArray(spec));
 
   try {
@@ -764,8 +767,8 @@ async function* reviewStageInner(
   ctx: BuildStageContext,
   overrides?: { strategy?: 'auto' | 'single' | 'parallel'; perspectives?: string[] },
 ): AsyncGenerator<EforgeEvent> {
-  const strategy = overrides?.strategy ?? ctx.profile.review.strategy;
-  const perspectives = overrides?.perspectives ?? (ctx.profile.review.perspectives.length > 0 ? ctx.profile.review.perspectives : undefined);
+  const strategy = overrides?.strategy ?? ctx.review.strategy;
+  const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
 
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
@@ -805,7 +808,7 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
   // Filter issues by autoAcceptBelow threshold
   const { filtered, autoAccepted } = filterIssuesBySeverity(
     ctx.reviewIssues,
-    ctx.profile.review.autoAcceptBelow,
+    ctx.review.autoAcceptBelow,
   );
   ctx.reviewIssues = filtered;
 
@@ -851,14 +854,14 @@ async function* evaluateStageInner(
   // Only runs if there are unstaged changes from review/fixer
   if (!(await hasUnstagedChanges(ctx.worktreePath))) return;
 
-  const strictness = overrides?.strictness ?? ctx.profile.review.evaluatorStrictness;
+  const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
 
   const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId });
   evalSpan.setInput({ planId: ctx.planId });
   const evalTracker = createToolTracker(evalSpan);
 
   try {
-    const evalAgentConfig = resolveAgentConfig(ctx.profile, 'evaluator', ctx.config);
+    const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config);
     for await (const event of builderEvaluate(ctx.planFile, {
       backend: ctx.backend,
       cwd: ctx.worktreePath,
@@ -879,11 +882,11 @@ async function* evaluateStageInner(
 }
 
 registerBuildStage('review-cycle', async function* reviewCycleStage(ctx) {
-  const maxRounds = ctx.profile.review.maxRounds;
-  const strategy = ctx.profile.review.strategy;
-  const perspectives = ctx.profile.review.perspectives.length > 0 ? ctx.profile.review.perspectives : undefined;
-  const autoAcceptBelow = ctx.profile.review.autoAcceptBelow;
-  const strictness = ctx.profile.review.evaluatorStrictness;
+  const maxRounds = ctx.review.maxRounds;
+  const strategy = ctx.review.strategy;
+  const perspectives = ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined;
+  const autoAcceptBelow = ctx.review.autoAcceptBelow;
+  const strictness = ctx.review.evaluatorStrictness;
 
   for (let round = 0; round < maxRounds; round++) {
     // 1. Review
@@ -910,7 +913,7 @@ registerBuildStage('validate', async function* validateStage(_ctx) {
 });
 
 registerBuildStage('doc-update', async function* docUpdateStage(ctx) {
-  const agentConfig = resolveAgentConfig(ctx.profile, 'doc-updater', ctx.config);
+  const agentConfig = resolveAgentConfig('doc-updater', ctx.config);
   const docSpan = ctx.tracing.createSpan('doc-updater', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -1045,7 +1048,7 @@ export async function* runBuildPipeline(
 ): AsyncGenerator<EforgeEvent> {
   yield { type: 'build:start', planId: ctx.planId };
 
-  for (const spec of ctx.profile.build) {
+  for (const spec of ctx.build) {
     if (Array.isArray(spec)) {
       // Parallel group — run all stages concurrently
       const tasks: ParallelTask<EforgeEvent>[] = spec.map((stageName) => {

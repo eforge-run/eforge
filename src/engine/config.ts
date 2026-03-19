@@ -34,7 +34,7 @@ const STRATEGIES = ['auto', 'single', 'parallel'] as const;
 const STRICTNESS = ['strict', 'standard', 'lenient'] as const;
 const AUTO_ACCEPT = ['suggestion', 'warning'] as const;
 
-const reviewProfileConfigSchema = z.object({
+export const reviewProfileConfigSchema = z.object({
   strategy: z.enum(STRATEGIES).describe('Review strategy: "auto" picks based on perspective count, "single" uses one reviewer, "parallel" runs all perspectives concurrently'),
   perspectives: z.array(z.string()).nonempty().describe('Review perspective names, e.g. ["code", "security", "performance"]'),
   maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles (default 1)'),
@@ -43,7 +43,7 @@ const reviewProfileConfigSchema = z.object({
 });
 
 /** A build stage spec: either a single stage name or an array of stage names to run in parallel. */
-const buildStageSpecSchema = z.union([
+export const buildStageSpecSchema = z.union([
   z.string().describe('A single stage name'),
   z.array(z.string()).describe('Stage names to run in parallel'),
 ]).describe('A stage name or array of stage names to run in parallel');
@@ -185,12 +185,22 @@ export interface EforgeConfig {
 /** Deep-partial version of EforgeConfig used for parsing and merging — derived from the zod schema. */
 export type PartialEforgeConfig = z.output<typeof eforgeConfigSchema>;
 
-const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
+export const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
   strategy: 'auto' as const,
   perspectives: Object.freeze(['code']) as unknown as string[],
   maxRounds: 1,
   evaluatorStrictness: 'standard' as const,
 });
+
+/** Default build stages for errands (no doc-update). */
+export const DEFAULT_BUILD: BuildStageSpec[] = Object.freeze([
+  'implement', 'review-cycle',
+]) as unknown as BuildStageSpec[];
+
+/** Default build stages with parallel doc-update (for excursion/expedition). */
+export const DEFAULT_BUILD_WITH_DOCS: BuildStageSpec[] = Object.freeze([
+  Object.freeze(['implement', 'doc-update']), 'review-cycle',
+]) as unknown as BuildStageSpec[];
 
 const DEFAULT_BUILD_STAGES = Object.freeze([
   Object.freeze(['implement', 'doc-update']), 'review', 'review-fix', 'evaluate',

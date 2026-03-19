@@ -23,7 +23,7 @@ import type {
 import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, updatePrdStatus, enqueuePrd, inferTitle } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runFormatter } from './agents/formatter.js';
-import type { EforgeConfig, PluginConfig, PartialProfileConfig } from './config.js';
+import type { EforgeConfig, PluginConfig, PartialProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
 import type { AgentBackend } from './backend.js';
 import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
@@ -227,6 +227,7 @@ export class EforgeEngine {
         onClarification: this.onClarification,
         plans: [],
         expeditionModules: [],
+        moduleBuildConfigs: new Map(),
       };
 
       // Run compile pipeline
@@ -379,6 +380,11 @@ export class EforgeEngine {
           return;
         }
 
+        // Resolve per-plan build/review from orchestration.yaml plan entry, falling back to profile
+        const planEntry = orchConfig.plans.find((p) => p.id === planId);
+        const planBuild: BuildStageSpec[] = planEntry?.build ?? buildProfile.build;
+        const planReview: ReviewProfileConfig = planEntry?.review ?? buildProfile.review;
+
         const buildCtx: BuildStageContext = {
           backend,
           config,
@@ -391,11 +397,14 @@ export class EforgeEngine {
           abortController,
           plans: Array.from(planFileMap.values()),
           expeditionModules: [],
+          moduleBuildConfigs: new Map(),
           planId,
           worktreePath,
           planFile,
           orchConfig,
           reviewIssues: [],
+          build: planBuild,
+          review: planReview,
         };
 
         yield* runBuildPipeline(buildCtx);

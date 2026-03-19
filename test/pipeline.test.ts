@@ -10,7 +10,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '../src/engine/events.js';
 import type { EforgeConfig, ResolvedProfileConfig } from '../src/engine/config.js';
 import type { AgentBackend } from '../src/engine/backend.js';
-import { BUILTIN_PROFILES, DEFAULT_CONFIG } from '../src/engine/config.js';
+import { BUILTIN_PROFILES, DEFAULT_CONFIG, DEFAULT_REVIEW } from '../src/engine/config.js';
 import { createNoopTracingContext } from '../src/engine/tracing.js';
 import {
   getCompileStage,
@@ -50,6 +50,7 @@ function makePipelineCtx(overrides: Partial<PipelineContext> = {}): PipelineCont
     sourceContent: '# Test',
     plans: [],
     expeditionModules: [],
+    moduleBuildConfigs: new Map(),
     ...overrides,
   };
 }
@@ -74,21 +75,26 @@ function makeBuildCtx(overrides: Partial<BuildStageContext> = {}): BuildStageCon
     plans: [{ id: 'plan-01', name: 'Test Plan', dependsOn: [], branch: 'test/plan-01' }],
   };
 
+  const profile = overrides?.profile ?? BUILTIN_PROFILES['excursion'];
+
   return {
     backend: {} as AgentBackend,
     config: DEFAULT_CONFIG,
-    profile: BUILTIN_PROFILES['excursion'],
+    profile,
     tracing: createNoopTracingContext(),
     cwd: '/tmp/test',
     planSetName: 'test-plan',
     sourceContent: '',
     plans: [planFile],
     expeditionModules: [],
+    moduleBuildConfigs: new Map(),
     planId: 'plan-01',
     worktreePath: '/tmp/test-worktree',
     planFile,
     orchConfig,
     reviewIssues: [],
+    build: overrides?.build ?? profile.build,
+    review: overrides?.review ?? profile.review,
     ...overrides,
   };
 }
@@ -380,41 +386,26 @@ describe('agent config threading', () => {
   it('resolveAgentConfig returns role default when no profile config set', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      agents: {}, // No builder config
-    };
-
     // Builder has a role default of 50, so it should return 50 (not the global 30)
-    const result = resolveAgentConfig(profile, 'builder', DEFAULT_CONFIG);
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
     expect(result.maxTurns).toBe(50);
   });
 
-  it('resolveAgentConfig returns profile value when set', async () => {
+  it('resolveAgentConfig returns role default over global config', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      agents: {
-        builder: { maxTurns: 25 },
-      },
-    };
-
-    const result = resolveAgentConfig(profile, 'builder', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(25);
+    // Builder has a role default of 50 — even with global maxTurns set differently
+    const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 25 } };
+    const result = resolveAgentConfig('builder', config);
+    expect(result.maxTurns).toBe(50);
   });
 
   it('resolveAgentConfig falls back to global maxTurns for roles without a specific default', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
-      agents: {},
-    };
-
     const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 42 } };
     // reviewer has no role default, so it should fall back to the global config value
-    const result = resolveAgentConfig(profile, 'reviewer', config);
+    const result = resolveAgentConfig('reviewer', config);
     expect(result.maxTurns).toBe(42);
   });
 });

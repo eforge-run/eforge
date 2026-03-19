@@ -1,7 +1,7 @@
 // EforgeEvent discriminated union and all supporting types
 
 import type { z } from 'zod/v4';
-import type { ResolvedProfileConfig } from './config.js';
+import type { ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
 import type { ReviewPerspective } from './review-heuristics.js';
 import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSchema } from './schemas.js';
 
@@ -40,7 +40,7 @@ export interface OrchestrationConfig {
   mode: (typeof ORCHESTRATION_MODES)[number];
   baseBranch: string;
   profile: ResolvedProfileConfig;
-  plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string }>;
+  plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string; build?: BuildStageSpec[]; review?: ReviewProfileConfig }>;
   validate?: string[];
 }
 

@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { stringify as stringifyYaml } from 'yaml';
 import type { PlanFile } from './events.js';
-import type { ResolvedProfileConfig } from './config.js';
+import type { ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
 import { parseExpeditionIndex, resolveDependencyGraph } from './plan.js';
 
 const exec = promisify(execFile);
@@ -24,7 +24,12 @@ const exec = promisify(execFile);
  * 5. Generates orchestration.yaml
  * 6. Updates index.yaml status to compiled
  */
-export async function compileExpedition(cwd: string, planSetName: string, profile?: ResolvedProfileConfig): Promise<PlanFile[]> {
+export async function compileExpedition(
+  cwd: string,
+  planSetName: string,
+  profile?: ResolvedProfileConfig,
+  moduleBuildConfigs?: Map<string, { build: BuildStageSpec[]; review: ReviewProfileConfig }>,
+): Promise<PlanFile[]> {
   const planDir = resolve(cwd, 'plans', planSetName);
   const indexPath = resolve(planDir, 'index.yaml');
   const modulesDir = resolve(planDir, 'modules');
@@ -124,12 +129,19 @@ export async function compileExpedition(cwd: string, planSetName: string, profil
     base_branch: baseBranch,
     ...(profile && { profile }),
     ...(index.validate && index.validate.length > 0 && { validate: index.validate }),
-    plans: planFiles.map((p) => ({
-      id: p.id,
-      name: p.name,
-      depends_on: p.dependsOn,
-      branch: p.branch,
-    })),
+    plans: planFiles.map((p) => {
+      // Find the module ID from the plan's branch (branch format: `{planSetName}/{moduleId}`)
+      const moduleId = p.branch.replace(`${planSetName}/`, '');
+      const modConfig = moduleBuildConfigs?.get(moduleId);
+      return {
+        id: p.id,
+        name: p.name,
+        depends_on: p.dependsOn,
+        branch: p.branch,
+        ...(modConfig?.build && { build: modConfig.build }),
+        ...(modConfig?.review && { review: modConfig.review }),
+      };
+    }),
   };
 
   await writeFile(
