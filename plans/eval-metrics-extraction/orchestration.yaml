@@ -1,0 +1,36 @@
+name: eval-metrics-extraction
+description: Extract structured metrics (tokens, cost, timing, review stats)
+  from the monitor DB after each eval scenario run and surface them in result
+  files and the summary table
+created: 2026-03-19
+compiled: 2026-03-19
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-eval-metrics
+    name: Eval Metrics Extraction
+    depends_on: []
+    branch: eval-metrics-extraction/eval-metrics
+profile:
+  description: Multi-file feature work or refactors that need planning and review
+    but fit in a single plan. Use for medium-complexity tasks with cross-file
+    changes.
+  compile:
+    - planner
+    - plan-review-cycle
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
