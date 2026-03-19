@@ -48,9 +48,7 @@ Update `validateProfileConfig` - remove build stage validation and agents valida
 
 Change `build` and `review` from optional (`?`) to required on `OrchestrationConfig.plans` entries.
 
-### Remove fallbacks in pipeline - `src/engine/pipeline.ts`
-
-Remove the `ctx.profile.build`/`ctx.profile.review` fallbacks added in the foundation PRD. Build stages now read exclusively from `ctx.build`/`ctx.review` (no fallback needed since fields are required).
+**Note:** Pipeline build stages already read from `ctx.build`/`ctx.review` (no fallbacks to remove - foundation PRD implemented this directly).
 
 ### Update planner agent - `src/engine/agents/planner.ts`
 
@@ -134,7 +132,6 @@ Remove `formatParallelLanes` export.
 - Remove DEFAULT_BUILD_STAGES, ERRAND_BUILD_STAGES
 - Simplify resolveProfileExtensions, mergePartialConfigs, resolveGeneratedProfile, validateProfileConfig
 - Make per-plan build/review required in OrchestrationConfig
-- Remove fallbacks in pipeline build stages
 - Remove formatParallelLanes from planner agent
 - Update formatProfileGenerationSection (compile-only)
 - Add parseBuildConfigBlock to common.ts

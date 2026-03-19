@@ -19,10 +19,10 @@ Update all tests, fixtures, monitor UI types/components, mock server, and plugin
 
 ### Test updates
 
-**`test/pipeline.test.ts`** (most impacted):
-- `makeBuildCtx` helper: add `build: ['implement', 'review-cycle']` and `review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' }` fields, add `moduleBuildConfigs: new Map()`
-- Remove `build`, `review`, `agents` from any `BUILTIN_PROFILES` spreads or profile construction
-- `resolveAgentConfig` tests: update to 2-arg signature `resolveAgentConfig(role, config)`, verify returns only `{ maxTurns }` (no prompt/tools/model)
+**`test/pipeline.test.ts`**:
+- `makeBuildCtx` already has `build`/`review`/`moduleBuildConfigs` fields (added by foundation PRD)
+- `resolveAgentConfig` tests already use 2-arg signature (updated by foundation PRD)
+- Remaining: remove `build`, `review`, `agents` from any `BUILTIN_PROFILES` spreads or profile construction that still references old profile shape
 
 **`test/dynamic-profile-generation.test.ts`**:
 - `cloneProfile` helper: remove build/review/agents from profile construction
