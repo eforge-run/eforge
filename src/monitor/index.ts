@@ -142,7 +142,7 @@ async function spawnDetachedServer(
     detached: true,
     stdio: 'ignore',
     // Propagate execArgv so tsx loaders work in dev mode
-    execArgv: process.execArgv,
+    execArgv: [...process.execArgv, '--disable-warning=ExperimentalWarning'],
   });
 
   child.on('error', (err) => {

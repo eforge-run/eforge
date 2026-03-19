@@ -1,4 +1,4 @@
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 
@@ -90,12 +90,12 @@ const SCHEMA = `
 export function openDatabase(dbPath: string): MonitorDB {
   mkdirSync(dirname(dbPath), { recursive: true });
 
-  const db = new Database(dbPath);
-  db.pragma('journal_mode = WAL');
+  const db = new DatabaseSync(dbPath);
+  db.exec('PRAGMA journal_mode = WAL');
   db.exec(SCHEMA);
 
   // Migrations for existing DBs
-  const columns = db.pragma('table_info(runs)') as { name: string }[];
+  const columns = db.prepare('PRAGMA table_info(runs)').all() as unknown as { name: string }[];
   if (!columns.some((c) => c.name === 'pid')) {
     db.exec('ALTER TABLE runs ADD COLUMN pid INTEGER');
   }
@@ -187,59 +187,59 @@ export function openDatabase(dbPath: string): MonitorDB {
     },
 
     getRuns() {
-      return stmts.getRuns.all() as RunRecord[];
+      return stmts.getRuns.all() as unknown as RunRecord[];
     },
 
     getRunningRuns() {
-      return stmts.getRunningRuns.all() as RunRecord[];
+      return stmts.getRunningRuns.all() as unknown as RunRecord[];
     },
 
     getRun(runId) {
-      return stmts.getRun.get(runId) as RunRecord | undefined;
+      return stmts.getRun.get(runId) as unknown as RunRecord | undefined;
     },
 
     getEvents(runId, afterId) {
       if (afterId !== undefined) {
-        return stmts.getEventsAfter.all(runId, afterId) as EventRecord[];
+        return stmts.getEventsAfter.all(runId, afterId) as unknown as EventRecord[];
       }
-      return stmts.getEventsAll.all(runId) as EventRecord[];
+      return stmts.getEventsAll.all(runId) as unknown as EventRecord[];
     },
 
     getEventsByType(runId, type) {
-      return stmts.getEventsByType.all(runId, type) as EventRecord[];
+      return stmts.getEventsByType.all(runId, type) as unknown as EventRecord[];
     },
 
     getRunsBySession(sessionId) {
-      return stmts.getRunsBySession.all(sessionId) as RunRecord[];
+      return stmts.getRunsBySession.all(sessionId) as unknown as RunRecord[];
     },
 
     getEventsBySession(sessionId, afterId) {
       if (afterId !== undefined) {
-        return stmts.getEventsBySessionAfter.all(sessionId, afterId) as EventRecord[];
+        return stmts.getEventsBySessionAfter.all(sessionId, afterId) as unknown as EventRecord[];
       }
-      return stmts.getEventsBySessionAll.all(sessionId) as EventRecord[];
+      return stmts.getEventsBySessionAll.all(sessionId) as unknown as EventRecord[];
     },
 
     getEventsByTypeForSession(sessionId, type) {
-      return stmts.getEventsByTypeForSession.all(sessionId, type) as EventRecord[];
+      return stmts.getEventsByTypeForSession.all(sessionId, type) as unknown as EventRecord[];
     },
 
     getLatestSessionId() {
-      const row = stmts.getLatestSessionId.get() as { sessionId: string | null } | undefined;
+      const row = stmts.getLatestSessionId.get() as unknown as { sessionId: string | null } | undefined;
       return row?.sessionId ?? undefined;
     },
 
     getSessionRuns(sessionId) {
-      return stmts.getRunsBySession.all(sessionId) as RunRecord[];
+      return stmts.getRunsBySession.all(sessionId) as unknown as RunRecord[];
     },
 
     getLatestRunId() {
-      const row = stmts.getLatestRunId.get() as { id: string } | undefined;
+      const row = stmts.getLatestRunId.get() as unknown as { id: string } | undefined;
       return row?.id;
     },
 
     getLatestEventTimestamp() {
-      const row = stmts.getLatestEventTimestamp.get() as { timestamp: string } | undefined;
+      const row = stmts.getLatestEventTimestamp.get() as unknown as { timestamp: string } | undefined;
       return row?.timestamp;
     },
 

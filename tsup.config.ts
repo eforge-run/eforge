@@ -8,9 +8,9 @@ export default defineConfig([
     target: "node22",
     clean: true,
     dts: false,
-    external: ["@anthropic-ai/claude-agent-sdk", "better-sqlite3"],
+    external: ["@anthropic-ai/claude-agent-sdk"],
     banner: {
-      js: "#!/usr/bin/env node",
+      js: "#!/usr/bin/env -S node --disable-warning=ExperimentalWarning",
     },
     async onSuccess() {
       await cp("src/engine/prompts", "dist/prompts", { recursive: true });
@@ -22,7 +22,7 @@ export default defineConfig([
     target: "node22",
     clean: false,
     dts: false,
-    external: ["better-sqlite3"],
+    external: [],
     outDir: "dist",
   },
 ]);

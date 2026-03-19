@@ -2,8 +2,9 @@
 // Build a structured result.json from eval scenario output.
 // Usage: npx tsx build-result.ts <output> <scenario> <version> <commit> <exitCode> <duration> <logFile> <validationJson> [monitorDbPath]
 
+process.removeAllListeners('warning');
 import { readFileSync, writeFileSync, existsSync } from 'fs';
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 import type { AgentResultData, AgentRole, ReviewIssue } from '../../src/engine/events.js';
 
 const [, , outputFile, scenario, eforgeVersion, eforgeCommit, exitCodeStr, durationStr, logFile, validationJson, monitorDbPath] =
@@ -70,9 +71,9 @@ interface Metrics {
 function extractMetrics(dbPath: string): Metrics | undefined {
   if (!existsSync(dbPath)) return undefined;
 
-  let db: Database.Database;
+  let db: DatabaseSync;
   try {
-    db = new Database(dbPath, { readonly: true });
+    db = new DatabaseSync(dbPath, { readOnly: true });
   } catch {
     return undefined;
   }
@@ -81,13 +82,13 @@ function extractMetrics(dbPath: string): Metrics | undefined {
     // Verify the events table exists (DB may be empty if WAL wasn't copied)
     const tableCheck = db.prepare(
       `SELECT name FROM sqlite_master WHERE type='table' AND name='events'`
-    ).get() as { name: string } | undefined;
+    ).get() as unknown as { name: string } | undefined;
     if (!tableCheck) return undefined;
     // Extract profile from plan:profile event
     let profile: string | undefined;
     const profileRows = db.prepare(
       `SELECT data FROM events WHERE type = 'plan:profile' LIMIT 1`
-    ).all() as Array<{ data: string }>;
+    ).all() as unknown as Array<{ data: string }>;
     if (profileRows.length > 0) {
       try {
         const parsed = JSON.parse(profileRows[0].data);
@@ -98,7 +99,7 @@ function extractMetrics(dbPath: string): Metrics | undefined {
     // Extract agent results
     const agentResultRows = db.prepare(
       `SELECT agent, data FROM events WHERE type = 'agent:result'`
-    ).all() as Array<{ agent: string; data: string }>;
+    ).all() as unknown as Array<{ agent: string; data: string }>;
 
     let totalInput = 0;
     let totalOutput = 0;
@@ -161,7 +162,7 @@ function extractMetrics(dbPath: string): Metrics | undefined {
     // Extract phase durations from phase:start/phase:end
     const phaseRows = db.prepare(
       `SELECT type, data, timestamp FROM events WHERE type IN ('phase:start', 'phase:end') ORDER BY id`
-    ).all() as Array<{ type: string; data: string; timestamp: string }>;
+    ).all() as unknown as Array<{ type: string; data: string; timestamp: string }>;
 
     const phaseTimestamps: Record<string, PhaseTimestamps> = {};
     const runIdToCommand: Record<string, string> = {};
@@ -198,7 +199,7 @@ function extractMetrics(dbPath: string): Metrics | undefined {
     const bySeverity: Record<string, number> = {};
     const reviewCompleteRows = db.prepare(
       `SELECT data FROM events WHERE type = 'build:review:complete'`
-    ).all() as Array<{ data: string }>;
+    ).all() as unknown as Array<{ data: string }>;
 
     for (const row of reviewCompleteRows) {
       try {
@@ -218,7 +219,7 @@ function extractMetrics(dbPath: string): Metrics | undefined {
     let rejected = 0;
     const evaluateCompleteRows = db.prepare(
       `SELECT data FROM events WHERE type = 'build:evaluate:complete'`
-    ).all() as Array<{ data: string }>;
+    ).all() as unknown as Array<{ data: string }>;
 
     for (const row of evaluateCompleteRows) {
       try {
