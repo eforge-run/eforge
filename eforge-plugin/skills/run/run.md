@@ -59,7 +59,22 @@ Use `run_in_background: true` on the Bash tool call so the user gets notified wh
 - `--auto` bypasses approval gates (the user approved by invoking this skill)
 - `--verbose` streams detailed output for the completion notification
 
-### Step 3: Monitor
+### Step 3: Resolve Monitor URL
+
+Wait ~3 seconds for the monitor server to start and write its lockfile, then read the actual monitor URL:
+
+```bash
+sleep 3
+```
+
+Use the Read tool to read `.eforge/monitor.lock` from the project root. This file is JSON with `pid`, `port`, and `startedAt` fields.
+
+- **If the file exists and is valid JSON**: Extract the `port` field and construct the URL as `http://localhost:{port}`.
+- **If the file is missing or unreadable**: Fall back to `http://localhost:4567`.
+
+Use the resolved URL as `{MONITOR_URL}` in the next step.
+
+### Step 4: Monitor
 
 Tell the user:
 
@@ -67,7 +82,7 @@ Tell the user:
 
 > Build launched. You'll be notified when it completes.
 >
-> **Monitor**: http://localhost:4567
+> **Monitor**: {MONITOR_URL}
 >
 > The run executes the full lifecycle:
 > 1. **Enqueue** - formats and normalizes your source into a structured PRD
@@ -86,7 +101,7 @@ Tell the user:
 
 > Queue processing launched. You'll be notified when it completes.
 >
-> **Monitor**: http://localhost:4567
+> **Monitor**: {MONITOR_URL}
 >
 > Each queued PRD goes through the full lifecycle: enqueue formatting, planning, building, review, merging, and validation.
 >
@@ -96,7 +111,7 @@ Tell the user:
 
 > Queue watch mode started. The queue will be polled for new PRDs after each cycle.
 >
-> **Monitor**: http://localhost:4567
+> **Monitor**: {MONITOR_URL}
 >
 > Press Ctrl+C to stop watching. The process exits cleanly on abort.
 >
