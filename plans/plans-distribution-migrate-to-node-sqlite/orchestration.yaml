@@ -1,0 +1,33 @@
+name: plans-distribution-migrate-to-node-sqlite
+description: Replace better-sqlite3 with node:sqlite to eliminate the only native dependency
+created: 2026-03-19
+compiled: 2026-03-19
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-migrate-sqlite
+    name: Migrate from better-sqlite3 to node:sqlite
+    depends_on: []
+    branch: plans-distribution-migrate-to-node-sqlite/migrate-sqlite
+profile:
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
