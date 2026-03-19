@@ -1,0 +1,33 @@
+name: fix-use-actual-monitor-url-from-lockfile-in-run-skill
+description: Fix run skill to read monitor lockfile for actual URL instead of
+  hardcoding localhost:4567
+created: 2026-03-19
+compiled: 2026-03-19
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-lockfile-url
+    name: Read monitor lockfile for actual URL in run skill
+    depends_on: []
+    branch: fix-use-actual-monitor-url-from-lockfile-in-run-skill/lockfile-url
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - implement
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: lenient
