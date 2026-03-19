@@ -1,0 +1,33 @@
+name: fix-preserve-extends-in-resolvegeneratedprofile
+description: Preserve extends field in resolveGeneratedProfile() so dynamically
+  generated profiles carry their base relationship through to the monitor
+created: 2026-03-19
+compiled: 2026-03-19
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-add-extends-field
+    name: Add extends field to resolveGeneratedProfile return
+    depends_on: []
+    branch: fix-preserve-extends-in-resolvegeneratedprofile/add-extends-field
+profile:
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: lenient
