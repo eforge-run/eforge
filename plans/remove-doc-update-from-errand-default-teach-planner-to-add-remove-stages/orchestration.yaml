@@ -1,0 +1,34 @@
+name: remove-doc-update-from-errand-default-teach-planner-to-add-remove-stages
+description: Remove doc-update from errand default build stages and add planner
+  guidance about stage customization
+created: 2026-03-19
+compiled: 2026-03-19
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-errand-stages-and-planner-guidance
+    name: Remove doc-update from errand and add planner stage guidance
+    depends_on: []
+    branch: remove-doc-update-from-errand-default-teach-planner-to-add-remove-stages/errand-stages-and-planner-guidance
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
+  build:
+    - - implement
+      - doc-update
+    - review
+    - review-fix
+    - evaluate
+  agents: {}
+  review:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
