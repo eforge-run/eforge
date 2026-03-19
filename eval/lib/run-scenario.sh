@@ -83,8 +83,12 @@ run_scenario() {
   fi
 
   # Step 4b: Preserve monitor DB before workspace cleanup
+  # Copy all SQLite files (.db, .db-wal, .db-shm) since the DB uses WAL mode
   if [[ -f "$workspace/.eforge/monitor.db" ]]; then
     cp "$workspace/.eforge/monitor.db" "$scenario_dir/monitor.db"
+    for ext in db-wal db-shm; do
+      [[ -f "$workspace/.eforge/monitor.${ext}" ]] && cp "$workspace/.eforge/monitor.${ext}" "$scenario_dir/monitor.${ext}"
+    done
   fi
 
   local end_time

@@ -74,6 +74,11 @@ function extractMetrics(dbPath: string): Metrics | undefined {
   }
 
   try {
+    // Verify the events table exists (DB may be empty if WAL wasn't copied)
+    const tableCheck = db.prepare(
+      `SELECT name FROM sqlite_master WHERE type='table' AND name='events'`
+    ).get() as { name: string } | undefined;
+    if (!tableCheck) return undefined;
     // Extract profile from plan:profile event
     let profile: string | undefined;
     const profileRows = db.prepare(
