@@ -39,8 +39,8 @@ Or install globally with `npm install -g eforge`.
 Give `eforge` a prompt, a markdown file, or a full PRD - it handles the rest:
 
 ```bash
+eforge run plans/my-feature-prd.md
 eforge run "Add a health check endpoint"
-eforge run docs/my-feature.md
 ```
 
 `eforge` plans the work, builds it in an isolated worktree, runs a blind code review with a fresh-context agent, evaluates the reviewer's suggestions, merges, and validates. Every phase produces a git commit so the full lifecycle is traceable in history.
@@ -90,9 +90,9 @@ flowchart TD
 ## CLI Usage
 
 ```bash
-eforge run docs/my-feature.md       # compile + build + validate
+eforge run plans/my-feature-prd.md  # compile + build + validate
 eforge run --queue                   # process queued PRDs
-eforge enqueue docs/my-feature.md   # add to queue without building
+eforge enqueue plans/my-feature-prd.md   # add to queue without building
 eforge status                        # check running builds
 eforge monitor                       # open web dashboard
 eforge config show                   # print resolved config
