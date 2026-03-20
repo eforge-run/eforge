@@ -74,18 +74,4 @@ When both are present, hook arrays are **concatenated** - global hooks fire firs
 
 ## Event types
 
-See `src/engine/events.ts` for the full `EforgeEvent` type definition. The main event categories:
-
-- `session:start` / `session:end` - Session lifecycle (one per invocation, or one per PRD in queue mode)
-- `phase:start` / `phase:end` - Phase lifecycle (compile, build, adopt)
-- `plan:*` - Planning phase events
-- `queue:*` - Queue processing events (`queue:complete`, `queue:watch:waiting`, `queue:watch:poll`, `queue:watch:cycle`)
-- `build:*` - Build phase events (per-plan)
-- `wave:*` / `merge:*` - Orchestration events
-- `expedition:*` - Expedition architecture, module planning, compilation
-- `agent:start` / `agent:stop` - Agent lifecycle (one pair per agent invocation, carries `agentId` UUID and `agent` role)
-- `agent:*` - Agent-level streaming (tool use, messages, results)
-- `validation:*` - Post-merge validation
-- `squash:*` - Commit squashing on successful runs
-- `cleanup:*` - Plan file cleanup
-- `approval:*` - User interaction gates
+All event types are defined in [`src/engine/events.ts`](../src/engine/events.ts) as the `EforgeEvent` discriminated union. Refer to that file for the complete list - event type strings follow the `category:action` pattern (e.g., `build:start`, `agent:tool_use`, `validation:failed`).
