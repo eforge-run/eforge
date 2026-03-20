@@ -1,14 +1,24 @@
 # eforge
 
-You plan, eforge builds - a CLI that turns intent into reviewed, validated code without supervision.
+An autonomous build engine with blind review. You express intent - eforge plans, implements, reviews with a fresh-context agent that has zero knowledge of the builder's reasoning, and validates. No supervision required.
 
 The name combines **E** from the [Expedition-Excursion-Errand (EEE) methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) with **forge** - shaping code from plans.
 
-<!-- TODO: Hero GIF - Claude Code planning → /eforge:run → monitor dashboard -->
+eforge builds itself.
+
+![eforge invoked from Claude Code](docs/images/claude-code-handoff.png)
+
+![eforge monitor - full pipeline](docs/images/monitor-full-pipeline.png)
+
+## Status
+
+eforge is a personal tool built for my own workflows. Source is public so you can read it, learn from it, and fork it. Issues and PRs are not open - this is not a community project. If it's useful to you as-is, great.
 
 ## Why eforge?
 
-eforge is focused on one thing: converting intent into working code through reliable engineering workflows you don't have to supervise. It doesn't try to solve the planning side - no brainstorming, no specification guidance, no opinionated project structure. That's the highest-leverage work and eforge stays out of your way to do it however you see fit. You express intent - a PRD, a markdown file, a one-line prompt - and eforge handles the entire engineering workflow autonomously: implementation, review, validation, and merge. The developer stays at the planning layer, adding plan after plan while eforge works through the queue - on through the night if needed. Queued work is re-assessed before execution so changes from earlier builds are accounted for, not blindly applied to a codebase that has moved on.
+A single agent writing and reviewing its own work is a developer merging their own PRs. eforge enforces separation: the builder and reviewer are independent agents with no shared context. The reviewer can't be primed by the builder's reasoning, so it catches what a self-reviewing agent won't.
+
+Beyond blind review, eforge handles the full engineering workflow autonomously. You express intent - a PRD, a markdown file, a one-line prompt - and eforge plans, implements, reviews, and validates without supervision. The developer stays at the planning layer, adding plan after plan while eforge works through the queue. Queued work is re-assessed before execution so changes from earlier builds are accounted for, not blindly applied to a codebase that has moved on.
 
 The methodology evolved through real-world use with Claude Code - first as hand-crafted skills, then as battle-tested plugins, now as a standalone engine:
 
@@ -67,13 +77,13 @@ flowchart TD
 - **Validation** - Runs configured commands (type-check, tests, linting). If validation fails, a fixer agent attempts minimal repairs automatically.
 - **Orchestration** - Multi-plan sets are resolved into a dependency graph, executed in parallel waves, and merged in topological order.
 
-<!-- TODO: Monitor dashboard screenshot showing a build in progress -->
+![eforge monitor - timeline view](docs/images/monitor-timeline.png)
 
 ## Getting Started
 
 ### Install
 
-**Prerequisites:** Node.js 22+, pnpm, [Claude Max subscription](https://claude.ai/upgrade) (for the Agent SDK backend)
+**Prerequisites:** Node.js 22+, pnpm, Anthropic API key or [Claude subscription](https://claude.ai/upgrade) (for the Agent SDK backend)
 
 ```bash
 git clone https://github.com/eforge-run/eforge.git
@@ -248,6 +258,8 @@ An end-to-end eval harness lives in `eval/`. It runs eforge against embedded fix
 
 See `eval/scenarios.yaml` for the scenario manifest and `eval/fixtures/` for the test projects.
 
+![eforge eval results](docs/images/eval-results.png)
+
 ## Development
 
 ```bash
@@ -259,7 +271,7 @@ pnpm test         # Run unit tests
 
 ### Dogfooding
 
-eforge builds itself. Since builds modify source code, the running Node.js process would use stale code - so local development uses project-specific Claude Code skills that rebuild between runs.
+Since builds modify source code, the running Node.js process would use stale code - so local development uses project-specific Claude Code skills that rebuild between runs.
 
 **Setup** (one-time):
 
