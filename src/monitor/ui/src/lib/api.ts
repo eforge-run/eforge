@@ -37,3 +37,22 @@ export async function fetchQueue(): Promise<QueueItem[]> {
   if (!res.ok) throw new Error(`Failed to fetch queue: ${res.status}`);
   return res.json();
 }
+
+export async function fetchFileDiff(
+  sessionId: string,
+  planId: string,
+  filePath: string,
+): Promise<{ diff: string | null; commitSha: string; tooLarge?: boolean; binary?: boolean }> {
+  const res = await fetch(`/api/diff/${sessionId}/${planId}?file=${encodeURIComponent(filePath)}`);
+  if (!res.ok) throw new Error(`Failed to fetch diff: ${res.status}`);
+  return res.json();
+}
+
+export async function fetchPlanDiffs(
+  sessionId: string,
+  planId: string,
+): Promise<{ files: Array<{ path: string; diff: string | null; tooLarge?: boolean; binary?: boolean }>; commitSha: string }> {
+  const res = await fetch(`/api/diff/${sessionId}/${planId}`);
+  if (!res.ok) throw new Error(`Failed to fetch plan diffs: ${res.status}`);
+  return res.json();
+}

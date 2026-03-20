@@ -260,7 +260,7 @@ export function App() {
                   />
                 </div>
               ) : activeTab === 'heatmap' && heatmapEnabled ? (
-                <FileHeatmap runState={runState} />
+                <FileHeatmap runState={runState} sessionId={currentSessionId} />
               ) : (
                 <Timeline
                   events={runState.events}

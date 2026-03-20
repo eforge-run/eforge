@@ -43,6 +43,7 @@ export interface RunState {
   earlyOrchestration: OrchestrationConfig | null;
   profileInfo: ProfileInfo | null;
   endTime: number | null;
+  mergeCommits: Record<string, string>;
 }
 
 export const initialRunState: RunState = {
@@ -64,6 +65,7 @@ export const initialRunState: RunState = {
   earlyOrchestration: null,
   profileInfo: null,
   endTime: null,
+  mergeCommits: {},
 };
 
 export type RunAction =
@@ -92,6 +94,7 @@ function processEvent(
     moduleStatuses: Record<string, ModuleStatus>;
     earlyOrchestration: OrchestrationConfig | null;
     profileInfo: ProfileInfo | null;
+    mergeCommits: Record<string, string>;
   },
 ): void {
   if (event.type === 'phase:start' && 'timestamp' in event && state.startTime === null) {
@@ -188,6 +191,10 @@ function processEvent(
 
   if (event.type === 'merge:complete' && planId) {
     state.planStatuses[planId] = 'complete';
+    const commitSha = 'commitSha' in event ? (event as { commitSha?: string }).commitSha : undefined;
+    if (commitSha) {
+      state.mergeCommits[planId] = commitSha;
+    }
   }
 
   // Expedition module tracking — synthesize early orchestration from architecture
@@ -268,7 +275,7 @@ function processEvent(
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null, mergeCommits: {} };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -289,6 +296,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         moduleStatuses: {} as Record<string, ModuleStatus>,
         earlyOrchestration: null as OrchestrationConfig | null,
         profileInfo: null as ProfileInfo | null,
+        mergeCommits: {} as Record<string, string>,
       };
 
       for (const { event } of action.events) {
@@ -315,6 +323,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         moduleStatuses: { ...state.moduleStatuses },
         earlyOrchestration: state.earlyOrchestration,
         profileInfo: state.profileInfo,
+        mergeCommits: { ...state.mergeCommits },
       };
 
       processEvent(event, newState);
