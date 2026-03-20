@@ -1,0 +1,47 @@
+name: plan-plugin-npx-migration-readme-update-version-sync
+description: Complete npm distribution story - plugin npx fallback, version sync
+  infrastructure, README restructure, and cleanup
+created: 2026-03-20
+compiled: 2026-03-20
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-plugin-skills-version-sync
+    name: Plugin Skills npx Fallback and Version Sync Infrastructure
+    depends_on: []
+    branch: plan-plugin-npx-migration-readme-update-version-sync/plugin-skills-version-sync
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-readme-roadmap-cleanup
+    name: README Restructure, Roadmap Update, and Plans Cleanup
+    depends_on:
+      - plan-01-plugin-skills-version-sync
+    branch: plan-plugin-npx-migration-readme-update-version-sync/readme-roadmap-cleanup
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
