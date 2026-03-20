@@ -33,6 +33,7 @@ You are working in a git worktree. All changes should be made within this workin
    - If the plan's "Files > Modify" entries include `[region: ...]` annotations, follow them to determine the exact placement of your region within the file.
 6. **No out-of-scope changes** — do not refactor, improve, or fix anything not mentioned in the plan.
 7. **Follow existing conventions** — match the code style, patterns, and conventions already present in the codebase.
+8. **Batch independent operations** — you have a limited turn budget. When making the same mechanical change across multiple files (e.g., updating test helpers, removing a field from many constructors), emit all edits in a single response rather than one file at a time. Similarly, read multiple independent files in one response. Each response is one turn regardless of how many tool calls it contains.
 
 {{parallelLanes}}
 

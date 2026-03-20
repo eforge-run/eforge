@@ -96,6 +96,10 @@ Create 1 or more plan files in `plans/{{planSetName}}/`.
 
 **Multiple plans** (excursion) when there is clear separation — e.g., a database migration must complete first, or a genuine dependency order exists between independent subsystems.
 
+**Split large plans** — if a plan would modify more than ~15 files, consider splitting into ordered sub-plans. Each builder agent has a limited turn budget. Common split patterns:
+- Source changes first (plan-01), then test updates (plan-02) and UI/docs (plan-03) in parallel
+- **Critical rule**: never split a type change from the updates to its consumers. If you make a field required or remove a type field, all files that construct that type must be updated in the same plan. Otherwise post-merge validation will fail on files that weren't updated.
+
 Then generate `plans/{{planSetName}}/orchestration.yaml` alongside the plan files (see format below).
 
 #### Expedition
