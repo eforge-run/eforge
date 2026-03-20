@@ -41,7 +41,6 @@
 
 - **OpenRouter backend** — `AgentBackend` implementation using the `openai` npm package pointed at OpenRouter's API, unlocking 400+ models (GPT-4, Gemini, Llama, etc.) as the second provider. Requires a self-managed agent loop and tool executors since OpenRouter is a chat completion API, not an agentic framework.
 - **Monorepo** — Migrate to pnpm workspaces so the engine, eval harness, eforge-plugin, monitor UI, and marketing site each get their own package with isolated deps and build configs
-- **npm distribution** — Publish CLI + library to npm, configure exports and files field
 
 ---
 

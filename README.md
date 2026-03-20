@@ -83,18 +83,11 @@ flowchart TD
 
 ### Install
 
-**Prerequisites:** Node.js 22+, pnpm, Anthropic API key or [Claude subscription](https://claude.ai/upgrade) (for the Agent SDK backend)
+**Prerequisites:** Node.js 22+, Anthropic API key or [Claude subscription](https://claude.ai/upgrade) (for the Agent SDK backend)
 
-```bash
-git clone https://github.com/eforge-run/eforge.git
-cd eforge
-pnpm install && pnpm build
-pnpm link --global
-```
+#### Claude Code Plugin (recommended)
 
-### Claude Code Plugin (recommended)
-
-The plugin lets you plan interactively in Claude Code and hand off to eforge for build, review, and validation. It requires the eforge CLI to be installed and on PATH.
+The plugin lets you plan interactively in Claude Code and hand off to eforge for build, review, and validation. The first invocation downloads eforge automatically via npx - no global install needed.
 
 Add the marketplace and install from within Claude Code:
 
@@ -111,6 +104,20 @@ Once installed, the primary entrypoint is `/eforge:run` - it takes a PRD or prom
 | `/eforge:run` | Enqueue + compile + build + validate in one step |
 | `/eforge:status` | Check build progress |
 | `/eforge:config` | Initialize or edit `eforge.yaml` with interactive guidance |
+
+#### Standalone CLI
+
+Run directly with npx (no install required):
+
+```bash
+npx eforge run docs/my-feature.md
+```
+
+Or install globally:
+
+```bash
+npm install -g eforge
+```
 
 ### CLI Usage
 
