@@ -133,6 +133,35 @@ export { validateToken } from './auth/token.js'
 - Region boundaries must not overlap with regions declared by other modules (check dependency module plans for their region declarations)
 - If a file is shared but the architecture does not declare regions for it, flag this as an issue in the plan and propose region boundaries
 
+## Build Configuration
+
+After writing the module plan, emit a `<build-config>` XML block containing JSON that specifies how this module's plan should be built. This determines the build stages and review settings used when the plan executes post-merge.
+
+```xml
+<build-config>
+{
+  "build": [["implement", "doc-update"], "review-cycle"],
+  "review": {
+    "strategy": "auto",
+    "perspectives": ["code"],
+    "maxRounds": 1,
+    "evaluatorStrictness": "standard"
+  }
+}
+</build-config>
+```
+
+**Fields:**
+
+- **`build`** — array of stage specs. Each element is a stage name (string) or an array of stage names (parallel group). `review-cycle` is a composite stage that expands to `[review, review-fix, evaluate]`.
+- **`review`** — object controlling the review cycle:
+  - `strategy` — `auto`, `single`, or `parallel`
+  - `perspectives` — array of review perspectives: `code`, `security`, `api`, `docs`
+  - `maxRounds` — max review-fix-evaluate cycles (integer, typically 1-3)
+  - `evaluatorStrictness` — `strict`, `standard`, or `lenient`
+
+Tailor the config to the module's complexity. A simple utility module may need only `[implement, review-cycle]` with one round, while a security-critical module may warrant `strategy: parallel` with `perspectives: [code, security]` and `maxRounds: 2`.
+
 ## Quality Criteria
 
 - Reference specific sections from the architecture document

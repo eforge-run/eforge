@@ -40,7 +40,7 @@ Walk the user through configuration sections, asking about each one. Only includ
 **Sections to cover:**
 
 1. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `parallelism`, `maxValidationRetries`
-2. **Profiles** - Custom workflow profiles or overrides of built-in profiles (`errand`, `excursion`, `expedition`). A profile can `extends` a built-in and override specific fields like `build` stages, `agents` config, or `review` settings.
+2. **Profiles** - Custom workflow profiles or overrides of built-in profiles (`errand`, `excursion`, `expedition`). A profile defines compile stages only — build stages and review config are per-plan in orchestration.yaml. A profile can `extends` a built-in and override compile stages or agent settings.
 3. **Hooks** - Event-driven commands that run on specific eforge events (e.g. `session:start`, `phase:end`). Each hook has `event` (pattern), `command`, and optional `timeout`.
 4. **Agent settings** - Global `maxTurns`, `permissionMode` (`bypass` or `default`), `settingSources`
 5. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
@@ -129,24 +129,14 @@ hooks:
     command: "echo 'Starting eforge session'"
     timeout: 5000
 
-# Workflow profiles
+# Workflow profiles (compile stages only — build/review config is per-plan)
 profiles:
   my-profile:
     extends: excursion              # Inherit from a built-in
     description: "Custom profile for my project"
-    build:
-      - implement
-      - review
-      - review-fix
-      - evaluate
-    agents:
-      builder:
-        maxTurns: 50
-    review:
-      strategy: auto
-      perspectives: [code]
-      maxRounds: 1
-      evaluatorStrictness: standard
+    compile:
+      - planner
+      - plan-review-cycle
 ```
 
 ## Error Handling

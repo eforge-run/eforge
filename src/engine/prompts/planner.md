@@ -82,8 +82,6 @@ Rules:
 
 {{profileGeneration}}
 
-{{parallelLanes}}
-
 ### Phase 3: Plan Generation
 
 Determine how many plans the work requires based on your codebase exploration:
@@ -311,10 +309,26 @@ plans:
     name: {Plan 1 Name}
     depends_on: []
     branch: {{planSetName}}/{identifier}
+    build:                              # Per-plan build stages
+      - [implement, doc-update]         # Parallel group
+      - review-cycle                    # Composite: expands to review → review-fix → evaluate
+    review:                             # Per-plan review config
+      strategy: auto
+      perspectives: [code]
+      maxRounds: 1
+      evaluatorStrictness: standard
   - id: plan-02-{identifier}
     name: {Plan 2 Name}
     depends_on: [plan-01-{identifier}]
     branch: {{planSetName}}/{identifier}
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives: [code, security]
+      maxRounds: 2
+      evaluatorStrictness: strict
 ```
 
 Important:
@@ -322,6 +336,22 @@ Important:
 - `mode` must match the plan count: `errand` for 1 plan, `excursion` for 2-3 plans
 - Plan entries must match the plan files exactly
 - `depends_on` in orchestration.yaml must use the same IDs as in plan file frontmatter
+
+### Per-Plan Build and Review Configuration
+
+Each plan entry in orchestration.yaml carries its own `build` and `review` fields. These determine how the plan is built after merge — the profile only controls compile stages.
+
+**`build`** — array of stage specs. Each element is either a stage name (string) or an array of stage names (parallel group). Available stages: `implement`, `doc-update`, `review`, `review-fix`, `evaluate`, `validate`, `review-cycle`.
+
+**`review-cycle`** is a composite stage that expands to `[review, review-fix, evaluate]`. Use it as shorthand instead of listing the three stages individually.
+
+**`review`** — object with the following fields:
+- `strategy` — `auto`, `single`, or `parallel`. `auto` picks single or parallel per run.
+- `perspectives` — array of review perspectives: `code`, `security`, `api`, `docs`.
+- `maxRounds` — max review-fix-evaluate cycles (integer, typically 1-3).
+- `evaluatorStrictness` — `strict`, `standard`, or `lenient`. Controls how aggressively the evaluator accepts reviewer fixes.
+
+Tailor build and review config to each plan's complexity. A simple plan may need only `[implement, review-cycle]` with `maxRounds: 1`, while a complex plan may warrant parallel perspectives and multiple rounds.
 
 ### Validation Commands
 

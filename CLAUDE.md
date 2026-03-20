@@ -31,20 +31,24 @@ node --env-file=.env dist/cli.js run some-prd.md --verbose
 
 **Design principle**: Engine emits, consumers render. The engine never writes to stdout — all communication flows through `EforgeEvent`s.
 
-**Agent pipeline**: The pipeline is stage-driven, not a fixed linear sequence. Compile and build stages are declared per-profile - each stage is an async generator registered in a stage registry. The formatter normalizes source input into a structured PRD as a pre-pipeline step. Profile selection (where the planner picks the best workflow profile) is also pre-pipeline. The resolved profile is persisted into orchestration.yaml during compile so the build phase can read it back - compile and build share no runtime state. Planning and building both use review cycles composed from stages.
+**Agent pipeline**: The pipeline is stage-driven, not a fixed linear sequence. Compile stages are declared per-profile while build stages and review config are per-plan - each stage is an async generator registered in a stage registry. The formatter normalizes source input into a structured PRD as a pre-pipeline step. Profile selection (where the planner picks the best workflow profile) is also pre-pipeline. The resolved profile is persisted into orchestration.yaml during compile so the build phase can read it back - compile and build share no runtime state. Planning and building both use review cycles composed from stages.
 
-**Workflow profiles**: Pipeline behavior is config-driven through profiles. A profile declares which compile/build stages run and with what agent parameters. Built-in profiles (`errand`, `excursion`, `expedition`) encode the default behavior. Custom profiles can be defined in `eforge.yaml` or via `--profiles` files. Profile config lives in `DEFAULT_CONFIG.profiles` and participates in the standard merge chain.
+**Workflow profiles**: Pipeline behavior is config-driven through profiles. A profile declares which compile stages run - build stages and review config are per-plan, determined by the planner/module planner and stored in orchestration.yaml plan entries. Built-in profiles (`errand`, `excursion`, `expedition`) encode the default compile behavior. Custom profiles can be defined in `eforge.yaml` or via `--profiles` files. Profile config lives in `DEFAULT_CONFIG.profiles` and participates in the standard merge chain.
 
-**Pipeline stages**: Compile and build pipelines are composed of named stages registered in a stage registry (`src/engine/pipeline.ts`). Each stage is an async generator that accepts a `PipelineContext` and yields `EforgeEvent`s. The engine iterates the stage list from the resolved profile.
+**Pipeline stages**: Compile and build pipelines are composed of named stages registered in a stage registry (`src/engine/pipeline.ts`). Each stage is an async generator that accepts a `PipelineContext` and yields `EforgeEvent`s. The engine iterates the compile stage list from the resolved profile; build stages and review config are per-plan, stored in orchestration.yaml plan entries.
 
 Compile stages: `prd-passthrough`, `planner`, `plan-review-cycle`, `architecture-review-cycle`, `module-planning`, `cohesion-review-cycle`, `compile-expedition`
 
 Build stages: `implement`, `review`, `review-fix`, `evaluate`, `review-cycle`, `validate`, `doc-update`
 
+`review-cycle` is a composite stage that expands to `[review, review-fix, evaluate]`.
+
 **Built-in profiles** (defined in `BUILTIN_PROFILES` in `src/engine/config.ts`):
-- **errand** — Small, self-contained changes. Compile: `[prd-passthrough]`. Build: `[implement, review, review-fix, evaluate]`.
-- **excursion** — Multi-file feature work. Compile: `[planner, plan-review-cycle]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
-- **expedition** — Large cross-cutting work. Compile: `[planner, architecture-review-cycle, module-planning, cohesion-review-cycle, compile-expedition]`. Build: `[[implement, doc-update], review, review-fix, evaluate]`.
+- **errand** — Small, self-contained changes. Compile: `[prd-passthrough]`.
+- **excursion** — Multi-file feature work. Compile: `[planner, plan-review-cycle]`.
+- **expedition** — Large cross-cutting work. Compile: `[planner, architecture-review-cycle, module-planning, cohesion-review-cycle, compile-expedition]`.
+
+Build stages and review config are determined per-plan by the planner (for single-plan profiles) or module planner (for expeditions) and stored in each plan's entry in orchestration.yaml.
 
 **Backend abstraction**: Agent runners never import the AI SDK directly. All LLM interaction goes through the `AgentBackend` interface (`src/engine/backend.ts`). The sole SDK adapter lives in `src/engine/backends/claude-sdk.ts`. New agents must accept an `AgentBackend` via their options — do not import `@anthropic-ai/claude-agent-sdk` outside of `src/engine/backends/`. The backend emits `agent:start`/`agent:stop` lifecycle events (with a UUID `agentId`) around every agent invocation — agent runners must pass these through via `isAlwaysYieldedAgentEvent()` from `events.ts`.
 
@@ -134,7 +138,7 @@ eforge loads config from two levels, merged together:
 - `hooks` array: **concatenate** (global hooks fire first, then project hooks)
 - Arrays inside objects (`postMergeCommands`, `plugins.include/exclude/paths`, `settingSources`): project replaces global
 
-**Profiles** (`profiles` section): Workflow profiles declared as named entries. Each profile has `description`, optional `extends`, `compile`/`build` stage lists, per-agent `agents` config, and `review` strategy. Profiles merge by name across config layers. `extends` chains resolve at config load time (cycles rejected). Built-in profiles (`errand`, `excursion`, `expedition`) can be overridden by defining a profile with the same name.
+**Profiles** (`profiles` section): Workflow profiles declared as named entries. Each profile has `description`, optional `extends`, and `compile` stage list. Build stages and review config are per-plan in orchestration.yaml, not profile-level. Profiles merge by name across config layers. `extends` chains resolve at config load time (cycles rejected). Built-in profiles (`errand`, `excursion`, `expedition`) can be overridden by defining a profile with the same name.
 
 **Hook env vars**: Hook commands receive the full `EforgeEvent` JSON on stdin plus these environment variables:
 

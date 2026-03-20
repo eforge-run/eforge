@@ -3,7 +3,7 @@ import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import type { AgentThread } from '@/lib/reducer';
-import type { PipelineStage, ReviewIssue, ProfileInfo, BuildStageSpec } from '@/lib/types';
+import type { PipelineStage, ReviewIssue, ProfileInfo } from '@/lib/types';
 
 const REVIEW_AGENTS = new Set([
   'reviewer', 'plan-reviewer', 'architecture-reviewer', 'cohesion-reviewer',
@@ -108,19 +108,14 @@ function Chevron() {
   );
 }
 
-function PhaseSeparator() {
-  return <div className="w-px h-4 bg-text-dim/25 mx-1 shrink-0" />;
-}
-
 function getStageStatus(stage: string, activeStages: Set<string>, completedStages: Set<string>): StageStatus {
   if (activeStages.has(stage)) return 'active';
   if (completedStages.has(stage)) return 'completed';
   return 'pending';
 }
 
-function StageOverview({ compile, build, activeStages, completedStages, hoveredStage, onStageHover }: {
+function StageOverview({ compile, activeStages, completedStages, hoveredStage, onStageHover }: {
   compile: string[];
-  build: BuildStageSpec[];
   activeStages: Set<string>;
   completedStages: Set<string>;
   hoveredStage: string | null;
@@ -134,90 +129,6 @@ function StageOverview({ compile, build, activeStages, completedStages, hoveredS
           <StagePill stage={stage} status={getStageStatus(stage, activeStages, completedStages)} hoveredStage={hoveredStage} onStageHover={onStageHover} />
         </div>
       ))}
-      <PhaseSeparator />
-      {build.map((stage, i) => (
-        <div key={`b-${i}`} className="flex items-center gap-1">
-          {i > 0 && <Chevron />}
-          {Array.isArray(stage) ? (
-            <div className="flex flex-col gap-0.5 border-l-2 border-text-dim/20 pl-1.5">
-              {stage.map((s) => (
-                <StagePill key={s} stage={s} status={getStageStatus(s, activeStages, completedStages)} hoveredStage={hoveredStage} onStageHover={onStageHover} />
-              ))}
-            </div>
-          ) : (
-            <StagePill stage={stage} status={getStageStatus(stage, activeStages, completedStages)} hoveredStage={hoveredStage} onStageHover={onStageHover} />
-          )}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-interface ReviewOption { name: string; desc: string; active?: boolean }
-
-function ReviewConfigItem({ label, value, options }: { label: string; value: string; options: ReviewOption[] }) {
-  return (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="cursor-default hover:text-foreground/70 transition-colors">
-          {label}: <span className="text-foreground/50">{value}</span>
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" align="start" className="max-w-xs">
-        <div className="flex flex-col gap-1.5 text-[11px]">
-          {options.map((opt) => (
-            <div key={opt.name} className="flex gap-2 items-baseline">
-              <span className={`font-mono shrink-0 px-1 py-px rounded text-[10px] ${opt.active ? 'bg-primary/20 text-primary' : 'bg-bg-tertiary text-text-dim'}`}>{opt.name}</span>
-              <span className="text-foreground/70">{opt.desc}</span>
-            </div>
-          ))}
-        </div>
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function ReviewConfig({ review }: { review: ProfileInfo['config']['review'] }) {
-  return (
-    <div className="flex items-center gap-1 text-[10px] text-text-dim flex-wrap">
-      <ReviewConfigItem
-        label="review"
-        value={review.strategy}
-        options={[
-          { name: 'auto', desc: 'Picks single or parallel per run', active: review.strategy === 'auto' },
-          { name: 'single', desc: 'One reviewer agent', active: review.strategy === 'single' },
-          { name: 'parallel', desc: 'Multiple perspective-based reviewers', active: review.strategy === 'parallel' },
-        ]}
-      />
-      <span className="opacity-30">·</span>
-      <ReviewConfigItem
-        label="perspectives"
-        value={review.perspectives.join(', ')}
-        options={[
-          { name: 'code', desc: 'Logic, correctness, quality', active: review.perspectives.includes('code') },
-          { name: 'security', desc: 'Vulnerabilities, injection, auth', active: review.perspectives.includes('security') },
-          { name: 'api', desc: 'Contract, breaking changes', active: review.perspectives.includes('api') },
-          { name: 'docs', desc: 'Documentation accuracy', active: review.perspectives.includes('docs') },
-        ]}
-      />
-      <span className="opacity-30">·</span>
-      <ReviewConfigItem
-        label="rounds"
-        value={String(review.maxRounds)}
-        options={[
-          { name: String(review.maxRounds), desc: 'Max review-fix-evaluate cycles', active: true },
-        ]}
-      />
-      <span className="opacity-30">·</span>
-      <ReviewConfigItem
-        label="strictness"
-        value={review.evaluatorStrictness}
-        options={[
-          { name: 'strict', desc: 'Accept almost all reviewer fixes', active: review.evaluatorStrictness === 'strict' },
-          { name: 'standard', desc: 'Balanced judgment', active: review.evaluatorStrictness === 'standard' },
-          { name: 'lenient', desc: 'Only accept clear improvements', active: review.evaluatorStrictness === 'lenient' },
-        ]}
-      />
     </div>
   );
 }
@@ -250,8 +161,7 @@ function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStag
         )}
         <span className="text-[11px] text-text-dim">{profileInfo.config.description}</span>
       </div>
-      <StageOverview compile={profileInfo.config.compile} build={profileInfo.config.build} activeStages={activeStages} completedStages={completedStages} hoveredStage={hoveredStage} onStageHover={onStageHover} />
-      <ReviewConfig review={profileInfo.config.review} />
+      <StageOverview compile={profileInfo.config.compile} activeStages={activeStages} completedStages={completedStages} hoveredStage={hoveredStage} onStageHover={onStageHover} />
     </div>
   );
 }

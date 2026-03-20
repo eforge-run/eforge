@@ -89,12 +89,6 @@ function eventDetail(event: EforgeEvent): string | null {
       {
         const c = event.config;
         parts.push(`Compile: ${c.compile?.join(' → ') ?? '—'}`);
-        parts.push(`Build:   ${c.build?.join(' → ') ?? '—'}`);
-        if (c.review) {
-          const r = c.review;
-          parts.push(`Review:  strategy=${r.strategy}, rounds=${r.maxRounds}, strictness=${r.evaluatorStrictness}`);
-          if (r.perspectives?.length) parts.push(`         perspectives: ${r.perspectives.join(', ')}`);
-        }
         const agents = Object.entries(c.agents ?? {});
         if (agents.length > 0) {
           parts.push('Agents:');
