@@ -1,0 +1,62 @@
+name: tester-agent-separate-test-concerns-from-builder
+description: Extract test writing, running, and fixing from the builder into
+  dedicated test-writer and tester agents with composable pipeline stages
+created: 2026-03-20
+compiled: 2026-03-20
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-types-and-agents
+    name: Tester Types, Schemas, Parsers, and Agent Implementations
+    depends_on: []
+    branch: tester-agent-separate-test-concerns-from-builder/types-and-agents
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-pipeline-and-prompts
+    name: Pipeline Stages, Builder Parameterization, and Planner Prompt Updates
+    depends_on:
+      - plan-01-types-and-agents
+    branch: tester-agent-separate-test-concerns-from-builder/pipeline-and-prompts
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-03-ui-and-tests
+    name: CLI Display, Monitor UI, and Agent Wiring Tests
+    depends_on:
+      - plan-02-pipeline-and-prompts
+    branch: tester-agent-separate-test-concerns-from-builder/ui-and-tests
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
