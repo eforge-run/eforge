@@ -176,6 +176,11 @@ describe('eforgeReducer', () => {
     expect(state.planStatuses['plan-01']).toBe('implement');
 
     state = eforgeReducer(state, { type: 'ADD_EVENT', event: events[2].event, eventId: '3' });
+    // build:implement:complete no longer advances — next stage (test or review) sets status
+    expect(state.planStatuses['plan-01']).toBe('implement');
+
+    // build:review:start advances to review
+    state = eforgeReducer(state, { type: 'ADD_EVENT', event: events[3].event, eventId: '4' });
     expect(state.planStatuses['plan-01']).toBe('review');
 
     state = eforgeReducer(state, { type: 'ADD_EVENT', event: events[4].event, eventId: '5' });

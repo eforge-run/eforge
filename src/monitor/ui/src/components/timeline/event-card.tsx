@@ -54,6 +54,10 @@ function eventSummary(event: EforgeEvent): string {
     case 'build:review:complete': return `[${event.planId}] Review: ${event.issues?.length || 0} issue(s)`;
     case 'build:evaluate:start': return `Evaluating: ${event.planId}`;
     case 'build:evaluate:complete': return `[${event.planId}] Accepted ${event.accepted}, rejected ${event.rejected}`;
+    case 'build:test:write:start': return `Writing tests: ${event.planId}`;
+    case 'build:test:write:complete': return `[${event.planId}] ${event.testsWritten} test(s) written`;
+    case 'build:test:start': return `Running tests: ${event.planId}`;
+    case 'build:test:complete': return `[${event.planId}] Tests: ${event.passed} passed, ${event.failed} failed${event.productionIssues?.length ? `, ${event.productionIssues.length} production issue(s)` : ''}`;
     case 'build:complete': return `Build complete: ${event.planId}`;
     case 'build:failed': return `Build FAILED: ${event.planId} — ${event.error}`;
     case 'schedule:start': return `Scheduling: ${event.planIds?.join(', ')}`;
@@ -138,6 +142,18 @@ function eventDetail(event: EforgeEvent): string | null {
     }
     case 'build:failed':
       return event.error;
+    case 'build:test:complete': {
+      const parts: string[] = [];
+      parts.push(`Passed: ${event.passed}, Failed: ${event.failed}`);
+      if (event.testBugsFixed > 0) parts.push(`Test bugs fixed: ${event.testBugsFixed}`);
+      if (event.productionIssues?.length) {
+        parts.push('Production issues:');
+        for (const issue of event.productionIssues) {
+          parts.push(`  [${issue.severity}] ${issue.category} — ${issue.file}\n    ${issue.description}`);
+        }
+      }
+      return parts.join('\n');
+    }
     case 'phase:end':
       return event.result?.summary ?? null;
     case 'expedition:architecture:complete':

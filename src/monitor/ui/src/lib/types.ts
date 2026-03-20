@@ -15,7 +15,7 @@ export type {
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
-export type PipelineStage = 'plan' | 'implement' | 'doc-update' | 'review' | 'evaluate' | 'complete' | 'failed';
+export type PipelineStage = 'plan' | 'implement' | 'doc-update' | 'test' | 'review' | 'evaluate' | 'complete' | 'failed';
 
 export type PlanType = 'architecture' | 'module' | 'plan';
 

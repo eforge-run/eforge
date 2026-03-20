@@ -140,6 +140,16 @@ function processEvent(
         // Doc-update runs in parallel with implement — don't advance stage
         break;
       case 'build:implement:complete':
+        // Don't advance — next stage (test or review) will set the status
+        break;
+      case 'build:test:write:start':
+      case 'build:test:start':
+        state.planStatuses[planId] = 'test';
+        break;
+      case 'build:test:write:complete':
+      case 'build:test:complete':
+        // Don't advance stage — next stage (review/evaluate) will set it
+        break;
       case 'build:review:start':
         state.planStatuses[planId] = 'review';
         break;
@@ -158,6 +168,18 @@ function processEvent(
 
   if (event.type === 'build:review:complete' && 'planId' in event && 'issues' in event) {
     state.reviewIssues[(event as { planId: string }).planId] = (event as { issues: ReviewIssue[] }).issues;
+  }
+
+  if (event.type === 'build:test:complete' && 'planId' in event && 'productionIssues' in event) {
+    const issues = (event as { productionIssues: { severity: string; category: string; file: string; description: string }[] }).productionIssues;
+    if (issues.length > 0) {
+      state.reviewIssues[(event as { planId: string }).planId] = issues.map((i) => ({
+        severity: i.severity as 'critical' | 'warning' | 'suggestion',
+        category: i.category,
+        file: i.file,
+        description: i.description,
+      }));
+    }
   }
 
   if (event.type === 'build:files_changed' && 'files' in event) {
