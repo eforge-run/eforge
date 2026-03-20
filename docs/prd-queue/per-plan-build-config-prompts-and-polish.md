@@ -1,7 +1,7 @@
 ---
 title: "Per-Plan Build Config: Prompts & Polish"
 created: 2026-03-20
-status: pending
+status: running
 depends_on: ["per-plan-build-config-schema-change"]
 ---
 
