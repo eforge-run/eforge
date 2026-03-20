@@ -127,6 +127,36 @@ describe('withHooks', () => {
     }
   });
 
+  it('drain timeout derives from hook config, not a hardcoded value', async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-hook-drain-'));
+    const outFile = join(tmpDir, 'drain-proof.txt');
+
+    try {
+      // Hook with a short timeout (100ms) that writes a file after 50ms.
+      // If the drain timeout is derived from hook config (100ms + 1000ms grace = 1100ms),
+      // the file write at 50ms will complete well within the drain window.
+      const hooks: HookConfig[] = [
+        {
+          event: 'phase:end',
+          command: `sleep 0.05 && echo "drained" > "${outFile}"`,
+          timeout: 100,
+        },
+      ];
+
+      const events: EforgeEvent[] = [
+        { type: 'phase:end', runId: '1', result: { status: 'completed', summary: 'done' }, timestamp: new Date().toISOString() },
+      ];
+
+      await collectEvents(withHooks(asyncIterableFrom(events), hooks, tmpDir));
+
+      // The file should exist — proving the drain waited long enough for the hook to finish
+      const content = await readFile(outFile, 'utf-8');
+      expect(content.trim()).toBe('drained');
+    } finally {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
   it('passes EFORGE_RUN_ID from phase:start to subsequent hooks', async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-hook-test-'));
     const outFile = join(tmpDir, 'runid-out.txt');

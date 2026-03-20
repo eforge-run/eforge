@@ -179,35 +179,36 @@ export class EforgeEngine {
    */
   async *compile(source: string, options: Partial<CompileOptions> = {}): AsyncGenerator<EforgeEvent> {
     const runId = randomUUID();
-    const planSetName = options.name ?? deriveNameFromSource(source);
-    validatePlanSetName(planSetName);
-    const tracing = createTracingContext(this.config, runId, 'compile', planSetName);
     const cwd = options.cwd ?? this.cwd;
-
-    yield {
-      type: 'phase:start',
-      runId,
-      planSet: planSetName,
-      command: 'compile',
-      timestamp: new Date().toISOString(),
-    };
+    let tracing: ReturnType<typeof createTracingContext> | undefined;
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Compile complete';
 
-    tracing.setInput({ source, planSet: planSetName });
-
-    // Resolve source content early — needed for plan review + evaluate
-    let sourceContent: string;
     try {
-      const sourcePath = resolve(cwd, source);
-      const stats = await stat(sourcePath);
-      sourceContent = stats.isFile() ? await readFile(sourcePath, 'utf-8') : source;
-    } catch {
-      sourceContent = source;
-    }
+      const planSetName = options.name ?? deriveNameFromSource(source);
+      validatePlanSetName(planSetName);
+      tracing = createTracingContext(this.config, runId, 'compile', planSetName);
 
-    try {
+      yield {
+        type: 'phase:start',
+        runId,
+        planSet: planSetName,
+        command: 'compile',
+        timestamp: new Date().toISOString(),
+      };
+
+      tracing.setInput({ source, planSet: planSetName });
+
+      // Resolve source content early — needed for plan review + evaluate
+      let sourceContent: string;
+      try {
+        const sourcePath = resolve(cwd, source);
+        const stats = await stat(sourcePath);
+        sourceContent = stats.isFile() ? await readFile(sourcePath, 'utf-8') : source;
+      } catch {
+        sourceContent = source;
+      }
       // Default profile before planner selection — planner stage updates ctx.profile
       // when it emits plan:profile. Excursion is a safe default (superset of errand stages).
       const selectedProfile = this.config.profiles['excursion'];
@@ -245,14 +246,14 @@ export class EforgeEngine {
       status = 'failed';
       summary = (err as Error).message;
     } finally {
-      tracing.setOutput({ status, summary });
+      tracing?.setOutput({ status, summary });
       yield {
         type: 'phase:end',
         runId,
         result: { status, summary },
         timestamp: new Date().toISOString(),
       };
-      await tracing.flush();
+      await tracing?.flush();
     }
   }
 
@@ -322,25 +323,26 @@ export class EforgeEngine {
    * Creates Orchestrator with PlanRunner closure for three-phase pipeline.
    */
   async *build(planSet: string, options: Partial<BuildOptions> = {}): AsyncGenerator<EforgeEvent> {
-    validatePlanSetName(planSet);
     const runId = randomUUID();
-    const tracing = createTracingContext(this.config, runId, 'build', planSet);
     const cwd = options.cwd ?? this.cwd;
-
-    yield {
-      type: 'phase:start',
-      runId,
-      planSet,
-      command: 'build',
-      timestamp: new Date().toISOString(),
-    };
+    let tracing: ReturnType<typeof createTracingContext> | undefined;
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Build complete';
 
-    tracing.setInput({ planSet });
-
     try {
+      validatePlanSetName(planSet);
+      tracing = createTracingContext(this.config, runId, 'build', planSet);
+
+      yield {
+        type: 'phase:start',
+        runId,
+        planSet,
+        command: 'build',
+        timestamp: new Date().toISOString(),
+      };
+
+      tracing.setInput({ planSet });
       // Validate plan set
       const configPath = resolve(cwd, 'plans', planSet, 'orchestration.yaml');
       const validation = await validatePlanSet(configPath);
@@ -389,7 +391,7 @@ export class EforgeEngine {
           backend,
           config,
           profile: buildProfile,
-          tracing,
+          tracing: tracing!,
           cwd: worktreePath,
           planSetName: planSet,
           sourceContent: '', // Not needed for build stages
@@ -412,7 +414,7 @@ export class EforgeEngine {
 
       // Create validation fixer closure
       const validationFixer: ValidationFixer = async function* (failures, attempt, maxAttempts) {
-        const fixerSpan = tracing.createSpan('validation-fixer', { attempt, maxAttempts });
+        const fixerSpan = tracing!.createSpan('validation-fixer', { attempt, maxAttempts });
         fixerSpan.setInput({ failures: failures.map((f) => f.command) });
         const fixerTracker = createToolTracker(fixerSpan);
         try {
@@ -441,7 +443,7 @@ export class EforgeEngine {
       const mergeEventSink = (event: EforgeEvent) => { mergeEvents.push(event); };
 
       const mergeResolver: MergeResolver = async (repoRoot, conflict) => {
-        const resolverSpan = tracing.createSpan('merge-conflict-resolver', {
+        const resolverSpan = tracing!.createSpan('merge-conflict-resolver', {
           branch: conflict.branch,
           files: conflict.conflictedFiles,
         });
@@ -522,14 +524,14 @@ export class EforgeEngine {
       status = 'failed';
       summary = (err as Error).message;
     } finally {
-      tracing.setOutput({ status, summary });
+      tracing?.setOutput({ status, summary });
       yield {
         type: 'phase:end',
         runId,
         result: { status, summary },
         timestamp: new Date().toISOString(),
       };
-      await tracing.flush();
+      await tracing?.flush();
     }
   }
 
@@ -616,81 +618,87 @@ export class EforgeEngine {
         }
       }
 
-      // Update status to running
-      await updatePrdStatus(prd.filePath, 'running');
-
       // Per-PRD session: each PRD gets its own sessionId for monitor grouping
       const prdSessionId = randomUUID();
-      yield {
-        type: 'session:start',
-        sessionId: prdSessionId,
-        timestamp: new Date().toISOString(),
-      } as EforgeEvent;
+      let prdResult: { status: 'completed' | 'failed'; summary: string } = {
+        status: 'failed',
+        summary: 'Session terminated abnormally',
+      };
 
-      // Record HEAD before compile so we can reset on build failure
-      const preCompileHead = (await exec('git', ['rev-parse', 'HEAD'], { cwd })).stdout.trim();
+      try {
+        // Update status to running
+        await updatePrdStatus(prd.filePath, 'running');
 
-      // Compile (plan) the PRD
-      let compileFailed = false;
-      const planSetName = options.name ?? prd.id;
+        yield {
+          type: 'session:start',
+          sessionId: prdSessionId,
+          timestamp: new Date().toISOString(),
+        } as EforgeEvent;
 
-      for await (const event of this.compile(prd.filePath, {
-        name: planSetName,
-        auto: options.auto,
-        verbose,
-        generateProfile: options.generateProfile ?? true,
-        cwd,
-        abortController,
-      })) {
-        yield { ...event, sessionId: prdSessionId } as EforgeEvent;
-        if (event.type === 'phase:end' && event.result.status === 'failed') {
-          compileFailed = true;
+        // Record HEAD before compile so we can reset on build failure
+        const preCompileHead = (await exec('git', ['rev-parse', 'HEAD'], { cwd })).stdout.trim();
+
+        // Compile (plan) the PRD
+        let compileFailed = false;
+        const planSetName = options.name ?? prd.id;
+
+        for await (const event of this.compile(prd.filePath, {
+          name: planSetName,
+          auto: options.auto,
+          verbose,
+          generateProfile: options.generateProfile ?? true,
+          cwd,
+          abortController,
+        })) {
+          yield { ...event, sessionId: prdSessionId } as EforgeEvent;
+          if (event.type === 'phase:end' && event.result.status === 'failed') {
+            compileFailed = true;
+          }
         }
-      }
 
-      if (compileFailed) {
-        await updatePrdStatus(prd.filePath, 'failed');
+        if (compileFailed) {
+          prdResult = { status: 'failed', summary: 'Compile failed' };
+          continue;
+        }
+
+        // Build the plan — PRD cleanup flows through build()
+        let buildFailed = false;
+        for await (const event of this.build(planSetName, {
+          auto: options.auto,
+          verbose,
+          cwd,
+          abortController,
+          prdFilePath: prd.filePath,
+        })) {
+          yield { ...event, sessionId: prdSessionId } as EforgeEvent;
+          if (event.type === 'phase:end' && event.result.status === 'failed') {
+            buildFailed = true;
+          }
+        }
+
+        if (buildFailed) {
+          // Reset HEAD to before compile so plan file commits are unwound
+          try { await exec('git', ['reset', '--hard', preCompileHead], { cwd }); } catch { /* best effort */ }
+          prdResult = { status: 'failed', summary: 'Build failed' };
+        } else {
+          prdResult = { status: 'completed', summary: 'Build complete' };
+        }
+      } catch (err) {
+        prdResult = { status: 'failed', summary: (err as Error).message };
+      } finally {
+        try {
+          await updatePrdStatus(prd.filePath, prdResult.status);
+        } catch { /* prevent double-throw */ }
+
         yield {
           type: 'session:end',
           sessionId: prdSessionId,
-          result: { status: 'failed' as const, summary: 'Compile failed' },
+          result: prdResult,
           timestamp: new Date().toISOString(),
         } as EforgeEvent;
-        yield { type: 'queue:prd:complete', prdId: prd.id, status: 'failed' };
-        processed++;
-        continue;
       }
 
-      // Build the plan — PRD cleanup flows through build()
-      let buildFailed = false;
-      for await (const event of this.build(planSetName, {
-        auto: options.auto,
-        verbose,
-        cwd,
-        abortController,
-        prdFilePath: prd.filePath,
-      })) {
-        yield { ...event, sessionId: prdSessionId } as EforgeEvent;
-        if (event.type === 'phase:end' && event.result.status === 'failed') {
-          buildFailed = true;
-        }
-      }
-
-      const finalStatus = buildFailed ? 'failed' : 'completed';
-
-      if (buildFailed) {
-        await updatePrdStatus(prd.filePath, finalStatus);
-        // Reset HEAD to before compile so plan file commits are unwound
-        try { await exec('git', ['reset', '--hard', preCompileHead], { cwd }); } catch { /* best effort */ }
-      }
-
-      yield {
-        type: 'session:end',
-        sessionId: prdSessionId,
-        result: { status: finalStatus, summary: finalStatus === 'completed' ? 'Build complete' : 'Build failed' },
-        timestamp: new Date().toISOString(),
-      } as EforgeEvent;
-      yield { type: 'queue:prd:complete', prdId: prd.id, status: finalStatus };
+      yield { type: 'queue:prd:complete', prdId: prd.id, status: prdResult.status };
       processed++;
     }
 

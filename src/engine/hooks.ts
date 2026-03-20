@@ -107,7 +107,8 @@ function executeHook(
 /**
  * Async generator middleware that fires hooks for matching events.
  * Events are yielded unchanged — hooks run non-blocking in the background.
- * On teardown, in-flight hooks are drained with a 3-second timeout.
+ * On teardown, in-flight hooks are drained with a timeout derived from the
+ * maximum configured hook timeout plus a 1-second grace period.
  */
 export async function* withHooks(
   events: AsyncGenerator<EforgeEvent>,
@@ -156,12 +157,13 @@ export async function* withHooks(
       yield event;
     }
   } finally {
-    // Drain in-flight hooks with a 3-second timeout
+    // Drain in-flight hooks with a timeout derived from the max hook timeout + 1s grace
     if (inflight.size > 0) {
+      const drainTimeout = Math.max(...hooks.map((h) => h.timeout), 0) + 1000;
       await Promise.race([
         Promise.allSettled([...inflight]),
         new Promise<void>((r) => {
-          const t = setTimeout(r, 3000);
+          const t = setTimeout(r, drainTimeout);
           t.unref();
         }),
       ]);
