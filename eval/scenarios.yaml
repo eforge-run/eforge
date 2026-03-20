@@ -3,6 +3,8 @@
 # Fixtures live in eval/fixtures/<fixture>/ as plain project files (no .git).
 
 scenarios:
+  # --- todo-api ---
+
   - id: todo-api-errand-health-check
     fixture: todo-api
     prd: docs/add-health-check.md
@@ -12,6 +14,10 @@ scenarios:
       - pnpm test
       - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add GET /health endpoint to Express API"
+    expect:
+      mode: errand
+      buildStagesExclude:
+        - test-cycle
 
   - id: todo-api-excursion-jwt-auth
     fixture: todo-api
@@ -22,8 +28,25 @@ scenarios:
       - pnpm test
       - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add JWT auth middleware + protected routes"
+    expect:
+      mode: excursion
 
-  - id: workspace-api-excursion-engagement
+  - id: todo-api-errand-skip
+    fixture: todo-api
+    prd: docs/skip-already-done.md
+    validate:
+      - pnpm install
+      - pnpm type-check
+      - pnpm test
+      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
+    description: "PRD describes what db.ts already implements - should skip"
+    expect:
+      mode: errand
+      skip: true
+
+  # --- workspace-api ---
+
+  - id: workspace-api-expedition-engagement
     fixture: workspace-api
     prd: docs/add-engagement-features.md
     validate:
@@ -32,3 +55,69 @@ scenarios:
       - pnpm test
       - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
     description: "Add reactions, threads, and pins to workspace API (expedition, parallel modules)"
+    expect:
+      mode: expedition
+
+  - id: workspace-api-expedition-extensions
+    fixture: workspace-api
+    prd: docs/add-extension-modules.md
+    validate:
+      - pnpm install
+      - pnpm type-check
+      - pnpm test
+      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
+    description: "Add bookmarks, categories, and activity modules - 3 independent verticals"
+    expect:
+      mode: expedition
+
+  # --- notes-api ---
+
+  - id: notes-api-errand-update-docs
+    fixture: notes-api
+    prd: docs/prd/update-docs.md
+    validate:
+      - pnpm install
+      - pnpm type-check
+      - pnpm test
+      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
+    description: "Fix stale README and API reference - docs only, no code changes"
+    expect:
+      mode: errand
+
+  - id: notes-api-excursion-refactor-store
+    fixture: notes-api
+    prd: docs/prd/refactor-store.md
+    validate:
+      - pnpm install
+      - pnpm type-check
+      - pnpm test
+      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
+    description: "Extract generic EntityStore from duplicated CRUD patterns in store.ts"
+    expect:
+      mode: excursion
+
+  - id: notes-api-excursion-dead-code
+    fixture: notes-api
+    prd: docs/prd/dead-code-cleanup.md
+    validate:
+      - pnpm install
+      - pnpm type-check
+      - pnpm test
+      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
+    description: "Remove src/legacy/, formatCsv(), and validateCsvRow() dead code"
+    expect:
+      mode: excursion
+
+  - id: notes-api-excursion-search
+    fixture: notes-api
+    prd: docs/prd/add-search.md
+    validate:
+      - pnpm install
+      - pnpm type-check
+      - pnpm test
+      - test -f .eforge/hook-events.log && grep -q EFORGE_CWD .eforge/hook-events.log
+    description: "Add GET /notes/search?q= with test coverage"
+    expect:
+      mode: excursion
+      buildStagesContain:
+        - test-cycle
