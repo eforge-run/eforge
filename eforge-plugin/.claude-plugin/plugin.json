@@ -1,7 +1,7 @@
 {
   "name": "eforge",
   "description": "Conversational planning and CLI delegation for eforge — enqueue, run, and monitor builds from within Claude Code",
-  "version": "1.7.2",
+  "version": "0.1.0",
   "commands": [
     "./skills/enqueue/enqueue.md",
     "./skills/run/run.md",

@@ -8,8 +8,6 @@ disable-model-invocation: true
 
 Launch `eforge run` to plan and build from a PRD file or description. This is a thin launcher - all orchestration, agent execution, and state management are handled by the eforge CLI.
 
-**Prerequisite**: `eforge` CLI must be installed and on PATH.
-
 ## Arguments
 
 - `source` - PRD file path or inline description of what to build (required unless `--queue`)
@@ -38,20 +36,30 @@ If no arguments provided:
 
 ### Step 2: Launch
 
-Run eforge as a background task:
+Resolve the eforge CLI command, preferring a local install over npx:
+
+```bash
+if command -v eforge >/dev/null 2>&1; then
+  EFORGE_CMD="eforge"
+else
+  EFORGE_CMD="npx --yes eforge"
+fi
+```
+
+Run eforge as a background task using the resolved command:
 
 ```bash
 # Normal mode (enqueue + plan + build + validate)
-eforge run $SOURCE --auto --verbose
+$EFORGE_CMD run $SOURCE --auto --verbose
 
 # Queue mode (process all PRDs from the queue)
-eforge run --queue --auto --verbose
+$EFORGE_CMD run --queue --auto --verbose
 
 # Watch mode (continuously poll the queue for new PRDs)
-eforge run --queue --watch --auto --verbose
+$EFORGE_CMD run --queue --watch --auto --verbose
 
 # Watch mode with custom poll interval
-eforge run --queue --watch --poll-interval 10000 --auto --verbose
+$EFORGE_CMD run --queue --watch --poll-interval 10000 --auto --verbose
 ```
 
 Use `run_in_background: true` on the Bash tool call so the user gets notified when the build completes without blocking the conversation.
@@ -112,7 +120,7 @@ Tell the user:
 
 | Error | Action |
 |-------|--------|
-| `eforge` not found | Tell user to install eforge CLI and ensure it's on PATH |
 | Source file not found | Check path, suggest `/eforge:enqueue` to create one |
 | No arguments provided | Check conversation for plan file; if none found, suggest `/eforge:enqueue` |
 | Build fails on launch | Show error, check prerequisites |
+| Version mismatch (e.g. "unknown option", "unknown command", or other CLI errors suggesting the installed eforge version doesn't match the plugin) | Tell the user the CLI and plugin versions may be out of sync. Suggest `npm update -g eforge` or clearing the npx cache (`npx --yes eforge@latest --version` to force refresh). Suggest `/plugin update eforge@eforge` to update the plugin. If both are already at the latest version, suggest reporting as a bug. |

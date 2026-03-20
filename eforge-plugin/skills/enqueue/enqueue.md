@@ -8,8 +8,6 @@ disable-model-invocation: true
 
 Normalize a source document (PRD file, inline prompt, or rough notes) and add it to the eforge queue. This skill runs the eforge CLI's `enqueue` command, which uses a formatter agent to produce a well-structured PRD with frontmatter.
 
-**Prerequisite**: `eforge` CLI must be installed and on PATH.
-
 ## Arguments
 
 - `source` — file path to a PRD, plan, or markdown document; or an inline description of what to build
@@ -28,10 +26,20 @@ Check that `$ARGUMENTS` is provided:
 
 ### Step 2: Enqueue
 
+Resolve the eforge CLI command, preferring a local install over npx:
+
+```bash
+if command -v eforge >/dev/null 2>&1; then
+  EFORGE_CMD="eforge"
+else
+  EFORGE_CMD="npx --yes eforge"
+fi
+```
+
 Run the eforge enqueue command:
 
 ```bash
-eforge enqueue $SOURCE
+$EFORGE_CMD enqueue $SOURCE
 ```
 
 This will:
@@ -54,7 +62,7 @@ After successful enqueue, tell the user:
 
 | Error | Action |
 |-------|--------|
-| `eforge` not found | Tell user to install eforge CLI and ensure it's on PATH |
 | Source file not found | Check path, suggest alternatives |
 | No arguments provided | Check conversation for relevant files; if none, ask the user |
 | Enqueue fails | Show error output, suggest checking the source format |
+| Version mismatch (e.g. "unknown option", "unknown command", or other CLI errors suggesting the installed eforge version doesn't match the plugin) | Tell the user the CLI and plugin versions may be out of sync. Suggest `npm update -g eforge` or clearing the npx cache (`npx --yes eforge@latest --version` to force refresh). Suggest `/plugin update eforge@eforge` to update the plugin. If both are already at the latest version, suggest reporting as a bug. |

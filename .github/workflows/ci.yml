@@ -22,6 +22,15 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Check version sync
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+          PLUGIN_VERSION=$(node -p "require('./eforge-plugin/.claude-plugin/plugin.json').version")
+          if [ "$PKG_VERSION" != "$PLUGIN_VERSION" ]; then
+            echo "::error::Version mismatch: package.json=$PKG_VERSION plugin.json=$PLUGIN_VERSION. Run 'node scripts/sync-version.mjs' to fix."
+            exit 1
+          fi
+
       - run: pnpm build
 
       - run: pnpm type-check

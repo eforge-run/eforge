@@ -59,7 +59,17 @@ Save to `eforge.yaml` in the project root.
 
 ### Step 6: Validate
 
-Run `eforge config validate` via Bash to verify the config is valid. If validation fails, show the errors and offer to fix them.
+Resolve the eforge CLI command, preferring a local install over npx:
+
+```bash
+if command -v eforge >/dev/null 2>&1; then
+  EFORGE_CMD="eforge"
+else
+  EFORGE_CMD="npx --yes eforge"
+fi
+```
+
+Run `$EFORGE_CMD config validate` via Bash to verify the config is valid. If validation fails, show the errors and offer to fix them.
 
 ## Edit Mode
 
@@ -81,7 +91,17 @@ Save the updated `eforge.yaml`.
 
 ### Step 5: Validate
 
-Run `eforge config validate` via Bash to verify the config is valid. If validation fails, show the errors and offer to fix them.
+Resolve the eforge CLI command, preferring a local install over npx:
+
+```bash
+if command -v eforge >/dev/null 2>&1; then
+  EFORGE_CMD="eforge"
+else
+  EFORGE_CMD="npx --yes eforge"
+fi
+```
+
+Run `$EFORGE_CMD config validate` via Bash to verify the config is valid. If validation fails, show the errors and offer to fix them.
 
 ## Configuration Reference
 
@@ -146,3 +166,4 @@ profiles:
 | `eforge config validate` fails after write | Show errors, offer to fix |
 | User provides invalid profile stage name | Warn and suggest valid stage names |
 | YAML syntax error in existing file | Report the error, offer to recreate |
+| Version mismatch (e.g. "unknown option", "unknown command", or other CLI errors suggesting the installed eforge version doesn't match the plugin) | Tell the user the CLI and plugin versions may be out of sync. Suggest `npm update -g eforge` or clearing the npx cache (`npx --yes eforge@latest --version` to force refresh). Suggest `/plugin update eforge@eforge` to update the plugin. If both are already at the latest version, suggest reporting as a bug. |
