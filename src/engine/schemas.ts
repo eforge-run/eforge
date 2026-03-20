@@ -56,6 +56,27 @@ const testCategorySchema = z.enum([
   'fixtures', 'assertions', 'flaky-patterns', 'test-design',
 ]).describe('Review category for the test perspective');
 
+// ---------------------------------------------------------------------------
+// TestIssue schemas
+// ---------------------------------------------------------------------------
+
+const testIssueCategorySchema = z.enum([
+  'production-bug', 'missing-behavior', 'regression',
+]).describe('Category of test-discovered issue');
+
+const testIssueSeveritySchema = z.enum(['critical', 'warning'])
+  .describe('Test issue severity: critical = failing test, warning = missing coverage');
+
+export const testIssueSchema = z.object({
+  severity: testIssueSeveritySchema,
+  category: testIssueCategorySchema,
+  file: z.string().describe('Production file with the bug'),
+  testFile: z.string().describe('Test file that exposed the issue'),
+  description: z.string().min(1).describe('Description of the issue'),
+  testOutput: z.string().optional().describe('Relevant test failure output'),
+  fix: z.string().optional().describe('Description of unstaged fix applied'),
+});
+
 /** Plan reviewer and cohesion reviewer categories. */
 const planReviewCategorySchema = z.enum([
   'cohesion', 'completeness', 'correctness',
@@ -239,6 +260,11 @@ export function getDocsReviewIssueSchemaYaml(): string {
 /** Schema YAML for the test quality perspective. */
 export function getTestsReviewIssueSchemaYaml(): string {
   return getSchemaYaml('review-issue-test', testReviewIssueSchema);
+}
+
+/** Schema YAML for test issues (used by tester agent). */
+export function getTestIssueSchemaYaml(): string {
+  return getSchemaYaml('test-issue', testIssueSchema);
 }
 
 /** Schema YAML for plan reviewers and cohesion reviewers. */

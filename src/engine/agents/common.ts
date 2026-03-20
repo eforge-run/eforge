@@ -4,7 +4,7 @@
  * regardless of which LLM backend produced them.
  */
 import { z } from 'zod/v4';
-import type { ClarificationQuestion, ExpeditionModule } from '../events.js';
+import type { ClarificationQuestion, ExpeditionModule, TestIssue, ReviewIssue } from '../events.js';
 import type { ResolvedProfileConfig, ReviewProfileConfig, BuildStageSpec } from '../config.js';
 import { buildStageSpecSchema, reviewProfileConfigSchema } from '../config.js';
 import type { stalenessVerdictSchema, evaluationEvidenceSchema, evaluationVerdictSchema } from '../schemas.js';
@@ -394,4 +394,92 @@ export function parseBuildConfigBlock(text: string): { build: BuildStageSpec[]; 
   if (!result.success) return null;
 
   return result.data;
+}
+
+// ---------------------------------------------------------------------------
+// Test Issue Parsing
+// ---------------------------------------------------------------------------
+
+const VALID_TEST_SEVERITIES = new Set(['critical', 'warning']);
+const VALID_TEST_CATEGORIES = new Set(['production-bug', 'missing-behavior', 'regression']);
+
+/**
+ * Parse `<test-issues>` XML blocks from agent output into structured TestIssue[].
+ * Returns an empty array if no block found or XML is malformed.
+ *
+ * Expected format:
+ * ```xml
+ * <test-issues>
+ *   <issue severity="critical" category="production-bug" file="src/foo.ts" testFile="test/foo.test.ts">
+ *     Description of the issue
+ *     <test-output>failure output</test-output>
+ *     <fix>fix description</fix>
+ *   </issue>
+ * </test-issues>
+ * ```
+ */
+export function parseTestIssues(text: string): TestIssue[] {
+  const issues: TestIssue[] = [];
+
+  const blockRegex = /<test-issues>([\s\S]*?)<\/test-issues>/g;
+  let blockMatch: RegExpExecArray | null;
+
+  while ((blockMatch = blockRegex.exec(text)) !== null) {
+    const blockContent = blockMatch[1];
+    const issueRegex = /<issue\s+([^>]*)>([\s\S]*?)<\/issue>/g;
+    let issueMatch: RegExpExecArray | null;
+
+    while ((issueMatch = issueRegex.exec(blockContent)) !== null) {
+      const attrs = issueMatch[1];
+      const innerContent = issueMatch[2];
+
+      const severityMatch = attrs.match(/severity="([^"]+)"/);
+      const categoryMatch = attrs.match(/category="([^"]+)"/);
+      const fileMatch = attrs.match(/file="([^"]+)"/);
+      const testFileMatch = attrs.match(/testFile="([^"]+)"/);
+
+      if (!severityMatch || !categoryMatch || !fileMatch || !testFileMatch) continue;
+
+      const severity = severityMatch[1];
+      const category = categoryMatch[1];
+      if (!VALID_TEST_SEVERITIES.has(severity) || !VALID_TEST_CATEGORIES.has(category)) continue;
+
+      const testOutput = extractChildElement(innerContent, 'test-output');
+      const fix = extractChildElement(innerContent, 'fix');
+
+      // Description is the inner content with child elements stripped
+      const description = innerContent
+        .replace(/<test-output>[\s\S]*?<\/test-output>/g, '')
+        .replace(/<fix>[\s\S]*?<\/fix>/g, '')
+        .trim();
+
+      if (!description) continue;
+
+      issues.push({
+        severity: severity as 'critical' | 'warning',
+        category: category as 'production-bug' | 'missing-behavior' | 'regression',
+        file: fileMatch[1],
+        testFile: testFileMatch[1],
+        description,
+        ...(testOutput !== undefined && { testOutput }),
+        ...(fix !== undefined && { fix }),
+      });
+    }
+  }
+
+  return issues;
+}
+
+/**
+ * Convert a TestIssue to a ReviewIssue for the evaluate stage.
+ * Maps test-specific fields to the review issue structure.
+ */
+export function testIssueToReviewIssue(issue: TestIssue): ReviewIssue {
+  return {
+    severity: issue.severity,
+    category: issue.category,
+    file: issue.file,
+    description: issue.description,
+    fix: issue.fix,
+  };
 }

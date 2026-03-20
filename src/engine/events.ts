@@ -7,7 +7,7 @@ import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSc
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'review-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'review-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater' | 'test-writer' | 'tester';
 
 export type ExpeditionModule = z.output<typeof expeditionModuleSchema>;
 
@@ -16,6 +16,16 @@ export type EforgeResult = { status: 'completed' | 'failed'; summary: string };
 export type ClarificationQuestion = z.output<typeof clarificationQuestionSchema>;
 
 export type ReviewIssue = z.output<typeof reviewIssueSchema>;
+
+export interface TestIssue {
+  severity: 'critical' | 'warning';
+  category: 'production-bug' | 'missing-behavior' | 'regression';
+  file: string;
+  testFile: string;
+  description: string;
+  testOutput?: string;
+  fix?: string;
+}
 
 export const SEVERITY_ORDER: Record<ReviewIssue['severity'], number> = {
   critical: 0,
@@ -162,6 +172,10 @@ export type EforgeEvent = { sessionId?: string } & (
   | { type: 'build:evaluate:complete'; planId: string; accepted: number; rejected: number }
   | { type: 'build:doc-update:start'; planId: string }
   | { type: 'build:doc-update:complete'; planId: string; docsUpdated: number }
+  | { type: 'build:test:write:start'; planId: string }
+  | { type: 'build:test:write:complete'; planId: string; testsWritten: number }
+  | { type: 'build:test:start'; planId: string }
+  | { type: 'build:test:complete'; planId: string; passed: number; failed: number; testBugsFixed: number; productionIssues: TestIssue[] }
   | { type: 'build:complete'; planId: string }
   | { type: 'build:failed'; planId: string; error: string }
 

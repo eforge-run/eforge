@@ -335,6 +335,38 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
+    case 'build:test:write:start': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} — writing tests...`;
+      break;
+    }
+
+    case 'build:test:write:complete': {
+      if (event.testsWritten > 0) {
+        const s = spinners.get(`build:${event.planId}`);
+        if (s) s.text = `${chalk.cyan(event.planId)} — ${event.testsWritten} test file(s) written`;
+      }
+      break;
+    }
+
+    case 'build:test:start': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} — running tests...`;
+      break;
+    }
+
+    case 'build:test:complete': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) {
+        const parts = [`${event.passed} passed`];
+        if (event.failed > 0) parts.push(`${event.failed} failed`);
+        if (event.testBugsFixed > 0) parts.push(`${event.testBugsFixed} test bugs fixed`);
+        if (event.productionIssues.length > 0) parts.push(`${event.productionIssues.length} production issue(s)`);
+        s.text = `${chalk.cyan(event.planId)} — tests: ${parts.join(', ')}`;
+      }
+      break;
+    }
+
     case 'build:files_changed':
       console.log(chalk.dim(`  ${chalk.cyan(event.planId)} — ${event.files.length} file(s) changed`));
       break;

@@ -226,6 +226,8 @@ const AGENT_MAX_TURNS_DEFAULTS: Partial<Record<AgentRole, number>> = {
   builder: 75,
   'module-planner': 20,
   'doc-updater': 20,
+  'test-writer': 30,
+  'tester': 40,
 };
 
 /**

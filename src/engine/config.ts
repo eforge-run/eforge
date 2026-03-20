@@ -17,6 +17,7 @@ export const AGENT_ROLES = [
   'cohesion-reviewer', 'cohesion-evaluator',
   'validation-fixer', 'review-fixer', 'merge-conflict-resolver',
   'staleness-assessor', 'formatter', 'doc-updater',
+  'test-writer', 'tester',
 ] as const;
 
 const agentRoleSchema = z.enum(AGENT_ROLES);
