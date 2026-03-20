@@ -4,8 +4,9 @@ import { globSync } from "node:fs";
 
 // esbuild resolves `node:` protocol imports internally and strips the `node:`
 // prefix for newer builtins (like `node:sqlite`) that aren't in its hardcoded
-// list. We restore the prefix in onSuccess, which runs after ALL builds finish.
-async function restoreNodePrefixes() {
+// list. We restore the prefix in a post-tsup build step since tsup runs array
+// configs in parallel — onSuccess on one config may fire before others finish.
+export async function restoreNodePrefixes() {
   const builtins = ["sqlite"];
   for (const file of globSync("dist/**/*.js")) {
     let content = await readFile(file, "utf8");
@@ -34,8 +35,25 @@ export default defineConfig([
     },
     async onSuccess() {
       await cp("src/engine/prompts", "dist/prompts", { recursive: true });
-      await restoreNodePrefixes();
     },
+  },
+  {
+    entry: ["src/engine/index.ts"],
+    format: ["esm"],
+    target: "node22",
+    clean: false,
+    dts: false,
+    splitting: true,
+    outDir: "dist",
+    external: [
+      "@anthropic-ai/claude-agent-sdk",
+      "chalk",
+      "commander",
+      "langfuse",
+      "ora",
+      "yaml",
+      "zod",
+    ],
   },
   {
     entry: ["src/monitor/server-main.ts"],

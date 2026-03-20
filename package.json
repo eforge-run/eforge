@@ -4,11 +4,35 @@
   "description": "Autonomous plan-build-review CLI for code generation",
   "license": "Apache-2.0",
   "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/types/engine/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/types/engine/index.d.ts",
   "bin": {
     "eforge": "./dist/cli.js"
   },
+  "files": [
+    "dist/",
+    "LICENSE",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eforge-run/eforge.git"
+  },
+  "homepage": "https://eforge.run",
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
-    "build": "tsup && pnpm --filter monitor-ui build",
+    "build": "tsup && node --import tsx ./scripts/post-build.ts && pnpm --filter monitor-ui build && tsc -p tsconfig.build.json",
+    "prepublishOnly": "pnpm build && pnpm test",
     "build:ui": "pnpm --filter monitor-ui build",
     "dev": "tsx src/cli.ts",
     "dev:trace": "node --env-file=.env node_modules/.bin/tsx src/cli.ts",
