@@ -231,7 +231,14 @@ export async function startServer(
     }
   }
 
-  type PlanResponse = { id: string; name: string; body: string; dependsOn: string[]; type: 'architecture' | 'module' | 'plan' };
+  type BuildStageSpec = string | string[];
+  interface ReviewProfileConfig {
+    strategy: string;
+    perspectives: string[];
+    maxRounds: number;
+    evaluatorStrictness: string;
+  }
+  type PlanResponse = { id: string; name: string; body: string; dependsOn: string[]; type: 'architecture' | 'module' | 'plan'; build?: BuildStageSpec[]; review?: ReviewProfileConfig };
 
   async function readExpeditionFiles(
     planDir: string,
@@ -279,6 +286,38 @@ export async function startServer(
     }
 
     return files;
+  }
+
+  async function readBuildConfigFromOrchestration(
+    sessionId: string,
+  ): Promise<Map<string, { build?: BuildStageSpec[]; review?: ReviewProfileConfig }> | null> {
+    const sessionRuns = db.getSessionRuns(sessionId);
+    const run = [...sessionRuns].reverse().find((r) => r.cwd && r.planSet);
+    if (!run) return null;
+
+    try {
+      const orchPath = resolve(run.cwd, 'plans', run.planSet, 'orchestration.yaml');
+      const expectedBase = resolve(run.cwd, 'plans');
+      if (!orchPath.startsWith(expectedBase + '/')) return null;
+
+      const content = await readFile(orchPath, 'utf-8');
+      const orch = parseYaml(content);
+      if (!orch?.plans || !Array.isArray(orch.plans)) return null;
+
+      const map = new Map<string, { build?: BuildStageSpec[]; review?: ReviewProfileConfig }>();
+      for (const plan of orch.plans) {
+        if (!plan.id) continue;
+        const entry: { build?: BuildStageSpec[]; review?: ReviewProfileConfig } = {};
+        if (Array.isArray(plan.build)) entry.build = plan.build;
+        if (plan.review && typeof plan.review === 'object' && !Array.isArray(plan.review)) entry.review = plan.review;
+        if (entry.build || entry.review) {
+          map.set(plan.id, entry);
+        }
+      }
+      return map.size > 0 ? map : null;
+    } catch {
+      return null;
+    }
   }
 
   async function servePlans(_req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
@@ -335,6 +374,19 @@ export async function startServer(
     }
 
     const allPlans = [...expeditionFiles, ...compiledPlans];
+
+    // Enrich plans with per-plan build/review config from orchestration.yaml
+    const buildConfigMap = await readBuildConfigFromOrchestration(sessionId);
+    if (buildConfigMap) {
+      for (const plan of allPlans) {
+        const config = buildConfigMap.get(plan.id);
+        if (config) {
+          plan.build = config.build;
+          plan.review = config.review;
+        }
+      }
+    }
+
     sendJson(res, allPlans);
   }
 

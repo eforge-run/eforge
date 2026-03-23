@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { BookOpen, ChevronDown, ChevronRight, FileText, GitBranch, Loader2, CheckCircle2, Puzzle } from 'lucide-react';
 import { PlanBodyHighlight } from '@/components/preview/plan-body-highlight';
+import { BuildConfigSection } from '@/components/plans/build-config';
 import { cn } from '@/lib/utils';
-import type { PipelineStage, PlanType } from '@/lib/types';
+import type { BuildStageSpec, ReviewProfileConfig, PipelineStage, PlanType } from '@/lib/types';
 import type { ModuleStatus } from '@/lib/reducer';
 
 interface PlanCardProps {
@@ -14,6 +15,8 @@ interface PlanCardProps {
   filesChanged?: string[];
   type?: PlanType;
   moduleStatus?: ModuleStatus;
+  build?: BuildStageSpec[];
+  review?: ReviewProfileConfig;
 }
 
 function StatusBadge({ status }: { status?: PipelineStage }) {
@@ -64,7 +67,7 @@ function TypeIcon({ type }: { type?: PlanType; }) {
   return null;
 }
 
-export function PlanCard({ id, name, body, status, dependsOn, filesChanged, type, moduleStatus }: PlanCardProps) {
+export function PlanCard({ id, name, body, status, dependsOn, filesChanged, type, moduleStatus, build, review }: PlanCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const displayId = (() => {
     switch (type) {
@@ -114,6 +117,7 @@ export function PlanCard({ id, name, body, status, dependsOn, filesChanged, type
       {/* Body — expanded */}
       {isExpanded && (
         <div className="border-t border-border px-4 py-3">
+          <BuildConfigSection build={build} review={review} />
           {filesChanged && filesChanged.length > 0 && (
             <div className="mb-3">
               <div className="text-[10px] uppercase tracking-wide text-text-dim mb-1">Files Changed</div>

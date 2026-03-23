@@ -25,6 +25,8 @@ export interface PlanData {
   body: string;
   dependsOn?: string[];
   type?: PlanType;
+  build?: BuildStageSpec[];
+  review?: ReviewProfileConfig;
 }
 
 export interface PlanStatus {

@@ -97,6 +97,8 @@ export function PlanCards({ sessionId, planStatuses, fileChanges, moduleStatuses
               dependsOn={plan.dependsOn}
               filesChanged={fileChanges.get(plan.id)}
               type="plan"
+              build={plan.build}
+              review={plan.review}
             />
           ))}
         </Section>
