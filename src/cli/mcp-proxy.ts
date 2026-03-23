@@ -114,7 +114,7 @@ async function daemonRequest(
 export async function runMcpProxy(cwd: string): Promise<void> {
   const server = new McpServer({
     name: 'eforge',
-    version: '0.3.0',
+    version: '0.4.0',
   });
 
   // Tool: eforge_run
@@ -176,8 +176,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       if (!latestRun?.sessionId) {
         return { content: [{ type: 'text', text: JSON.stringify({ status: 'idle', message: 'No active eforge sessions.' }) }] };
       }
-      const state = await daemonRequest(cwd, 'GET', `/api/run-state/${encodeURIComponent(latestRun.sessionId)}`);
-      return { content: [{ type: 'text', text: JSON.stringify(state, null, 2) }] };
+      const summary = await daemonRequest(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`);
+      return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
     },
   );
 
@@ -188,45 +188,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     {},
     async () => {
       const result = await daemonRequest(cwd, 'GET', '/api/queue');
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
-    },
-  );
-
-  // Tool: eforge_events
-  server.tool(
-    'eforge_events',
-    'Get run state snapshot for a known run ID.',
-    { runId: z.string().describe('The run ID to fetch events for') },
-    async ({ runId }) => {
-      const state = await daemonRequest(cwd, 'GET', `/api/run-state/${encodeURIComponent(runId)}`);
-      return { content: [{ type: 'text', text: JSON.stringify(state, null, 2) }] };
-    },
-  );
-
-  // Tool: eforge_plans
-  server.tool(
-    'eforge_plans',
-    'Get compiled plan content for a specific run.',
-    { runId: z.string().describe('The run ID to fetch plans for') },
-    async ({ runId }) => {
-      const result = await daemonRequest(cwd, 'GET', `/api/plans/${encodeURIComponent(runId)}`);
-      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
-    },
-  );
-
-  // Tool: eforge_diff
-  server.tool(
-    'eforge_diff',
-    "Get the git diff for a plan's implementation.",
-    {
-      sessionId: z.string().describe('The session ID'),
-      planId: z.string().describe('The plan ID to get diffs for'),
-      file: z.string().optional().describe('Optional specific file path'),
-    },
-    async ({ sessionId, planId, file }) => {
-      let path = `/api/diff/${encodeURIComponent(sessionId)}/${encodeURIComponent(planId)}`;
-      if (file) path += `?file=${encodeURIComponent(file)}`;
-      const result = await daemonRequest(cwd, 'GET', path);
       return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     },
   );

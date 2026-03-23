@@ -54,7 +54,7 @@ If the overall status is `running`, show:
 
 If the status is `completed` or `failed`:
 - **Completed**: "All plans completed successfully. Post-merge validation was included in the run."
-- **Failed**: Show which plans failed and suggest checking events with `mcp__eforge__eforge_events`.
+- **Failed**: Show which plans failed and suggest using `/eforge:status` again to refresh or checking the monitor dashboard.
 
 ## Error Handling
 

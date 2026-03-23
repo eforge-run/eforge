@@ -836,6 +836,144 @@ export async function startServer(
         return;
       }
       serveOrchestration(req, res, runId);
+    } else if (url.startsWith('/api/run-summary/')) {
+      const id = url.slice('/api/run-summary/'.length);
+      if (!id || !/^[\w-]+$/.test(id)) {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Invalid id');
+        return;
+      }
+      const sessionId = resolveSessionId(id);
+      const sessionRuns = db.getSessionRuns(sessionId);
+
+      // Compute session-level status
+      let status: string;
+      if (sessionRuns.length === 0) {
+        status = 'unknown';
+      } else if (sessionRuns.some((r) => r.status === 'running')) {
+        status = 'running';
+      } else if (sessionRuns.some((r) => r.status === 'failed')) {
+        status = 'failed';
+      } else {
+        status = 'completed';
+      }
+
+      // Build runs array
+      const runs = sessionRuns.map((r) => ({
+        id: r.id,
+        command: r.command,
+        status: r.status,
+        startedAt: r.startedAt,
+        completedAt: r.completedAt ?? null,
+      }));
+
+      // Extract plan progress from build events
+      const buildStartEvents = db.getEventsByTypeForSession(sessionId, 'build:start');
+      const buildCompleteEvents = db.getEventsByTypeForSession(sessionId, 'build:complete');
+      const buildFailedEvents = db.getEventsByTypeForSession(sessionId, 'build:failed');
+
+      const planStatusMap = new Map<string, { id: string; status: string; branch: string | null; dependsOn: string[] }>();
+      for (const evt of buildStartEvents) {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.planId) {
+            planStatusMap.set(data.planId, {
+              id: data.planId,
+              status: 'running',
+              branch: data.branch ?? null,
+              dependsOn: data.dependsOn ?? [],
+            });
+          }
+        } catch { /* skip */ }
+      }
+      for (const evt of buildCompleteEvents) {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.planId && planStatusMap.has(data.planId)) {
+            planStatusMap.get(data.planId)!.status = 'completed';
+          }
+        } catch { /* skip */ }
+      }
+      for (const evt of buildFailedEvents) {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.planId && planStatusMap.has(data.planId)) {
+            planStatusMap.get(data.planId)!.status = 'failed';
+          }
+        } catch { /* skip */ }
+      }
+      const plans = Array.from(planStatusMap.values());
+
+      // Current phase from latest phase:start
+      const phaseStartEvents = db.getEventsByTypeForSession(sessionId, 'phase:start');
+      let currentPhase: string | null = null;
+      if (phaseStartEvents.length > 0) {
+        try {
+          const data = JSON.parse(phaseStartEvents[phaseStartEvents.length - 1].data);
+          currentPhase = data.phase ?? null;
+        } catch { /* skip */ }
+      }
+
+      // Current agent from latest agent:start without matching agent:stop
+      const agentStartEvents = db.getEventsByTypeForSession(sessionId, 'agent:start');
+      const agentStopEvents = db.getEventsByTypeForSession(sessionId, 'agent:stop');
+      const stoppedAgentIds = new Set<string>();
+      for (const evt of agentStopEvents) {
+        try {
+          const data = JSON.parse(evt.data);
+          if (data.agentId) stoppedAgentIds.add(data.agentId);
+        } catch { /* skip */ }
+      }
+      let currentAgent: string | null = null;
+      for (let i = agentStartEvents.length - 1; i >= 0; i--) {
+        try {
+          const data = JSON.parse(agentStartEvents[i].data);
+          if (data.agentId && !stoppedAgentIds.has(data.agentId)) {
+            currentAgent = data.agent ?? data.agentId;
+            break;
+          }
+        } catch { /* skip */ }
+      }
+
+      // Event counts
+      const allEvents = db.getEventsBySession(sessionId);
+      const totalEvents = allEvents.length;
+      let errorCount = 0;
+      for (const evt of allEvents) {
+        if (evt.type.endsWith(':failed') || evt.type.endsWith(':error')) {
+          errorCount++;
+        }
+      }
+
+      // Duration
+      let duration: { startedAt: string | null; completedAt: string | null; seconds: number | null } = {
+        startedAt: null,
+        completedAt: null,
+        seconds: null,
+      };
+      if (sessionRuns.length > 0) {
+        const startedAt = sessionRuns[0].startedAt;
+        const lastRun = sessionRuns[sessionRuns.length - 1];
+        const completedAt = lastRun.completedAt ?? null;
+        duration = {
+          startedAt,
+          completedAt,
+          seconds: completedAt
+            ? Math.round((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000)
+            : Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
+        };
+      }
+
+      sendJson(res, {
+        sessionId,
+        status,
+        runs,
+        plans,
+        currentPhase,
+        currentAgent,
+        eventCounts: { total: totalEvents, errors: errorCount },
+        duration,
+      });
     } else if (url.startsWith('/api/run-state/')) {
       const id = url.slice('/api/run-state/'.length);
       if (!id || !/^[\w-]+$/.test(id)) {
