@@ -25,6 +25,15 @@
 
 ---
 
+## Daemon & MCP Server
+
+**Goal**: Evolve the monitor into a persistent per-project daemon with MCP server interface for multi-session coordination and build control.
+
+- **Control plane** — Build cancellation via MCP tool and web UI, queue auto-build mode with `--watch`, queue priority/reordering
+- **Re-guidance** — Build interruption with amended context, daemon-to-worker IPC for mid-build guidance changes
+
+---
+
 ## Multimodal Input
 
 **Goal**: Let users attach images and PDFs alongside text to give agents richer context - wireframes, bug screenshots, design specs.
