@@ -1,0 +1,62 @@
+name: plan-queue-first-eforge-run
+description: Make the queue the canonical entry point for all execution — eforge
+  build enqueues via daemon, daemon auto-builds PRDs from the queue
+created: 2026-03-23
+compiled: 2026-03-23
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-daemon-infrastructure
+    name: Daemon Infrastructure — Config, Client, Watcher, API
+    depends_on: []
+    branch: plan-queue-first-eforge-run/daemon-infrastructure
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-cli-mcp-plugin
+    name: CLI Rename, MCP Proxy, Plugin Overhaul
+    depends_on:
+      - plan-01-daemon-infrastructure
+    branch: plan-queue-first-eforge-run/cli-mcp-plugin
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-03-documentation
+    name: Documentation Updates
+    depends_on:
+      - plan-02-cli-mcp-plugin
+    branch: plan-queue-first-eforge-run/documentation
+    build:
+      - - implement
+        - doc-update
+    review:
+      strategy: auto
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
