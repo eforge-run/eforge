@@ -11,7 +11,7 @@ import {
   validateRuntimeReadiness,
 } from '../engine/plan.js';
 import type { EforgeConfig, HookConfig } from '../engine/config.js';
-import type { EforgeEvent, PlanFile } from '../engine/events.js';
+import type { EforgeEvent } from '../engine/events.js';
 import { withHooks } from '../engine/hooks.js';
 import { withSessionId, runSession } from '../engine/session.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
@@ -311,135 +311,108 @@ export function createProgram(abortController?: AbortController): Command {
           ...(profileOverrides && { profileOverrides }),
         });
 
-        // Shared sessionId across enqueue+compile+build so tracking sees one session
-        const sessionId = randomUUID();
+        // Phase 1: Enqueue — format and add to queue, capture file path and name
+        let enqueuedName: string | undefined;
+        let enqueueResult = 'completed' as 'completed' | 'failed';
 
-        // State tracked across phases for exit code determination
-        let planSetName: string | undefined;
-        let planFiles: PlanFile[] = [];
-        let skipReason: string | undefined;
-        let planResult: 'completed' | 'failed' = 'completed';
-        let enqueuedFilePath: string | undefined;
-        let finalResult: 'completed' | 'failed' = 'completed';
-        let preCompileHead: string | undefined;
+        const enqueueSessionId = randomUUID();
 
-        // All phases as a single async generator — early returns instead of process.exit()
-        async function* allPhases(): AsyncGenerator<EforgeEvent> {
-          // Phase 0: Enqueue — format and add to queue, capture file path
+        await withMonitor(options.monitor === false, async (monitor) => {
           const enqueueEvents = engine.enqueue(source!, {
             name: options.name,
             verbose: options.verbose,
             abortController,
           });
 
-          for await (const event of enqueueEvents) {
-            if (event.type === 'enqueue:complete') {
-              enqueuedFilePath = event.filePath;
-            }
-            yield event;
-          }
-
-          if (!enqueuedFilePath) {
-            console.error(chalk.red('Enqueue failed — no file path returned'));
-            finalResult = 'failed';
-            return;
-          }
-
-          // Record HEAD before compile so we can reset on build failure
-          try {
-            const { execFile } = await import('node:child_process');
-            const { promisify } = await import('node:util');
-            const exec = promisify(execFile);
-            preCompileHead = (await exec('git', ['rev-parse', 'HEAD'], { cwd: process.cwd() })).stdout.trim();
-          } catch { /* best effort */ }
-
-          // Phase 1: Compile
-          const compileEvents = engine.compile(enqueuedFilePath, {
-            auto: options.auto,
-            verbose: options.verbose,
-            name: options.name,
-            generateProfile: options.generateProfile,
-            abortController,
-          });
-
-          for await (const event of compileEvents) {
-            if (event.type === 'phase:start') {
-              planSetName = event.planSet;
-            }
-            if (event.type === 'plan:skip') {
-              skipReason = event.reason;
-            }
-            if (event.type === 'plan:complete') {
-              planFiles = event.plans;
-            }
-            if (event.type === 'phase:end') {
-              planResult = event.result.status;
-            }
-            yield event;
-          }
-
-          // plan:skip means the work is already implemented — return early
-          if (skipReason) {
-            return;
-          }
-
-          if (planResult === 'failed' || planFiles.length === 0 || !planSetName) {
-            finalResult = 'failed';
-            return;
-          }
-
-          // Handle --dry-run: return early from generator (consumer handles showDryRun)
-          if (options.dryRun) {
-            return;
-          }
-
-          // Phase 2: Build
-          const buildEvents = engine.build(planSetName, {
-            auto: options.auto,
-            verbose: options.verbose,
-            cleanup: options.cleanup,
-            abortController,
-            prdFilePath: enqueuedFilePath,
-          });
-
-          yield* buildEvents;
-        }
-
-        // Wrap all phases in runSession for guaranteed session:start/session:end,
-        // then through hooks and monitor
-        await withMonitor(options.monitor === false, async (monitor) => {
           const wrapped = wrapEvents(
-            runSession(allPhases(), sessionId),
+            runSession(enqueueEvents, enqueueSessionId),
             monitor,
             engine.resolvedConfig.hooks,
           );
 
           for await (const event of wrapped) {
             renderEvent(event);
-            if (event.type === 'phase:start') {
-              renderLangfuseStatus(engine.resolvedConfig);
+            if (event.type === 'enqueue:complete') {
+              enqueuedName = options.name ?? event.id;
             }
-            if (event.type === 'phase:end') {
-              finalResult = event.result.status;
+            if (event.type === 'session:end') {
+              enqueueResult = event.result.status;
             }
           }
+        });
 
-          // --dry-run: show execution plan after session ends cleanly
-          if (options.dryRun && planSetName) {
+        if (enqueueResult === 'failed' || !enqueuedName) {
+          console.error(chalk.red('Enqueue failed'));
+          process.exit(1);
+        }
+
+        // --dry-run: compile only, then show execution plan
+        if (options.dryRun) {
+          // For dry-run, we need to compile the enqueued PRD to generate plans,
+          // then display the execution plan without building
+          let planSetName: string | undefined;
+          let compileResult: 'completed' | 'failed' = 'completed';
+
+          await withMonitor(options.monitor === false, async (monitor) => {
+            const compileSessionId = randomUUID();
+
+            // Find the enqueued PRD file path from the queue
+            const { loadQueue } = await import('../engine/prd-queue.js');
+            const prds = await loadQueue(engine.resolvedConfig.prdQueue.dir, process.cwd());
+            const prd = prds.find((p) => p.id === enqueuedName || p.frontmatter.title === enqueuedName);
+            if (!prd) {
+              console.error(chalk.red(`Could not find enqueued PRD: ${enqueuedName}`));
+              process.exit(1);
+            }
+
+            const compileEvents = engine.compile(prd.filePath, {
+              auto: options.auto,
+              verbose: options.verbose,
+              name: options.name,
+              generateProfile: options.generateProfile,
+              abortController,
+            });
+
+            const wrapped = wrapEvents(
+              runSession(compileEvents, compileSessionId),
+              monitor,
+              engine.resolvedConfig.hooks,
+            );
+
+            for await (const event of wrapped) {
+              renderEvent(event);
+              if (event.type === 'phase:start') {
+                planSetName = event.planSet;
+                renderLangfuseStatus(engine.resolvedConfig);
+              }
+              if (event.type === 'phase:end') {
+                compileResult = event.result.status;
+              }
+            }
+          });
+
+          if (planSetName && compileResult === 'completed') {
             await showDryRun(planSetName);
           }
+          process.exit(compileResult === 'completed' ? 0 : 1);
+        }
 
-          // Reset HEAD to before compile if build failed (unwind plan file commits)
-          if (finalResult === 'failed' && preCompileHead) {
-            try {
-              const { execFile } = await import('node:child_process');
-              const { promisify } = await import('node:util');
-              const exec = promisify(execFile);
-              await exec('git', ['reset', '--hard', preCompileHead], { cwd: process.cwd() });
-            } catch { /* best effort */ }
-          }
+        // Phase 2: Run queue to process the just-enqueued PRD
+        await withMonitor(options.monitor === false, async (monitor) => {
+          const queueEvents = engine.runQueue({
+            name: enqueuedName,
+            auto: options.auto,
+            verbose: options.verbose,
+            generateProfile: options.generateProfile,
+            abortController,
+          });
 
-          process.exit(skipReason ? 0 : (finalResult === 'completed' ? 0 : 1));
+          const result = await consumeEvents(
+            wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks),
+            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
+          );
+
+          process.exit(result === 'completed' ? 0 : 1);
         });
       },
     );

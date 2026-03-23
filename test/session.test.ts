@@ -170,6 +170,25 @@ describe('runSession', () => {
     expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.summary).toBe('Session terminated abnormally');
   });
 
+  it('emits session:end with completed result for enqueue-only sessions', async () => {
+    const events: EforgeEvent[] = [
+      { type: 'enqueue:start', source: 'my-feature.md' },
+      { type: 'agent:start', agentId: 'a1', agent: 'formatter', timestamp: '2024-01-01T00:00:00Z' },
+      { type: 'agent:stop', agentId: 'a1', agent: 'formatter', timestamp: '2024-01-01T00:00:10Z' },
+      { type: 'enqueue:complete', id: 'prd-001', filePath: '/queue/prd-001.md', title: 'My Great Feature' },
+    ];
+
+    const result = await collect(runSession(asyncIterableFrom(events), 'session-enqueue'));
+
+    expect(result[0].type).toBe('session:start');
+    expect(result[0].sessionId).toBe('session-enqueue');
+
+    const sessionEnd = result.find((e) => e.type === 'session:end');
+    expect(sessionEnd).toBeDefined();
+    expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.status).toBe('completed');
+    expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.summary).toContain('My Great Feature');
+  });
+
   it('emits exactly one session:start and one session:end for full three-phase completion', async () => {
     const events: EforgeEvent[] = [
       { type: 'enqueue:start', source: 'test-prd.md' },

@@ -40,8 +40,9 @@ export async function* withSessionId(
  * and emits session:end in the finally block (guaranteeing it fires even on
  * early generator returns or upstream errors).
  *
- * Session result is derived from the last phase:end event seen. If no phase:end
- * was emitted, falls back to { status: 'failed', summary: 'Session terminated abnormally' }.
+ * Session result is derived from the last phase:end event seen, or from
+ * enqueue:complete for enqueue-only sessions. If neither was emitted,
+ * falls back to { status: 'failed', summary: 'Session terminated abnormally' }.
  */
 export async function* runSession(
   events: AsyncGenerator<EforgeEvent>,
@@ -62,6 +63,8 @@ export async function* runSession(
 
       if (event.type === 'phase:end') {
         lastResult = event.result;
+      } else if (event.type === 'enqueue:complete') {
+        lastResult = { status: 'completed', summary: `Enqueued: ${event.title}` };
       }
     }
   } finally {

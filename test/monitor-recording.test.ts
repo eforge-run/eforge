@@ -129,6 +129,56 @@ describe('enqueue recording', () => {
   });
 });
 
+describe('enqueue-only session via runSession + withRecording', () => {
+  const makeTempDir = useTempDir();
+
+  it('records enqueue-only session with completed status when using runSession', async () => {
+    const cwd = makeTempDir();
+    mkdirSync(resolve(cwd, '.eforge'), { recursive: true });
+    const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+    const db = openDatabase(dbPath);
+
+    const now = new Date().toISOString();
+
+    // Simulate an enqueue-only event stream (no phase:end)
+    async function* enqueueOnlyEvents(): AsyncGenerator<EforgeEvent> {
+      yield { type: 'enqueue:start', source: '/tmp/my-prd.md' } as unknown as EforgeEvent;
+      yield { type: 'agent:start', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'agent:stop', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'enqueue:complete', id: 'prd-002', filePath: '/tmp/queue/prd-002.md', title: 'Enqueue Only Feature' } as unknown as EforgeEvent;
+    }
+
+    // Wrap with runSession (which should detect enqueue:complete as success)
+    const { runSession } = await import('../src/engine/session.js');
+    const sessionId = 'test-session-enqueue-only';
+    const sessionWrapped = runSession(enqueueOnlyEvents(), sessionId);
+
+    const { withRecording } = await import('../src/monitor/recorder.js');
+    const recorded = withRecording(sessionWrapped, db, cwd);
+
+    const collected: EforgeEvent[] = [];
+    for await (const event of recorded) {
+      collected.push(event);
+    }
+
+    // Should have session:start + 4 inner events + session:end = 6
+    expect(collected).toHaveLength(6);
+
+    // session:end should report completed
+    const sessionEnd = collected.find((e) => e.type === 'session:end');
+    expect(sessionEnd).toBeDefined();
+    expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.status).toBe('completed');
+
+    // Check the database — the enqueue run should have status 'completed'
+    const runs = db.getRuns();
+    const enqueueRun = runs.find((r) => r.command === 'enqueue');
+    expect(enqueueRun).toBeDefined();
+    expect(enqueueRun!.status).toBe('completed');
+
+    db.close();
+  });
+});
+
 describe('buildMonitor wiring', () => {
   const makeTempDir = useTempDir();
 

@@ -548,7 +548,12 @@ export class EforgeEngine {
 
     // Load and order queue
     const allPrds = await loadQueue(queueDir, cwd);
-    const orderedPrds = resolveQueueOrder(allPrds);
+    const allOrdered = resolveQueueOrder(allPrds);
+
+    // If a name is provided, filter to only that PRD (used by foreground build)
+    const orderedPrds = options.name
+      ? allOrdered.filter((p) => p.id === options.name)
+      : allOrdered;
 
     yield {
       type: 'queue:start',
