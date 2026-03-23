@@ -1,0 +1,30 @@
+name: untitled-prd-2
+description: Fix diff viewer scroll clipping in monitor UI Changes tab by
+  propagating height constraints through the flex layout chain
+created: 2026-03-23
+compiled: 2026-03-23
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-diff-viewer-scroll
+    name: Fix Diff Viewer Scroll in Changes Tab
+    depends_on: []
+    branch: untitled-prd-2/diff-viewer-scroll
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
