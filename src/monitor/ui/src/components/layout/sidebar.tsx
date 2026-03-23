@@ -3,10 +3,11 @@ import { CheckCircle2, XCircle, Loader2, Square } from 'lucide-react';
 import type { RunInfo } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
 import { cancelSession } from '@/lib/api';
-import { groupRunsBySessions, type SessionGroup } from '@/lib/session-utils';
+import { groupRunsBySessions, partitionEnqueueSessions, type SessionGroup } from '@/lib/session-utils';
 import { formatRelativeTime, formatRunDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { QueueSection } from './queue-section';
+import { EnqueueSection } from './enqueue-section';
 
 interface SidebarProps {
   currentSessionId: string | null;
@@ -95,15 +96,24 @@ export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, dae
     }
   }, [refreshTrigger, refetch]);
 
-  const groups = useMemo(() => groupRunsBySessions(runs ?? []), [runs]);
+  const allGroups = useMemo(() => groupRunsBySessions(runs ?? []), [runs]);
+  const { enqueue: enqueueGroups, sessions: sessionGroups } = useMemo(
+    () => partitionEnqueueSessions(allGroups),
+    [allGroups],
+  );
 
   return (
     <aside className="bg-card border-r border-border overflow-y-auto px-3 py-3">
       <QueueSection refreshTrigger={refreshTrigger} />
+      <EnqueueSection
+        groups={enqueueGroups}
+        currentSessionId={currentSessionId}
+        onSelectSession={onSelectSession}
+      />
       <h2 className="text-[11px] uppercase tracking-wider text-text-dim px-2 py-1.5 mb-1">
         Sessions
       </h2>
-      {groups.map((group) => (
+      {sessionGroups.map((group) => (
         <SessionItem
           key={group.key}
           group={group}

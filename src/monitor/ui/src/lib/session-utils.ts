@@ -96,3 +96,18 @@ export function groupRunsBySessions(runs: RunInfo[]): SessionGroup[] {
 
   return groups;
 }
+
+export function partitionEnqueueSessions(
+  groups: SessionGroup[],
+): { enqueue: SessionGroup[]; sessions: SessionGroup[] } {
+  const enqueue: SessionGroup[] = [];
+  const sessions: SessionGroup[] = [];
+  for (const group of groups) {
+    if (group.runs.length > 0 && group.runs.every((r) => r.command === 'enqueue')) {
+      enqueue.push(group);
+    } else {
+      sessions.push(group);
+    }
+  }
+  return { enqueue, sessions };
+}
