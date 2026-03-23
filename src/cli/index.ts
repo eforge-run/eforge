@@ -765,6 +765,15 @@ export function createProgram(abortController?: AbortController): Command {
       console.log(`  Builds:  ${runningCount} running`);
     });
 
+  // MCP proxy command — runs the stdio MCP server that bridges to the daemon
+  program
+    .command('mcp-proxy')
+    .description('Run the MCP stdio proxy server (used by Claude Code plugin)')
+    .action(async () => {
+      const { runMcpProxy } = await import('./mcp-proxy.js');
+      await runMcpProxy(process.cwd());
+    });
+
   return program;
 }
 
