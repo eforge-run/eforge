@@ -1,0 +1,34 @@
+name: plan-monitor-sidebar-ui-improvements
+description: Cleaner monitor sidebar with profile badges, plan counts, filtered
+  enqueues, and visual dividers
+created: 2026-03-23
+compiled: 2026-03-23
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-sidebar-ui
+    name: Monitor Sidebar UI Improvements
+    depends_on: []
+    branch: plan-monitor-sidebar-ui-improvements/sidebar-ui
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
