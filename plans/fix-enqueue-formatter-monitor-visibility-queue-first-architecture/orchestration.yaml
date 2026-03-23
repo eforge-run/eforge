@@ -1,0 +1,49 @@
+name: fix-enqueue-formatter-monitor-visibility-queue-first-architecture
+description: Fix enqueue false-failed status, replace fused foreground build
+  with queue-first two-phase approach, and add dedicated enqueue section to
+  monitor sidebar
+created: 2026-03-23
+compiled: 2026-03-23
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-enqueue-session-fix-and-queue-first
+    name: Enqueue Session Fix and Queue-First Foreground Build
+    depends_on: []
+    branch: fix-enqueue-formatter-monitor-visibility-queue-first-architecture/enqueue-session-fix-and-queue-first
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-enqueue-monitor-ui
+    name: Monitor UI Enqueue Section
+    depends_on:
+      - plan-01-enqueue-session-fix-and-queue-first
+    branch: fix-enqueue-formatter-monitor-visibility-queue-first-architecture/enqueue-monitor-ui
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle

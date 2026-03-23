@@ -1,7 +1,7 @@
 ---
 title: Fix: Enqueue/Formatter Monitor Visibility + Queue-First Architecture
 created: 2026-03-23
-status: pending
+status: running
 ---
 
 # Fix: Enqueue/Formatter Monitor Visibility + Queue-First Architecture
