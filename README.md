@@ -21,15 +21,14 @@ The first invocation downloads `eforge` automatically via npx - no global instal
 
 | Skill | Description |
 |-------|-------------|
-| `/eforge:run` | Enqueue + compile + build + validate in one step |
-| `/eforge:enqueue` | Normalize input and add to queue |
+| `/eforge:build` | Enqueue PRD; daemon auto-builds (compile + build + validate) |
 | `/eforge:status` | Check build progress |
 | `/eforge:config` | Initialize or edit `eforge.yaml` with interactive guidance |
 
 ### Standalone CLI
 
 ```bash
-npx eforge run "Add a health check endpoint"
+npx eforge build "Add a health check endpoint"
 ```
 
 Or install globally with `npm install -g eforge`.
@@ -39,11 +38,11 @@ Or install globally with `npm install -g eforge`.
 Give `eforge` a prompt, a markdown file, or a full PRD - it handles the rest:
 
 ```bash
-eforge run plans/my-feature-prd.md
-eforge run "Add a health check endpoint"
+eforge build plans/my-feature-prd.md
+eforge build "Add a health check endpoint"
 ```
 
-`eforge` plans the work, builds it in an isolated worktree, runs a blind code review with a fresh-context agent, evaluates the reviewer's suggestions, merges, and validates. Every phase produces a git commit so the full lifecycle is traceable in history.
+By default, `eforge build` enqueues the PRD and the daemon automatically picks it up for compile, build, and validation. Use `--foreground` to run the full pipeline in the current process instead. `eforge` plans the work, builds it in an isolated worktree, runs a blind code review with a fresh-context agent, evaluates the reviewer's suggestions, merges, and validates. Every phase produces a git commit so the full lifecycle is traceable in history.
 
 ## How It Works
 
@@ -90,19 +89,22 @@ flowchart TD
 ## CLI Usage
 
 ```bash
-eforge run plans/my-feature-prd.md  # compile + build + validate
-eforge run --queue                   # process queued PRDs
-eforge enqueue plans/my-feature-prd.md   # add to queue without building
-eforge status                        # check running builds
-eforge monitor                       # open web dashboard
-eforge config show                   # print resolved config
+eforge build plans/my-feature-prd.md    # enqueue + auto-build via daemon
+eforge build --foreground plans/my-feature-prd.md  # run in foreground (no daemon)
+eforge build --queue                     # process queued PRDs
+eforge enqueue plans/my-feature-prd.md   # add to queue (daemon auto-builds by default)
+eforge status                            # check running builds
+eforge monitor                           # open web dashboard
+eforge config show                       # print resolved config
 ```
 
-All commands support `--help`. Notable flags: `--auto` (bypass approval gates), `--verbose` (stream agent output), `--dry-run` (compile only).
+`eforge run` is a backwards-compatible alias for `eforge build`.
+
+All commands support `--help`. Notable flags: `--auto` (bypass approval gates), `--verbose` (stream agent output), `--dry-run` (compile only), `--foreground` (run in foreground instead of delegating to daemon).
 
 ## Configuration
 
-`eforge` is configured via `eforge.yaml` (searched upward from cwd), environment variables, and auto-discovered files. See [docs/config.md](docs/config.md) for the full reference including profiles, plugins, MCP servers, and [docs/hooks.md](docs/hooks.md) for event hooks.
+`eforge` is configured via `eforge.yaml` (searched upward from cwd), environment variables, and auto-discovered files. By default, the daemon auto-builds after enqueue (`prdQueue.autoBuild: true`). See [docs/config.md](docs/config.md) for the full reference including profiles, plugins, MCP servers, and [docs/hooks.md](docs/hooks.md) for event hooks.
 
 ## Architecture
 
@@ -110,7 +112,7 @@ All commands support `--help`. Notable flags: `--auto` (bypass approval gates), 
 
 Agent runners use the `AgentBackend` interface - all SDK interaction is isolated behind a single adapter (`src/engine/backends/claude-sdk.ts`). New surfaces (CI, TUI, web) consume the same event stream.
 
-A real-time web monitor records all events to SQLite and serves a dashboard over SSE, auto-starting with `run` commands. Recording is decoupled from the web server - events are always persisted, even with `--no-monitor` or `enqueue`.
+A real-time web monitor records all events to SQLite and serves a dashboard over SSE, auto-starting with `build` commands. Recording is decoupled from the web server - events are always persisted, even with `--no-monitor` or `enqueue`.
 
 ## Evaluation
 

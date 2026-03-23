@@ -16,15 +16,15 @@ The architecture is **library-first**: a pure, event-driven engine (`src/engine/
 
 ```bash
 pnpm build        # Bundle with tsup → dist/cli.js
-pnpm dev          # Run directly via tsx (e.g. pnpm dev -- run foo.md)
+pnpm dev          # Run directly via tsx (e.g. pnpm dev -- build foo.md)
 pnpm test             # Run tests (vitest)
 pnpm test:watch       # Watch mode
 pnpm type-check   # Type check without emitting
 
 # Run with Langfuse tracing (dev)
-pnpm dev:trace -- run some-prd.md --verbose
+pnpm dev:trace -- build some-prd.md --verbose
 # Run built CLI with Langfuse tracing
-node --env-file=.env dist/cli.js run some-prd.md --verbose
+node --env-file=.env dist/cli.js build some-prd.md --verbose
 ```
 
 ## Architecture
@@ -54,7 +54,7 @@ Build stages and review config are determined per-plan by the planner (for singl
 
 **MCP server propagation**: The engine auto-loads MCP servers from `.mcp.json` in the project root (same file Claude Code uses). All agents get the same MCP servers — no per-role filtering. MCP config is backend-specific: `ClaudeSDKBackend` accepts optional `mcpServers` in its constructor, and `EforgeEngineOptions.mcpServers` lets callers inject servers programmatically (overrides auto-loading). The `AgentBackend` interface has no MCP concept. Note: SDK subprocesses do NOT auto-discover MCP servers from settings files — explicit propagation is required.
 
-**Plugin propagation**: The engine auto-discovers Claude Code plugins from `~/.claude/plugins/installed_plugins.json`. Both user-scoped (global) and project-scoped plugins matching the cwd are loaded. Plugins provide skills, hooks, and MCP servers. Like MCP servers, plugins are backend-specific: `ClaudeSDKBackend` accepts `plugins` and `settingSources` in its constructor. The `AgentBackend` interface has no plugin concept. Configure via `eforge.yaml` `plugins` section or `--no-plugins` CLI flag. The eforge Claude Code plugin itself lives in-repo at `eforge-plugin/` — this repo is also a Claude Code marketplace (see `.claude-plugin/marketplace.json`).
+**Plugin propagation**: The engine auto-discovers Claude Code plugins from `~/.claude/plugins/installed_plugins.json`. Both user-scoped (global) and project-scoped plugins matching the cwd are loaded. Plugins provide skills, hooks, and MCP servers. Like MCP servers, plugins are backend-specific: `ClaudeSDKBackend` accepts `plugins` and `settingSources` in its constructor. The `AgentBackend` interface has no plugin concept. Configure via `eforge.yaml` `plugins` section or `--no-plugins` CLI flag. The eforge Claude Code plugin itself lives in-repo at `eforge-plugin/` — this repo is also a Claude Code marketplace (see `.claude-plugin/marketplace.json`). The plugin exposes MCP tools: `eforge_build` (enqueue PRD for daemon to build), `eforge_enqueue` (add to queue without building), `eforge_auto_build` (get/set daemon auto-build state), and `eforge_status` (check build progress).
 
 - **Formatter** — one-shot query. Normalizes source input (PRD, prompt, rough notes) into a well-structured PRD with frontmatter for the queue.
 - **Planner** — one-shot query. Explores codebase, selects a workflow profile, writes plan files (YAML frontmatter format). Outputs `<clarification>` XML blocks for ambiguities and `<skip>` blocks when work is already complete. For expeditions, also generates architecture + module list.
@@ -80,7 +80,7 @@ Build stages and review config are determined per-plan by the planner (for singl
 
 **State**: `.eforge/state.json` (gitignored) tracks build progress for resume support.
 
-**Monitor** (`src/monitor/`): Web-based real-time monitor. Recording and the web server are decoupled - events are always recorded to SQLite (`.eforge/monitor.db`) via a transparent `withRecording()` async generator middleware, even with `--no-monitor` or `enqueue`. The web dashboard serves a single-page UI over SSE at `http://localhost:4567` and auto-starts with `run` commands (disable with `--no-monitor`). The server uses a countdown shutdown state machine (WATCHING → COUNTDOWN → SHUTDOWN) that gives browser users time to inspect results before the server exits. A `hasSeenActivity` gate prevents premature shutdown during startup - the server records its start time and refuses to enter the countdown path until it observes at least one event with a timestamp >= its own start time, since the CLI can take 20+ seconds before emitting its first event. `signalMonitorShutdown()` exported from `src/monitor/index.ts` handles clean server termination.
+**Monitor** (`src/monitor/`): Web-based real-time monitor. Recording and the web server are decoupled - events are always recorded to SQLite (`.eforge/monitor.db`) via a transparent `withRecording()` async generator middleware, even with `--no-monitor` or `enqueue`. The web dashboard serves a single-page UI over SSE at `http://localhost:4567` and auto-starts with `build` commands (disable with `--no-monitor`). The server uses a countdown shutdown state machine (WATCHING → COUNTDOWN → SHUTDOWN) that gives browser users time to inspect results before the server exits. A `hasSeenActivity` gate prevents premature shutdown during startup - the server records its start time and refuses to enter the countdown path until it observes at least one event with a timestamp >= its own start time, since the CLI can take 20+ seconds before emitting its first event. `signalMonitorShutdown()` exported from `src/monitor/index.ts` handles clean server termination.
 
 **CLI** (`src/cli/`): Thin consumer that iterates the engine's event stream and renders to stdout. Handles interactive clarification prompts and approval gates via callbacks.
 
@@ -88,7 +88,7 @@ Build stages and review config are determined per-plan by the planner (for singl
 
 ```
 .claude-plugin/marketplace.json     # Claude Code marketplace manifest
-eforge-plugin/                      # Claude Code plugin (skills for enqueue, run, status, config)
+eforge-plugin/                      # Claude Code plugin (skills for build, status, config)
 .mcp.json                           # MCP server config (gitignored, auto-loaded by engine)
 eforge.yaml                         # Optional engine config (langfuse, parallelism, etc.)
 src/
@@ -134,7 +134,7 @@ eforge loads config from two levels, merged together:
 **Priority chain** (lowest → highest): defaults → global config → project config → env vars → CLI overrides
 
 **Merge strategy**:
-- Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`): shallow merge per-field — project overrides global, global fields survive if project doesn't define them. `prdQueue` has `dir` (queue directory path), `autoRevise` (boolean), and `watchPollIntervalMs` (poll interval for watch mode, default 5000) fields.
+- Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`): shallow merge per-field — project overrides global, global fields survive if project doesn't define them. `prdQueue` has `dir` (queue directory path), `autoRevise` (boolean), `autoBuild` (boolean, default `true` — daemon automatically builds after enqueue), and `watchPollIntervalMs` (poll interval for watch mode, default 5000) fields.
 - `hooks` array: **concatenate** (global hooks fire first, then project hooks)
 - Arrays inside objects (`postMergeCommands`, `plugins.include/exclude/paths`, `settingSources`): project replaces global
 
@@ -150,7 +150,7 @@ eforge loads config from two levels, merged together:
 | `EFORGE_CWD` | Working directory for the eforge run |
 | `EFORGE_GIT_REMOTE` | Git origin remote URL (empty string if not a git repo or no origin) |
 
-`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events. For `eforge run`, `EFORGE_SESSION_ID` is shared across both phases for each PRD while `EFORGE_RUN_ID` is unique per phase. In queue mode, each PRD gets a unique session ID - queue-level events carry no `EFORGE_SESSION_ID`.
+`EFORGE_CWD` and `EFORGE_GIT_REMOTE` are resolved once at startup; `EFORGE_EVENT_TYPE` is set per-event; `EFORGE_SESSION_ID` and `EFORGE_RUN_ID` are captured from lifecycle events. For `eforge build`, `EFORGE_SESSION_ID` is shared across both phases for each PRD while `EFORGE_RUN_ID` is unique per phase. In queue mode, each PRD gets a unique session ID - queue-level events carry no `EFORGE_SESSION_ID`.
 
 ## Conventions
 
@@ -173,10 +173,11 @@ eforge loads config from two levels, merged together:
 ## CLI commands
 
 ```
-eforge enqueue <source>   # Normalize input and add to PRD queue
-eforge run <source>       # Enqueue + compile + build + validate in one step
-eforge run --queue        # Process all PRDs from the queue
-eforge run --queue --watch # Watch queue and process new PRDs as they arrive
+eforge build <source>     # Enqueue + compile + build + validate (default: via daemon)
+eforge build --foreground # Run compile + build + validate in the foreground (no daemon)
+eforge build --queue      # Process all PRDs from the queue
+eforge build --queue --watch # Watch queue and process new PRDs as they arrive
+eforge enqueue <source>   # Normalize input and add to PRD queue (no build)
 eforge status             # Check running builds
 eforge queue list         # Show PRDs in the queue
 eforge queue run [name]   # Process PRDs from the queue (optionally by name)
@@ -186,7 +187,9 @@ eforge config validate    # Validate eforge.yaml (schema + profile stage names)
 eforge config show        # Print resolved config (all layers merged) as YAML
 ```
 
-Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--queue` (process all PRDs from the queue), `--watch` (watch queue for new PRDs, re-poll after each cycle), `--poll-interval <ms>` (poll interval for watch mode, default 5000), `--no-monitor` (disable web monitor server; events are still recorded to SQLite), `--no-plugins` (disable plugin loading), `--profiles <path>` (add custom workflow profiles from a YAML file), `--no-generate-profile` (disable custom profile generation; enabled by default)
+`eforge run` is a backwards-compatible alias for `eforge build`.
+
+Flags: `--auto` (bypass approval gates), `--verbose` (stream output), `--dry-run` (validate only), `--foreground` (run in foreground instead of delegating to daemon), `--queue` (process all PRDs from the queue), `--watch` (watch queue for new PRDs, re-poll after each cycle), `--poll-interval <ms>` (poll interval for watch mode, default 5000), `--no-monitor` (disable web monitor server; events are still recorded to SQLite), `--no-plugins` (disable plugin loading), `--profiles <path>` (add custom workflow profiles from a YAML file), `--no-generate-profile` (disable custom profile generation; enabled by default)
 
 ## Roadmap
 
