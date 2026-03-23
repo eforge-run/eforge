@@ -1,0 +1,65 @@
+name: eforge-daemon-mcp-server-architecture
+description: Evolve the monitor into a persistent per-project daemon with MCP
+  server interface, control-plane HTTP routes, and plugin skill migration from
+  CLI delegation to MCP tools
+created: 2026-03-23
+compiled: 2026-03-23
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-daemon-infrastructure
+    name: Daemon Infrastructure
+    depends_on: []
+    branch: eforge-daemon-mcp-server-architecture/daemon-infrastructure
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-02-mcp-proxy-and-plugin
+    name: MCP Proxy and Plugin Migration
+    depends_on:
+      - plan-01-daemon-infrastructure
+    branch: eforge-daemon-mcp-server-architecture/mcp-proxy-and-plugin
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-03-roadmap-update
+    name: Roadmap Update
+    depends_on: []
+    branch: eforge-daemon-mcp-server-architecture/roadmap-update
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
