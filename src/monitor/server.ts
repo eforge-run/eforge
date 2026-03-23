@@ -931,6 +931,9 @@ export async function startServer(
       }
     } else if (url === '/api/queue') {
       await serveQueue(req, res);
+    } else if (url === '/api/session-metadata') {
+      const metadata = db.getSessionMetadataBatch();
+      sendJson(res, metadata);
     } else if (url === '/api/runs') {
       serveRuns(req, res);
     } else if (url === '/api/latest-run') {

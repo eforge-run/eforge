@@ -56,8 +56,14 @@ export interface MonitorDB {
   getEventsByTypeForSession(sessionId: string, type: string): EventRecord[];
   getLatestSessionId(): string | undefined;
   getSessionRuns(sessionId: string): RunRecord[];
+  getSessionMetadataBatch(): Record<string, SessionMetadata>;
   getLatestEventTimestamp(): string | undefined;
   close(): void;
+}
+
+export interface SessionMetadata {
+  planCount: number | null;
+  baseProfile: string | null;
 }
 
 const SCHEMA = `
@@ -163,6 +169,9 @@ export function openDatabase(dbPath: string): MonitorDB {
     getLatestSessionId: db.prepare(
       `SELECT session_id as sessionId FROM runs ORDER BY started_at DESC LIMIT 1`,
     ),
+    getSessionMetadataEvents: db.prepare(
+      `SELECT e.type, e.data, r.session_id as sessionId FROM events e JOIN runs r ON e.run_id = r.id WHERE e.type IN ('plan:profile', 'plan:complete') ORDER BY e.id`,
+    ),
   };
 
   return {
@@ -239,6 +248,45 @@ export function openDatabase(dbPath: string): MonitorDB {
 
     getSessionRuns(sessionId) {
       return stmts.getRunsBySession.all(sessionId) as unknown as RunRecord[];
+    },
+
+    getSessionMetadataBatch() {
+      const BUILTIN_PROFILES = ['errand', 'excursion', 'expedition'];
+      const rows = stmts.getSessionMetadataEvents.all() as unknown as { type: string; data: string; sessionId: string }[];
+
+      const result: Record<string, SessionMetadata> = {};
+
+      for (const row of rows) {
+        if (!row.sessionId) continue;
+        if (!result[row.sessionId]) {
+          result[row.sessionId] = { planCount: null, baseProfile: null };
+        }
+        const meta = result[row.sessionId];
+
+        try {
+          const data = JSON.parse(row.data);
+          if (row.type === 'plan:profile' && meta.baseProfile === null) {
+            const profileName = data.profileName as string | undefined;
+            const config = data.config as { extends?: string } | undefined;
+            if (profileName && BUILTIN_PROFILES.includes(profileName)) {
+              meta.baseProfile = profileName;
+            } else if (config?.extends && BUILTIN_PROFILES.includes(config.extends)) {
+              meta.baseProfile = config.extends;
+            } else if (profileName) {
+              meta.baseProfile = profileName;
+            }
+          } else if (row.type === 'plan:complete') {
+            const plans = data.plans as unknown[] | undefined;
+            if (Array.isArray(plans)) {
+              meta.planCount = plans.length;
+            }
+          }
+        } catch {
+          // skip unparseable events
+        }
+      }
+
+      return result;
     },
 
     getLatestRunId() {

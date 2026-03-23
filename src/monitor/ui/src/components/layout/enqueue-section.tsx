@@ -42,7 +42,7 @@ export function EnqueueSection({ groups, currentSessionId, onSelectSession }: En
             )}
           />
           <span className="text-[11px] uppercase tracking-wider text-text-dim">
-            Recent Enqueues
+            Enqueuing
           </span>
         </div>
         <span className="text-[10px] text-text-dim/70 bg-bg-tertiary px-1.5 py-0.5 rounded-sm">

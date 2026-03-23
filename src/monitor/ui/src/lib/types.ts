@@ -75,3 +75,8 @@ export interface ProfileInfo {
   rationale: string;
   config: ProfileConfig;
 }
+
+export interface SessionMetadata {
+  planCount: number | null;
+  baseProfile: string | null;
+}

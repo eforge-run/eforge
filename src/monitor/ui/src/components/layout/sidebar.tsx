@@ -1,11 +1,12 @@
 import { useEffect, useMemo } from 'react';
 import { CheckCircle2, XCircle, Loader2, Square } from 'lucide-react';
-import type { RunInfo } from '@/lib/types';
+import type { RunInfo, SessionMetadata } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
 import { cancelSession } from '@/lib/api';
 import { groupRunsBySessions, partitionEnqueueSessions, type SessionGroup } from '@/lib/session-utils';
 import { formatRelativeTime, formatRunDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
+import { Badge } from '@/components/ui/badge';
 import { QueueSection } from './queue-section';
 import { EnqueueSection } from './enqueue-section';
 
@@ -27,15 +28,21 @@ function StatusIcon({ status }: { status: SessionGroup['status'] }) {
   }
 }
 
-function SessionItem({ group, isActive, onSelect, daemonActive }: {
+const profileBadgeClasses: Record<string, string> = {
+  errand: 'bg-green/20 text-green border-green/30',
+  excursion: 'bg-yellow/20 text-yellow border-yellow/30',
+  expedition: 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+};
+
+function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
   group: SessionGroup;
   isActive: boolean;
   onSelect: () => void;
   daemonActive: boolean;
+  metadata?: SessionMetadata;
 }) {
   const relative = formatRelativeTime(group.startedAt);
   const duration = formatRunDuration(group.startedAt, group.completedAt);
-  const runCount = group.runs.length;
   const showCancel = group.status === 'running' && group.isSession && daemonActive;
 
   return (
@@ -74,11 +81,24 @@ function SessionItem({ group, isActive, onSelect, daemonActive }: {
           </div>
           <div className="flex items-center justify-between gap-2 mt-1">
             <span className="text-[11px] text-text-dim whitespace-nowrap">{duration}</span>
-            {runCount > 1 && (
-              <span className="text-[10px] text-text-dim/70 bg-bg-tertiary px-1.5 py-0.5 rounded-sm">
-                {runCount} runs
-              </span>
-            )}
+            <div className="flex items-center gap-1.5">
+              {metadata?.baseProfile && (
+                <Badge
+                  variant="outline"
+                  className={cn(
+                    'text-[9px] px-1.5 py-0 rounded-sm font-medium',
+                    profileBadgeClasses[metadata.baseProfile] ?? 'bg-bg-tertiary text-text-dim border-border',
+                  )}
+                >
+                  {metadata.baseProfile}
+                </Badge>
+              )}
+              {metadata?.planCount != null && metadata.planCount > 0 && (
+                <span className="text-[10px] text-text-dim/70 bg-bg-tertiary px-1.5 py-0.5 rounded-sm">
+                  {metadata.planCount} {metadata.planCount === 1 ? 'plan' : 'plans'}
+                </span>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -88,13 +108,15 @@ function SessionItem({ group, isActive, onSelect, daemonActive }: {
 
 export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, daemonActive }: SidebarProps) {
   const { data: runs, refetch } = useApi<RunInfo[]>('/api/runs');
+  const { data: metadataMap, refetch: refetchMetadata } = useApi<Record<string, SessionMetadata>>('/api/session-metadata');
 
   // Refetch when trigger changes
   useEffect(() => {
     if (refreshTrigger > 0) {
       refetch();
+      refetchMetadata();
     }
-  }, [refreshTrigger, refetch]);
+  }, [refreshTrigger, refetch, refetchMetadata]);
 
   const allGroups = useMemo(() => groupRunsBySessions(runs ?? []), [runs]);
   const { enqueue: enqueueGroups, sessions: sessionGroups } = useMemo(
@@ -110,17 +132,17 @@ export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, dae
         currentSessionId={currentSessionId}
         onSelectSession={onSelectSession}
       />
-      <h2 className="text-[11px] uppercase tracking-wider text-text-dim px-2 py-1.5 mb-1">
-        Sessions
-      </h2>
-      {sessionGroups.map((group) => (
-        <SessionItem
-          key={group.key}
-          group={group}
-          isActive={group.key === currentSessionId}
-          onSelect={() => onSelectSession(group.key)}
-          daemonActive={daemonActive}
-        />
+      {sessionGroups.map((group, index) => (
+        <div key={group.key}>
+          {index > 0 && <div className="border-t border-border/40 my-0.5" />}
+          <SessionItem
+            group={group}
+            isActive={group.key === currentSessionId}
+            onSelect={() => onSelectSession(group.key)}
+            daemonActive={daemonActive}
+            metadata={metadataMap?.[group.key]}
+          />
+        </div>
       ))}
     </aside>
   );

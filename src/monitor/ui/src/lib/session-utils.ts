@@ -104,7 +104,9 @@ export function partitionEnqueueSessions(
   const sessions: SessionGroup[] = [];
   for (const group of groups) {
     if (group.runs.length > 0 && group.runs.every((r) => r.command === 'enqueue')) {
-      enqueue.push(group);
+      if (group.status === 'running') {
+        enqueue.push(group);
+      }
     } else {
       sessions.push(group);
     }
