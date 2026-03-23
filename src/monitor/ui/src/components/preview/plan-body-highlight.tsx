@@ -1,30 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Highlighter } from 'shiki';
 import { Marked, Renderer } from 'marked';
 import { splitPlanContent } from '@/lib/plan-content';
-
-const CODE_LANGS = [
-  'yaml',
-  'markdown',
-  'typescript',
-  'javascript',
-  'tsx',
-  'jsx',
-  'json',
-  'bash',
-  'sql',
-  'css',
-  'html',
-  'go',
-  'python',
-];
+import { getHighlighter } from '@/lib/shiki';
 
 interface PlanBodyHighlightProps {
   content: string;
 }
 
 export function PlanBodyHighlight({ content }: PlanBodyHighlightProps) {
-  const highlighterRef = useRef<Highlighter | null>(null);
   const [loading, setLoading] = useState(true);
   const [highlightedHtml, setHighlightedHtml] = useState<string>('');
 
@@ -34,20 +18,10 @@ export function PlanBodyHighlight({ content }: PlanBodyHighlightProps) {
     let cancelled = false;
 
     async function initHighlighter() {
-      if (highlighterRef.current) {
-        render(highlighterRef.current);
-        return;
-      }
-
       try {
-        const { createHighlighter } = await import('shiki');
-        const highlighter = await createHighlighter({
-          themes: ['github-dark'],
-          langs: CODE_LANGS,
-        });
+        const highlighter = await getHighlighter();
 
         if (cancelled) return;
-        highlighterRef.current = highlighter;
         render(highlighter);
       } catch (err) {
         console.error('Failed to initialize shiki:', err);

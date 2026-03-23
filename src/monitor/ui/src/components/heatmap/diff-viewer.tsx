@@ -1,8 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Highlighter } from 'shiki';
 import { fetchFileDiff } from '@/lib/api';
-
-let cachedHighlighter: Highlighter | null = null;
+import { getHighlighter } from '@/lib/shiki';
 
 interface DiffEntry {
   planId: string;
@@ -25,7 +23,7 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<DiffEntry[]>([]);
   const [highlightedHtmls, setHighlightedHtmls] = useState<Map<string, string>>(new Map());
-  const highlighterRef = useRef<Highlighter | null>(cachedHighlighter);
+  const [highlightFailed, setHighlightFailed] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Stable serialization of planIds to avoid re-fetching on every render
@@ -54,6 +52,7 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
       setLoading(true);
       setEntries([]);
       setHighlightedHtmls(new Map());
+      setHighlightFailed(false);
 
       try {
         let fetchedEntries: DiffEntry[];
@@ -89,7 +88,7 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
         setEntries(fetchedEntries);
 
         // Highlight diffs with Shiki
-        await highlightEntries(fetchedEntries, cancelled);
+        await highlightEntries(fetchedEntries);
       } catch {
         if (!cancelled) {
           setEntries([{ planId: planId ?? 'unknown', diff: null, error: 'Failed to fetch diff' }]);
@@ -99,26 +98,18 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
       }
     }
 
-    async function highlightEntries(fetchedEntries: DiffEntry[], isCancelled: boolean) {
+    async function highlightEntries(fetchedEntries: DiffEntry[]) {
       const diffsToHighlight = fetchedEntries.filter((e) => e.diff);
       if (diffsToHighlight.length === 0) return;
 
       try {
-        if (!highlighterRef.current) {
-          const { createHighlighter } = await import('shiki');
-          const highlighter = await createHighlighter({
-            themes: ['github-dark'],
-            langs: ['diff'],
-          });
-          if (isCancelled) return;
-          highlighterRef.current = highlighter;
-          cachedHighlighter = highlighter;
-        }
+        const highlighter = await getHighlighter();
+        if (cancelled) return;
 
         const htmlMap = new Map<string, string>();
         for (const entry of diffsToHighlight) {
           if (entry.diff) {
-            const html = highlighterRef.current.codeToHtml(entry.diff, {
+            const html = highlighter.codeToHtml(entry.diff, {
               lang: 'diff',
               theme: 'github-dark',
             });
@@ -126,11 +117,14 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
           }
         }
 
-        if (!isCancelled) {
+        if (!cancelled) {
           setHighlightedHtmls(htmlMap);
         }
       } catch (err) {
         console.error('Failed to initialize shiki for diff:', err);
+        if (!cancelled) {
+          setHighlightFailed(true);
+        }
       }
     }
 
@@ -188,9 +182,14 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
                     dangerouslySetInnerHTML={{ __html: highlightedHtmls.get(entry.planId)! }}
                   />
                 ) : (
-                  <pre className="text-xs text-foreground whitespace-pre-wrap break-words overflow-x-auto">
-                    {entry.diff}
-                  </pre>
+                  <div>
+                    <pre className="text-xs text-foreground whitespace-pre-wrap break-words overflow-x-auto">
+                      {entry.diff}
+                    </pre>
+                    {highlightFailed && (
+                      <div className="text-[10px] text-text-dim mt-1">Highlighting unavailable</div>
+                    )}
+                  </div>
                 )}
               </div>
             ))}
