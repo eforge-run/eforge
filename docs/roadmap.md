@@ -34,7 +34,7 @@
 
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
 
-- **Multi-provider backend via pi-mono** — `AgentBackend` implementation using `@mariozechner/pi-ai` (unified LLM streaming with first-class OpenRouter support, 20+ providers) and `@mariozechner/pi-agent-core` (agent loop with tool execution). Translation layer from pi's `AgentEvent`s to eforge's `EforgeEvent`s, plus an MCP bridge to expose MCP server tools as pi `AgentTool` instances. Unlocks GPT-4, Gemini, Llama, and 400+ models via OpenRouter.
+- **Multi-provider backend via pi-mono** — `AgentBackend` implementation using `@mariozechner/pi-ai` (unified LLM streaming, 20+ direct providers including OpenAI, Anthropic, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter) and `@mariozechner/pi-agent-core` (agent loop with built-in coding tools: read, write, edit, bash). Three integration layers: (1) event translation from pi's lifecycle events (`agent_start`, `turn_start`, `message_update`, `tool_execution_start/end`, `agent_end`) to eforge's `EforgeEvent`s, (2) MCP bridge wrapping MCP server tools as pi `AgentTool` instances (TypeBox schemas), and (3) TypeBox↔Zod schema adapter for tool parameter definitions. Pi provides AbortSignal support and cache token tracking (Anthropic models) out of the box.
 - **Monorepo** — Extend pnpm workspaces (currently only monitor UI) so the engine, eval harness, eforge-plugin, and marketing site each get their own package with isolated deps and build configs
 
 ---

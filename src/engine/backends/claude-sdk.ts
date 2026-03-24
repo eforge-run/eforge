@@ -53,10 +53,12 @@ export class ClaudeSDKBackend implements AgentBackend {
           allowDangerouslySkipPermissions: true,
           tools: options.tools === 'coding'
             ? { type: 'preset', preset: 'claude_code' }
-            : undefined,
-          mcpServers: this.mcpServers,
-          plugins: this.plugins,
-          settingSources: this.settingSources,
+            : [],
+          ...(options.tools === 'coding' ? {
+            mcpServers: this.mcpServers,
+            plugins: this.plugins,
+            settingSources: this.settingSources,
+          } : {}),
           abortController: options.abortSignal
             ? abortControllerFromSignal(options.abortSignal)
             : undefined,

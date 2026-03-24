@@ -69,7 +69,7 @@ describe('runFormatter wiring', () => {
 
     expect(backend.calls).toHaveLength(1);
     expect(backend.calls[0].tools).toBe('none');
-    expect(backend.calls[0].maxTurns).toBe(3);
+    expect(backend.calls[0].maxTurns).toBe(1);
   });
 
   it('suppresses agent:message when verbose is false', async () => {
