@@ -1,10 +1,16 @@
 # eforge
 
-An autonomous build engine with blind review. Express intent, `eforge` plans, implements, reviews, and validates - no supervision required.
+An agentic build system. PRD in, reviewed and validated code out.
 
-![eforge invoked from Claude Code](docs/images/claude-code-handoff.png)
+`eforge` takes a prompt or requirements doc, plans the implementation against your codebase, builds it in isolated git worktrees, runs a blind code review with a fresh-context agent, and validates the result. No supervision required.
 
 ![eforge monitor - full pipeline](docs/images/monitor-full-pipeline.png)
+
+## Why
+
+AI coding agents are fast but sloppy. They generate code, ship it, and move on. Nobody reviews. Nobody validates. The result is a growing pile of code that *looks* right but hasn't been stress-tested.
+
+`eforge` treats AI-generated code the way CI/CD treats human-written code: with a structured pipeline that plans, builds, reviews, and validates before anything lands on your branch. The reviewer runs in a fresh context with zero knowledge of how the code was written - it evaluates the output independently. An evaluator then applies per-hunk verdicts on the reviewer's suggestions, accepting strict improvements while rejecting anything that alters intent.
 
 ## Install
 
@@ -17,13 +23,9 @@ An autonomous build engine with blind review. Express intent, `eforge` plans, im
 /plugin install eforge@eforge
 ```
 
-The first invocation downloads `eforge` automatically via npx - no global install needed. Plan interactively in Claude Code, then hand off to `eforge` for build, review, and validation.
+The first invocation downloads `eforge` automatically via npx. Plan interactively in Claude Code, then hand off to `eforge` for autonomous build, review, and validation.
 
-| Skill | Description |
-|-------|-------------|
-| `/eforge:build` | Enqueue PRD; daemon auto-builds (compile + build + validate) |
-| `/eforge:status` | Check build progress |
-| `/eforge:config` | Initialize or edit `eforge.yaml` with interactive guidance |
+![eforge invoked from Claude Code](docs/images/claude-code-handoff.png)
 
 ### Standalone CLI
 
@@ -31,18 +33,18 @@ The first invocation downloads `eforge` automatically via npx - no global instal
 npx eforge build "Add a health check endpoint"
 ```
 
-Or install globally with `npm install -g eforge`.
+Or install globally: `npm install -g eforge`
 
 ## Quick Start
 
-Give `eforge` a prompt, a markdown file, or a full PRD - it handles the rest:
+Give `eforge` a prompt, a markdown file, or a full PRD:
 
 ```bash
+eforge build "Add rate limiting to the API"
 eforge build plans/my-feature-prd.md
-eforge build "Add a health check endpoint"
 ```
 
-By default, `eforge build` enqueues the PRD and the daemon automatically picks it up for compile, build, and validation. Use `--foreground` to run the full pipeline in the current process instead. `eforge` plans the work, builds it in an isolated worktree, runs a blind code review with a fresh-context agent, evaluates the reviewer's suggestions, merges, and validates. Every phase produces a git commit so the full lifecycle is traceable in history.
+By default, `eforge build` enqueues the PRD and a daemon automatically picks it up. Use `--foreground` to run in the current process instead.
 
 ## How It Works
 
@@ -83,76 +85,69 @@ flowchart TD
     end
 ```
 
-- **Daemon** - A persistent background process (port 4567) that watches the PRD queue and spawns an isolated worker process for each PRD. The CLI auto-starts the daemon on first use. Use `--foreground` to bypass the daemon and run the pipeline directly.
-- **Compile** - Profile-dependent. The planner explores the codebase, selects a workflow profile (errand = passthrough, excursion = plan + review, expedition = architecture + module planning + cohesion review), and writes plan files. Each plan carries its own build stage sequence and review config in `orchestration.yaml`. Plans go through a blind review cycle before building starts.
-- **Build** - Each plan runs its own build stages in an isolated git worktree. The default is `implement → review-cycle`, where the review cycle runs a blind code reviewer, a fixer that applies suggestions, and an evaluator that accepts strict improvements while rejecting intent changes. Plans with documentation changes use `[implement, doc-update] → review-cycle` (parallel group). Test and TDD workflows are also available. Completed plans squash-merge to the base branch in topological dependency order.
-- **Validation** - Runs configured commands (type-check, tests, linting) after all plans merge. If validation fails, a fixer agent attempts minimal repairs automatically.
+**Workflow profiles** - The planner assesses complexity and selects a profile:
+- **Errand** - Small, self-contained changes. Passthrough compile, fast build.
+- **Excursion** - Multi-file features. Planner writes a plan, blind review cycle, then build.
+- **Expedition** - Large cross-cutting work. Architecture doc, module decomposition, cohesion review across plans, parallel builds in dependency order.
+
+**Blind review** - Every build gets reviewed by a separate agent with no builder context. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes. This is the quality gate.
+
+**Parallel orchestration** - Expedition plans run in isolated git worktrees, merge in topological dependency order, then run post-merge validation with auto-fix.
 
 ![eforge monitor - timeline view](docs/images/monitor-timeline.png)
 
-## Status
+## Queue Workflow
 
-`eforge` is a personal tool - source is public so you can read, learn from, and fork it. Not accepting issues or PRs.
-
-## CLI Usage
+The queue is how I actually use `eforge` day to day. Plan features throughout the day, add them to the queue, and let the daemon process them:
 
 ```bash
-eforge build plans/my-feature-prd.md    # enqueue + auto-build via daemon
-eforge build --foreground plans/my-feature-prd.md  # run in foreground (no daemon)
-eforge build --queue                     # process queued PRDs
-eforge enqueue plans/my-feature-prd.md   # add to queue (daemon auto-builds by default)
-eforge status                            # check running builds
+eforge enqueue "Add health check endpoint"
+eforge enqueue plans/auth-refactor.md
+eforge enqueue "Fix the race condition in the webhook handler"
+eforge status                            # check progress
 eforge monitor                           # open web dashboard
-eforge config show                       # print resolved config
-eforge daemon start                      # start persistent daemon
-eforge daemon stop                       # stop daemon
-eforge daemon status                     # show daemon PID, port, uptime
 ```
 
-`eforge run` is a backwards-compatible alias for `eforge build`.
-
-All commands support `--help`. Notable flags: `--auto` (bypass approval gates), `--verbose` (stream agent output), `--dry-run` (compile only), `--foreground` (run in foreground instead of delegating to daemon), `--cleanup/--no-cleanup` (keep or remove plan files after build).
-
-## Configuration
-
-`eforge` is configured via `eforge.yaml` (searched upward from cwd), environment variables, and auto-discovered files. By default, the daemon auto-builds after enqueue (`prdQueue.autoBuild: true`). See [docs/config.md](docs/config.md) for the full reference including profiles, plugins, MCP servers, and [docs/hooks.md](docs/hooks.md) for event hooks.
+Queued work is re-assessed before execution so changes from earlier builds are accounted for.
 
 ## Architecture
 
-`eforge` is **library-first**. The engine (`src/engine/`) is a pure TypeScript library that communicates exclusively through typed `EforgeEvent`s via `AsyncGenerator` - it never writes to stdout. The CLI and web monitor are thin consumers that iterate the event stream and render.
+`eforge` is **library-first**. The engine is a pure TypeScript library that communicates through typed `EforgeEvent`s via `AsyncGenerator` - it never writes to stdout. CLI, web monitor, and Claude Code plugin are thin consumers of the same event stream.
 
-Agent runners use the `AgentBackend` interface - all SDK interaction is isolated behind a single adapter (`src/engine/backends/claude-sdk.ts`). New surfaces (CI, TUI, web) consume the same event stream.
+Each build phase gets its own agent role: formatter, planner, builder, reviewer, evaluator, fixer, doc-updater, validation-fixer. Agent runners use an `AgentBackend` interface - all LLM interaction is isolated behind a single adapter, making the engine provider-swappable.
 
-A real-time web monitor records all events to SQLite and serves a dashboard over SSE, auto-starting with `build` commands. Recording is decoupled from the web server - events are always persisted, even with `--no-monitor` or `enqueue`.
-
-The daemon is a persistent HTTP server (default port 4567) that watches the PRD queue and auto-builds new entries. Each build spawns an isolated worker process running the same `eforge` binary. The CLI auto-starts the daemon on first `build` invocation and falls back to foreground execution if the daemon is unavailable. An MCP proxy bridges the Claude Code plugin to the daemon's HTTP API, translating tool calls into enqueue and status requests. SQLite (`.eforge/monitor.db`) is the coordination point — the daemon, workers, and web monitor all read/write the same database using WAL mode for concurrent access.
+A web monitor records all events to SQLite and serves a real-time dashboard over SSE, tracking progress, cost, and token usage.
 
 ## Evaluation
 
-An end-to-end eval harness lives in `eval/`. It runs `eforge` against embedded fixture projects and validates the output compiles and tests pass.
+An end-to-end eval harness runs `eforge` against embedded fixture projects and validates the output compiles and tests pass.
 
 ```bash
 ./eval/run.sh                        # Run all scenarios
 ./eval/run.sh todo-api-health-check  # Run one scenario
-./eval/run.sh --dry-run              # Smoke-test the harness
 ```
 
-See `eval/scenarios.yaml` for the scenario manifest and `eval/fixtures/` for the test projects.
-
 ![eforge eval results](docs/images/eval-results.png)
+
+## Configuration
+
+Configured via `eforge.yaml` (searched upward from cwd), environment variables, and auto-discovered files. Custom workflow profiles, hooks, MCP servers, and plugins are all configurable. See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
+
+## Status
+
+`eforge` is a personal tool that I use daily to build real features (including itself). Source is public so you can read, learn from, and fork it. Not accepting issues or PRs at this time.
 
 ## Development
 
 ```bash
 pnpm dev          # Run via tsx (pass args after --)
 pnpm build        # Bundle with tsup
-pnpm type-check   # Type check
 pnpm test         # Run unit tests
 ```
 
 ## Name
 
-**E** from the [Expedition-Excursion-Errand (EEE) methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) + **forge** - shaping code from plans.
+**E** from the [Expedition-Excursion-Errand methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) + **forge** - shaping code from plans.
 
 ## License
 
