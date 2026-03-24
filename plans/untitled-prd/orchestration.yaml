@@ -1,0 +1,29 @@
+name: untitled-prd
+description: Rebrand all references from eforge.run/eforge-run to eforge.build/eforge-build
+created: 2026-03-24
+compiled: 2026-03-24
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-rebrand
+    name: Rebrand eforge.run to eforge.build
+    depends_on: []
+    branch: untitled-prd/rebrand
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
