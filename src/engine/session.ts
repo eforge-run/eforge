@@ -42,7 +42,8 @@ export async function* withSessionId(
  *
  * Session result is derived from the last phase:end event seen, or from
  * enqueue:complete for enqueue-only sessions. If neither was emitted,
- * falls back to { status: 'failed', summary: 'Session terminated abnormally' }.
+ * falls back to a failed result — using the last agent:stop error message
+ * if available, otherwise 'Session terminated abnormally'.
  */
 export async function* runSession(
   events: AsyncGenerator<EforgeEvent>,
@@ -50,6 +51,7 @@ export async function* runSession(
 ): AsyncGenerator<EforgeEvent> {
   let sessionStartEmitted = false;
   let lastResult: EforgeResult | undefined;
+  let lastAgentError: string | undefined;
 
   try {
     for await (const event of events) {
@@ -65,6 +67,8 @@ export async function* runSession(
         lastResult = event.result;
       } else if (event.type === 'enqueue:complete') {
         lastResult = { status: 'completed', summary: `Enqueued: ${event.title}` };
+      } else if (event.type === 'agent:stop' && 'error' in event && event.error) {
+        lastAgentError = event.error as string;
       }
     }
   } finally {
@@ -73,10 +77,13 @@ export async function* runSession(
       // Edge case: no events at all — still emit start+end
       yield { type: 'session:start', sessionId, timestamp: new Date().toISOString() } as EforgeEvent;
     }
+    const fallbackSummary = lastAgentError
+      ? `Session failed: ${lastAgentError}`
+      : 'Session terminated abnormally';
     yield {
       type: 'session:end',
       sessionId,
-      result: lastResult ?? { status: 'failed', summary: 'Session terminated abnormally' },
+      result: lastResult ?? { status: 'failed', summary: fallbackSummary },
       timestamp: new Date().toISOString(),
     } as EforgeEvent;
   }

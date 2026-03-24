@@ -170,6 +170,35 @@ describe('runSession', () => {
     expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.summary).toBe('Session terminated abnormally');
   });
 
+  it('includes agent error in fallback summary when agent:stop has error and no phase:end follows', async () => {
+    async function* agentErrorStream(): AsyncGenerator<EforgeEvent> {
+      yield { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' } as EforgeEvent;
+      yield { type: 'agent:start', agentId: 'a1', agent: 'planner', timestamp: '2024-01-01T00:00:01Z' } as EforgeEvent;
+      yield { type: 'agent:stop', agentId: 'a1', agent: 'planner', error: 'Model returned empty response', timestamp: '2024-01-01T00:00:05Z' } as EforgeEvent;
+      // No phase:end — upstream terminates after agent error
+    }
+
+    const result = await collect(runSession(agentErrorStream(), 'session-agent-err'));
+
+    const sessionEnd = result.find((e) => e.type === 'session:end');
+    expect(sessionEnd).toBeDefined();
+    expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.status).toBe('failed');
+    expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.summary).toBe('Session failed: Model returned empty response');
+  });
+
+  it('uses generic fallback when no agent error and no phase:end', async () => {
+    async function* emptyishStream(): AsyncGenerator<EforgeEvent> {
+      yield { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' } as EforgeEvent;
+      // No agent:stop with error, no phase:end
+    }
+
+    const result = await collect(runSession(emptyishStream(), 'session-no-result'));
+
+    const sessionEnd = result.find((e) => e.type === 'session:end');
+    expect(sessionEnd).toBeDefined();
+    expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.summary).toBe('Session terminated abnormally');
+  });
+
   it('emits session:end with completed result for enqueue-only sessions', async () => {
     const events: EforgeEvent[] = [
       { type: 'enqueue:start', source: 'my-feature.md' },
