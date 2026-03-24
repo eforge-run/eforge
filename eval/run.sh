@@ -183,8 +183,8 @@ main() {
   eforge_version="$(node -e "console.log(require('$REPO_ROOT/package.json').version)")"
   eforge_commit="$(cd "$REPO_ROOT" && git rev-parse --short HEAD)"
 
-  # Start shared monitor server
-  export EFORGE_MONITOR_DB="$run_dir/monitor.db"
+  # Start shared monitor server — single DB across all eval runs
+  export EFORGE_MONITOR_DB="$RESULTS_DIR/monitor.db"
   local server_main="$REPO_ROOT/dist/server-main.js"
   local server_runner="node"
   if [[ ! -f "$server_main" ]]; then
