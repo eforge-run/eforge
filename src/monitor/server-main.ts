@@ -161,23 +161,57 @@ async function main(): Promise<void> {
             // Process may have already exited
           }
           workerProcesses.delete(sessionId);
+
+          // Mark running runs as killed in DB and write lifecycle events
+          const runs = db.getRunningRuns().filter((r) => r.sessionId === sessionId);
+          const now = new Date().toISOString();
+          for (const run of runs) {
+            db.updateRunStatus(run.id, 'killed', now);
+            db.insertEvent({
+              runId: run.id,
+              type: 'phase:end',
+              data: JSON.stringify({ runId: run.id, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
+              timestamp: now,
+            });
+          }
+          db.insertEvent({
+            runId: sessionId,
+            type: 'session:end',
+            data: JSON.stringify({ sessionId, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
+            timestamp: now,
+          });
+
           return true;
         }
 
         // Fall back to DB for workers spawned before daemon restart
         const runningRuns = db.getRunningRuns();
-        for (const run of runningRuns) {
-          if (run.sessionId === sessionId && run.pid) {
-            try {
-              process.kill(run.pid, 'SIGTERM');
-              db.updateRunStatus(run.id, 'killed');
-              return true;
-            } catch {
-              // Process not alive
-              db.updateRunStatus(run.id, 'killed');
-              return true;
+        const sessionRuns = runningRuns.filter((r) => r.sessionId === sessionId);
+        if (sessionRuns.length > 0) {
+          const now = new Date().toISOString();
+          for (const run of sessionRuns) {
+            if (run.pid) {
+              try {
+                process.kill(run.pid, 'SIGTERM');
+              } catch {
+                // Process not alive
+              }
             }
+            db.updateRunStatus(run.id, 'killed', now);
+            db.insertEvent({
+              runId: run.id,
+              type: 'phase:end',
+              data: JSON.stringify({ runId: run.id, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
+              timestamp: now,
+            });
           }
+          db.insertEvent({
+            runId: sessionId,
+            type: 'session:end',
+            data: JSON.stringify({ sessionId, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
+            timestamp: now,
+          });
+          return true;
         }
 
         return false;

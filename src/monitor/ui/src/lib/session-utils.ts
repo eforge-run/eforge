@@ -26,7 +26,7 @@ function sortRuns(runs: RunInfo[]): RunInfo[] {
 
 function rollupStatus(runs: RunInfo[]): 'running' | 'failed' | 'completed' {
   if (runs.some((r) => r.status === 'running')) return 'running';
-  if (runs.some((r) => r.status === 'failed')) return 'failed';
+  if (runs.some((r) => r.status === 'failed' || r.status === 'killed')) return 'failed';
   return 'completed';
 }
 
