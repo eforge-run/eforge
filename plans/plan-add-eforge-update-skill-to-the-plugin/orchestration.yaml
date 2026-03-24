@@ -1,0 +1,31 @@
+name: plan-add-eforge-update-skill-to-the-plugin
+description: Add /eforge:update skill to check for updates, install latest npm
+  package, restart daemon, and guide plugin update
+created: 2026-03-24
+compiled: 2026-03-24
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-update-skill
+    name: Add /eforge:update Skill
+    depends_on: []
+    branch: plan-add-eforge-update-skill-to-the-plugin/update-skill
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
