@@ -218,6 +218,23 @@ describe('runSession', () => {
     expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.summary).toContain('My Great Feature');
   });
 
+  it('emits session:end with failed result when enqueue:failed is in the event stream', async () => {
+    const events: EforgeEvent[] = [
+      { type: 'enqueue:start', source: 'my-feature.md' },
+      { type: 'enqueue:failed', error: 'Formatter crashed: invalid input' },
+    ];
+
+    const result = await collect(runSession(asyncIterableFrom(events), 'session-enqueue-fail'));
+
+    expect(result[0].type).toBe('session:start');
+    expect(result[0].sessionId).toBe('session-enqueue-fail');
+
+    const sessionEnd = result.find((e) => e.type === 'session:end');
+    expect(sessionEnd).toBeDefined();
+    expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.status).toBe('failed');
+    expect(sessionEnd!.type === 'session:end' && sessionEnd!.result.summary).toBe('Enqueue failed: Formatter crashed: invalid input');
+  });
+
   it('emits exactly one session:start and one session:end for full three-phase completion', async () => {
     const events: EforgeEvent[] = [
       { type: 'enqueue:start', source: 'test-prd.md' },

@@ -44,7 +44,7 @@ export interface RunState {
   profileInfo: ProfileInfo | null;
   endTime: number | null;
   mergeCommits: Record<string, string>;
-  enqueueStatus: 'running' | 'complete' | null;
+  enqueueStatus: 'running' | 'complete' | 'failed' | null;
   enqueueTitle: string | null;
   enqueueSource: string | null;
 }
@@ -101,7 +101,7 @@ function processEvent(
     earlyOrchestration: OrchestrationConfig | null;
     profileInfo: ProfileInfo | null;
     mergeCommits: Record<string, string>;
-    enqueueStatus: 'running' | 'complete' | null;
+    enqueueStatus: 'running' | 'complete' | 'failed' | null;
     enqueueTitle: string | null;
     enqueueSource: string | null;
   },
@@ -122,6 +122,10 @@ function processEvent(
   if (event.type === 'enqueue:complete') {
     state.enqueueStatus = 'complete';
     state.enqueueTitle = (event as { title: string }).title;
+  }
+
+  if (event.type === 'enqueue:failed') {
+    state.enqueueStatus = 'failed';
   }
 
   if (event.type === 'session:end') {
@@ -301,7 +305,7 @@ function processEvent(
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null, mergeCommits: {}, enqueueStatus: null, enqueueTitle: null, enqueueSource: null };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null, mergeCommits: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -323,7 +327,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         earlyOrchestration: null as OrchestrationConfig | null,
         profileInfo: null as ProfileInfo | null,
         mergeCommits: {} as Record<string, string>,
-        enqueueStatus: null as 'running' | 'complete' | null,
+        enqueueStatus: null as 'running' | 'complete' | 'failed' | null,
         enqueueTitle: null as string | null,
         enqueueSource: null as string | null,
       };

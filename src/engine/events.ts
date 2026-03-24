@@ -229,6 +229,7 @@ export type EforgeEvent = { sessionId?: string } & (
   // Enqueue
   | { type: 'enqueue:start'; source: string }
   | { type: 'enqueue:complete'; id: string; filePath: string; title: string }
+  | { type: 'enqueue:failed'; error: string }
 
   // Queue
   | QueueEvent
