@@ -195,8 +195,9 @@ main() {
   if [[ "$DRY_RUN" == "false" ]]; then
     $server_runner "$server_main" "$EFORGE_MONITOR_DB" 4580 "$REPO_ROOT" &
     monitor_pid=$!
-    # Kill monitor server on exit
-    trap 'kill $monitor_pid 2>/dev/null || true' EXIT
+    # Detach so the server survives shell exit — the ephemeral countdown
+    # (10s without browser, 60s with) handles auto-shutdown
+    disown $monitor_pid
   fi
 
   echo "Eforge Eval Run"
