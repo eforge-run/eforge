@@ -1,6 +1,6 @@
 name: untitled-prd
-description: Fix inline MCP descriptions receiving "Untitled PRD" title by
-  moving inferTitle() to run on formatted output and instructing the formatter
+description: Fix inline MCP descriptions getting "Untitled PRD" title by
+  reordering inferTitle() to run on formatted output and updating the formatter
   to emit a title heading.
 created: 2026-03-24
 compiled: 2026-03-24
@@ -10,10 +10,10 @@ validate:
   - pnpm type-check
   - pnpm test
 plans:
-  - id: plan-01-fix-untitled-prd
-    name: Fix Untitled PRD Title for Inline MCP Descriptions
+  - id: plan-01-fix-inline-title
+    name: Fix Inline Title Inference
     depends_on: []
-    branch: untitled-prd/fix-untitled-prd
+    branch: untitled-prd/fix-inline-title
     build:
       - implement
       - review-cycle

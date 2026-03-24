@@ -279,9 +279,6 @@ export class EforgeEngine {
 
     yield { type: 'enqueue:start', source };
 
-    // Infer title from content (or from name override)
-    const title = options.name ?? inferTitle(sourceContent, !source.includes('\n') ? source : undefined);
-
     // Run formatter agent to normalize content
     let formattedBody = sourceContent;
     try {
@@ -294,6 +291,9 @@ export class EforgeEngine {
       if (result.value?.body) {
         formattedBody = result.value.body;
       }
+
+      // Infer title from formatted content (or from name override)
+      const title = options.name ?? inferTitle(formattedBody, !source.includes('\n') ? source : undefined);
 
       // Write to queue
       const enqueueResult = await enqueuePrd({

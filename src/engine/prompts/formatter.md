@@ -10,6 +10,7 @@ You are a PRD formatter. Your job is to take any input - whether it's a rough id
 
 Reformat the input above into the following standard sections:
 
+0. **Title** - A concise `# Title` heading as the very first line of output. Derive a short, descriptive title from the input content (e.g., `# Add dark mode support`). This must be a markdown H1 heading.
 1. **Problem / Motivation** - Why does this work need to happen? What pain point or opportunity does it address?
 2. **Goal** - What is the desired outcome? One or two sentences.
 3. **Approach** - How should this be implemented at a high level? Key technical decisions or constraints.
