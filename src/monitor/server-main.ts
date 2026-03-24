@@ -15,7 +15,7 @@
 
 import { openDatabase, type MonitorDB } from './db.js';
 import { startServer, type WorkerTracker, type DaemonState } from './server.js';
-import { writeLockfile, removeLockfile, isPidAlive } from './lockfile.js';
+import { writeLockfile, removeLockfile, updateLockfile, isPidAlive } from './lockfile.js';
 import { loadConfig } from '../engine/config.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -257,6 +257,11 @@ async function main(): Promise<void> {
       sessionId,
     };
 
+    // Track watcher PID in lockfile for external lifecycle management
+    if (child.pid) {
+      updateLockfile(cwd, { watcherPid: child.pid });
+    }
+
     // Capture reference so exit/error handlers only act on THIS child,
     // not a replacement spawned after killWatcher() + spawnWatcher().
     const thisChild = child;
@@ -265,6 +270,8 @@ async function main(): Promise<void> {
       if (watcherProcess !== thisChild) return; // stale — a new watcher replaced us
       watcherProcess = null;
       daemonState.watcher = { running: false, pid: null, sessionId: null };
+      // Remove watcher PID from lockfile on error
+      updateLockfile(cwd, { watcherPid: undefined });
       // Spawn failure — pause auto-build (same as non-zero exit)
       daemonState.autoBuild = false;
       writeAutoBuildPausedEvent(db, sessionId);
@@ -274,6 +281,8 @@ async function main(): Promise<void> {
       if (watcherProcess !== thisChild) return; // stale — a new watcher replaced us
       watcherProcess = null;
       daemonState.watcher = { running: false, pid: null, sessionId: null };
+      // Remove watcher PID from lockfile on exit (crash resilience)
+      updateLockfile(cwd, { watcherPid: undefined });
 
       if (watcherKilledByUs) {
         // Intentional kill — do not respawn
@@ -308,6 +317,8 @@ async function main(): Promise<void> {
     if (daemonState) {
       daemonState.watcher = { running: false, pid: null, sessionId: null };
     }
+    // Remove watcher PID from lockfile
+    updateLockfile(cwd, { watcherPid: undefined });
   }
 
   let server: Awaited<ReturnType<typeof startServer>>;

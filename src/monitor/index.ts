@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { EforgeEvent } from '../engine/events.js';
 import { openDatabase, type MonitorDB } from './db.js';
 import { withRecording } from './recorder.js';
-import { readLockfile, isServerAlive } from './lockfile.js';
+import { readLockfile, isServerAlive, killPidIfAlive, removeLockfile } from './lockfile.js';
 
 export type { MonitorDB } from './db.js';
 export type { MonitorServer } from './server.js';
@@ -59,7 +59,12 @@ export async function ensureMonitor(cwd: string, options?: EnsureMonitorOptions)
     if (alive) {
       return buildMonitor(db, existingLock.port, cwd);
     }
-    // Stale lockfile — will be replaced by the new server
+    // Stale lockfile — kill stale PIDs before spawning new server
+    killPidIfAlive(existingLock.pid);
+    if (existingLock.watcherPid) {
+      killPidIfAlive(existingLock.watcherPid);
+    }
+    removeLockfile(cwd);
   }
 
   // Spawn detached child process

@@ -75,19 +75,34 @@ export function isPidAlive(pid: number): boolean {
   }
 }
 
-export function updateLockfile(cwd: string, updater: (data: LockfileData) => LockfileData): void {
+/**
+ * Update an existing lockfile (read-modify-write).
+ * Accepts either a partial object to shallow-merge, or an updater function for full control.
+ * If no lockfile exists, this is a no-op.
+ */
+export function updateLockfile(cwd: string, partialOrUpdater: Partial<LockfileData> | ((data: LockfileData) => LockfileData)): void {
   const existing = readLockfile(cwd);
-  if (!existing) {
-    return; // No-op when lockfile is missing
-  }
-  const updated = updater(existing);
+  if (!existing) return;
+  const updated = typeof partialOrUpdater === 'function'
+    ? partialOrUpdater(existing)
+    : (() => {
+        const merged = { ...existing, ...partialOrUpdater };
+        // Remove undefined keys (e.g., watcherPid: undefined removes the field)
+        for (const key of Object.keys(merged) as (keyof LockfileData)[]) {
+          if (merged[key] === undefined) {
+            delete merged[key];
+          }
+        }
+        return merged as LockfileData;
+      })();
   writeLockfile(cwd, updated);
 }
 
+/**
+ * Send a signal to a PID if it's alive. Returns true if the signal was sent.
+ */
 export function killPidIfAlive(pid: number, signal: NodeJS.Signals = 'SIGTERM'): boolean {
-  if (!isPidAlive(pid)) {
-    return false;
-  }
+  if (!isPidAlive(pid)) return false;
   try {
     process.kill(pid, signal);
     return true;

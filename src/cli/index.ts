@@ -17,7 +17,7 @@ import { withSessionId, runSession } from '../engine/session.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '../monitor/index.js';
-import { readLockfile, isServerAlive, isPidAlive, lockfilePath, removeLockfile } from '../monitor/lockfile.js';
+import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, removeLockfile } from '../monitor/lockfile.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -593,7 +593,21 @@ export function createProgram(abortController?: AbortController): Command {
           console.log(chalk.yellow(`Daemon already running at http://localhost:${existingLock.port} (PID ${existingLock.pid})`));
           process.exit(0);
         }
-        // Stale lockfile — clean it up
+        // Stale lockfile — kill stale processes before spawning
+        // SIGTERM first
+        killPidIfAlive(existingLock.pid);
+        if (existingLock.watcherPid) {
+          killPidIfAlive(existingLock.watcherPid);
+        }
+        // Wait 500ms for graceful shutdown
+        await new Promise((r) => setTimeout(r, 500));
+        // SIGKILL survivors
+        if (isPidAlive(existingLock.pid)) {
+          killPidIfAlive(existingLock.pid, 'SIGKILL');
+        }
+        if (existingLock.watcherPid && isPidAlive(existingLock.watcherPid)) {
+          killPidIfAlive(existingLock.watcherPid, 'SIGKILL');
+        }
         removeLockfile(cwd);
       }
 
@@ -670,7 +684,8 @@ export function createProgram(abortController?: AbortController): Command {
   daemon
     .command('stop')
     .description('Stop the persistent daemon server')
-    .action(async () => {
+    .option('--force', 'Skip active-build safety check')
+    .action(async (options: { force?: boolean }) => {
       const cwd = process.cwd();
       const lock = readLockfile(cwd);
 
@@ -680,23 +695,65 @@ export function createProgram(abortController?: AbortController): Command {
       }
 
       if (!isPidAlive(lock.pid)) {
-        // Stale lockfile
+        // Stale lockfile — also kill watcher if tracked
+        if (lock.watcherPid) {
+          killPidIfAlive(lock.watcherPid, 'SIGKILL');
+        }
         removeLockfile(cwd);
         console.log(chalk.yellow('Daemon was not running (stale lockfile removed)'));
         process.exit(0);
       }
 
-      // Send SIGTERM
+      // Safety valve: check for active builds unless --force
+      if (!options.force) {
+        let runningBuilds: { id: string; command: string; status: string }[] = [];
+        try {
+          const { openDatabase } = await import('../monitor/db.js');
+          const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+          const db = openDatabase(dbPath);
+          runningBuilds = db.getRunningRuns();
+          db.close();
+        } catch {
+          // DB may not exist — no active builds
+        }
+
+        if (runningBuilds.length > 0) {
+          // Non-TTY stdin: auto-force to avoid blocking in scripts/daemon
+          const isTTY = process.stdin.isTTY === true;
+          if (!isTTY) {
+            // Auto-force in non-interactive mode
+          } else {
+            console.log(chalk.yellow(`Active builds (${runningBuilds.length}):`));
+            for (const build of runningBuilds) {
+              console.log(chalk.yellow(`  - ${build.id} (${build.command})`));
+            }
+            const readline = await import('node:readline/promises');
+            const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+            try {
+              const answer = await rl.question(chalk.yellow('Stop daemon with active builds? [y/N] '));
+              if (answer.toLowerCase() !== 'y') {
+                console.log(chalk.dim('Aborted'));
+                process.exit(0);
+              }
+            } finally {
+              rl.close();
+            }
+          }
+        }
+      }
+
+      // Send SIGTERM to both monitor PID and watcher PID (belt-and-suspenders)
       try {
         process.kill(lock.pid, 'SIGTERM');
       } catch {
-        removeLockfile(cwd);
-        console.log(chalk.yellow('Daemon process not found (lockfile removed)'));
-        process.exit(0);
+        // Process may have already exited
+      }
+      if (lock.watcherPid) {
+        killPidIfAlive(lock.watcherPid, 'SIGTERM');
       }
 
       // Wait for lockfile removal (daemon's shutdown handler removes it)
-      const maxRetries = 20;
+      const maxRetries = 20; // 20 * 250ms = 5s
       const retryInterval = 250;
 
       for (let i = 0; i < maxRetries; i++) {
@@ -708,7 +765,14 @@ export function createProgram(abortController?: AbortController): Command {
         }
       }
 
-      console.log(chalk.yellow('Daemon may still be shutting down (lockfile still present)'));
+      // Force-kill escalation after 5s timeout
+      console.log(chalk.yellow('Daemon did not shut down gracefully, escalating to SIGKILL...'));
+      killPidIfAlive(lock.pid, 'SIGKILL');
+      if (lock.watcherPid) {
+        killPidIfAlive(lock.watcherPid, 'SIGKILL');
+      }
+      removeLockfile(cwd);
+      console.log(chalk.green('Daemon force-stopped'));
       process.exit(0);
     });
 
@@ -764,6 +828,51 @@ export function createProgram(abortController?: AbortController): Command {
       console.log(`  URL:     http://localhost:${lock.port}`);
       console.log(`  Uptime:  ${uptimeStr}`);
       console.log(`  Builds:  ${runningCount} running`);
+
+      // Show watcher PID and alive/stale status
+      if (lock.watcherPid) {
+        const watcherAlive = isPidAlive(lock.watcherPid);
+        const watcherStatus = watcherAlive
+          ? chalk.green('alive')
+          : chalk.red('stale');
+        console.log(`  Watcher: PID ${lock.watcherPid} (${watcherStatus})`);
+      } else {
+        console.log(`  Watcher: ${chalk.dim('none')}`);
+      }
+    });
+
+  daemon
+    .command('kill')
+    .description('Force-kill the daemon (SIGKILL)')
+    .action(async () => {
+      const cwd = process.cwd();
+      const lock = readLockfile(cwd);
+
+      if (!lock) {
+        console.log(chalk.yellow('No daemon tracked for this repo'));
+        console.log(chalk.dim('Hint: ps aux | grep eforge'));
+        process.exit(0);
+      }
+
+      const killed: string[] = [];
+
+      // SIGKILL monitor PID
+      if (killPidIfAlive(lock.pid, 'SIGKILL')) {
+        killed.push(`monitor (PID ${lock.pid})`);
+      }
+
+      // SIGKILL watcher PID
+      if (lock.watcherPid && killPidIfAlive(lock.watcherPid, 'SIGKILL')) {
+        killed.push(`watcher (PID ${lock.watcherPid})`);
+      }
+
+      removeLockfile(cwd);
+
+      if (killed.length > 0) {
+        console.log(chalk.green(`Killed: ${killed.join(', ')}`));
+      } else {
+        console.log(chalk.yellow('No running processes found (lockfile removed)'));
+      }
     });
 
   // MCP proxy command — runs the stdio MCP server that bridges to the daemon
