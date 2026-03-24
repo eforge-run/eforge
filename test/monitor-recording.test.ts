@@ -129,6 +129,50 @@ describe('enqueue recording', () => {
   });
 });
 
+describe('enqueue:failed recording', () => {
+  const makeTempDir = useTempDir();
+
+  it('marks enqueue run as failed when enqueue:failed event is recorded', async () => {
+    const cwd = makeTempDir();
+    mkdirSync(resolve(cwd, '.eforge'), { recursive: true });
+    const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+    const db = openDatabase(dbPath);
+
+    const sessionId = 'test-session-enqueue-failed';
+    const now = new Date().toISOString();
+
+    const events: EforgeEvent[] = [
+      { type: 'session:start', sessionId, timestamp: now } as unknown as EforgeEvent,
+      { type: 'enqueue:start', source: '/tmp/my-prd.md' } as unknown as EforgeEvent,
+      { type: 'agent:start', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent,
+      { type: 'agent:stop', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent,
+      { type: 'enqueue:failed', error: 'Formatter crashed: invalid input' } as unknown as EforgeEvent,
+      { type: 'session:end', sessionId, result: { status: 'failed', summary: 'Enqueue failed: Formatter crashed: invalid input' }, timestamp: now } as unknown as EforgeEvent,
+    ];
+
+    async function* fakeEvents(): AsyncGenerator<EforgeEvent> {
+      for (const e of events) yield e;
+    }
+
+    const { withRecording } = await import('../src/monitor/recorder.js');
+    const wrapped = withRecording(fakeEvents(), db, cwd);
+    const collected: EforgeEvent[] = [];
+    for await (const event of wrapped) {
+      collected.push(event);
+    }
+
+    expect(collected).toHaveLength(6);
+
+    // Find the enqueue run
+    const runs = db.getRuns();
+    const enqueueRun = runs.find((r) => r.command === 'enqueue');
+    expect(enqueueRun).toBeDefined();
+    expect(enqueueRun!.status).toBe('failed');
+
+    db.close();
+  });
+});
+
 describe('enqueue-only session via runSession + withRecording', () => {
   const makeTempDir = useTempDir();
 

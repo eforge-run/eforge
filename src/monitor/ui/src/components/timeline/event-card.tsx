@@ -87,6 +87,7 @@ function eventSummary(event: EforgeEvent): string {
     case 'approval:response': return event.approved ? 'Approved' : 'Rejected';
     case 'enqueue:start': return `Enqueuing from: ${event.source}`;
     case 'enqueue:complete': return `Enqueued: ${event.title} → ${event.filePath}`;
+    case 'enqueue:failed': return `Enqueue failed: ${event.error}`;
     default: return event.type;
   }
 }
@@ -147,6 +148,8 @@ function eventDetail(event: EforgeEvent): string | null {
       return detail;
     }
     case 'build:failed':
+      return event.error;
+    case 'enqueue:failed':
       return event.error;
     case 'build:test:complete': {
       const parts: string[] = [];

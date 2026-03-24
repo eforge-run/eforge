@@ -640,6 +640,10 @@ export function renderEvent(event: EforgeEvent): void {
       succeedSpinner('enqueue', `Enqueued: ${chalk.cyan(event.title)} -> ${chalk.dim(event.filePath)}`);
       break;
 
+    case 'enqueue:failed':
+      failSpinner('enqueue', `Enqueue failed: ${chalk.red(event.error)}`);
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

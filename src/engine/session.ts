@@ -67,6 +67,8 @@ export async function* runSession(
         lastResult = event.result;
       } else if (event.type === 'enqueue:complete') {
         lastResult = { status: 'completed', summary: `Enqueued: ${event.title}` };
+      } else if (event.type === 'enqueue:failed') {
+        lastResult = { status: 'failed', summary: `Enqueue failed: ${event.error}` };
       } else if (event.type === 'agent:stop' && 'error' in event && event.error) {
         lastAgentError = event.error as string;
       }

@@ -284,38 +284,43 @@ export class EforgeEngine {
 
     // Run formatter agent to normalize content
     let formattedBody = sourceContent;
-    const gen = runFormatter({ backend: this.backend, sourceContent, verbose, abortController });
-    let result = await gen.next();
-    while (!result.done) {
-      yield result.value;
-      result = await gen.next();
-    }
-    if (result.value?.body) {
-      formattedBody = result.value.body;
-    }
-
-    // Write to queue
-    const enqueueResult = await enqueuePrd({
-      body: formattedBody,
-      title,
-      queueDir: this.config.prdQueue.dir,
-      cwd,
-    });
-
-    // Commit the enqueued PRD
     try {
-      await exec('git', ['add', enqueueResult.filePath], { cwd });
-      await forgeCommit(cwd, `enqueue(${enqueueResult.id}): ${title}`);
-    } catch {
-      // Not a git repo or nothing to commit — non-fatal
-    }
+      const gen = runFormatter({ backend: this.backend, sourceContent, verbose, abortController });
+      let result = await gen.next();
+      while (!result.done) {
+        yield result.value;
+        result = await gen.next();
+      }
+      if (result.value?.body) {
+        formattedBody = result.value.body;
+      }
 
-    yield {
-      type: 'enqueue:complete',
-      id: enqueueResult.id,
-      filePath: enqueueResult.filePath,
-      title,
-    };
+      // Write to queue
+      const enqueueResult = await enqueuePrd({
+        body: formattedBody,
+        title,
+        queueDir: this.config.prdQueue.dir,
+        cwd,
+      });
+
+      // Commit the enqueued PRD
+      try {
+        await exec('git', ['add', enqueueResult.filePath], { cwd });
+        await forgeCommit(cwd, `enqueue(${enqueueResult.id}): ${title}`);
+      } catch {
+        // Not a git repo or nothing to commit — non-fatal
+      }
+
+      yield {
+        type: 'enqueue:complete',
+        id: enqueueResult.id,
+        filePath: enqueueResult.filePath,
+        title,
+      };
+    } catch (err) {
+      yield { type: 'enqueue:failed', error: err instanceof Error ? err.message : String(err) };
+      return;
+    }
   }
 
   /**

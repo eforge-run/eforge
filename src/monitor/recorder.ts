@@ -96,6 +96,10 @@ export async function* withRecording(
       db.updateRunStatus(enqueueRunId, 'completed', new Date().toISOString());
     }
 
+    if (event.type === 'enqueue:failed' && enqueueRunId) {
+      db.updateRunStatus(enqueueRunId, 'failed', new Date().toISOString());
+    }
+
     if (event.type === 'phase:end' && runId) {
       db.updateRunStatus(runId, event.result.status, event.timestamp);
     }
