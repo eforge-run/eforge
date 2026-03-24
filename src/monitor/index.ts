@@ -43,7 +43,7 @@ const HEALTH_CHECK_INTERVAL_MS = 250;
  * but does NOT kill the server.
  */
 export async function ensureMonitor(cwd: string, options?: EnsureMonitorOptions): Promise<Monitor> {
-  const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+  const dbPath = process.env.EFORGE_MONITOR_DB || resolve(cwd, '.eforge', 'monitor.db');
   const db = openDatabase(dbPath);
 
   if (options?.noServer) {
@@ -84,7 +84,7 @@ export async function signalMonitorShutdown(cwd: string): Promise<void> {
   if (!alive) return;
 
   // Check if there are running runs by opening DB briefly
-  const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+  const dbPath = process.env.EFORGE_MONITOR_DB || resolve(cwd, '.eforge', 'monitor.db');
   let hasRunning = false;
   try {
     const checkDb = openDatabase(dbPath);

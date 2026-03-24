@@ -183,9 +183,28 @@ main() {
   eforge_version="$(node -e "console.log(require('$REPO_ROOT/package.json').version)")"
   eforge_commit="$(cd "$REPO_ROOT" && git rev-parse --short HEAD)"
 
+  # Start shared monitor server
+  export EFORGE_MONITOR_DB="$run_dir/monitor.db"
+  local server_main="$REPO_ROOT/dist/server-main.js"
+  local server_runner="node"
+  if [[ ! -f "$server_main" ]]; then
+    server_main="$REPO_ROOT/src/monitor/server-main.ts"
+    server_runner="npx tsx"
+  fi
+  local monitor_pid=""
+  if [[ "$DRY_RUN" == "false" ]]; then
+    $server_runner "$server_main" "$EFORGE_MONITOR_DB" 4580 "$REPO_ROOT" &
+    monitor_pid=$!
+    # Kill monitor server on exit
+    trap 'kill $monitor_pid 2>/dev/null || true' EXIT
+  fi
+
   echo "Eforge Eval Run"
   echo "  Version: $eforge_version ($eforge_commit)"
   echo "  Results: $run_dir"
+  if [[ -n "$monitor_pid" ]]; then
+    echo "  Monitor: http://localhost:4580"
+  fi
   echo ""
 
   # Parse scenarios and run

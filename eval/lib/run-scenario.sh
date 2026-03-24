@@ -59,11 +59,11 @@ run_scenario() {
 
     # Output goes to both terminal (for live monitoring URL) and log file
     # Env vars (e.g. LANGFUSE_*) are inherited from run.sh's --env-file sourcing
-    echo "  Running eforge run $prd --auto --verbose --foreground..."
+    echo "  Running eforge run $prd --auto --verbose --foreground --no-monitor..."
     set +e
     (
       cd "$workspace"
-      "$eforge_bin" run "$prd" --auto --verbose --foreground
+      "$eforge_bin" run "$prd" --auto --verbose --foreground --no-monitor
     ) 2>&1 | tee "$scenario_dir/eforge.log"
     eforge_exit=${PIPESTATUS[0]}
     set -e
@@ -84,16 +84,7 @@ run_scenario() {
     validation_results=$(run_validations "$workspace" "$validate" "$scenario_dir")
   fi
 
-  # Step 4b: Preserve monitor DB before workspace cleanup
-  # Copy all SQLite files (.db, .db-wal, .db-shm) since the DB uses WAL mode
-  if [[ -f "$workspace/.eforge/monitor.db" ]]; then
-    cp "$workspace/.eforge/monitor.db" "$scenario_dir/monitor.db"
-    for ext in db-wal db-shm; do
-      [[ -f "$workspace/.eforge/monitor.${ext}" ]] && cp "$workspace/.eforge/monitor.${ext}" "$scenario_dir/monitor.${ext}"
-    done
-  fi
-
-  # Step 4c: Preserve orchestration.yaml before workspace cleanup
+  # Step 4b: Preserve orchestration.yaml before workspace cleanup
   # There may be multiple plan sets; copy the first one found
   local orch_file
   orch_file="$(find "$workspace/plans" -name 'orchestration.yaml' -print -quit 2>/dev/null || true)"
@@ -115,7 +106,7 @@ run_scenario() {
     "$duration" \
     "$scenario_dir/eforge.log" \
     "$validation_results" \
-    "$scenario_dir/monitor.db"
+    "$EFORGE_MONITOR_DB"
 
   # Step 5b: Check expectations (writes expectations key into result.json)
   if [[ "$expect_json" != "{}" ]]; then
