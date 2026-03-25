@@ -1,0 +1,31 @@
+name: smart-file-path-shortening-in-changes-heatmap
+description: Add smart path shortening utility to preserve filenames in the
+  Changes heatmap, widen the file column, and add unit tests
+created: 2026-03-25
+compiled: 2026-03-25
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-shorten-path
+    name: Smart file path shortening in Changes heatmap
+    depends_on: []
+    branch: smart-file-path-shortening-in-changes-heatmap/shorten-path
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
