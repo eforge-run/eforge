@@ -254,7 +254,7 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
 
   return (
     <TooltipProvider delayDuration={0}>
-      <div className="bg-card border border-border rounded-lg px-4 py-3 shadow-sm shadow-black/20">
+      <div>
         {/* Header: profile badge + description, or fallback "Pipeline" label */}
         {profileInfo ? (
           <ProfileHeader profileInfo={profileInfo} activeStages={activeStages} completedStages={completedStages} hoveredStage={hoveredStage} onStageHover={setHoveredStage} />
@@ -268,7 +268,7 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
         {/* Thread timeline rows */}
         {hasThreadContent && (
           <>
-            {profileInfo && <div className="border-t border-border/50 mb-2" />}
+
             <div className="flex flex-col gap-1.5">
               {hasGlobalThreads && (
                 <PlanRow
