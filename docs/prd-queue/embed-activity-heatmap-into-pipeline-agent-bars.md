@@ -1,7 +1,7 @@
 ---
 title: Embed Activity Heatmap into Pipeline Agent Bars
 created: 2026-03-25
-status: pending
+status: running
 ---
 
 # Embed Activity Heatmap into Pipeline Agent Bars

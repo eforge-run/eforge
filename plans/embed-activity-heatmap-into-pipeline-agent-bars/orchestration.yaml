@@ -1,0 +1,35 @@
+name: embed-activity-heatmap-into-pipeline-agent-bars
+description: Embed the activity heatmap directly into pipeline agent bars as a
+  white opacity overlay, remove the standalone HeatstripRow, and add agentId to
+  streaming events for per-agent activity attribution.
+created: 2026-03-25
+compiled: 2026-03-25
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-embed-activity-heatmap
+    name: Embed Activity Heatmap into Pipeline Agent Bars
+    depends_on: []
+    branch: embed-activity-heatmap-into-pipeline-agent-bars/embed-activity-heatmap
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
