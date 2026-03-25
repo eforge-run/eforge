@@ -161,7 +161,6 @@ export function FileHeatmap({ runState, sessionId }: FileHeatmapProps) {
           planId={selectedFile.planId}
           filePath={selectedFile.path}
           planIds={selectedFilePlanIds}
-          mergeCommits={runState.mergeCommits}
           onClose={handleCloseViewer}
         />
       )}

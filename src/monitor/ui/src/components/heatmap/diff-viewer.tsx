@@ -15,11 +15,10 @@ interface DiffViewerProps {
   planId: string | null;
   filePath: string;
   planIds?: string[];
-  mergeCommits: Record<string, string>;
   onClose: () => void;
 }
 
-export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits, onClose }: DiffViewerProps) {
+export function DiffViewer({ sessionId, planId, filePath, planIds, onClose }: DiffViewerProps) {
   const [loading, setLoading] = useState(true);
   const [entries, setEntries] = useState<DiffEntry[]>([]);
   const [highlightedHtmls, setHighlightedHtmls] = useState<Map<string, string>>(new Map());
@@ -28,12 +27,6 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
 
   // Stable serialization of planIds to avoid re-fetching on every render
   const planIdsKey = useMemo(() => (planIds ?? []).join(','), [planIds]);
-  // Stable serialization of mergeCommits to avoid re-fetching on every SSE event
-  const mergeCommitsKey = useMemo(() => {
-    const entries = Object.entries(mergeCommits);
-    entries.sort(([a], [b]) => a.localeCompare(b));
-    return entries.map(([k, v]) => `${k}:${v}`).join(',');
-  }, [mergeCommits]);
 
   // Escape key handler
   useEffect(() => {
@@ -59,11 +52,6 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
 
         if (planId) {
           // Single plan+file diff
-          if (!mergeCommits[planId]) {
-            setEntries([{ planId, diff: null, error: 'Commit not found' }]);
-            setLoading(false);
-            return;
-          }
           try {
             const result = await fetchFileDiff(sessionId, planId, filePath);
             fetchedEntries = [{ planId, ...result }];
@@ -72,7 +60,7 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
           }
         } else {
           // All plans that touched this file
-          const relevantPlanIds = (planIds ?? []).filter((id) => mergeCommits[id]);
+          const relevantPlanIds = planIds ?? [];
           fetchedEntries = [];
           for (const pid of relevantPlanIds) {
             try {
@@ -131,7 +119,7 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, mergeCommits,
     load();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessionId, planId, filePath, planIdsKey, mergeCommitsKey]);
+  }, [sessionId, planId, filePath, planIdsKey]);
 
   return (
     <div ref={containerRef} className="flex-1 min-w-0 bg-card border border-border rounded-lg flex flex-col overflow-hidden">
