@@ -1,0 +1,48 @@
+name: fix-monitor-detail-view-stuck-on-running-after-build-completes
+description: Fix monitor detail view stuck on "Running" after build completes by
+  stamping runId upstream and unifying UI status derivation
+created: 2026-03-25
+compiled: 2026-03-25
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-upstream-runid-stamping
+    name: Upstream runId Stamping and Recorder Simplification
+    depends_on: []
+    branch: fix-monitor-detail-view-stuck-on-running-after-build-completes/upstream-runid-stamping
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-ui-status-unification
+    name: UI Status Derivation Unification
+    depends_on:
+      - plan-01-upstream-runid-stamping
+    branch: fix-monitor-detail-view-stuck-on-running-after-build-completes/ui-status-unification
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle

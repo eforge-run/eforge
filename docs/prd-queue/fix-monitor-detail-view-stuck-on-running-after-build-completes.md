@@ -1,7 +1,7 @@
 ---
 title: Fix monitor detail view stuck on "Running" after build completes
 created: 2026-03-25
-status: pending
+status: running
 ---
 
 # Fix monitor detail view stuck on "Running" after build completes
