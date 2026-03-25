@@ -1,0 +1,31 @@
+name: fix-auto-build-to-be-a-persistent-preference
+description: Remove the autoBuild flag reset in spawnWatcher so auto-build
+  persists as a preference across watcher cycles
+created: 2026-03-25
+compiled: 2026-03-25
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-remove-autobuild-reset
+    name: Remove autoBuild reset in spawnWatcher
+    depends_on: []
+    branch: fix-auto-build-to-be-a-persistent-preference/remove-autobuild-reset
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
