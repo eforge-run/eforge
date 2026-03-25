@@ -116,10 +116,20 @@ export async function startServer(
     try {
       const fileStat = await stat(filePath);
       if (!fileStat.isFile()) {
+        if (urlPath.startsWith('/assets/')) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('Not Found');
+          return;
+        }
         // SPA fallback: serve index.html for non-file paths
         filePath = join(UI_DIR, 'index.html');
       }
     } catch {
+      if (urlPath.startsWith('/assets/')) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('Not Found');
+        return;
+      }
       // File not found — SPA fallback to index.html
       filePath = join(UI_DIR, 'index.html');
     }
