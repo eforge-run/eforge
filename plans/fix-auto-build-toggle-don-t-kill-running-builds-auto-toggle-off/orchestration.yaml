@@ -1,0 +1,32 @@
+name: fix-auto-build-toggle-don-t-kill-running-builds-auto-toggle-off
+description: Replace long-running --watch watcher with daemon-managed
+  single-cycle spawns so toggling auto-build OFF lets current build finish and
+  auto-build toggles OFF when a build starts
+created: 2026-03-25
+compiled: 2026-03-25
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-fix-auto-build-lifecycle
+    name: Fix Auto-Build Lifecycle
+    depends_on: []
+    branch: fix-auto-build-toggle-don-t-kill-running-builds-auto-toggle-off/fix-auto-build-lifecycle
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
