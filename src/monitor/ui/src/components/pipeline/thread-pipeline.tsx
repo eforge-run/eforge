@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import type { AgentThread } from '@/lib/reducer';
+import type { AgentThread, StoredEvent } from '@/lib/reducer';
 import type { PipelineStage, ReviewIssue, ProfileInfo } from '@/lib/types';
 
 const REVIEW_AGENTS = new Set([
@@ -170,6 +170,91 @@ function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStag
 /** Minimum timeline window (ms) so short-elapsed bars don't fill 100% width */
 const MIN_TIMELINE_WINDOW_MS = 60_000;
 
+// --- Heatstrip constants ---
+
+const BUCKET_MS = 30_000; // 30 seconds per bucket
+
+const DENSITY_COLORS = [
+  'var(--color-bg-tertiary)',
+  'var(--color-blue)',
+  'var(--color-cyan)',
+  'var(--color-yellow)',
+  'var(--color-orange)',
+];
+
+function getDensityColor(count: number, maxCount: number): string {
+  if (count === 0 || maxCount === 0) return DENSITY_COLORS[0];
+  const ratio = count / maxCount;
+  if (ratio < 0.25) return DENSITY_COLORS[1];
+  if (ratio < 0.5) return DENSITY_COLORS[2];
+  if (ratio < 0.75) return DENSITY_COLORS[3];
+  return DENSITY_COLORS[4];
+}
+
+function HeatstripRow({ events, sessionStart, totalSpan, endTime }: {
+  events: StoredEvent[];
+  sessionStart: number;
+  totalSpan: number;
+  endTime: number | null;
+}) {
+  const buckets = useMemo(() => {
+    if (events.length === 0) return [];
+
+    const totalBuckets = Math.max(1, Math.ceil(totalSpan / BUCKET_MS));
+    const counts = new Array(totalBuckets).fill(0);
+
+    for (const { event } of events) {
+      if ('timestamp' in event) {
+        const t = new Date((event as { timestamp: string }).timestamp).getTime();
+        const idx = Math.floor((t - sessionStart) / BUCKET_MS);
+        if (idx >= 0 && idx < totalBuckets) {
+          counts[idx]++;
+        }
+      }
+    }
+
+    const maxCount = Math.max(...counts, 1);
+    return counts.map((count, i) => ({
+      count,
+      color: getDensityColor(count, maxCount),
+      isLast: i === totalBuckets - 1,
+      minutes: ((i * BUCKET_MS) / 60_000).toFixed(1),
+      leftPercent: ((i * BUCKET_MS) / totalSpan) * 100,
+      widthPercent: (BUCKET_MS / totalSpan) * 100,
+    }));
+  }, [events, sessionStart, totalSpan]);
+
+  if (buckets.length === 0) return null;
+
+  return (
+    <div className="flex items-start gap-2 text-xs">
+      <span className="w-[140px] shrink-0 mt-0.5 text-text-dim font-mono text-[11px]">
+        Activity
+      </span>
+      <div className="flex-1 relative h-4 bg-bg-tertiary rounded-sm overflow-hidden">
+        {buckets.map((bucket, i) => (
+          <Tooltip key={i}>
+            <TooltipTrigger asChild>
+              <div
+                className="absolute inset-y-0"
+                style={{
+                  left: `${bucket.leftPercent}%`,
+                  width: `${bucket.widthPercent}%`,
+                  backgroundColor: bucket.color,
+                  animation: bucket.isLast && !endTime ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
+                }}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="top">
+              {bucket.count} events ({bucket.minutes}m)
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // --- Main component ---
 
 interface ThreadPipelineProps {
@@ -179,9 +264,10 @@ interface ThreadPipelineProps {
   planStatuses: Record<string, PipelineStage>;
   reviewIssues?: Record<string, ReviewIssue[]>;
   profileInfo?: ProfileInfo | null;
+  events: StoredEvent[];
 }
 
-export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, profileInfo }: ThreadPipelineProps) {
+export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, profileInfo, events }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const entries = Object.entries(planStatuses);
 
@@ -273,6 +359,7 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
           <>
 
             <div className="flex flex-col gap-1.5">
+              <HeatstripRow events={events} sessionStart={sessionStart} totalSpan={totalSpan} endTime={endTime} />
               {hasGlobalThreads && (
                 <PlanRow
                   key="__compile__"

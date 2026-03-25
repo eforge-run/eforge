@@ -6,7 +6,6 @@ import { Header } from '@/components/layout/header';
 import { Sidebar } from '@/components/layout/sidebar';
 import { ShutdownBanner } from '@/components/layout/shutdown-banner';
 import { SummaryCards } from '@/components/common/summary-cards';
-import { ActivityHeatstrip } from '@/components/common/activity-heatstrip';
 import { ThreadPipeline } from '@/components/pipeline/thread-pipeline';
 import { Timeline } from '@/components/timeline/timeline';
 import { PlanCards } from '@/components/plans/plan-cards';
@@ -260,11 +259,8 @@ export function App() {
                 </div>
               ) : (
                 <>
-                  <div className="flex flex-col gap-2">
-                    <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} />
-                    <ActivityHeatstrip events={runState.events} startTime={runState.startTime} endTime={runState.endTime} />
-                  </div>
-                  <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} profileInfo={runState.profileInfo} />
+                  <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} />
+                  <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} profileInfo={runState.profileInfo} events={runState.events} />
 
                   {/* Content tabs */}
                   <div className="flex gap-2 border-b border-border pb-px">
