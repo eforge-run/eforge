@@ -7,51 +7,53 @@ describe('shortenPath', () => {
   });
 
   it('truncates deep paths preserving filename', () => {
-    // Greedily includes as many trailing dirs as fit within maxChars
+    // 63 chars total, maxChars=50
+    // Greedily includes from right: …/src/components/preview/plan-preview-context.tsx (48 chars, fits)
     expect(
       shortenPath('src/monitor/ui/src/components/preview/plan-preview-context.tsx', 50),
     ).toBe('…/src/components/preview/plan-preview-context.tsx');
   });
 
-  it('truncates with shorter maxChars preserving fewer dirs', () => {
-    expect(
-      shortenPath('src/monitor/ui/src/components/preview/plan-preview-context.tsx', 40),
-    ).toBe('…/preview/plan-preview-context.tsx');
+  it('greedily includes trailing parent dirs from right to left', () => {
+    // 'a/b/c/d/file.ts' with maxChars=20
+    // 'a/b/c/d/file.ts' = 15 chars, fits within 20 → returned unchanged
+    expect(shortenPath('a/b/c/d/file.ts', 20)).toBe('a/b/c/d/file.ts');
+
+    // Force truncation with a tighter limit
+    // 'a/b/c/d/file.ts' = 15 chars
+    // '…/d/file.ts' = 11 chars, fits in 12
+    // '…/c/d/file.ts' = 13 chars, doesn't fit in 12
+    expect(shortenPath('a/b/c/d/file.ts', 12)).toBe('…/d/file.ts');
   });
 
-  it('greedily includes trailing directories', () => {
-    const result = shortenPath('a/b/c/d/e/f/g/h/i/file.ts', 20);
-    // Should include as many trailing dirs as fit with …/ prefix
-    expect(result).toMatch(/^…\//);
-    expect(result).toMatch(/file\.ts$/);
-    expect(result.length).toBeLessThanOrEqual(20);
+  it('prepends …/ when truncation occurs', () => {
+    const result = shortenPath('very/deep/nested/path/to/some/file.ts', 20);
+    expect(result.startsWith('…/')).toBe(true);
+    expect(result.endsWith('file.ts')).toBe(true);
   });
 
-  it('never truncates the filename even if it exceeds maxChars', () => {
-    const longFilename = 'very-long-filename-that-exceeds-max-chars.tsx';
-    const result = shortenPath(longFilename, 10);
-    // Single segment, returned unchanged
-    expect(result).toBe(longFilename);
+  it('returns …/filename when filename alone exceeds maxChars', () => {
+    expect(shortenPath('a/b.ts', 3)).toBe('…/b.ts');
   });
 
-  it('returns …/filename for long filename in a path', () => {
-    const result = shortenPath('src/very-long-filename-that-exceeds-max-chars.tsx', 10);
-    expect(result).toBe('…/very-long-filename-that-exceeds-max-chars.tsx');
+  it('never truncates the filename itself', () => {
+    const longName = 'a-very-long-component-filename.tsx';
+    expect(shortenPath(`deep/path/${longName}`, 10)).toBe(`…/${longName}`);
   });
 
   it('returns empty string for empty input', () => {
-    expect(shortenPath('')).toBe('');
+    expect(shortenPath('', 50)).toBe('');
   });
 
   it('returns single-segment paths unchanged', () => {
-    expect(shortenPath('file.ts')).toBe('file.ts');
+    expect(shortenPath('file.ts', 50)).toBe('file.ts');
+    expect(shortenPath('file.ts', 3)).toBe('file.ts');
   });
 
-  it('respects custom maxChars parameter', () => {
-    const path = 'a/b/c/d/e/f/g/file.ts';
-    const result = shortenPath(path, 15);
-    expect(result).toMatch(/^…\//);
-    expect(result).toMatch(/file\.ts$/);
-    expect(result.length).toBeLessThanOrEqual(15);
+  it('respects custom maxChars values', () => {
+    const path = 'src/components/ui/button.tsx'; // 28 chars
+    expect(shortenPath(path, 100)).toBe(path);
+    expect(shortenPath(path, 28)).toBe(path); // exact length
+    expect(shortenPath(path, 15)).toBe('…/ui/button.tsx');
   });
 });

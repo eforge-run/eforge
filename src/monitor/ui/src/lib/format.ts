@@ -57,26 +57,21 @@ export function shortenPath(path: string, maxChars: number = 50): string {
   if (path.length <= maxChars) return path;
 
   const segments = path.split('/');
-  if (segments.length === 1) return path;
+  if (segments.length <= 1) return path;
 
   const filename = segments[segments.length - 1];
-  const prefix = '…/';
-
-  // Greedily include parent directories from right to left
+  // Build from right to left, always keeping filename
   let result = filename;
+
   for (let i = segments.length - 2; i >= 0; i--) {
-    const candidate = prefix + segments.slice(i, segments.length - 1).join('/') + '/' + filename;
-    if (candidate.length <= maxChars) {
-      result = candidate;
-    } else {
-      break;
-    }
+    const candidate = segments.slice(i).join('/');
+    if (('…/' + candidate).length > maxChars) break;
+    result = candidate;
   }
 
-  // If we never fit any parent dirs, return …/filename anyway
-  if (result === filename) {
-    result = prefix + filename;
-  }
+  // If we kept all segments, return the original path
+  if (result === path) return path;
 
-  return result;
+  // If we couldn't add any parent dirs, still return …/filename
+  return '…/' + result;
 }

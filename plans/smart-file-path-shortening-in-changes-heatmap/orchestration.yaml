@@ -1,6 +1,6 @@
 name: smart-file-path-shortening-in-changes-heatmap
-description: Add smart file path shortening to the Changes heatmap that
-  preserves filenames by truncating from the left, and widen the file column
+description: Add smart path shortening utility to preserve filenames in the
+  Changes heatmap, widen the file column, and add unit tests
 created: 2026-03-25
 compiled: 2026-03-25
 mode: errand
@@ -18,7 +18,7 @@ plans:
       - implement
       - review-cycle
     review:
-      strategy: single
+      strategy: auto
       perspectives:
         - code
       maxRounds: 1
