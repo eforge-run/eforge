@@ -277,7 +277,7 @@ export class EforgeEngine {
       sourceContent = source;
     }
 
-    yield { type: 'enqueue:start', source };
+    yield { timestamp: new Date().toISOString(), type: 'enqueue:start', source };
 
     // Run formatter agent to normalize content
     let formattedBody = sourceContent;
@@ -312,13 +312,14 @@ export class EforgeEngine {
       }
 
       yield {
+        timestamp: new Date().toISOString(),
         type: 'enqueue:complete',
         id: enqueueResult.id,
         filePath: enqueueResult.filePath,
         title,
       };
     } catch (err) {
-      yield { type: 'enqueue:failed', error: err instanceof Error ? err.message : String(err) };
+      yield { timestamp: new Date().toISOString(), type: 'enqueue:failed', error: err instanceof Error ? err.message : String(err) };
       return;
     }
   }
@@ -383,7 +384,7 @@ export class EforgeEngine {
       ): AsyncGenerator<EforgeEvent> {
         const planFile = planFileMap.get(planId);
         if (!planFile) {
-          yield { type: 'build:failed', planId, error: `Plan file not found: ${planId}` };
+          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId, error: `Plan file not found: ${planId}` };
           return;
         }
 
@@ -561,6 +562,7 @@ export class EforgeEngine {
       : allOrdered;
 
     yield {
+      timestamp: new Date().toISOString(),
       type: 'queue:start',
       prdCount: orderedPrds.length,
       dir: queueDir,
@@ -574,6 +576,7 @@ export class EforgeEngine {
       if (abortController?.signal.aborted) break;
 
       yield {
+        timestamp: new Date().toISOString(),
         type: 'queue:prd:start',
         prdId: prd.id,
         title: prd.frontmatter.title,
@@ -582,7 +585,7 @@ export class EforgeEngine {
       // Claim this PRD exclusively — skip if another process already holds it
       const claimed = await claimPrd(prd.filePath);
       if (!claimed) {
-        yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'claimed by another process' };
+        yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'claimed by another process' };
         skipped++;
         continue;
       }
@@ -613,7 +616,7 @@ export class EforgeEngine {
         if (stalenessVerdict === 'obsolete') {
           await releasePrd(prd.filePath);
           await updatePrdStatus(prd.filePath, 'skipped');
-          yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
+          yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
           skipped++;
           continue;
         }
@@ -631,7 +634,7 @@ export class EforgeEngine {
           } else {
             // Skip — needs manual revision
             await releasePrd(prd.filePath);
-            yield { type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
+            yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'needs revision' };
             skipped++;
             continue;
           }
@@ -733,11 +736,12 @@ export class EforgeEngine {
         } as EforgeEvent;
       }
 
-      yield { type: 'queue:prd:complete', prdId: prd.id, status: prdResult.status };
+      yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: prdResult.status };
       processed++;
     }
 
     yield {
+      timestamp: new Date().toISOString(),
       type: 'queue:complete',
       processed,
       skipped,
@@ -775,6 +779,7 @@ export class EforgeEngine {
       totalSkipped += cycleSkipped;
 
       yield {
+        timestamp: new Date().toISOString(),
         type: 'queue:watch:cycle',
         processed: cycleProcessed,
         skipped: cycleSkipped,
@@ -784,6 +789,7 @@ export class EforgeEngine {
       if (signal?.aborted) break;
 
       yield {
+        timestamp: new Date().toISOString(),
         type: 'queue:watch:waiting',
         pollIntervalMs,
       };
@@ -791,11 +797,12 @@ export class EforgeEngine {
       const aborted = await abortableSleep(pollIntervalMs, signal);
       if (aborted) break;
 
-      yield { type: 'queue:watch:poll' };
+      yield { timestamp: new Date().toISOString(), type: 'queue:watch:poll' };
     }
 
     // Final queue:complete after watch loop exits
     yield {
+      timestamp: new Date().toISOString(),
       type: 'queue:complete',
       processed: totalProcessed,
       skipped: totalSkipped,
@@ -833,7 +840,7 @@ export class EforgeEngine {
  * Remove plan files after a successful build and commit the removal.
  */
 async function* cleanupPlanFiles(cwd: string, planSet: string, prdFilePath?: string): AsyncGenerator<EforgeEvent> {
-  yield { type: 'cleanup:start', planSet };
+  yield { timestamp: new Date().toISOString(), type: 'cleanup:start', planSet };
 
   try {
     const planDir = resolve(cwd, 'plans', planSet);
@@ -879,10 +886,10 @@ async function* cleanupPlanFiles(cwd: string, planSet: string, prdFilePath?: str
     try { await rm(resolve(cwd, '.eforge', 'state.json')); } catch {}
   } catch (err) {
     // Non-fatal — ensure cleanup:complete always pairs with cleanup:start
-    yield { type: 'plan:progress', message: `Cleanup failed (non-fatal): ${(err as Error).message}` };
+    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Cleanup failed (non-fatal): ${(err as Error).message}` };
   }
 
-  yield { type: 'cleanup:complete', planSet };
+  yield { timestamp: new Date().toISOString(), type: 'cleanup:complete', planSet };
 }
 
 /**

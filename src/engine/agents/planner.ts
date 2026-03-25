@@ -167,8 +167,8 @@ export async function* runPlanner(
 
   const sourceLabel = extractPlanTitle(source)
     ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
-  yield { type: 'plan:start', source, ...(sourceLabel && { label: sourceLabel }) };
-  yield { type: 'plan:progress', message: 'Loading planner prompt...' };
+  yield { timestamp: new Date().toISOString(), type: 'plan:start', source, ...(sourceLabel && { label: sourceLabel }) };
+  yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Loading planner prompt...' };
 
   // Track clarification Q&A across iterations
   const allClarifications: Array<{ questions: ClarificationQuestion[]; answers: Record<string, string> }> = [];
@@ -206,9 +206,9 @@ export async function* runPlanner(
     const prompt = await buildPrompt();
 
     if (iteration === 1) {
-      yield { type: 'plan:progress', message: 'Starting planner agent...' };
+      yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Starting planner agent...' };
     } else {
-      yield { type: 'plan:progress', message: 'Planner restarted with prior clarifications' };
+      yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Planner restarted with prior clarifications' };
     }
 
     let needsRestart = false;
@@ -222,7 +222,7 @@ export async function* runPlanner(
           const skipReason = parseSkipBlock(event.content);
           if (skipReason) {
             skipEmitted = true;
-            yield { type: 'plan:skip', reason: skipReason };
+            yield { timestamp: new Date().toISOString(), type: 'plan:skip', reason: skipReason };
           }
         }
 
@@ -235,16 +235,17 @@ export async function* runPlanner(
               if (valid) {
                 profileEmitted = true;
                 yield {
+                  timestamp: new Date().toISOString(),
                   type: 'plan:profile',
                   profileName: generatedBlock.name ?? generatedBlock.extends ?? 'generated',
                   rationale: `Generated profile${generatedBlock.extends ? ` extending ${generatedBlock.extends}` : ''} tailored to this PRD`,
                   config: resolved,
                 };
               } else {
-                yield { type: 'plan:progress', message: `Generated profile invalid (${errors.join('; ')}), falling back to name-based selection` };
+                yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Generated profile invalid (${errors.join('; ')}), falling back to name-based selection` };
               }
             } catch (err) {
-              yield { type: 'plan:progress', message: `Generated profile resolution failed (${(err as Error).message}), falling back to name-based selection` };
+              yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Generated profile resolution failed (${(err as Error).message}), falling back to name-based selection` };
             }
           }
         }
@@ -254,6 +255,7 @@ export async function* runPlanner(
           if (profile) {
             profileEmitted = true;
             yield {
+              timestamp: new Date().toISOString(),
               type: 'plan:profile',
               profileName: profile.profileName,
               rationale: profile.rationale,
@@ -264,11 +266,11 @@ export async function* runPlanner(
 
         const questions = parseClarificationBlocks(event.content);
         if (questions.length > 0 && !options.auto) {
-          yield { type: 'plan:clarification', questions };
+          yield { timestamp: new Date().toISOString(), type: 'plan:clarification', questions };
 
           if (options.onClarification) {
             const answers = await options.onClarification(questions);
-            yield { type: 'plan:clarification:answer', answers };
+            yield { timestamp: new Date().toISOString(), type: 'plan:clarification:answer', answers };
             allClarifications.push({ questions, answers });
             // Restart agent with answers baked into prompt
             needsRestart = true;
@@ -289,7 +291,7 @@ export async function* runPlanner(
   // Skip was emitted — no plans to scan, no orchestration.yaml written
   if (skipEmitted) return;
 
-  yield { type: 'plan:progress', message: 'Scanning plan files...' };
+  yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Scanning plan files...' };
 
   // Scan plan directory for generated plan files
   const planDir = resolve(cwd, 'plans', planSetName);
@@ -309,5 +311,5 @@ export async function* runPlanner(
     }
   }
 
-  yield { type: 'plan:complete', plans };
+  yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
 }

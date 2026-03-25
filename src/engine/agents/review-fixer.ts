@@ -53,7 +53,7 @@ export async function* runReviewFixer(
 ): AsyncGenerator<EforgeEvent> {
   const { backend, planId, cwd, issues, verbose, abortController } = options;
 
-  yield { type: 'build:review:fix:start', planId, issueCount: issues.length };
+  yield { timestamp: new Date().toISOString(), type: 'build:review:fix:start', planId, issueCount: issues.length };
 
   const issuesText = formatIssuesForPrompt(issues);
   const prompt = await loadPrompt('review-fixer', {
@@ -82,5 +82,5 @@ export async function* runReviewFixer(
     // Other fixer failures are non-fatal
   }
 
-  yield { type: 'build:review:fix:complete', planId };
+  yield { timestamp: new Date().toISOString(), type: 'build:review:fix:complete', planId };
 }

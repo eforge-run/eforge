@@ -23,7 +23,7 @@ describe('mapSDKMessages', () => {
 
     const events = await collectEvents(mapSDKMessages(messages, 'planner', 'test-agent-id'));
     expect(events).toHaveLength(1);
-    expect(events[0]).toEqual({
+    expect(events[0]).toMatchObject({
       type: 'agent:message',
       planId: undefined,
       agentId: 'test-agent-id',
@@ -67,7 +67,7 @@ describe('mapSDKMessages', () => {
 
     const events = await collectEvents(mapSDKMessages(messages, 'reviewer', 'test-agent-id'));
     expect(events).toHaveLength(1);
-    expect(events[0]).toEqual({
+    expect(events[0]).toMatchObject({
       type: 'agent:message',
       planId: undefined,
       agentId: 'test-agent-id',

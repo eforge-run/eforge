@@ -161,19 +161,19 @@ const SESSION_6 = 'mock-session-expedition';
 let eventCounter = 0;
 let agentIdCounter = 0;
 
-function insertEvent(runId: string, event: EforgeEvent, offsetMs = 0): void {
+function insertEvent(runId: string, event: Record<string, unknown> & { type: string }, offsetMs = 0): void {
   eventCounter++;
-  const planId = 'planId' in event ? (event as Record<string, unknown>).planId as string | undefined
-    : 'moduleId' in event ? (event as Record<string, unknown>).moduleId as string | undefined
+  const planId = 'planId' in event ? event.planId as string | undefined
+    : 'moduleId' in event ? event.moduleId as string | undefined
     : undefined;
-  const agent = 'agent' in event ? (event as Record<string, unknown>).agent as string | undefined : undefined;
+  const agent = 'agent' in event ? event.agent as string | undefined : undefined;
   const ts = new Date(Date.now() - 3600_000 + offsetMs).toISOString();
   db.insertEvent({
     runId,
     type: event.type,
     planId: planId ?? undefined,
     agent: agent ?? undefined,
-    data: JSON.stringify(event),
+    data: JSON.stringify({ ...event, timestamp: event.timestamp ?? ts }),
     timestamp: ts,
   });
 }

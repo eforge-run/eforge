@@ -30,7 +30,7 @@ function parseDocUpdateSummary(text: string): number {
 export async function* runDocUpdater(
   options: DocUpdaterOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { type: 'build:doc-update:start', planId: options.planId };
+  yield { timestamp: new Date().toISOString(), type: 'build:doc-update:start', planId: options.planId };
 
   let docsUpdated = 0;
 
@@ -69,5 +69,5 @@ export async function* runDocUpdater(
     // Other doc-updater failures are non-fatal
   }
 
-  yield { type: 'build:doc-update:complete', planId: options.planId, docsUpdated };
+  yield { timestamp: new Date().toISOString(), type: 'build:doc-update:complete', planId: options.planId, docsUpdated };
 }

@@ -120,14 +120,14 @@ export interface EforgeStatus {
   completedPlans: string[];
 }
 
-export type EforgeEvent = { sessionId?: string; runId?: string } & (
+export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: string } & (
   // Session lifecycle (one per eforge invocation, wraps all phases)
-  | { type: 'session:start'; sessionId: string; timestamp: string }
-  | { type: 'session:end'; sessionId: string; result: EforgeResult; timestamp: string }
+  | { type: 'session:start'; sessionId: string }
+  | { type: 'session:end'; sessionId: string; result: EforgeResult }
 
   // Phase lifecycle (one per compile/build phase)
-  | { type: 'phase:start'; runId: string; planSet: string; command: 'compile' | 'build'; timestamp: string }
-  | { type: 'phase:end'; runId: string; result: EforgeResult; timestamp: string }
+  | { type: 'phase:start'; runId: string; planSet: string; command: 'compile' | 'build' }
+  | { type: 'phase:end'; runId: string; result: EforgeResult }
 
   // Planning
   | { type: 'plan:start'; source: string; label?: string }
@@ -202,8 +202,8 @@ export type EforgeEvent = { sessionId?: string; runId?: string } & (
   | { type: 'expedition:compile:complete'; plans: PlanFile[] }
 
   // Agent lifecycle (emitted by backend for every agent invocation)
-  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; timestamp?: string }
-  | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string; timestamp?: string }
+  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole }
+  | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string }
 
   // Agent-level (verbose streaming)
   | { type: 'agent:message'; planId?: string; agentId: string; agent: AgentRole; content: string }

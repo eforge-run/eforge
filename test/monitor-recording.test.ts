@@ -93,11 +93,11 @@ describe('enqueue recording', () => {
 
     const events: EforgeEvent[] = [
       { type: 'session:start', sessionId, timestamp: now } as unknown as EforgeEvent,
-      { type: 'enqueue:start', source: '/tmp/my-prd.md' } as unknown as EforgeEvent,
+      { type: 'enqueue:start', source: '/tmp/my-prd.md' , timestamp: now } as unknown as EforgeEvent,
       { type: 'agent:start', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent,
-      { type: 'agent:result', agent: 'formatter', result: { durationMs: 100, durationApiMs: 80, numTurns: 1, totalCostUsd: 0.01, usage: { input: 100, output: 50, total: 150 }, modelUsage: {} } } as unknown as EforgeEvent,
+      { type: 'agent:result', agent: 'formatter', result: { durationMs: 100, durationApiMs: 80, numTurns: 1, totalCostUsd: 0.01, usage: { input: 100, output: 50, total: 150 }, modelUsage: {} } , timestamp: now } as unknown as EforgeEvent,
       { type: 'agent:stop', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent,
-      { type: 'enqueue:complete', id: 'prd-001', filePath: '/tmp/queue/prd-001.md', title: 'My Great Feature' } as unknown as EforgeEvent,
+      { type: 'enqueue:complete', id: 'prd-001', filePath: '/tmp/queue/prd-001.md', title: 'My Great Feature' , timestamp: now } as unknown as EforgeEvent,
       { type: 'session:end', sessionId, result: { status: 'completed', summary: 'Enqueued' }, timestamp: now } as unknown as EforgeEvent,
     ];
 
@@ -143,10 +143,10 @@ describe('enqueue:failed recording', () => {
 
     const events: EforgeEvent[] = [
       { type: 'session:start', sessionId, timestamp: now } as unknown as EforgeEvent,
-      { type: 'enqueue:start', source: '/tmp/my-prd.md' } as unknown as EforgeEvent,
+      { type: 'enqueue:start', source: '/tmp/my-prd.md' , timestamp: now } as unknown as EforgeEvent,
       { type: 'agent:start', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent,
       { type: 'agent:stop', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent,
-      { type: 'enqueue:failed', error: 'Formatter crashed: invalid input' } as unknown as EforgeEvent,
+      { type: 'enqueue:failed', error: 'Formatter crashed: invalid input' , timestamp: now } as unknown as EforgeEvent,
       { type: 'session:end', sessionId, result: { status: 'failed', summary: 'Enqueue failed: Formatter crashed: invalid input' }, timestamp: now } as unknown as EforgeEvent,
     ];
 
@@ -186,10 +186,10 @@ describe('enqueue-only session via runSession + withRecording', () => {
 
     // Simulate an enqueue-only event stream (no phase:end)
     async function* enqueueOnlyEvents(): AsyncGenerator<EforgeEvent> {
-      yield { type: 'enqueue:start', source: '/tmp/my-prd.md' } as unknown as EforgeEvent;
+      yield { type: 'enqueue:start', source: '/tmp/my-prd.md' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'agent:start', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent;
       yield { type: 'agent:stop', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'enqueue:complete', id: 'prd-002', filePath: '/tmp/queue/prd-002.md', title: 'Enqueue Only Feature' } as unknown as EforgeEvent;
+      yield { type: 'enqueue:complete', id: 'prd-002', filePath: '/tmp/queue/prd-002.md', title: 'Enqueue Only Feature' , timestamp: now } as unknown as EforgeEvent;
     }
 
     // Wrap with runSession (which should detect enqueue:complete as success)
@@ -301,12 +301,12 @@ describe('multi-phase session recording with withRunId', () => {
       yield { type: 'session:start', sessionId: 'session-multi', timestamp: now } as unknown as EforgeEvent;
       // Compile phase
       yield { type: 'phase:start', runId: 'run-compile', sessionId: 'session-multi', planSet: 'test-set', command: 'compile', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'plan:start', source: 'test.md' } as unknown as EforgeEvent;
+      yield { type: 'plan:start', source: 'test.md' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-compile', sessionId: 'session-multi', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
       // Build phase
       yield { type: 'phase:start', runId: 'run-build', sessionId: 'session-multi', planSet: 'test-set', command: 'build', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'build:start', planId: 'plan-01' } as unknown as EforgeEvent;
-      yield { type: 'build:complete', planId: 'plan-01' } as unknown as EforgeEvent;
+      yield { type: 'build:start', planId: 'plan-01' , timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'build:complete', planId: 'plan-01' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-build', sessionId: 'session-multi', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
       yield { type: 'session:end', sessionId: 'session-multi', result: { status: 'completed', summary: 'All done' }, timestamp: now } as unknown as EforgeEvent;
     }
@@ -358,17 +358,17 @@ describe('queue cycle recording with session:end presence', () => {
       // --- PRD 1 session ---
       yield { type: 'session:start', sessionId: 'session-1', timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:start', runId: 'run-1', sessionId: 'session-1', planSet: 'prd-1', command: 'build', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'build:start', planId: 'plan-01' } as unknown as EforgeEvent;
+      yield { type: 'build:start', planId: 'plan-01' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-1', sessionId: 'session-1', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
       yield { type: 'session:end', sessionId: 'session-1', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
 
       // --- Queue-level events between sessions ---
-      yield { type: 'queue:watch:cycle', processed: 1, skipped: 0 } as unknown as EforgeEvent;
+      yield { type: 'queue:watch:cycle', processed: 1, skipped: 0 , timestamp: now } as unknown as EforgeEvent;
 
       // --- PRD 2 session ---
       yield { type: 'session:start', sessionId: 'session-2', timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:start', runId: 'run-2', sessionId: 'session-2', planSet: 'prd-2', command: 'build', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'build:start', planId: 'plan-02' } as unknown as EforgeEvent;
+      yield { type: 'build:start', planId: 'plan-02' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-2', sessionId: 'session-2', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
       yield { type: 'session:end', sessionId: 'session-2', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
     }

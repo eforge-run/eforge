@@ -42,7 +42,7 @@ export async function* runCohesionReview(
 ): AsyncGenerator<EforgeEvent> {
   const { backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController } = options;
 
-  yield { type: 'plan:cohesion:start' };
+  yield { timestamp: new Date().toISOString(), type: 'plan:cohesion:start' };
 
   const prompt = await loadPrompt('cohesion-reviewer', {
     source_content: sourceContent,
@@ -67,5 +67,5 @@ export async function* runCohesionReview(
 
   const issues = parseReviewIssues(fullText);
 
-  yield { type: 'plan:cohesion:complete', issues };
+  yield { timestamp: new Date().toISOString(), type: 'plan:cohesion:complete', issues };
 }

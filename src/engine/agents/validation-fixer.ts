@@ -19,7 +19,7 @@ export interface ValidationFixerOptions {
 export async function* runValidationFixer(
   options: ValidationFixerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { type: 'validation:fix:start', attempt: options.attempt, maxAttempts: options.maxAttempts };
+  yield { timestamp: new Date().toISOString(), type: 'validation:fix:start', attempt: options.attempt, maxAttempts: options.maxAttempts };
 
   const failureContext = options.failures
     .map(
@@ -55,5 +55,5 @@ export async function* runValidationFixer(
     // Other fixer failures are non-fatal — validation will just fail on re-run
   }
 
-  yield { type: 'validation:fix:complete', attempt: options.attempt };
+  yield { timestamp: new Date().toISOString(), type: 'validation:fix:complete', attempt: options.attempt };
 }

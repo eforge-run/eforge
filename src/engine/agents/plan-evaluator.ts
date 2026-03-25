@@ -127,7 +127,7 @@ async function* runEvaluate(
   const { mode, backend, planSetName, sourceContent, cwd, verbose, abortController } = options;
   const config = MODE_CONFIG[mode];
 
-  yield { type: config.startEvent };
+  yield { timestamp: new Date().toISOString(), type: config.startEvent };
 
   const prompt = await loadPrompt(config.promptName, {
     plan_set_name: planSetName,
@@ -150,7 +150,7 @@ async function* runEvaluate(
       }
     }
   } catch (err) {
-    yield { type: config.completeEvent, accepted: 0, rejected: 0 };
+    yield { timestamp: new Date().toISOString(), type: config.completeEvent, accepted: 0, rejected: 0 };
     throw err;
   }
 
@@ -158,7 +158,7 @@ async function* runEvaluate(
   const accepted = verdicts.filter((v) => v.action === 'accept').length;
   const rejected = verdicts.filter((v) => v.action === 'reject' || v.action === 'review').length;
 
-  yield { type: config.completeEvent, accepted, rejected };
+  yield { timestamp: new Date().toISOString(), type: config.completeEvent, accepted, rejected };
 }
 
 /**

@@ -53,7 +53,7 @@ function parseTestSummary(text: string): { passed: number; failed: number; testB
 export async function* runTestWriter(
   options: TestWriterOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { type: 'build:test:write:start', planId: options.planId };
+  yield { timestamp: new Date().toISOString(), type: 'build:test:write:start', planId: options.planId };
 
   let testsWritten = 0;
 
@@ -96,7 +96,7 @@ export async function* runTestWriter(
     // Other test-writer failures are non-fatal
   }
 
-  yield { type: 'build:test:write:complete', planId: options.planId, testsWritten };
+  yield { timestamp: new Date().toISOString(), type: 'build:test:write:complete', planId: options.planId, testsWritten };
 }
 
 export interface TesterOptions {
@@ -117,7 +117,7 @@ export interface TesterOptions {
 export async function* runTester(
   options: TesterOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { type: 'build:test:start', planId: options.planId };
+  yield { timestamp: new Date().toISOString(), type: 'build:test:start', planId: options.planId };
 
   let passed = 0;
   let failed = 0;
@@ -163,5 +163,5 @@ export async function* runTester(
     // Other tester failures are non-fatal
   }
 
-  yield { type: 'build:test:complete', planId: options.planId, passed, failed, testBugsFixed, productionIssues };
+  yield { timestamp: new Date().toISOString(), type: 'build:test:complete', planId: options.planId, passed, failed, testBugsFixed, productionIssues };
 }

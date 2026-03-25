@@ -109,10 +109,11 @@ export async function* mapSDKMessages(
         const assistantMsg = msg as SDKAssistantMessage;
         for (const block of assistantMsg.message.content) {
           if (block.type === 'text') {
-            yield { type: 'agent:message', planId, agentId: agentId!, agent, content: block.text };
+            yield { timestamp: new Date().toISOString(), type: 'agent:message', planId, agentId: agentId!, agent, content: block.text };
           } else if (block.type === 'tool_use') {
             toolNameMap.set(block.id, block.name);
             yield {
+              timestamp: new Date().toISOString(),
               type: 'agent:tool_use',
               planId,
               agentId: agentId!,
@@ -150,6 +151,7 @@ export async function* mapSDKMessages(
 
         const toolName = toolNameMap.get(userMsg.parent_tool_use_id) ?? 'unknown';
         yield {
+          timestamp: new Date().toISOString(),
           type: 'agent:tool_result',
           planId,
           agentId: agentId!,
@@ -167,6 +169,7 @@ export async function* mapSDKMessages(
         for (const toolUseId of summaryMsg.preceding_tool_use_ids) {
           const toolName = toolNameMap.get(toolUseId) ?? 'unknown';
           yield {
+            timestamp: new Date().toISOString(),
             type: 'agent:tool_result',
             planId,
             agentId: agentId!,
@@ -183,7 +186,7 @@ export async function* mapSDKMessages(
         const partial = msg as SDKPartialAssistantMessage;
         const event = partial.event;
         if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
-          yield { type: 'agent:message', planId, agentId: agentId!, agent, content: event.delta.text };
+          yield { timestamp: new Date().toISOString(), type: 'agent:message', planId, agentId: agentId!, agent, content: event.delta.text };
         }
         break;
       }
@@ -194,12 +197,12 @@ export async function* mapSDKMessages(
           // Don't yield agent:message here — the text was already emitted
           // from the assistant message. Duplicating it causes double-parsing
           // of XML blocks (scope, clarification, review issues, verdicts).
-          yield { type: 'agent:result', planId, agent, result: extractResultData(result, result.result) };
+          yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: extractResultData(result, result.result) };
         } else {
           const errorResult = result as SDKResultMessage & { errors?: string[] };
           const errorMsg = errorResult.errors?.join('; ') || `Agent ${agent} failed: ${result.subtype}`;
           // Yield result data even on error (usage is still tracked)
-          yield { type: 'agent:result', planId, agent, result: extractResultData(result) };
+          yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: extractResultData(result) };
           throw new Error(errorMsg);
         }
         break;

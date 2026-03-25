@@ -266,8 +266,8 @@ describe('runBuildPipeline', () => {
     const ctx = makeBuildCtx({ build: ['test-impl'] });
     const events = await collect(runBuildPipeline(ctx));
 
-    expect(events[0]).toEqual({ type: 'build:start', planId: 'plan-01' });
-    expect(events[events.length - 1]).toEqual({ type: 'build:complete', planId: 'plan-01' });
+    expect(events[0]).toMatchObject({ type: 'build:start', planId: 'plan-01' });
+    expect(events[events.length - 1]).toMatchObject({ type: 'build:complete', planId: 'plan-01' });
   });
 
   it('calls all four default build stages in order', async () => {
@@ -318,9 +318,9 @@ describe('runBuildPipeline', () => {
     const events = await collect(runBuildPipeline(ctx));
 
     expect(events[0].type).toBe('build:start');
-    expect(events[1]).toEqual({ type: 'build:implement:start', planId: 'plan-01' });
-    expect(events[2]).toEqual({ type: 'plan:progress', message: 'validate' });
-    expect(events[3]).toEqual({ type: 'build:complete', planId: 'plan-01' });
+    expect(events[1]).toMatchObject({ type: 'build:implement:start', planId: 'plan-01' });
+    expect(events[2]).toMatchObject({ type: 'plan:progress', message: 'validate' });
+    expect(events[3]).toMatchObject({ type: 'build:complete', planId: 'plan-01' });
   });
 });
 
@@ -431,8 +431,8 @@ describe('runBuildPipeline parallel stage groups', () => {
     // build:start + 2 stage events + auto-commit progress event + build:complete
     const progressEvents = events.filter((e) => e.type === 'plan:progress');
     expect(progressEvents.length).toBeGreaterThanOrEqual(2);
-    expect(events[0]).toEqual({ type: 'build:start', planId: 'plan-01' });
-    expect(events[events.length - 1]).toEqual({ type: 'build:complete', planId: 'plan-01' });
+    expect(events[0]).toMatchObject({ type: 'build:start', planId: 'plan-01' });
+    expect(events[events.length - 1]).toMatchObject({ type: 'build:complete', planId: 'plan-01' });
   });
 
   it('mixed config [["a", "b"], "c"] runs a+b in parallel then c sequentially', async () => {

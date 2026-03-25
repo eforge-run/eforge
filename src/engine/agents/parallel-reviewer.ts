@@ -150,8 +150,8 @@ export async function* runParallelReview(
     return;
   }
 
-  yield { type: 'build:review:start', planId };
-  yield { type: 'build:review:parallel:start', planId, perspectives };
+  yield { timestamp: new Date().toISOString(), type: 'build:review:start', planId };
+  yield { timestamp: new Date().toISOString(), type: 'build:review:parallel:start', planId, perspectives };
 
   // Build parallel tasks for each perspective
   const allIssues: Array<{ perspective: ReviewPerspective; issues: ReviewIssue[] }> = [];
@@ -159,7 +159,7 @@ export async function* runParallelReview(
   const tasks: ParallelTask<EforgeEvent>[] = perspectives.map((perspective) => ({
     id: `review-${perspective}`,
     run: async function* (): AsyncGenerator<EforgeEvent> {
-      yield { type: 'build:review:parallel:perspective:start', planId, perspective };
+      yield { timestamp: new Date().toISOString(), type: 'build:review:parallel:perspective:start', planId, perspective };
 
       const prompt = await loadPrompt(PERSPECTIVE_PROMPTS[perspective], {
         plan_content: planContent,
@@ -185,7 +185,7 @@ export async function* runParallelReview(
       const issues = parseReviewIssues(fullText);
       allIssues.push({ perspective, issues });
 
-      yield { type: 'build:review:parallel:perspective:complete', planId, perspective, issues };
+      yield { timestamp: new Date().toISOString(), type: 'build:review:parallel:perspective:complete', planId, perspective, issues };
     },
   }));
 
@@ -199,7 +199,7 @@ export async function* runParallelReview(
     allIssues.flatMap((r) => r.issues),
   );
 
-  yield { type: 'build:review:complete', planId, issues: mergedIssues };
+  yield { timestamp: new Date().toISOString(), type: 'build:review:complete', planId, issues: mergedIssues };
 }
 
 /**

@@ -42,7 +42,7 @@ export async function* runArchitectureReview(
 ): AsyncGenerator<EforgeEvent> {
   const { backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController } = options;
 
-  yield { type: 'plan:architecture:review:start' };
+  yield { timestamp: new Date().toISOString(), type: 'plan:architecture:review:start' };
 
   const prompt = await loadPrompt('architecture-reviewer', {
     source_content: sourceContent,
@@ -67,5 +67,5 @@ export async function* runArchitectureReview(
 
   const issues = parseReviewIssues(fullText);
 
-  yield { type: 'plan:architecture:review:complete', issues };
+  yield { timestamp: new Date().toISOString(), type: 'plan:architecture:review:complete', issues };
 }

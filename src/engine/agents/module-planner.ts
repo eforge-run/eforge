@@ -28,7 +28,7 @@ export interface ModulePlannerOptions {
 export async function* runModulePlanner(
   options: ModulePlannerOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { type: 'expedition:module:start', moduleId: options.moduleId };
+  yield { timestamp: new Date().toISOString(), type: 'expedition:module:start', moduleId: options.moduleId };
 
   const prompt = await loadPrompt('module-planner', {
     source: options.sourceContent,
@@ -51,5 +51,5 @@ export async function* runModulePlanner(
     }
   }
 
-  yield { type: 'expedition:module:complete', moduleId: options.moduleId };
+  yield { timestamp: new Date().toISOString(), type: 'expedition:module:complete', moduleId: options.moduleId };
 }

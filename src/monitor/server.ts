@@ -17,6 +17,24 @@ import type { MonitorDB } from './db.js';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
 
+/**
+ * Hydrate timestamp into event JSON for backward compatibility.
+ * Legacy events stored without a JSON-embedded timestamp get the DB
+ * `timestamp` column injected, avoiding a SQLite migration.
+ */
+function hydrateTimestamp(eventData: string, dbTimestamp: string): string {
+  try {
+    const parsed = JSON.parse(eventData);
+    if (!parsed.timestamp) {
+      parsed.timestamp = dbTimestamp;
+      return JSON.stringify(parsed);
+    }
+  } catch {
+    // unparseable — return as-is
+  }
+  return eventData;
+}
+
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
@@ -182,7 +200,8 @@ export async function startServer(
     const historicalEvents = db.getEventsBySession(sessionId, lastEventId);
     let lastSeenId = lastEventId ?? 0;
     for (const event of historicalEvents) {
-      const dataLines = event.data.split('\n').map((l: string) => `data: ${l}`).join('\n');
+      const hydrated = hydrateTimestamp(event.data, event.timestamp);
+      const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
       res.write(`id: ${event.id}\n${dataLines}\n\n`);
       if (event.id > lastSeenId) {
         lastSeenId = event.id;
@@ -213,7 +232,8 @@ export async function startServer(
       try {
         const newEvents = db.getEventsBySession(subscriber.sessionId, subscriber.lastSeenId);
         for (const event of newEvents) {
-          const dataLines = event.data.split('\n').map((l: string) => `data: ${l}`).join('\n');
+          const hydrated = hydrateTimestamp(event.data, event.timestamp);
+          const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
           subscriber.res.write(`id: ${event.id}\n${dataLines}\n\n`);
           if (event.id > subscriber.lastSeenId) {
             subscriber.lastSeenId = event.id;
@@ -1150,7 +1170,11 @@ export async function startServer(
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
       });
-      res.end(JSON.stringify({ status, events }));
+      const hydratedEvents = events.map((evt) => ({
+        ...evt,
+        data: hydrateTimestamp(evt.data, evt.timestamp),
+      }));
+      res.end(JSON.stringify({ status, events: hydratedEvents }));
     } else if (url.startsWith('/api/plans/')) {
       const runId = url.slice('/api/plans/'.length).split('?')[0];
       if (!runId || !/^[\w-]+$/.test(runId)) {

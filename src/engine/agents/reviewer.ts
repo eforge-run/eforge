@@ -141,7 +141,7 @@ export async function* runReview(
 ): AsyncGenerator<EforgeEvent> {
   const { backend, planContent, baseBranch, planId, cwd, verbose, abortController } = options;
 
-  yield { type: 'build:review:start', planId };
+  yield { timestamp: new Date().toISOString(), type: 'build:review:start', planId };
 
   const prompt = await composeReviewPrompt(planContent, baseBranch);
 
@@ -162,5 +162,5 @@ export async function* runReview(
 
   const issues = parseReviewIssues(fullText);
 
-  yield { type: 'build:review:complete', planId, issues };
+  yield { timestamp: new Date().toISOString(), type: 'build:review:complete', planId, issues };
 }

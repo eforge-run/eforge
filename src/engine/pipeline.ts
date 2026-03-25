@@ -342,15 +342,15 @@ function humanizeName(name: string): string {
 // ---------------------------------------------------------------------------
 
 registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx) {
-  yield { type: 'plan:start', source: ctx.sourceContent, label: 'prd-passthrough' };
+  yield { timestamp: new Date().toISOString(), type: 'plan:start', source: ctx.sourceContent, label: 'prd-passthrough' };
 
   // Extract title and body from PRD
   const { title, body } = extractPrdMetadata(ctx.sourceContent, ctx.planSetName);
 
   // Profile event
-  yield { type: 'plan:profile', profileName: 'errand', rationale: 'PRD passthrough uses errand profile' };
+  yield { timestamp: new Date().toISOString(), type: 'plan:profile', profileName: 'errand', rationale: 'PRD passthrough uses errand profile' };
 
-  yield { type: 'plan:progress', message: 'Writing plan artifacts from PRD content' };
+  yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Writing plan artifacts from PRD content' };
 
   // Get base branch
   const { stdout: baseBranch } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ctx.cwd });
@@ -380,7 +380,7 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
   await exec('git', ['add', planDir], { cwd: ctx.cwd });
   await forgeCommit(ctx.cwd, `plan(${ctx.planSetName}): PRD passthrough artifacts`);
 
-  yield { type: 'plan:complete', plans: [planFile] };
+  yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans: [planFile] };
 });
 
 registerCompileStage('planner', async function* plannerStage(ctx) {
@@ -422,7 +422,7 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
         const modules = parseModulesBlock(event.content);
         if (modules.length > 0) {
           ctx.expeditionModules = modules;
-          yield { type: 'expedition:architecture:complete', modules };
+          yield { timestamp: new Date().toISOString(), type: 'expedition:architecture:complete', modules };
         }
       }
 
@@ -506,7 +506,7 @@ registerCompileStage('plan-review-cycle', async function* planReviewCycleStage(c
     });
   } catch (err) {
     // Plan review failure is non-fatal - plan artifacts are already committed
-    yield { type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
+    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
   }
 });
 
@@ -547,7 +547,7 @@ registerCompileStage('architecture-review-cycle', async function* architectureRe
       },
     });
   } catch (err) {
-    yield { type: 'plan:progress', message: `Architecture review skipped: ${(err as Error).message}` };
+    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Architecture review skipped: ${(err as Error).message}` };
   }
 });
 
@@ -589,7 +589,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
   // 2. Plan each wave (parallel within wave, sequential across waves)
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
     const waveModuleIds = waves[waveIdx];
-    yield { type: 'expedition:wave:start', wave: waveIdx + 1, moduleIds: waveModuleIds };
+    yield { timestamp: new Date().toISOString(), type: 'expedition:wave:start', wave: waveIdx + 1, moduleIds: waveModuleIds };
 
     const waveTasks: ParallelTask<EforgeEvent>[] = waveModuleIds.map((modId) => {
       const mod = moduleMap.get(modId)!;
@@ -660,7 +660,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
       }
     }
 
-    yield { type: 'expedition:wave:complete', wave: waveIdx + 1 };
+    yield { timestamp: new Date().toISOString(), type: 'expedition:wave:complete', wave: waveIdx + 1 };
   }
 });
 
@@ -700,7 +700,7 @@ registerCompileStage('cohesion-review-cycle', async function* cohesionReviewCycl
       },
     });
   } catch (err) {
-    yield { type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
+    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
   }
 });
 
@@ -708,10 +708,10 @@ registerCompileStage('compile-expedition', async function* compileExpeditionStag
   // Only runs when expedition modules are detected
   if (ctx.expeditionModules.length === 0) return;
 
-  yield { type: 'expedition:compile:start' };
+  yield { timestamp: new Date().toISOString(), type: 'expedition:compile:start' };
   const plans = await compileExpedition(ctx.cwd, ctx.planSetName, ctx.profile, ctx.moduleBuildConfigs);
-  yield { type: 'expedition:compile:complete', plans };
-  yield { type: 'plan:complete', plans };
+  yield { timestamp: new Date().toISOString(), type: 'expedition:compile:complete', plans };
+  yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
 
   // Update context plans for downstream stages
   ctx.plans = plans;
@@ -798,7 +798,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
     } catch (err) {
       implTracker.cleanup();
       implSpan.error(err as Error);
-      yield { type: 'build:failed', planId: ctx.planId, error: (err as Error).message } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: (err as Error).message } as EforgeEvent;
       ctx.buildFailed = true;
       return;
     }
@@ -821,7 +821,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
         if (!hasChanges) {
           // No changes to checkpoint — fail immediately
           implSpan.error('Implementation failed: error_max_turns with no changes');
-          yield { type: 'build:failed', planId: ctx.planId, error: failedError } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: failedError } as EforgeEvent;
           ctx.buildFailed = true;
           return;
         }
@@ -834,7 +834,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
           // If commit fails, emit build:failed and stop
           const msg = `Continuation checkpoint failed: ${(checkpointErr as Error).message}`;
           implSpan.error(msg);
-          yield { type: 'build:failed', planId: ctx.planId, error: msg } as EforgeEvent;
+          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: msg } as EforgeEvent;
           ctx.buildFailed = true;
           return;
         }
@@ -842,13 +842,13 @@ registerBuildStage('implement', async function* implementStage(ctx) {
         implSpan.end();
 
         // Yield continuation event and retry
-        yield { type: 'build:implement:continuation', planId: ctx.planId, attempt: attempt + 1, maxContinuations } as EforgeEvent;
+        yield { timestamp: new Date().toISOString(), type: 'build:implement:continuation', planId: ctx.planId, attempt: attempt + 1, maxContinuations } as EforgeEvent;
         continue; // Next iteration of the continuation loop
       }
 
       // Non-max_turns error or exhausted continuations — fail
       implSpan.error('Implementation failed');
-      yield { type: 'build:failed', planId: ctx.planId, error: failedError } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: failedError } as EforgeEvent;
       ctx.buildFailed = true;
       return;
     }
@@ -864,7 +864,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
     const { stdout } = await exec('git', ['diff', '--name-only', `${ctx.orchConfig.baseBranch}...HEAD`], { cwd: ctx.worktreePath });
     const files = stdout.trim().split('\n').filter(Boolean);
     if (files.length > 0) {
-      yield { type: 'build:files_changed', planId: ctx.planId, files };
+      yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files };
     }
   } catch {
     // Non-critical - skip silently
@@ -1261,7 +1261,7 @@ export async function* runCompilePipeline(
 export async function* runBuildPipeline(
   ctx: BuildStageContext,
 ): AsyncGenerator<EforgeEvent> {
-  yield { type: 'build:start', planId: ctx.planId };
+  yield { timestamp: new Date().toISOString(), type: 'build:start', planId: ctx.planId };
 
   for (const spec of ctx.build) {
     if (Array.isArray(spec)) {
@@ -1284,7 +1284,7 @@ export async function* runBuildPipeline(
         }
       } catch (err) {
         // Non-critical — best-effort commit, but yield a warning so it's observable
-        yield { type: 'plan:progress', message: `post-parallel-group auto-commit failed: ${err instanceof Error ? err.message : String(err)}` };
+        yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `post-parallel-group auto-commit failed: ${err instanceof Error ? err.message : String(err)}` };
       }
     } else {
       // Sequential stage
@@ -1296,7 +1296,7 @@ export async function* runBuildPipeline(
     if (ctx.buildFailed) return;
   }
 
-  yield { type: 'build:complete', planId: ctx.planId };
+  yield { timestamp: new Date().toISOString(), type: 'build:complete', planId: ctx.planId };
 }
 
 /**

@@ -37,7 +37,7 @@ export async function* withRecording(
           planId: extractPlanId(bufferedSessionStart),
           agent: extractAgent(bufferedSessionStart),
           data: JSON.stringify(bufferedSessionStart),
-          timestamp: 'timestamp' in bufferedSessionStart ? (bufferedSessionStart as { timestamp: string }).timestamp : new Date().toISOString(),
+          timestamp: bufferedSessionStart.timestamp,
         });
         bufferedSessionStart = undefined;
       }
@@ -70,7 +70,7 @@ export async function* withRecording(
           planId: extractPlanId(bufferedSessionStart),
           agent: extractAgent(bufferedSessionStart),
           data: JSON.stringify(bufferedSessionStart),
-          timestamp: 'timestamp' in bufferedSessionStart ? (bufferedSessionStart as { timestamp: string }).timestamp : new Date().toISOString(),
+          timestamp: bufferedSessionStart.timestamp,
         });
         bufferedSessionStart = undefined;
       }
@@ -85,7 +85,7 @@ export async function* withRecording(
         planId: extractPlanId(event),
         agent: extractAgent(event),
         data: JSON.stringify(event),
-        timestamp: 'timestamp' in event ? (event as { timestamp: string }).timestamp : new Date().toISOString(),
+        timestamp: event.timestamp,
       });
     }
 
@@ -106,7 +106,7 @@ export async function* withRecording(
       if ('result' in event && event.result) {
         const result = event.result as { status: string };
         if (result.status === 'failed') {
-          db.updateRunStatus(enqueueRunId, 'failed', 'timestamp' in event ? (event as { timestamp: string }).timestamp : new Date().toISOString());
+          db.updateRunStatus(enqueueRunId, 'failed', event.timestamp);
         }
       }
     }

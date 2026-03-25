@@ -92,7 +92,7 @@ export async function* builderImplement(
   plan: PlanFile,
   options: BuilderOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { type: 'build:implement:start', planId: plan.id };
+  yield { timestamp: new Date().toISOString(), type: 'build:implement:start', planId: plan.id };
 
   const parallelLanes = options.parallelStages
     ? formatBuilderParallelNotice(options.parallelStages)
@@ -139,12 +139,12 @@ Review the diff above, then continue implementing the remaining parts of the pla
       }
     }
   } catch (err) {
-    yield { type: 'build:failed', planId: plan.id, error: (err as Error).message };
+    yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message };
     return;
   }
 
-  yield { type: 'build:implement:progress', planId: plan.id, message: 'Implementation complete' };
-  yield { type: 'build:implement:complete', planId: plan.id };
+  yield { timestamp: new Date().toISOString(), type: 'build:implement:progress', planId: plan.id, message: 'Implementation complete' };
+  yield { timestamp: new Date().toISOString(), type: 'build:implement:complete', planId: plan.id };
 }
 
 /**
@@ -156,7 +156,7 @@ export async function* builderEvaluate(
   plan: PlanFile,
   options: BuilderOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { type: 'build:evaluate:start', planId: plan.id };
+  yield { timestamp: new Date().toISOString(), type: 'build:evaluate:start', planId: plan.id };
 
   const strictnessKey = options.strictness ?? 'standard';
   const prompt = await loadPrompt('evaluator', {
@@ -181,7 +181,7 @@ export async function* builderEvaluate(
       }
     }
   } catch (err) {
-    yield { type: 'build:failed', planId: plan.id, error: (err as Error).message };
+    yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message };
     return;
   }
 
@@ -189,6 +189,6 @@ export async function* builderEvaluate(
   const accepted = verdicts.filter((v) => v.action === 'accept').length;
   const rejected = verdicts.filter((v) => v.action === 'reject' || v.action === 'review').length;
 
-  yield { type: 'build:evaluate:complete', planId: plan.id, accepted, rejected };
+  yield { timestamp: new Date().toISOString(), type: 'build:evaluate:complete', planId: plan.id, accepted, rejected };
 }
 

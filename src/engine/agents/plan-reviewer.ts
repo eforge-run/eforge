@@ -39,7 +39,7 @@ export async function* runPlanReview(
 ): AsyncGenerator<EforgeEvent> {
   const { backend, sourceContent, planSetName, cwd, verbose, abortController } = options;
 
-  yield { type: 'plan:review:start' };
+  yield { timestamp: new Date().toISOString(), type: 'plan:review:start' };
 
   const prompt = await loadPrompt('plan-reviewer', {
     source_content: sourceContent,
@@ -63,5 +63,5 @@ export async function* runPlanReview(
 
   const issues = parseReviewIssues(fullText);
 
-  yield { type: 'plan:review:complete', issues };
+  yield { timestamp: new Date().toISOString(), type: 'plan:review:complete', issues };
 }

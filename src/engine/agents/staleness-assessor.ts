@@ -65,6 +65,7 @@ export async function* runStalenessAssessor(
 
   if (staleness) {
     yield {
+      timestamp: new Date().toISOString(),
       type: 'queue:prd:stale',
       verdict: staleness.verdict,
       justification: staleness.justification,

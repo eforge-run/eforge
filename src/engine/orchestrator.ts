@@ -92,6 +92,7 @@ export function propagateFailure(
         updatePlanStatus(state, dep, 'blocked');
         planState.error = `Blocked by failed dependency: ${failedPlanId}`;
         events.push({
+          timestamp: new Date().toISOString(),
           type: 'build:failed',
           planId: dep,
           error: `Blocked by failed dependency: ${failedPlanId}`,
@@ -258,7 +259,7 @@ export class Orchestrator {
       }
       // 2. Greedy scheduling loop
       const allPlanIds = config.plans.map((p) => p.id);
-      yield { type: 'schedule:start', planIds: allPlanIds };
+      yield { timestamp: new Date().toISOString(), type: 'schedule:start', planIds: allPlanIds };
 
       const semaphore = new Semaphore(parallelism);
       const eventQueue = new AsyncEventQueue<EforgeEvent>();
@@ -349,7 +350,7 @@ export class Orchestrator {
           if (running.has(planId)) continue;
           if (!isReady(planId)) continue;
 
-          eventQueue.push({ type: 'schedule:ready', planId, reason });
+          eventQueue.push({ timestamp: new Date().toISOString(), type: 'schedule:ready', planId, reason });
           launchPlan(planId);
         }
       };
@@ -415,7 +416,7 @@ export class Orchestrator {
               updatePlanStatus(state, planId, 'failed');
               state.plans[planId].error = skipReason;
               saveState(stateDir, state);
-              yield { type: 'build:failed', planId, error: skipReason };
+              yield { timestamp: new Date().toISOString(), type: 'build:failed', planId, error: skipReason };
 
               const failureEvents = propagateFailure(state, planId, config.plans);
               saveState(stateDir, state);
@@ -423,7 +424,7 @@ export class Orchestrator {
               continue;
             }
 
-            yield { type: 'merge:start', planId };
+            yield { timestamp: new Date().toISOString(), type: 'merge:start', planId };
 
             try {
               const plan = planMap.get(planId)!;
@@ -468,7 +469,7 @@ export class Orchestrator {
               recentlyMergedIds.push(planId);
               saveState(stateDir, state);
 
-              yield { type: 'merge:complete', planId, commitSha };
+              yield { timestamp: new Date().toISOString(), type: 'merge:complete', planId, commitSha };
             } catch (err) {
               failedMerges.add(planId);
               updatePlanStatus(state, planId, 'failed');
@@ -476,6 +477,7 @@ export class Orchestrator {
               saveState(stateDir, state);
 
               yield {
+                timestamp: new Date().toISOString(),
                 type: 'build:failed',
                 planId,
                 error: `Merge failed: ${(err as Error).message}`,
@@ -521,32 +523,32 @@ export class Orchestrator {
         let passed = false;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
-          yield { type: 'validation:start', commands: allValidationCommands };
+          yield { timestamp: new Date().toISOString(), type: 'validation:start', commands: allValidationCommands };
           const failures: Array<{ command: string; exitCode: number; output: string }> = [];
           let validationPassed = true;
 
           for (const cmd of allValidationCommands) {
             if (signal?.aborted) { validationPassed = false; break; }
 
-            yield { type: 'validation:command:start', command: cmd };
+            yield { timestamp: new Date().toISOString(), type: 'validation:command:start', command: cmd };
 
             try {
               const { stdout, stderr } = await exec('sh', ['-c', cmd], { cwd: repoRoot });
               const output = (stdout + stderr).trim();
-              yield { type: 'validation:command:complete', command: cmd, exitCode: 0, output };
+              yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 0, output };
             } catch (err) {
               const execErr = err as { code?: number | string; stdout?: string; stderr?: string; message?: string };
               const exitCode = typeof execErr.code === 'number' ? execErr.code : 1;
               const stdOutput = (execErr.stdout ?? '') + (execErr.stderr ?? '');
               const output = (stdOutput || (execErr.message ?? '')).trim();
-              yield { type: 'validation:command:complete', command: cmd, exitCode, output };
+              yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode, output };
               failures.push({ command: cmd, exitCode, output });
               validationPassed = false;
               break; // Stop on first non-zero exit code
             }
           }
 
-          yield { type: 'validation:complete', passed: validationPassed };
+          yield { timestamp: new Date().toISOString(), type: 'validation:complete', passed: validationPassed };
 
           if (validationPassed) {
             passed = true;
@@ -567,7 +569,7 @@ export class Orchestrator {
         if (!passed) {
           // Validation failed — checkout baseBranch and leave feature branch for inspection
           await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
-          yield { type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Validation failed' };
+          yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Validation failed' };
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
           saveState(stateDir, state);
@@ -577,7 +579,7 @@ export class Orchestrator {
 
       // 8. Final merge of feature branch to baseBranch
       if (allMerged && !signal?.aborted) {
-        yield { type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
+        yield { timestamp: new Date().toISOString(), type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
 
         try {
           // Ensure we're on baseBranch for the final merge
@@ -595,9 +597,9 @@ export class Orchestrator {
           const commitSha = shaOut.trim();
 
           featureBranchMerged = true;
-          yield { type: 'merge:finalize:complete', featureBranch, baseBranch: config.baseBranch, commitSha };
+          yield { timestamp: new Date().toISOString(), type: 'merge:finalize:complete', featureBranch, baseBranch: config.baseBranch, commitSha };
         } catch (err) {
-          yield { type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: `Final merge failed: ${(err as Error).message}` };
+          yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: `Final merge failed: ${(err as Error).message}` };
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
           saveState(stateDir, state);
@@ -605,10 +607,10 @@ export class Orchestrator {
         }
       } else if (!allMerged) {
         // Not all plans merged — skip finalize, leave feature branch for inspection
-        yield { type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
+        yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Not all plans merged successfully' };
       } else if (signal?.aborted) {
         // Aborted before finalize — leave feature branch for inspection
-        yield { type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
+        yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Aborted before finalize' };
       }
 
       // Determine final status — only completed if feature branch was merged to baseBranch
