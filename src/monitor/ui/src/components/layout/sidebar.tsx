@@ -44,6 +44,7 @@ function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
   const relative = formatRelativeTime(group.startedAt);
   const duration = formatRunDuration(group.startedAt, group.completedAt);
   const showCancel = group.status === 'running' && group.isSession && daemonActive;
+  const isEnqueueOnly = group.runs.length > 0 && group.runs.every((r) => r.command === 'enqueue');
 
   return (
     <div
@@ -82,6 +83,14 @@ function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
           <div className="flex items-center justify-between gap-2 mt-1">
             <span className="text-[11px] text-text-dim whitespace-nowrap">{duration}</span>
             <div className="flex items-center gap-1.5">
+              {isEnqueueOnly && (
+                <Badge
+                  variant="outline"
+                  className="text-[9px] px-1.5 py-0 rounded-sm font-medium bg-red/20 text-red border-red/30"
+                >
+                  enqueue
+                </Badge>
+              )}
               {metadata?.baseProfile && (
                 <Badge
                   variant="outline"

@@ -106,8 +106,8 @@ export function partitionEnqueueSessions(
     if (group.runs.length > 0 && group.runs.every((r) => r.command === 'enqueue')) {
       if (group.status === 'running') {
         enqueue.push(group);
-      } else {
-        // Keep failed/completed enqueue-only sessions visible in the sessions list
+      } else if (group.status === 'failed') {
+        // Only keep failed enqueue-only sessions visible in the sessions list
         sessions.push(group);
       }
     } else {
