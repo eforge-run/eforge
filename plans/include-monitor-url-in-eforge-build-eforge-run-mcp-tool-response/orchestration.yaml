@@ -1,0 +1,30 @@
+name: include-monitor-url-in-eforge-build-eforge-run-mcp-tool-response
+description: Surface the monitor dashboard URL in eforge_run and eforge_enqueue
+  MCP tool responses by returning the daemon port from daemonRequest()
+created: 2026-03-26
+compiled: 2026-03-26
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-monitor-url
+    name: Include monitor URL in MCP tool responses
+    depends_on: []
+    branch: include-monitor-url-in-eforge-build-eforge-run-mcp-tool-response/monitor-url
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
