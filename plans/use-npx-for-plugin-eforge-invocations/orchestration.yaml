@@ -1,0 +1,29 @@
+name: use-npx-for-plugin-eforge-invocations
+description: Switch plugin-facing eforge invocations from bare `eforge` to `npx
+  -y eforge` so the plugin works for both developers and npx users
+created: 2026-03-26
+compiled: 2026-03-26
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+plans:
+  - id: plan-01-npx-plugin-invocations
+    name: Use npx for plugin eforge invocations
+    depends_on: []
+    branch: use-npx-for-plugin-eforge-invocations/npx-plugin-invocations
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
