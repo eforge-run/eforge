@@ -85,6 +85,18 @@ pnpm build        # Bundle with tsup
 pnpm test         # Run unit tests
 ```
 
+### npx convention
+
+The eforge plugin uses `npx -y eforge` to invoke the CLI. This ensures the plugin works for all users regardless of install method - global install, npx, or local development. The `-y` flag auto-confirms install prompts, which is required because the MCP server runs headless and cannot prompt interactively.
+
+### Developer workflow
+
+When developing eforge locally, `pnpm build` compiles the CLI to `dist/cli.js` and makes `eforge` available on PATH via the `bin` entry in `package.json`. After making changes to the engine or CLI, rebuild with `pnpm build` so the daemon picks up the latest code.
+
+To restart the daemon after a local rebuild, use `/eforge:restart` from Claude Code. This calls the daemon's MCP tool to safely stop and restart, checking for active builds first.
+
+For the eforge repository itself, the `/eforge-daemon-restart` project-local skill rebuilds from source and restarts the daemon in one step.
+
 ## Evaluation
 
 An end-to-end eval harness runs `eforge` against embedded fixture projects and validates the output compiles and tests pass.

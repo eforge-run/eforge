@@ -95,7 +95,7 @@ async function ensureDaemon(cwd) {
   }
 
   // Auto-start daemon via CLI
-  const child = spawn('eforge', ['daemon', 'start'], {
+  const child = spawn('npx', ['-y', 'eforge', 'daemon', 'start'], {
     cwd,
     detached: true,
     stdio: 'ignore',
@@ -117,7 +117,7 @@ async function ensureDaemon(cwd) {
   }
 
   throw new Error(
-    'Daemon failed to start within timeout. Run `eforge daemon start` manually to diagnose.',
+    'Daemon failed to start within timeout. Run `npx -y eforge daemon start` manually to diagnose.',
   );
 }
 

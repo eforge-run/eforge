@@ -11,7 +11,7 @@ Check for available eforge updates and walk through updating the npm package, re
 
 ### Step 1: Check Current CLI Version
 
-Run `eforge --version` to get the currently installed CLI version. Save this as `currentVersion`.
+Run `npx -y eforge --version` to get the currently installed CLI version. Save this as `currentVersion`.
 
 If the command fails, report that eforge is not installed and stop.
 
@@ -32,9 +32,9 @@ If `currentVersion` equals `latestVersion`:
 Determine the install type by running `which eforge` and inspecting the resolved path:
 
 - **Global install** (path contains a global `node_modules`, e.g. `/usr/local/lib/node_modules` or `~/.npm/`): Run `npm install -g eforge@latest`
-- **npx usage** (no global install found): Skip this step — npx always fetches the latest version automatically.
+- **npx usage** (no global install found): Skip this step - npx always fetches the latest version automatically.
 
-After the install completes, run `eforge --version` again to confirm the new version. Save this as `newCliVersion`.
+After the install completes, run `npx -y eforge --version` again to confirm the new version. Save this as `newCliVersion`.
 
 ### Step 5: Restart the Daemon
 
@@ -44,16 +44,15 @@ After the install completes, run `eforge --version` again to confirm the new ver
 
 > An eforge build is currently running. The daemon cannot be safely restarted while builds are in progress. Please wait until all builds complete, then re-run `/eforge:update`.
 
-**Stop here. Do not proceed to `eforge daemon stop`.**
+**Stop here. Do not proceed to stopping the daemon.**
 
 - If the status is anything other than `'running'`, proceed to stop and restart the daemon:
 
-```bash
-eforge daemon stop
-eforge daemon start
-```
+Call the `mcp__eforge__eforge_daemon` tool with `action: "stop"`.
 
-After the daemon restarts, run `eforge --version` to confirm the running version. If `newCliVersion` was not set in Step 4 (npx path), save this as `newCliVersion`.
+Then call the `mcp__eforge__eforge_daemon` tool with `action: "start"`.
+
+After the daemon restarts, run `npx -y eforge --version` to confirm the running version. If `newCliVersion` was not set in Step 4 (npx path), save this as `newCliVersion`.
 
 ### Step 6: Update the Plugin
 
@@ -63,7 +62,7 @@ Tell the user:
 >
 > `/plugin update eforge@eforge`
 >
-> This cannot be done automatically — skills cannot invoke slash commands.
+> This cannot be done automatically - skills cannot invoke slash commands.
 
 Wait for the user to confirm they've updated the plugin before proceeding.
 
@@ -83,8 +82,8 @@ Report the update results:
 
 | Error | Action |
 |-------|--------|
-| `eforge --version` fails | Report that eforge is not installed; suggest `npm install -g eforge` |
+| `npx -y eforge --version` fails | Report that eforge is not installed; suggest `npm install -g eforge` |
 | `npm view eforge version` fails | Report network or registry error; suggest retrying |
 | `npm install -g` fails | Show error output; suggest checking permissions or using `sudo` |
-| Daemon stop/start fails | Show error output; suggest running `eforge daemon start` manually |
+| Daemon stop/start fails | Show error output; suggest running `npx -y eforge daemon start` manually |
 | Active build detected (`status: 'running'`) | Abort the update; tell the user to wait until all builds complete before retrying |
