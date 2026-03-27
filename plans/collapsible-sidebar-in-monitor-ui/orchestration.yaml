@@ -1,0 +1,31 @@
+name: collapsible-sidebar-in-monitor-ui
+description: Add collapsible sidebar toggle to the monitor web UI, allowing
+  users to hide the session list and give the build detail view full viewport
+  width
+created: 2026-03-27
+compiled: 2026-03-27
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm --filter @eforge/monitor-ui build
+plans:
+  - id: plan-01-collapsible-sidebar
+    name: Collapsible Sidebar Toggle
+    depends_on: []
+    branch: collapsible-sidebar-in-monitor-ui/collapsible-sidebar
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
