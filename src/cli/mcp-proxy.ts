@@ -5,9 +5,10 @@
  * Auto-starts the daemon if not running. Called via `eforge mcp-proxy`.
  */
 
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
+import http from 'node:http';
 import { ensureDaemon, daemonRequest, sleep, DAEMON_POLL_INTERVAL_MS } from './daemon-client.js';
 import { readLockfile } from '../monitor/lockfile.js';
 
@@ -47,11 +48,381 @@ function sanitizeFlags(flags?: string[]): string[] | undefined {
 // Re-export for any consumers that imported from here
 export { ensureDaemon, daemonRequest };
 
+// --- SSE Subscriber ---
+
+/** Events that trigger list_changed notifications */
+const LIST_CHANGED_EVENTS = new Set([
+  'phase:start',
+  'phase:end',
+  'build:complete',
+  'build:error',
+  'enqueue:complete',
+  'session:start',
+  'session:end',
+]);
+
+/** Events that trigger info-level logging notifications */
+const INFO_EVENTS = new Set([
+  'session:start',
+  'phase:start',
+  'phase:end',
+  'build:complete',
+  'plan:complete',
+]);
+
+/** Events that trigger error-level logging notifications */
+const ERROR_EVENTS = new Set([
+  'build:error',
+  'phase:error',
+]);
+
+const SESSION_POLL_INTERVAL_MS = 10_000;
+const SSE_RECONNECT_MAX_MS = 30_000;
+
+interface SseSubscriberState {
+  currentSessionId: string | null;
+  sseRequest: http.ClientRequest | null;
+  sessionPollTimer: ReturnType<typeof setInterval> | null;
+  reconnectDelay: number;
+  stopped: boolean;
+}
+
+function parseSseChunk(chunk: string): Array<{ id?: string; data?: string }> {
+  const events: Array<{ id?: string; data?: string }> = [];
+  // Normalize line endings per SSE spec (supports \r\n, \r, and \n)
+  const normalized = chunk.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  const blocks = normalized.split('\n\n');
+  for (const block of blocks) {
+    if (!block.trim()) continue;
+    let id: string | undefined;
+    const dataLines: string[] = [];
+    for (const line of block.split('\n')) {
+      if (line.startsWith('id:')) {
+        const idVal = line.slice(3);
+        id = idVal.startsWith(' ') ? idVal.slice(1) : idVal;
+      } else if (line.startsWith('data:')) {
+        const dataVal = line.slice(5);
+        dataLines.push(dataVal.startsWith(' ') ? dataVal.slice(1) : dataVal);
+      }
+    }
+    if (dataLines.length > 0) {
+      events.push({ id, data: dataLines.join('\n') });
+    }
+  }
+  return events;
+}
+
+function buildLoggingData(event: Record<string, unknown>): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (event.sessionId) result.sessionId = event.sessionId;
+  if (event.planId) result.planId = event.planId;
+  if (event.phase) result.phase = event.phase;
+  // Build a human-readable message
+  const eventType = event.type as string;
+  if (event.message) {
+    result.message = event.message;
+  } else {
+    result.message = eventType;
+  }
+  return result;
+}
+
+function startSseSubscriber(server: McpServer, cwd: string): SseSubscriberState {
+  const state: SseSubscriberState = {
+    currentSessionId: null,
+    sseRequest: null,
+    sessionPollTimer: null,
+    reconnectDelay: 1000,
+    stopped: false,
+  };
+
+  function closeSseConnection() {
+    if (state.sseRequest) {
+      state.sseRequest.destroy();
+      state.sseRequest = null;
+    }
+  }
+
+  function connectToSse(port: number, sessionId: string) {
+    closeSseConnection();
+    state.currentSessionId = sessionId;
+
+    const url = `http://127.0.0.1:${port}/api/events/${encodeURIComponent(sessionId)}`;
+
+    const req = http.get(url, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume(); // drain
+        scheduleReconnect(port);
+        return;
+      }
+
+      // Reset backoff on successful connection
+      state.reconnectDelay = 1000;
+
+      let buffer = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk: string) => {
+        buffer += chunk;
+        // Process complete SSE blocks (separated by double newlines)
+        const lastDoubleNewline = buffer.lastIndexOf('\n\n');
+        if (lastDoubleNewline === -1) return;
+        const complete = buffer.slice(0, lastDoubleNewline + 2);
+        buffer = buffer.slice(lastDoubleNewline + 2);
+
+        const sseEvents = parseSseChunk(complete);
+        for (const sseEvent of sseEvents) {
+          if (!sseEvent.data) continue;
+          try {
+            const event = JSON.parse(sseEvent.data) as Record<string, unknown>;
+            const eventType = event.type as string;
+            if (!eventType) continue;
+
+            // Send list_changed for lifecycle events
+            if (LIST_CHANGED_EVENTS.has(eventType)) {
+              try { server.sendResourceListChanged(); } catch { /* transport may be closed */ }
+            }
+
+            // Send logging notifications
+            if (INFO_EVENTS.has(eventType)) {
+              server.sendLoggingMessage({
+                level: 'info',
+                logger: 'eforge',
+                data: buildLoggingData(event),
+              }).catch(() => { /* client may not support logging */ });
+            } else if (ERROR_EVENTS.has(eventType)) {
+              server.sendLoggingMessage({
+                level: 'error',
+                logger: 'eforge',
+                data: buildLoggingData(event),
+              }).catch(() => {});
+            } else if (eventType === 'review:issue') {
+              const severity = event.severity as string | undefined;
+              if (severity === 'high' || severity === 'critical') {
+                server.sendLoggingMessage({
+                  level: 'warning',
+                  logger: 'eforge',
+                  data: buildLoggingData(event),
+                }).catch(() => {});
+              }
+            }
+          } catch {
+            // Ignore malformed SSE data
+          }
+        }
+      });
+
+      res.on('end', () => {
+        state.sseRequest = null;
+        if (!state.stopped) {
+          scheduleReconnect(port);
+        }
+      });
+
+      res.on('error', () => {
+        state.sseRequest = null;
+        if (!state.stopped) {
+          scheduleReconnect(port);
+        }
+      });
+    });
+
+    req.on('error', () => {
+      state.sseRequest = null;
+      if (!state.stopped) {
+        scheduleReconnect(port);
+      }
+    });
+
+    state.sseRequest = req;
+  }
+
+  function scheduleReconnect(port: number) {
+    if (state.stopped) return;
+    const delay = state.reconnectDelay;
+    state.reconnectDelay = Math.min(state.reconnectDelay * 2, SSE_RECONNECT_MAX_MS);
+    setTimeout(() => {
+      if (state.stopped) return;
+      if (state.currentSessionId) {
+        connectToSse(port, state.currentSessionId);
+      }
+    }, delay);
+  }
+
+  async function pollForSession() {
+    if (state.stopped) return;
+    try {
+      const lock = readLockfile(cwd);
+      if (!lock) return;
+      const port = lock.port;
+
+      const { data } = await daemonRequest(cwd, 'GET', '/api/latest-run');
+      const latestRun = data as { sessionId?: string };
+      if (!latestRun?.sessionId) return;
+
+      if (latestRun.sessionId !== state.currentSessionId) {
+        connectToSse(port, latestRun.sessionId);
+      }
+    } catch {
+      // Daemon not running or unreachable - skip this poll
+    }
+  }
+
+  // Start polling for sessions
+  // Do an initial poll immediately
+  pollForSession();
+  state.sessionPollTimer = setInterval(pollForSession, SESSION_POLL_INTERVAL_MS);
+
+  return state;
+}
+
+function stopSseSubscriber(state: SseSubscriberState) {
+  state.stopped = true;
+  if (state.sessionPollTimer) {
+    clearInterval(state.sessionPollTimer);
+    state.sessionPollTimer = null;
+  }
+  if (state.sseRequest) {
+    state.sseRequest.destroy();
+    state.sseRequest = null;
+  }
+}
+
+// --- End SSE Subscriber ---
+
 export async function runMcpProxy(cwd: string): Promise<void> {
   const server = new McpServer({
     name: 'eforge',
     version: '0.5.0',
+  }, {
+    capabilities: {
+      resources: { listChanged: true },
+      logging: {},
+    },
   });
+
+  // --- Resources ---
+
+  // Resource: eforge://status
+  server.resource(
+    'eforge-status',
+    'eforge://status',
+    { description: 'Current eforge build status - latest session summary or idle state' },
+    async () => {
+      try {
+        const { data: latestRun } = await daemonRequest(cwd, 'GET', '/api/latest-run');
+        const latestRunObj = latestRun as { sessionId?: string };
+        if (!latestRunObj?.sessionId) {
+          return {
+            contents: [{
+              uri: 'eforge://status',
+              mimeType: 'application/json',
+              text: JSON.stringify({ status: 'idle', message: 'No active eforge sessions.' }),
+            }],
+          };
+        }
+        const { data: summary } = await daemonRequest(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`);
+        return {
+          contents: [{
+            uri: 'eforge://status',
+            mimeType: 'application/json',
+            text: JSON.stringify(summary, null, 2),
+          }],
+        };
+      } catch (err) {
+        return {
+          contents: [{
+            uri: 'eforge://status',
+            mimeType: 'application/json',
+            text: JSON.stringify({ status: 'unavailable', message: 'Daemon not running or unreachable.' }),
+          }],
+        };
+      }
+    },
+  );
+
+  // Resource template: eforge://status/{sessionId}
+  server.resource(
+    'eforge-session-status',
+    new ResourceTemplate('eforge://status/{sessionId}', { list: undefined }),
+    { description: 'Build status for a specific eforge session' },
+    async (uri, variables) => {
+      const sessionId = Array.isArray(variables.sessionId) ? variables.sessionId[0] : variables.sessionId;
+      try {
+        const { data: summary } = await daemonRequest(cwd, 'GET', `/api/run-summary/${encodeURIComponent(sessionId)}`);
+        return {
+          contents: [{
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify(summary, null, 2),
+          }],
+        };
+      } catch (err) {
+        return {
+          contents: [{
+            uri: uri.href,
+            mimeType: 'application/json',
+            text: JSON.stringify({ error: `Failed to fetch session ${sessionId}` }),
+          }],
+        };
+      }
+    },
+  );
+
+  // Resource: eforge://queue
+  server.resource(
+    'eforge-queue',
+    'eforge://queue',
+    { description: 'Current eforge PRD queue listing' },
+    async () => {
+      try {
+        const { data } = await daemonRequest(cwd, 'GET', '/api/queue');
+        return {
+          contents: [{
+            uri: 'eforge://queue',
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          }],
+        };
+      } catch {
+        return {
+          contents: [{
+            uri: 'eforge://queue',
+            mimeType: 'application/json',
+            text: JSON.stringify({ error: 'Daemon not running or unreachable.' }),
+          }],
+        };
+      }
+    },
+  );
+
+  // Resource: eforge://config
+  server.resource(
+    'eforge-config',
+    'eforge://config',
+    { description: 'Resolved eforge configuration' },
+    async () => {
+      try {
+        const { data } = await daemonRequest(cwd, 'GET', '/api/config/show');
+        return {
+          contents: [{
+            uri: 'eforge://config',
+            mimeType: 'application/json',
+            text: JSON.stringify(data, null, 2),
+          }],
+        };
+      } catch {
+        return {
+          contents: [{
+            uri: 'eforge://config',
+            mimeType: 'application/json',
+            text: JSON.stringify({ error: 'Daemon not running or unreachable.' }),
+          }],
+        };
+      }
+    },
+  );
+
+  // --- Tools ---
 
   // Tool: eforge_build
   server.tool(
@@ -241,4 +612,14 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  // Start SSE subscriber after transport is connected
+  const sseState = startSseSubscriber(server, cwd);
+
+  // Chain SSE cleanup onto existing transport close handler
+  const originalOnclose = transport.onclose;
+  transport.onclose = () => {
+    stopSseSubscriber(sseState);
+    originalOnclose?.();
+  };
 }
