@@ -16,7 +16,8 @@
 
 - **Queue reordering & priority** — Web UI and MCP controls for reordering queued PRDs and setting build priority
 - **Re-guidance** — Build interruption with amended context, daemon-to-worker IPC for mid-build guidance changes
-- **Plugin–engine version compatibility** — Add `version` to the daemon health endpoint and `minEngineVersion` to plugin.json. The MCP proxy checks compatibility at startup and warns (or refuses) if the installed eforge version is too old for the plugin.
+- **Plugin-engine version compatibility** — Add `version` to the daemon health endpoint and `minEngineVersion` to plugin.json. The MCP proxy checks compatibility at startup and warns (or refuses) if the installed eforge version is too old for the plugin.
+- **Config initialization via MCP elicitation** — Add `init` action to `eforge_config` tool that walks users through `eforge.yaml` setup via interactive form steps (basics, build settings, integrations) using the MCP elicitation protocol
 
 ---
 
