@@ -24,17 +24,21 @@ export interface ClaudeSDKBackendOptions {
   plugins?: SdkPluginConfig[];
   /** Which settings to load: 'user', 'project', 'local'. */
   settingSources?: SettingSource[];
+  /** Pass --bare to Claude Code subprocess to suppress auto-loading of default settings/tools. */
+  bare?: boolean;
 }
 
 export class ClaudeSDKBackend implements AgentBackend {
   private readonly mcpServers?: Record<string, McpServerConfig>;
   private readonly plugins?: SdkPluginConfig[];
   private readonly settingSources?: SettingSource[];
+  private readonly bare: boolean;
 
   constructor(options?: ClaudeSDKBackendOptions) {
     this.mcpServers = options?.mcpServers;
     this.plugins = options?.plugins;
     this.settingSources = options?.settingSources;
+    this.bare = options?.bare ?? false;
   }
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
@@ -62,6 +66,7 @@ export class ClaudeSDKBackend implements AgentBackend {
           abortController: options.abortSignal
             ? abortControllerFromSignal(options.abortSignal)
             : undefined,
+          ...(this.bare ? { extraArgs: { bare: null } } : {}),
         },
       });
 

@@ -176,6 +176,7 @@ export const eforgeConfigSchema = z.object({
     maxContinuations: z.number().int().nonnegative().optional(),
     permissionMode: z.enum(['bypass', 'default']).optional(),
     settingSources: z.array(z.enum(SETTING_SOURCES)).nonempty().optional(),
+    bare: z.boolean().optional(),
   }).optional(),
   build: z.object({
     parallelism: z.number().int().positive().optional(),
@@ -219,7 +220,7 @@ export type PluginConfig = z.output<typeof pluginConfigSchema>;
 
 export interface EforgeConfig {
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
-  agents: { maxTurns: number; maxContinuations: number; permissionMode: 'bypass' | 'default'; settingSources?: string[] };
+  agents: { maxTurns: number; maxContinuations: number; permissionMode: 'bypass' | 'default'; settingSources?: string[]; bare: boolean };
   build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
   plugins: PluginConfig;
@@ -276,7 +277,7 @@ export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.fr
 
 export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
-  agents: Object.freeze({ maxTurns: 30, maxContinuations: 3, permissionMode: 'bypass' as const, settingSources: ['project'] as string[] }),
+  agents: Object.freeze({ maxTurns: 30, maxContinuations: 3, permissionMode: 'bypass' as const, settingSources: ['project'] as string[], bare: false }),
   build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
   plan: Object.freeze({ outputDir: 'plans' }),
   plugins: Object.freeze({ enabled: true }),
@@ -335,6 +336,7 @@ export function resolveConfig(
       maxContinuations: fileConfig.agents?.maxContinuations ?? DEFAULT_CONFIG.agents.maxContinuations,
       permissionMode: fileConfig.agents?.permissionMode ?? DEFAULT_CONFIG.agents.permissionMode,
       settingSources: fileConfig.agents?.settingSources ?? DEFAULT_CONFIG.agents.settingSources,
+      bare: fileConfig.agents?.bare ?? !!env.ANTHROPIC_API_KEY,
     }),
     build: Object.freeze({
       parallelism: fileConfig.build?.parallelism ?? DEFAULT_CONFIG.build.parallelism,

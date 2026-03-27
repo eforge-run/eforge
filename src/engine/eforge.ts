@@ -122,6 +122,7 @@ export class EforgeEngine {
       mcpServers: options.mcpServers,
       plugins: options.plugins,
       settingSources: options.settingSources ?? config.agents.settingSources as SettingSource[] | undefined,
+      bare: config.agents.bare,
     });
     this.onClarification = options.onClarification;
     this.onApproval = options.onApproval;

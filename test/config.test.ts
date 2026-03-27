@@ -105,6 +105,32 @@ describe('resolveConfig', () => {
     const config = resolveConfig({}, {});
     expect(Object.isFrozen(config.hooks)).toBe(true);
   });
+
+  it('bare defaults to false when no ANTHROPIC_API_KEY', () => {
+    const config = resolveConfig({}, {});
+    expect(config.agents.bare).toBe(false);
+  });
+
+  it('bare auto-enables when ANTHROPIC_API_KEY is set', () => {
+    const config = resolveConfig({}, { ANTHROPIC_API_KEY: 'test-key' });
+    expect(config.agents.bare).toBe(true);
+  });
+
+  it('explicit bare: false overrides ANTHROPIC_API_KEY env', () => {
+    const config = resolveConfig(
+      { agents: { bare: false } },
+      { ANTHROPIC_API_KEY: 'test-key' },
+    );
+    expect(config.agents.bare).toBe(false);
+  });
+
+  it('explicit bare: true forces bare without ANTHROPIC_API_KEY', () => {
+    const config = resolveConfig(
+      { agents: { bare: true } },
+      {},
+    );
+    expect(config.agents.bare).toBe(true);
+  });
 });
 
 describe('getUserConfigPath', () => {
