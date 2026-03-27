@@ -3,6 +3,9 @@ delete process.env.CLAUDECODE;
 
 process.title = 'eforge';
 
+// Ignore SIGPIPE - prevents exit code 13 when a pipe reader (e.g. eval harness) closes early
+process.on('SIGPIPE', () => {});
+
 import { run } from './cli/index.js';
 
 try {
