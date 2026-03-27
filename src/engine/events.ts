@@ -136,6 +136,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'plan:clarification'; questions: ClarificationQuestion[] }
   | { type: 'plan:clarification:answer'; answers: Record<string, string> }
   | { type: 'plan:progress'; message: string }
+  | { type: 'plan:continuation'; attempt: number; maxContinuations: number }
   | { type: 'plan:complete'; plans: PlanFile[] }
 
   // Plan review (after planning phase)

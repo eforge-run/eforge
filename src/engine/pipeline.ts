@@ -7,7 +7,8 @@
  */
 
 import { execFile } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
+import { readFile, readdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { parse as parseYaml } from 'yaml';
@@ -40,7 +41,7 @@ import { runArchitectureReview } from './agents/architecture-reviewer.js';
 import { parseModulesBlock, parseBuildConfigBlock, testIssueToReviewIssue } from './agents/common.js';
 import { runTestWriter, runTester } from './agents/tester.js';
 import { compileExpedition } from './compiler.js';
-import { resolveDependencyGraph, injectProfileIntoOrchestrationYaml, parseOrchestrationConfig, writePlanArtifacts, extractPlanTitle, detectValidationCommands } from './plan.js';
+import { resolveDependencyGraph, injectProfileIntoOrchestrationYaml, parseOrchestrationConfig, writePlanArtifacts, extractPlanTitle, detectValidationCommands, parsePlanFile } from './plan.js';
 import { runParallel, type ParallelTask } from './concurrency.js';
 import { forgeCommit } from './git.js';
 
@@ -226,11 +227,16 @@ export async function hasUnstagedChanges(cwd: string): Promise<boolean> {
 
 /** Per-role default maxTurns. Agents that need more/fewer turns than the global default declare it here. */
 const AGENT_MAX_TURNS_DEFAULTS: Partial<Record<AgentRole, number>> = {
-  builder: 75,
+  builder: 50,
   'module-planner': 20,
   'doc-updater': 20,
   'test-writer': 30,
   'tester': 40,
+};
+
+/** Per-role default maxContinuations for agents that support continuation loops. */
+export const AGENT_MAX_CONTINUATIONS_DEFAULTS: Partial<Record<AgentRole, number>> = {
+  planner: 2,
 };
 
 /**
@@ -385,89 +391,142 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
 
 registerCompileStage('planner', async function* plannerStage(ctx) {
   const agentConfig = resolveAgentConfig('planner', ctx.config);
-  const span = ctx.tracing.createSpan('planner', { source: ctx.sourceContent, planSet: ctx.planSetName });
-  span.setInput({ source: ctx.sourceContent, planSet: ctx.planSetName });
-  const tracker = createToolTracker(span);
+  const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['planner'] ?? 0;
 
-  try {
-    for await (const event of runPlanner(ctx.sourceContent, {
-      cwd: ctx.cwd,
-      name: ctx.planSetName,
-      auto: ctx.auto,
-      verbose: ctx.verbose,
-      generateProfile: ctx.generateProfile,
-      abortController: ctx.abortController,
-      backend: ctx.backend,
-      onClarification: ctx.onClarification,
-      profiles: ctx.config.profiles,
-      maxTurns: agentConfig.maxTurns,
-    })) {
-      // Update active profile when planner selects one.
-      // Prefer inline config (future: agent-generated profiles), fall back to named lookup.
-      if (event.type === 'plan:profile') {
-        if (event.config) {
-          ctx.profile = event.config;
-        } else {
-          const resolved = ctx.config.profiles[event.profileName];
-          if (resolved) {
-            ctx.profile = resolved;
+  for (let attempt = 0; attempt <= maxContinuations; attempt++) {
+    const span = ctx.tracing.createSpan('planner', { source: ctx.sourceContent, planSet: ctx.planSetName, ...(attempt > 0 && { attempt }) });
+    span.setInput({ source: ctx.sourceContent, planSet: ctx.planSetName, ...(attempt > 0 && { attempt }) });
+    const tracker = createToolTracker(span);
+
+    // Build continuation context for retry attempts
+    let continuationContext: { attempt: number; maxContinuations: number; existingPlans: string } | undefined;
+    if (attempt > 0) {
+      const planDir = resolve(ctx.cwd, 'plans', ctx.planSetName);
+      let existingPlans = '[No existing plans found]';
+      if (existsSync(planDir)) {
+        try {
+          const entries = await readdir(planDir);
+          const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
+          const summaries: string[] = [];
+          for (const file of mdFiles) {
+            try {
+              const plan = await parsePlanFile(resolve(planDir, file));
+              summaries.push(`- **${plan.id}**: ${plan.name}`);
+            } catch {
+              summaries.push(`- ${file} (could not parse frontmatter)`);
+            }
+          }
+          if (summaries.length > 0) {
+            existingPlans = summaries.join('\n');
+          }
+        } catch {
+          // If we can't read the directory, continue with default text
+        }
+      }
+      continuationContext = { attempt, maxContinuations, existingPlans };
+    }
+
+    let plannerFailed = false;
+    let failedError = '';
+
+    try {
+      for await (const event of runPlanner(ctx.sourceContent, {
+        cwd: ctx.cwd,
+        name: ctx.planSetName,
+        auto: ctx.auto,
+        verbose: ctx.verbose,
+        generateProfile: ctx.generateProfile,
+        abortController: ctx.abortController,
+        backend: ctx.backend,
+        onClarification: ctx.onClarification,
+        profiles: ctx.config.profiles,
+        maxTurns: agentConfig.maxTurns,
+        continuationContext,
+      })) {
+        // Update active profile when planner selects one.
+        // Prefer inline config (future: agent-generated profiles), fall back to named lookup.
+        if (event.type === 'plan:profile') {
+          if (event.config) {
+            ctx.profile = event.config;
           } else {
-            throw new Error(`Planner selected unknown profile "${event.profileName}" — available profiles: ${Object.keys(ctx.config.profiles).join(', ')}`);
+            const resolved = ctx.config.profiles[event.profileName];
+            if (resolved) {
+              ctx.profile = resolved;
+            } else {
+              throw new Error(`Planner selected unknown profile "${event.profileName}" — available profiles: ${Object.keys(ctx.config.profiles).join(', ')}`);
+            }
           }
         }
-      }
 
-      // Detect <modules> block in agent messages (expedition mode, first match only)
-      if (event.type === 'agent:message' && event.agent === 'planner' && ctx.expeditionModules.length === 0) {
-        const modules = parseModulesBlock(event.content);
-        if (modules.length > 0) {
-          ctx.expeditionModules = modules;
-          yield { timestamp: new Date().toISOString(), type: 'expedition:architecture:complete', modules };
+        // Detect <modules> block in agent messages (expedition mode, first match only)
+        if (event.type === 'agent:message' && event.agent === 'planner' && ctx.expeditionModules.length === 0) {
+          const modules = parseModulesBlock(event.content);
+          if (modules.length > 0) {
+            ctx.expeditionModules = modules;
+            yield { timestamp: new Date().toISOString(), type: 'expedition:architecture:complete', modules };
+          }
         }
-      }
 
-      tracker.handleEvent(event);
+        tracker.handleEvent(event);
 
-      // Track skip — halts further compile stages
-      if (event.type === 'plan:skip') {
-        ctx.skipped = true;
-      }
+        // Track skip — halts further compile stages
+        if (event.type === 'plan:skip') {
+          ctx.skipped = true;
+        }
 
-      // Suppress planner's plan:complete in expedition mode (compilation emits the real one)
-      if (event.type === 'plan:complete' && ctx.expeditionModules.length > 0) {
-        continue;
-      }
-
-      // Track final plans for review phase and inject profile into orchestration.yaml
-      if (event.type === 'plan:complete') {
-        // Inject the resolved profile into the planner-written orchestration.yaml
-        const orchYamlPath = resolve(ctx.cwd, 'plans', ctx.planSetName, 'orchestration.yaml');
-        await injectProfileIntoOrchestrationYaml(orchYamlPath, ctx.profile);
-
-        // Backfill dependsOn from orchestration.yaml into plan:complete events.
-        // The planner writes depends_on to orchestration.yaml but not to individual
-        // plan file frontmatter, so parsePlanFile() returns empty dependsOn arrays.
-        // Cross-reference orchestration.yaml to enrich the event.
-        try {
-          const orchConfig = await parseOrchestrationConfig(orchYamlPath);
-          const enrichedPlans = backfillDependsOn(event.plans, orchConfig);
-          ctx.plans = enrichedPlans;
-          yield { ...event, plans: enrichedPlans };
+        // Suppress planner's plan:complete in expedition mode (compilation emits the real one)
+        if (event.type === 'plan:complete' && ctx.expeditionModules.length > 0) {
           continue;
-        } catch {
-          // Graceful fallback — yield the original event unchanged
-          ctx.plans = event.plans;
         }
+
+        // Track final plans for review phase and inject profile into orchestration.yaml
+        if (event.type === 'plan:complete') {
+          // Inject the resolved profile into the planner-written orchestration.yaml
+          const orchYamlPath = resolve(ctx.cwd, 'plans', ctx.planSetName, 'orchestration.yaml');
+          await injectProfileIntoOrchestrationYaml(orchYamlPath, ctx.profile);
+
+          // Backfill dependsOn from orchestration.yaml into plan:complete events.
+          // The planner writes depends_on to orchestration.yaml but not to individual
+          // plan file frontmatter, so parsePlanFile() returns empty dependsOn arrays.
+          // Cross-reference orchestration.yaml to enrich the event.
+          try {
+            const orchConfig = await parseOrchestrationConfig(orchYamlPath);
+            const enrichedPlans = backfillDependsOn(event.plans, orchConfig);
+            ctx.plans = enrichedPlans;
+            yield { ...event, plans: enrichedPlans };
+            continue;
+          } catch {
+            // Graceful fallback — yield the original event unchanged
+            ctx.plans = event.plans;
+          }
+        }
+
+        yield event;
+      }
+      tracker.cleanup();
+      span.end();
+      break; // Success — exit the continuation loop
+    } catch (err) {
+      tracker.cleanup();
+      const errorMsg = (err as Error).message ?? String(err);
+
+      // Check if this is an error_max_turns failure eligible for continuation
+      const isMaxTurns = errorMsg.includes('error_max_turns');
+      if (isMaxTurns && attempt < maxContinuations) {
+        // Commit any plan files written so far as a checkpoint
+        await commitPlanArtifacts(ctx.cwd, ctx.planSetName);
+
+        span.end();
+
+        // Yield continuation event and retry
+        yield { timestamp: new Date().toISOString(), type: 'plan:continuation', attempt: attempt + 1, maxContinuations } as EforgeEvent;
+        continue; // Next iteration of the continuation loop
       }
 
-      yield event;
+      // Non-max_turns error or exhausted continuations — rethrow
+      span.error(err as Error);
+      throw err;
     }
-    tracker.cleanup();
-    span.end();
-  } catch (err) {
-    tracker.cleanup();
-    span.error(err as Error);
-    throw err;
   }
 });
 
@@ -1323,5 +1382,9 @@ export async function* runBuildPipeline(
 async function commitPlanArtifacts(cwd: string, planSetName: string): Promise<void> {
   const planDir = resolve(cwd, 'plans', planSetName);
   await exec('git', ['add', planDir], { cwd });
+  // Guard: only commit if there are staged changes (prevents "nothing to commit" errors
+  // when artifacts were already committed by a previous continuation checkpoint)
+  const { stdout: staged } = await exec('git', ['diff', '--cached', '--name-only'], { cwd });
+  if (staged.trim().length === 0) return;
   await forgeCommit(cwd, `plan(${planSetName}): initial planning artifacts`);
 }

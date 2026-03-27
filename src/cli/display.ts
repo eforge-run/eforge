@@ -140,6 +140,12 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
+    case 'plan:continuation': {
+      const s = spinners.get('plan');
+      if (s) s.text = `Planning - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
+      break;
+    }
+
     case 'plan:complete':
       if (event.plans.length === 0) {
         succeedSpinner('plan', 'Nothing to plan \u2014 source is fully implemented');

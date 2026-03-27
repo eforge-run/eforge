@@ -17,6 +17,8 @@ export interface PlannerOptions extends CompileOptions {
   profiles?: Record<string, ResolvedProfileConfig>;
   /** Override max conversation turns (default: 30) */
   maxTurns?: number;
+  /** Continuation context when restarting after hitting max turns */
+  continuationContext?: { attempt: number; maxContinuations: number; existingPlans: string };
 }
 
 /**
@@ -179,11 +181,24 @@ export async function* runPlanner(
       profileGeneration = formatProfileGenerationSection(options.profiles);
     }
 
+    let continuationContextText = '';
+    if (options.continuationContext) {
+      const { attempt, maxContinuations, existingPlans } = options.continuationContext;
+      continuationContextText = `## Continuation Context
+
+This is continuation attempt ${attempt} of ${maxContinuations}. The planner hit the max turns limit on the previous attempt. The following plan files have already been written. Do NOT redo any of the completed work below.
+
+### Existing Plans
+
+${existingPlans}`;
+    }
+
     return loadPrompt('planner', {
       source: sourceContent,
       planSetName,
       cwd,
       priorClarifications: formatPriorClarifications(allClarifications),
+      continuation_context: continuationContextText,
       profiles: options.profiles ? formatProfileDescriptions(options.profiles) : '',
       profileGeneration,
       parallelLanes: '',
