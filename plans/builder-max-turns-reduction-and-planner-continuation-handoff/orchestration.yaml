@@ -1,0 +1,48 @@
+name: builder-max-turns-reduction-and-planner-continuation-handoff
+description: Reduce builder max turns from 75 to 50 and add planner continuation
+  handoff mechanism
+created: 2026-03-27
+compiled: 2026-03-27
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-source-changes
+    name: Builder max turns reduction and planner continuation source changes
+    depends_on: []
+    branch: builder-max-turns-reduction-and-planner-continuation-handoff/source-changes
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-tests
+    name: Tests for planner continuation and builder max turns reduction
+    depends_on:
+      - plan-01-source-changes
+    branch: builder-max-turns-reduction-and-planner-continuation-handoff/tests
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
