@@ -596,17 +596,39 @@ export async function startServer(
 
   /**
    * Resolve the working directory from the run's DB record for git operations.
+   * Prefers the build run's cwd, but falls back to the compile run's cwd
+   * when the build cwd no longer exists on disk (e.g. worktree was cleaned up).
    */
-  function resolveCwd(sessionId: string): string | null {
+  async function resolveCwd(sessionId: string): Promise<string | null> {
     const sessionRuns = db.getSessionRuns(sessionId);
-    // Prefer the build run, fall back to compile
     const buildRun = [...sessionRuns].reverse().find((r) => r.command === 'build');
-    const run = buildRun ?? [...sessionRuns].reverse().find((r) => r.command === 'compile');
-    return run?.cwd ?? null;
+    const compileRun = [...sessionRuns].reverse().find((r) => r.command === 'compile');
+
+    // Try the build run's cwd first
+    if (buildRun?.cwd) {
+      try {
+        await stat(buildRun.cwd);
+        return buildRun.cwd;
+      } catch {
+        // Directory doesn't exist (worktree cleaned up), fall through
+      }
+    }
+
+    // Fall back to compile run's cwd (always the repo root)
+    if (compileRun?.cwd) {
+      try {
+        await stat(compileRun.cwd);
+        return compileRun.cwd;
+      } catch {
+        // Compile cwd also doesn't exist
+      }
+    }
+
+    return null;
   }
 
   async function serveDiff(_req: IncomingMessage, res: ServerResponse, sessionId: string, planId: string, file?: string): Promise<void> {
-    const cwd = resolveCwd(sessionId);
+    const cwd = await resolveCwd(sessionId);
     if (!cwd) {
       res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
       res.end(JSON.stringify({ error: 'Commit not found' }));
