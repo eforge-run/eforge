@@ -1,0 +1,47 @@
+name: monitor-diff-view-fall-back-to-repo-root-for-git-commands-2
+description: Fix monitor diff view to handle deleted worktree directories and
+  minimize unnecessary worktree creation
+created: 2026-03-28
+compiled: 2026-03-28
+mode: multi-area-refactor
+base_branch: eforge/monitor-diff-view-fall-back-to-repo-root-for-git-commands-2
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-diff-fallback
+    name: Monitor Diff View Falls Back to Repo Root for Git Commands
+    depends_on: []
+    branch: monitor-diff-view-fall-back-to-repo-root-for-git-commands-2/diff-fallback
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-minimize-worktrees
+    name: Minimize Worktree Creation Using Dependency Graph
+    depends_on: []
+    branch: monitor-diff-view-fall-back-to-repo-root-for-git-commands-2/minimize-worktrees
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle

@@ -208,6 +208,65 @@ export function initializeState(
   return state;
 }
 
+/**
+ * Compute the maximum number of plans that could run concurrently
+ * based on the dependency graph's wave structure.
+ *
+ * Plans are grouped into waves: wave 0 has no dependencies,
+ * wave N depends only on plans in waves < N. The max wave size
+ * determines the peak concurrency.
+ */
+export function computeMaxConcurrency(
+  plans: OrchestrationConfig['plans'],
+): number {
+  if (plans.length === 0) return 0;
+
+  // Assign each plan to a wave based on its dependencies
+  const waveOf = new Map<string, number>();
+
+  // Iteratively resolve waves — a plan's wave is max(wave of deps) + 1
+  // For plans with no deps, wave is 0.
+  const planMap = new Map(plans.map((p) => [p.id, p]));
+
+  const resolveWave = (planId: string, visited: Set<string>): number => {
+    if (waveOf.has(planId)) return waveOf.get(planId)!;
+    if (visited.has(planId)) return 0; // cycle guard
+    visited.add(planId);
+
+    const plan = planMap.get(planId);
+    if (!plan || plan.dependsOn.length === 0) {
+      waveOf.set(planId, 0);
+      return 0;
+    }
+
+    let maxDepWave = 0;
+    for (const dep of plan.dependsOn) {
+      maxDepWave = Math.max(maxDepWave, resolveWave(dep, visited));
+    }
+    const wave = maxDepWave + 1;
+    waveOf.set(planId, wave);
+    return wave;
+  };
+
+  for (const plan of plans) {
+    resolveWave(plan.id, new Set());
+  }
+
+  // Count plans per wave, return the max (only count actual plans, not phantom deps)
+  const waveCounts = new Map<number, number>();
+  for (const plan of plans) {
+    const wave = waveOf.get(plan.id) ?? 0;
+    waveCounts.set(wave, (waveCounts.get(wave) ?? 0) + 1);
+  }
+
+  let maxConcurrency = 0;
+  for (const count of waveCounts.values()) {
+    maxConcurrency = Math.max(maxConcurrency, count);
+  }
+
+  return maxConcurrency;
+}
+
 export class Orchestrator {
   private readonly options: OrchestratorOptions;
 
@@ -249,6 +308,13 @@ export class Orchestrator {
 
     // Track whether the feature branch was successfully merged to baseBranch
     let featureBranchMerged = false;
+
+    // Determine if plan worktrees are needed based on dependency graph concurrency
+    const maxConcurrency = computeMaxConcurrency(config.plans);
+    const needsPlanWorktrees = maxConcurrency > 1;
+
+    // Track plans that built directly on the merge worktree (no squash merge needed)
+    const builtOnMergeWorktree = new Set<string>();
 
     try {
       // Feature branch was already created by createMergeWorktree() during compile.
@@ -292,18 +358,26 @@ export class Orchestrator {
         const planPromise = (async () => {
           const plan = planMap.get(planId)!;
           let worktreePath: string | undefined;
+          let usedMergeWorktree = false;
 
           try {
             await semaphore.acquire();
 
-            // Create worktree — branch off featureBranch (not baseBranch)
-            // so plan builders can see committed plan artifacts from compile
-            worktreePath = await createWorktree(
-              repoRoot,
-              worktreeBase,
-              plan.branch,
-              featureBranch,
-            );
+            if (needsPlanWorktrees) {
+              // Create worktree — branch off featureBranch (not baseBranch)
+              // so plan builders can see committed plan artifacts from compile
+              worktreePath = await createWorktree(
+                repoRoot,
+                worktreeBase,
+                plan.branch,
+                featureBranch,
+              );
+            } else {
+              // No concurrent plans — build directly on the merge worktree
+              worktreePath = mergeWorktreePath;
+              usedMergeWorktree = true;
+              builtOnMergeWorktree.add(planId);
+            }
 
             state.plans[planId].worktreePath = worktreePath;
             updatePlanStatus(state, planId, 'running');
@@ -330,7 +404,7 @@ export class Orchestrator {
             for (const e of failureEvents) eventQueue.push(e);
           } finally {
             semaphore.release();
-            if (worktreePath) {
+            if (worktreePath && !usedMergeWorktree) {
               try {
                 await removeWorktree(repoRoot, worktreePath);
               } catch {
@@ -432,48 +506,62 @@ export class Orchestrator {
             try {
               const plan = planMap.get(planId)!;
 
-              // Wrap mergeResolver to inject plan context into MergeConflictInfo
-              const baseResolver = this.options.mergeResolver;
-              const contextResolver: MergeResolver | undefined = baseResolver
-                ? async (cwd, conflict) => {
-                    // Enrich conflict info with plan context
-                    conflict.planName = plan.name;
+              if (builtOnMergeWorktree.has(planId)) {
+                // Plan built directly on the merge worktree — commits already on featureBranch.
+                // No squash merge needed. Just capture the current HEAD SHA.
+                const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: mergeWorktreePath });
+                const commitSha = shaOut.trim();
 
-                    // Find the most recently merged plan as the likely conflict source
-                    if (recentlyMergedIds.length > 0) {
-                      const lastMergedId = recentlyMergedIds[recentlyMergedIds.length - 1];
-                      const otherPlan = planMap.get(lastMergedId);
-                      if (otherPlan) {
-                        conflict.otherPlanName = otherPlan.name;
+                updatePlanStatus(state, planId, 'merged');
+                planState.merged = true;
+                recentlyMergedIds.push(planId);
+                saveState(stateDir, state);
+
+                yield { timestamp: new Date().toISOString(), type: 'merge:complete', planId, commitSha };
+              } else {
+                // Wrap mergeResolver to inject plan context into MergeConflictInfo
+                const baseResolver = this.options.mergeResolver;
+                const contextResolver: MergeResolver | undefined = baseResolver
+                  ? async (cwd, conflict) => {
+                      // Enrich conflict info with plan context
+                      conflict.planName = plan.name;
+
+                      // Find the most recently merged plan as the likely conflict source
+                      if (recentlyMergedIds.length > 0) {
+                        const lastMergedId = recentlyMergedIds[recentlyMergedIds.length - 1];
+                        const otherPlan = planMap.get(lastMergedId);
+                        if (otherPlan) {
+                          conflict.otherPlanName = otherPlan.name;
+                        }
                       }
+
+                      return baseResolver(cwd, conflict);
                     }
+                  : undefined;
 
-                    return baseResolver(cwd, conflict);
-                  }
-                : undefined;
+                const prefix = config.mode === 'errand' ? 'fix' : 'feat';
+                const commitMessage = `${prefix}(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}`;
+                // Squash merge into featureBranch in the merge worktree (not repoRoot)
+                await mergeWorktree(mergeWorktreePath, plan.branch, featureBranch, commitMessage, contextResolver);
 
-              const prefix = config.mode === 'errand' ? 'fix' : 'feat';
-              const commitMessage = `${prefix}(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}`;
-              // Squash merge into featureBranch in the merge worktree (not repoRoot)
-              await mergeWorktree(mergeWorktreePath, plan.branch, featureBranch, commitMessage, contextResolver);
+                // Capture the squash-merge commit SHA for diff retrieval
+                const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: mergeWorktreePath });
+                const commitSha = shaOut.trim();
 
-              // Capture the squash-merge commit SHA for diff retrieval
-              const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: mergeWorktreePath });
-              const commitSha = shaOut.trim();
+                // Best-effort branch deletion — squash merges leave branches "unmerged" so use -D (force)
+                try {
+                  await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot });
+                } catch {
+                  // Branch may already be deleted or never created
+                }
 
-              // Best-effort branch deletion — squash merges leave branches "unmerged" so use -D (force)
-              try {
-                await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot });
-              } catch {
-                // Branch may already be deleted or never created
+                updatePlanStatus(state, planId, 'merged');
+                planState.merged = true;
+                recentlyMergedIds.push(planId);
+                saveState(stateDir, state);
+
+                yield { timestamp: new Date().toISOString(), type: 'merge:complete', planId, commitSha };
               }
-
-              updatePlanStatus(state, planId, 'merged');
-              planState.merged = true;
-              recentlyMergedIds.push(planId);
-              saveState(stateDir, state);
-
-              yield { timestamp: new Date().toISOString(), type: 'merge:complete', planId, commitSha };
             } catch (err) {
               failedMerges.add(planId);
               updatePlanStatus(state, planId, 'failed');

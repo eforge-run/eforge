@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { propagateFailure, resumeState, shouldSkipMerge, initializeState } from '../src/engine/orchestrator.js';
+import { propagateFailure, resumeState, shouldSkipMerge, initializeState, computeMaxConcurrency } from '../src/engine/orchestrator.js';
 import { saveState } from '../src/engine/state.js';
 import { BUILTIN_PROFILES } from '../src/engine/config.js';
 import type { EforgeState, OrchestrationConfig, PlanState } from '../src/engine/events.js';
@@ -303,6 +303,66 @@ describe('shouldSkipMerge', () => {
   it('returns null for unknown plan ID', () => {
     const plans = makePlans([{ id: 'a' }]);
     expect(shouldSkipMerge('nonexistent', plans, new Set(['a']))).toBeNull();
+  });
+});
+
+describe('computeMaxConcurrency', () => {
+  it('returns 0 for empty plans', () => {
+    expect(computeMaxConcurrency([])).toBe(0);
+  });
+
+  it('returns 1 for a single plan with no dependencies', () => {
+    const plans = makePlans([{ id: 'a' }]);
+    expect(computeMaxConcurrency(plans)).toBe(1);
+  });
+
+  it('returns 1 for a linear chain (A -> B -> C)', () => {
+    const plans = makePlans([
+      { id: 'a' },
+      { id: 'b', dependsOn: ['a'] },
+      { id: 'c', dependsOn: ['b'] },
+    ]);
+    expect(computeMaxConcurrency(plans)).toBe(1);
+  });
+
+  it('returns 2 for two independent plans', () => {
+    const plans = makePlans([
+      { id: 'a' },
+      { id: 'b' },
+    ]);
+    expect(computeMaxConcurrency(plans)).toBe(2);
+  });
+
+  it('returns 2 for a diamond graph (A -> B, A -> C, B -> D, C -> D)', () => {
+    const plans = makePlans([
+      { id: 'a' },
+      { id: 'b', dependsOn: ['a'] },
+      { id: 'c', dependsOn: ['a'] },
+      { id: 'd', dependsOn: ['b', 'c'] },
+    ]);
+    expect(computeMaxConcurrency(plans)).toBe(2);
+  });
+
+  it('returns 3 for three independent plans', () => {
+    const plans = makePlans([
+      { id: 'a' },
+      { id: 'b' },
+      { id: 'c' },
+    ]);
+    expect(computeMaxConcurrency(plans)).toBe(3);
+  });
+
+  it('returns correct max for mixed independence and deps', () => {
+    // Wave 0: a, b, c (3 plans)
+    // Wave 1: d (depends on a), e (depends on b) (2 plans)
+    const plans = makePlans([
+      { id: 'a' },
+      { id: 'b' },
+      { id: 'c' },
+      { id: 'd', dependsOn: ['a'] },
+      { id: 'e', dependsOn: ['b'] },
+    ]);
+    expect(computeMaxConcurrency(plans)).toBe(3);
   });
 });
 
