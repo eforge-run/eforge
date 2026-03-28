@@ -1,0 +1,32 @@
+name: claude-plans-tender-sniffing-charm
+description: Add per-plan build stage progress breadcrumb to the monitor timeline view
+created: 2026-03-28
+compiled: 2026-03-28
+mode: ui-feature
+base_branch: eforge/claude-plans-tender-sniffing-charm
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-build-stage-breadcrumb
+    name: Build Stage Breadcrumb in Timeline
+    depends_on: []
+    branch: claude-plans-tender-sniffing-charm/build-stage-breadcrumb
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
