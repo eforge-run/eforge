@@ -227,7 +227,7 @@ export class EforgeEngine {
         config: this.config,
         profile: selectedProfile,
         tracing,
-        cwd,
+        cwd: mergeWorktreePath,
         planCommitCwd: mergeWorktreePath,
         planSetName,
         sourceContent,
@@ -248,7 +248,7 @@ export class EforgeEngine {
       // in the compile stages, commit artifacts here
       // (runCompilePipeline handles the commit before plan-review-cycle when present)
       if (ctx.plans.length > 0 && !ctx.profile.compile.includes('plan-review-cycle')) {
-        const planDir = resolve(cwd, 'plans', planSetName);
+        const planDir = resolve(mergeWorktreePath, 'plans', planSetName);
         await exec('git', ['add', planDir], { cwd: mergeWorktreePath });
         await forgeCommit(mergeWorktreePath, `plan(${planSetName}): initial planning artifacts`);
       }
@@ -382,7 +382,14 @@ export class EforgeEngine {
 
       tracing.setInput({ planSet });
       // Validate plan set
-      const configPath = resolve(cwd, 'plans', planSet, 'orchestration.yaml');
+      // Load mergeWorktreePath from state (persisted during compile)
+      const existingState = loadState(cwd);
+      const mergeWorktreePath = existingState?.mergeWorktreePath;
+
+      // Plan files live in the merge worktree (committed there during compile).
+      // Fall back to repoRoot for backwards compatibility with pre-worktree builds.
+      const planBaseCwd = mergeWorktreePath ?? cwd;
+      const configPath = resolve(planBaseCwd, 'plans', planSet, 'orchestration.yaml');
       const validation = await validatePlanSet(configPath);
       if (!validation.valid) {
         status = 'failed';
@@ -393,12 +400,8 @@ export class EforgeEngine {
       // Load orchestration config
       const orchConfig = await parseOrchestrationConfig(configPath);
 
-      // Load mergeWorktreePath from state (persisted during compile)
-      const existingState = loadState(cwd);
-      const mergeWorktreePath = existingState?.mergeWorktreePath;
-
       // Pre-load plan files for the runner
-      const planDir = resolve(cwd, 'plans', planSet);
+      const planDir = resolve(planBaseCwd, 'plans', planSet);
       const planFileMap = new Map<string, PlanFile>();
       for (const plan of orchConfig.plans) {
         const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
