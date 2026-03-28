@@ -1,0 +1,50 @@
+name: per-agent-sdk-configuration-system
+description: Per-agent SDK configuration system enabling model, thinking,
+  effort, cost ceiling, and tool filtering overrides through eforge.yaml with
+  four-tier priority chain
+created: 2026-03-28
+compiled: 2026-03-28
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-types-config-backend
+    name: SDK Passthrough Types, Config Schemas, and Backend Mapping
+    depends_on: []
+    branch: per-agent-sdk-configuration-system/types-config-backend
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-pipeline-agent-wiring
+    name: Pipeline and Agent File Wiring
+    depends_on:
+      - plan-01-types-config-backend
+    branch: per-agent-sdk-configuration-system/pipeline-agent-wiring
+    build:
+      - - implement
+        - doc-update
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: "Multi-file feature work or refactors. Use when changes touch many
+    files but are tightly coupled - e.g., type signature changes that cascade to
+    consumers, interface refactors, rename-and-update-all-callers. The key test:
+    can every piece pass type-check independently? If not, use excursion."
+  compile:
+    - planner
+    - plan-review-cycle
