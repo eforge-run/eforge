@@ -149,4 +149,45 @@ describe('injectProfileIntoOrchestrationYaml', () => {
     expect(config.profile.description).toBe(profile.description);
     expect(config.profile.compile).toEqual(profile.compile);
   });
+
+  it('overrides base_branch when provided', async () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+
+    // Write orchestration.yaml with a wrong base_branch (simulates planner seeing feature branch)
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'branch-override-test',
+      description: 'Test base_branch override',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'eforge/some-feature-branch',
+      plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
+    }));
+
+    const profile: ResolvedProfileConfig = BUILTIN_PROFILES['errand'];
+    await injectProfileIntoOrchestrationYaml(yamlPath, profile, 'develop');
+
+    const config = await parseOrchestrationConfig(yamlPath);
+    expect(config.baseBranch).toBe('develop');
+  });
+
+  it('preserves base_branch when baseBranch arg is omitted', async () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'no-override-test',
+      description: 'Test base_branch preserved',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
+    }));
+
+    const profile: ResolvedProfileConfig = BUILTIN_PROFILES['errand'];
+    await injectProfileIntoOrchestrationYaml(yamlPath, profile);
+
+    const config = await parseOrchestrationConfig(yamlPath);
+    expect(config.baseBranch).toBe('main');
+  });
 });

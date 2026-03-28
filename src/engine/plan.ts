@@ -538,17 +538,21 @@ export async function writePlanArtifacts(options: WritePlanArtifactsOptions): Pr
 }
 
 /**
- * Inject a resolved profile into an existing orchestration.yaml.
+ * Inject a resolved profile (and optionally override base_branch) into an existing orchestration.yaml.
  * Reads the YAML, adds/replaces the `profile` field, and writes it back.
  * Used by the pipeline after the planner agent writes orchestration.yaml.
  */
 export async function injectProfileIntoOrchestrationYaml(
   orchestrationYamlPath: string,
   profile: ResolvedProfileConfig,
+  baseBranch?: string,
 ): Promise<void> {
   const absPath = resolve(orchestrationYamlPath);
   const raw = await readFile(absPath, 'utf-8');
   const data = parseYaml(raw) as Record<string, unknown>;
   data.profile = profile;
+  if (baseBranch) {
+    data.base_branch = baseBranch;
+  }
   await writeFile(absPath, stringifyYaml(data), 'utf-8');
 }

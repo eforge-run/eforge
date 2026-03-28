@@ -229,6 +229,7 @@ export class EforgeEngine {
         tracing,
         cwd: mergeWorktreePath,
         planCommitCwd: mergeWorktreePath,
+        baseBranch,
         planSetName,
         sourceContent,
         verbose: options.verbose,

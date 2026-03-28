@@ -68,6 +68,10 @@ export interface PipelineContext {
   /** Working directory for plan artifact commits (merge worktree during compile, defaults to cwd). */
   planCommitCwd?: string;
 
+  /** The actual base branch from repoRoot (before worktree creation). When cwd is a merge worktree,
+   *  `git rev-parse --abbrev-ref HEAD` returns the feature branch, not the real base. */
+  baseBranch?: string;
+
   // Mutable state passed between stages
   plans: PlanFile[];
   expeditionModules: ExpeditionModule[];
@@ -389,8 +393,10 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
 
   yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Writing plan artifacts from PRD content' };
 
-  // Get base branch
-  const { stdout: baseBranch } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ctx.cwd });
+  // Get base branch — prefer ctx.baseBranch (resolved from repoRoot before worktree creation)
+  // to avoid picking up the feature branch when cwd is a merge worktree
+  const baseBranch = ctx.baseBranch
+    ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ctx.cwd })).stdout.trim();
 
   // Detect validation commands from project
   const validate = await detectValidationCommands(ctx.cwd);
@@ -401,7 +407,7 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
     planSetName: ctx.planSetName,
     sourceContent: body,
     planName: title,
-    baseBranch: baseBranch.trim(),
+    baseBranch,
     profile: ctx.profile,
     validate: validate.length > 0 ? validate : undefined,
     mode: 'errand',
@@ -513,9 +519,10 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
 
         // Track final plans for review phase and inject profile into orchestration.yaml
         if (event.type === 'plan:complete') {
-          // Inject the resolved profile into the planner-written orchestration.yaml
+          // Inject the resolved profile (and correct baseBranch) into the planner-written orchestration.yaml.
+          // The planner sees the merge worktree's feature branch as HEAD, so base_branch needs overriding.
           const orchYamlPath = resolve(ctx.cwd, 'plans', ctx.planSetName, 'orchestration.yaml');
-          await injectProfileIntoOrchestrationYaml(orchYamlPath, ctx.profile);
+          await injectProfileIntoOrchestrationYaml(orchYamlPath, ctx.profile, ctx.baseBranch);
 
           // Backfill dependsOn from orchestration.yaml into plan:complete events.
           // The planner writes depends_on to orchestration.yaml but not to individual
