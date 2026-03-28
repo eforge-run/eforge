@@ -18,6 +18,7 @@ import {
   createWorktree,
   removeWorktree,
   mergeWorktree,
+  mergeFeatureBranchToBase,
   cleanupWorktrees,
   type MergeResolver,
 } from './worktree.js';
@@ -37,8 +38,10 @@ export type PlanRunner = (
 /**
  * Callback that attempts to fix validation failures.
  * Injected by the consumer (typically wraps the validation-fixer agent).
+ * @param cwd - Working directory where validation runs (merge worktree path)
  */
 export type ValidationFixer = (
+  cwd: string,
   failures: Array<{ command: string; exitCode: number; output: string }>,
   attempt: number,
   maxAttempts: number,
@@ -55,6 +58,8 @@ export interface OrchestratorOptions {
   validationFixer?: ValidationFixer;
   maxValidationRetries?: number;
   mergeResolver?: MergeResolver;
+  /** Path to the merge worktree (created during compile, loaded from state during build). */
+  mergeWorktreePath?: string;
 }
 
 /**
@@ -193,6 +198,8 @@ export function initializeState(
     baseBranch: config.baseBranch,
     featureBranch: `eforge/${config.name}`,
     worktreeBase,
+    // Preserve mergeWorktreePath from preliminary state created during compile
+    mergeWorktreePath: existing?.mergeWorktreePath,
     plans,
     completedPlans: [],
   };
@@ -231,6 +238,12 @@ export class Orchestrator {
     const failedMerges = new Set<string>();
     const featureBranch = state.featureBranch ?? `eforge/${config.name}`;
 
+    // Merge worktree path — provided by compile phase via state, or from options
+    const mergeWorktreePath = this.options.mergeWorktreePath ?? state.mergeWorktreePath;
+    if (!mergeWorktreePath) {
+      throw new Error('mergeWorktreePath is required — it should have been created during compile and persisted in state');
+    }
+
     // Track recently merged plans for merge resolver context enrichment
     const recentlyMergedIds: string[] = [];
 
@@ -238,25 +251,14 @@ export class Orchestrator {
     let featureBranchMerged = false;
 
     try {
-      // Create the feature branch from baseBranch (if it doesn't already exist from a resume)
+      // Feature branch was already created by createMergeWorktree() during compile.
+      // Verify it exists (should always be the case; if not, something went very wrong).
       try {
-        await exec('git', ['checkout', '-b', featureBranch, config.baseBranch], { cwd: repoRoot });
-        // Immediately switch back to baseBranch — the feature branch is just a merge target
-        await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
-      } catch (branchErr) {
-        // Verify the branch exists — if it does, this is a resume; if not, propagate the real error
-        try {
-          await exec('git', ['rev-parse', '--verify', featureBranch], { cwd: repoRoot });
-        } catch {
-          throw new Error(`Failed to create feature branch '${featureBranch}': ${(branchErr as Error).message}`);
-        }
-        // Branch exists (resume case) — ensure we're on baseBranch
-        try {
-          await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
-        } catch {
-          // Best-effort — may already be on baseBranch
-        }
+        await exec('git', ['rev-parse', '--verify', featureBranch], { cwd: repoRoot });
+      } catch {
+        throw new Error(`Feature branch '${featureBranch}' not found — it should have been created during compile`);
       }
+
       // 2. Greedy scheduling loop
       const allPlanIds = config.plans.map((p) => p.id);
       yield { timestamp: new Date().toISOString(), type: 'schedule:start', planIds: allPlanIds };
@@ -294,12 +296,13 @@ export class Orchestrator {
           try {
             await semaphore.acquire();
 
-            // Create worktree
+            // Create worktree — branch off featureBranch (not baseBranch)
+            // so plan builders can see committed plan artifacts from compile
             worktreePath = await createWorktree(
               repoRoot,
               worktreeBase,
               plan.branch,
-              config.baseBranch,
+              featureBranch,
             );
 
             state.plans[planId].worktreePath = worktreePath;
@@ -432,7 +435,7 @@ export class Orchestrator {
               // Wrap mergeResolver to inject plan context into MergeConflictInfo
               const baseResolver = this.options.mergeResolver;
               const contextResolver: MergeResolver | undefined = baseResolver
-                ? async (repoRoot, conflict) => {
+                ? async (cwd, conflict) => {
                     // Enrich conflict info with plan context
                     conflict.planName = plan.name;
 
@@ -445,16 +448,17 @@ export class Orchestrator {
                       }
                     }
 
-                    return baseResolver(repoRoot, conflict);
+                    return baseResolver(cwd, conflict);
                   }
                 : undefined;
 
               const prefix = config.mode === 'errand' ? 'fix' : 'feat';
               const commitMessage = `${prefix}(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}`;
-              await mergeWorktree(repoRoot, plan.branch, featureBranch, commitMessage, contextResolver);
+              // Squash merge into featureBranch in the merge worktree (not repoRoot)
+              await mergeWorktree(mergeWorktreePath, plan.branch, featureBranch, commitMessage, contextResolver);
 
               // Capture the squash-merge commit SHA for diff retrieval
-              const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
+              const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: mergeWorktreePath });
               const commitSha = shaOut.trim();
 
               // Best-effort branch deletion — squash merges leave branches "unmerged" so use -D (force)
@@ -517,9 +521,7 @@ export class Orchestrator {
       ];
 
       if (allMerged && allValidationCommands.length > 0 && !signal?.aborted) {
-        // Checkout feature branch for validation — all plan merges landed there
-        await exec('git', ['checkout', featureBranch], { cwd: repoRoot });
-
+        // Validation runs in the merge worktree (which already has featureBranch checked out)
         let passed = false;
 
         for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -533,7 +535,7 @@ export class Orchestrator {
             yield { timestamp: new Date().toISOString(), type: 'validation:command:start', command: cmd };
 
             try {
-              const { stdout, stderr } = await exec('sh', ['-c', cmd], { cwd: repoRoot });
+              const { stdout, stderr } = await exec('sh', ['-c', cmd], { cwd: mergeWorktreePath });
               const output = (stdout + stderr).trim();
               yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 0, output };
             } catch (err) {
@@ -557,7 +559,7 @@ export class Orchestrator {
 
           // Attempt fix if retries remain and a fixer is available
           if (attempt < maxRetries && validationFixer && !signal?.aborted) {
-            for await (const event of validationFixer(failures, attempt + 1, maxRetries)) {
+            for await (const event of validationFixer(mergeWorktreePath, failures, attempt + 1, maxRetries)) {
               yield event;
             }
             // Loop continues to re-validate
@@ -567,8 +569,6 @@ export class Orchestrator {
         }
 
         if (!passed) {
-          // Validation failed — checkout baseBranch and leave feature branch for inspection
-          await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
           yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: 'Validation failed' };
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
@@ -578,24 +578,12 @@ export class Orchestrator {
       }
 
       // 8. Final merge of feature branch to baseBranch
+      // Uses mergeFeatureBranchToBase() which does ff-only in repoRoot without switching branches
       if (allMerged && !signal?.aborted) {
         yield { timestamp: new Date().toISOString(), type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
 
         try {
-          // Ensure we're on baseBranch for the final merge
-          await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
-
-          // Try fast-forward merge first; fall back to regular merge
-          try {
-            await exec('git', ['merge', '--ff-only', featureBranch], { cwd: repoRoot });
-          } catch {
-            // baseBranch may have advanced — fall back to regular merge
-            await exec('git', ['merge', featureBranch, '-m', `Merge ${featureBranch} into ${config.baseBranch}\n\n${ATTRIBUTION}`], { cwd: repoRoot });
-          }
-
-          const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
-          const commitSha = shaOut.trim();
-
+          const commitSha = await mergeFeatureBranchToBase(repoRoot, featureBranch, config.baseBranch, worktreeBase);
           featureBranchMerged = true;
           yield { timestamp: new Date().toISOString(), type: 'merge:finalize:complete', featureBranch, baseBranch: config.baseBranch, commitSha };
         } catch (err) {
@@ -619,12 +607,15 @@ export class Orchestrator {
       saveState(stateDir, state);
     } finally {
       // 9. Cleanup — always runs, even on errors
+      // Note: no `git checkout baseBranch` needed — repoRoot was never modified
 
-      // Ensure baseBranch is checked out regardless of success/failure
-      try {
-        await exec('git', ['checkout', config.baseBranch], { cwd: repoRoot });
-      } catch {
-        // Best-effort — may already be on baseBranch
+      // Remove the merge worktree first (before cleanupWorktrees prunes all)
+      if (mergeWorktreePath) {
+        try {
+          await removeWorktree(repoRoot, mergeWorktreePath);
+        } catch {
+          // Best-effort merge worktree cleanup
+        }
       }
 
       try {

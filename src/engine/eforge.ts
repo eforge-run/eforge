@@ -34,8 +34,9 @@ import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
 import { Orchestrator, type ValidationFixer } from './orchestrator.js';
 import type { MergeResolver } from './worktree.js';
+import { computeWorktreeBase, createMergeWorktree } from './worktree.js';
 import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
-import { loadState } from './state.js';
+import { loadState, saveState as saveEforgeState } from './state.js';
 import { runCompilePipeline, runBuildPipeline, createToolTracker, type PipelineContext, type BuildStageContext } from './pipeline.js';
 import { forgeCommit } from './git.js';
 
@@ -214,12 +215,20 @@ export class EforgeEngine {
       // when it emits plan:profile. Excursion is a safe default (superset of errand stages).
       const selectedProfile = this.config.profiles['excursion'];
 
+      // Create merge worktree — all plan artifact commits go here, not repoRoot
+      const featureBranch = `eforge/${planSetName}`;
+      const { stdout: baseBranchRaw } = await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
+      const baseBranch = baseBranchRaw.trim();
+      const worktreeBase = computeWorktreeBase(cwd, planSetName);
+      const mergeWorktreePath = await createMergeWorktree(cwd, worktreeBase, featureBranch, baseBranch);
+
       const ctx: PipelineContext = {
         backend: this.backend,
         config: this.config,
         profile: selectedProfile,
         tracing,
         cwd,
+        planCommitCwd: mergeWorktreePath,
         planSetName,
         sourceContent,
         verbose: options.verbose,
@@ -240,8 +249,30 @@ export class EforgeEngine {
       // (runCompilePipeline handles the commit before plan-review-cycle when present)
       if (ctx.plans.length > 0 && !ctx.profile.compile.includes('plan-review-cycle')) {
         const planDir = resolve(cwd, 'plans', planSetName);
-        await exec('git', ['add', planDir], { cwd });
-        await forgeCommit(cwd, `plan(${planSetName}): initial planning artifacts`);
+        await exec('git', ['add', planDir], { cwd: mergeWorktreePath });
+        await forgeCommit(mergeWorktreePath, `plan(${planSetName}): initial planning artifacts`);
+      }
+
+      // Persist merge worktree path to state for the build phase to pick up.
+      // Save a preliminary state with just the merge worktree path — the orchestrator's
+      // initializeState() will create the full state with plans during build.
+      const preState = loadState(cwd);
+      if (preState) {
+        preState.mergeWorktreePath = mergeWorktreePath;
+        saveEforgeState(cwd, preState);
+      } else {
+        // No existing state — create a minimal one to carry mergeWorktreePath
+        saveEforgeState(cwd, {
+          setName: planSetName,
+          status: 'running',
+          startedAt: new Date().toISOString(),
+          baseBranch,
+          featureBranch,
+          worktreeBase,
+          mergeWorktreePath,
+          plans: {},
+          completedPlans: [],
+        });
       }
     } catch (err) {
       status = 'failed';
@@ -362,6 +393,10 @@ export class EforgeEngine {
       // Load orchestration config
       const orchConfig = await parseOrchestrationConfig(configPath);
 
+      // Load mergeWorktreePath from state (persisted during compile)
+      const existingState = loadState(cwd);
+      const mergeWorktreePath = existingState?.mergeWorktreePath;
+
       // Pre-load plan files for the runner
       const planDir = resolve(cwd, 'plans', planSet);
       const planFileMap = new Map<string, PlanFile>();
@@ -420,14 +455,14 @@ export class EforgeEngine {
       };
 
       // Create validation fixer closure
-      const validationFixer: ValidationFixer = async function* (failures, attempt, maxAttempts) {
+      const validationFixer: ValidationFixer = async function* (fixerCwd, failures, attempt, maxAttempts) {
         const fixerSpan = tracing!.createSpan('validation-fixer', { attempt, maxAttempts });
         fixerSpan.setInput({ failures: failures.map((f) => f.command) });
         const fixerTracker = createToolTracker(fixerSpan);
         try {
           for await (const event of runValidationFixer({
             backend,
-            cwd,
+            cwd: fixerCwd,
             failures,
             attempt,
             maxAttempts,
@@ -449,7 +484,7 @@ export class EforgeEngine {
       const mergeEvents: EforgeEvent[] = [];
       const mergeEventSink = (event: EforgeEvent) => { mergeEvents.push(event); };
 
-      const mergeResolver: MergeResolver = async (repoRoot, conflict) => {
+      const mergeResolver: MergeResolver = async (resolverCwd, conflict) => {
         const resolverSpan = tracing!.createSpan('merge-conflict-resolver', {
           branch: conflict.branch,
           files: conflict.conflictedFiles,
@@ -459,7 +494,7 @@ export class EforgeEngine {
         try {
           for await (const event of runMergeConflictResolver({
             backend,
-            cwd: repoRoot,
+            cwd: resolverCwd,
             conflict,
             verbose,
             abortController,
@@ -493,6 +528,7 @@ export class EforgeEngine {
         validationFixer,
         maxValidationRetries: config.build.maxValidationRetries,
         mergeResolver,
+        mergeWorktreePath,
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {

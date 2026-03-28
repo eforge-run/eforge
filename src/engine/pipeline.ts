@@ -65,6 +65,9 @@ export interface PipelineContext {
   abortController?: AbortController;
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
 
+  /** Working directory for plan artifact commits (merge worktree during compile, defaults to cwd). */
+  planCommitCwd?: string;
+
   // Mutable state passed between stages
   plans: PlanFile[];
   expeditionModules: ExpeditionModule[];
@@ -410,9 +413,10 @@ registerCompileStage('prd-passthrough', async function* prdPassthroughStage(ctx)
 
   // Commit plan artifacts (prd-passthrough replaces both planner + review,
   // so it must commit its own artifacts for the build phase to create worktrees)
+  const commitCwd = ctx.planCommitCwd ?? ctx.cwd;
   const planDir = resolve(ctx.cwd, 'plans', ctx.planSetName);
-  await exec('git', ['add', planDir], { cwd: ctx.cwd });
-  await forgeCommit(ctx.cwd, `plan(${ctx.planSetName}): PRD passthrough artifacts`);
+  await exec('git', ['add', planDir], { cwd: commitCwd });
+  await forgeCommit(commitCwd, `plan(${ctx.planSetName}): PRD passthrough artifacts`);
 
   yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans: [planFile] };
 });
@@ -542,7 +546,7 @@ registerCompileStage('planner', async function* plannerStage(ctx) {
       const isMaxTurns = errorMsg.includes('error_max_turns');
       if (isMaxTurns && attempt < maxContinuations) {
         // Commit any plan files written so far as a checkpoint
-        await commitPlanArtifacts(ctx.cwd, ctx.planSetName);
+        await commitPlanArtifacts(ctx.planCommitCwd ?? ctx.cwd, ctx.planSetName, ctx.cwd);
 
         span.end();
 
@@ -1360,7 +1364,8 @@ export async function* runCompilePipeline(
       // Commit plan artifacts before running review cycles
       // (reviewers read committed files)
       if (ctx.plans.length > 0 || ctx.expeditionModules.length > 0) {
-        await commitPlanArtifacts(ctx.cwd, ctx.planSetName);
+        const commitCwd = ctx.planCommitCwd ?? ctx.cwd;
+        await commitPlanArtifacts(commitCwd, ctx.planSetName, ctx.cwd);
       }
     }
     const stage = getCompileStage(stageName);
@@ -1419,13 +1424,16 @@ export async function* runBuildPipeline(
 
 /**
  * Commit plan artifacts to git (required for worktree-based builds).
+ * @param commitCwd - Working directory for git operations (may differ from plan file location)
+ * @param planSetName - Name of the plan set
+ * @param planFilesCwd - Optional directory where plan files live (defaults to commitCwd)
  */
-async function commitPlanArtifacts(cwd: string, planSetName: string): Promise<void> {
-  const planDir = resolve(cwd, 'plans', planSetName);
-  await exec('git', ['add', planDir], { cwd });
+async function commitPlanArtifacts(commitCwd: string, planSetName: string, planFilesCwd?: string): Promise<void> {
+  const planDir = resolve(planFilesCwd ?? commitCwd, 'plans', planSetName);
+  await exec('git', ['add', planDir], { cwd: commitCwd });
   // Guard: only commit if there are staged changes (prevents "nothing to commit" errors
   // when artifacts were already committed by a previous continuation checkpoint)
-  const { stdout: staged } = await exec('git', ['diff', '--cached', '--name-only'], { cwd });
+  const { stdout: staged } = await exec('git', ['diff', '--cached', '--name-only'], { cwd: commitCwd });
   if (staged.trim().length === 0) return;
-  await forgeCommit(cwd, `plan(${planSetName}): initial planning artifacts`);
+  await forgeCommit(commitCwd, `plan(${planSetName}): initial planning artifacts`);
 }

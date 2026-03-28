@@ -30,12 +30,20 @@ export function isLockError(err: unknown): boolean {
 }
 
 /**
- * Remove `.git/index.lock` if it exists and is older than the stale threshold.
+ * Remove `index.lock` if it exists and is older than the stale threshold.
+ * Resolves the git directory dynamically via `git rev-parse --git-dir` to
+ * support both regular repos and worktrees (where `.git` is a file, not a directory).
  * Returns true if a stale lock was removed, false otherwise.
  */
-export async function removeStaleIndexLock(repoRoot: string): Promise<boolean> {
-  const lockPath = join(repoRoot, '.git', 'index.lock');
+export async function removeStaleIndexLock(cwd: string): Promise<boolean> {
   try {
+    const { stdout: gitDir } = await exec('git', ['rev-parse', '--git-dir'], { cwd });
+    const resolvedGitDir = gitDir.trim();
+    // git rev-parse --git-dir may return a relative path; resolve against cwd
+    const absoluteGitDir = resolvedGitDir.startsWith('/')
+      ? resolvedGitDir
+      : join(cwd, resolvedGitDir);
+    const lockPath = join(absoluteGitDir, 'index.lock');
     const st = await stat(lockPath);
     const ageMs = Date.now() - st.mtimeMs;
     if (ageMs > STALE_LOCK_THRESHOLD_MS) {
@@ -44,7 +52,7 @@ export async function removeStaleIndexLock(repoRoot: string): Promise<boolean> {
     }
     return false;
   } catch {
-    // Lock file doesn't exist or can't be accessed
+    // Lock file doesn't exist, can't be accessed, or not a git repo
     return false;
   }
 }

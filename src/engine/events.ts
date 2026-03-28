@@ -71,6 +71,7 @@ export interface EforgeState {
   baseBranch: string;
   featureBranch?: string;
   worktreeBase: string;
+  mergeWorktreePath?: string;
   plans: Record<string, PlanState>;
   completedPlans: string[];
 }

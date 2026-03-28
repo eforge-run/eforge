@@ -1,8 +1,12 @@
 import { describe, it, expect, vi } from 'vitest';
 import { join } from 'node:path';
 import { mkdir, writeFile, utimes, stat, access } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { isLockError, removeStaleIndexLock, retryOnLock } from '../src/engine/git.js';
 import { useTempDir } from './test-tmpdir.js';
+
+const execAsync = promisify(execFile);
 
 describe('isLockError', () => {
   it('returns true for error messages containing index.lock', () => {
@@ -38,10 +42,14 @@ describe('isLockError', () => {
 describe('removeStaleIndexLock', () => {
   const makeTmpDir = useTempDir();
 
+  async function initRepo(dir: string): Promise<string> {
+    await execAsync('git', ['init', dir]);
+    return join(dir, '.git');
+  }
+
   it('removes a lock file older than 5 seconds and returns true', async () => {
     const repoRoot = makeTmpDir();
-    const gitDir = join(repoRoot, '.git');
-    await mkdir(gitDir, { recursive: true });
+    const gitDir = await initRepo(repoRoot);
     const lockPath = join(gitDir, 'index.lock');
     await writeFile(lockPath, '');
 
@@ -58,8 +66,7 @@ describe('removeStaleIndexLock', () => {
 
   it('does not remove a lock file younger than 5 seconds and returns false', async () => {
     const repoRoot = makeTmpDir();
-    const gitDir = join(repoRoot, '.git');
-    await mkdir(gitDir, { recursive: true });
+    const gitDir = await initRepo(repoRoot);
     const lockPath = join(gitDir, 'index.lock');
     await writeFile(lockPath, '');
 
@@ -73,8 +80,7 @@ describe('removeStaleIndexLock', () => {
 
   it('returns false when no lock file exists', async () => {
     const repoRoot = makeTmpDir();
-    const gitDir = join(repoRoot, '.git');
-    await mkdir(gitDir, { recursive: true });
+    await initRepo(repoRoot);
 
     const result = await removeStaleIndexLock(repoRoot);
     expect(result).toBe(false);
@@ -127,9 +133,9 @@ describe('retryOnLock', () => {
       .mockRejectedValueOnce(lockErr)
       .mockResolvedValue('ok');
 
-    // Create a stale lock file to verify it gets cleaned up
+    // Create a real git repo and a stale lock file to verify it gets cleaned up
+    await execAsync('git', ['init', repoRoot]);
     const gitDir = join(repoRoot, '.git');
-    await mkdir(gitDir, { recursive: true });
     const lockPath = join(gitDir, 'index.lock');
     await writeFile(lockPath, '');
     const past = new Date(Date.now() - 10_000);
