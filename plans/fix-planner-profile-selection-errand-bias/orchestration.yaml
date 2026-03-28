@@ -1,0 +1,30 @@
+name: fix-planner-profile-selection-errand-bias
+description: Fix errand bias in planner prompt and add pipeline effect column to
+  profile descriptions
+created: 2026-03-28
+compiled: 2026-03-28
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-fix-errand-bias
+    name: Fix Planner Prompt Errand Bias and Profile Table Enhancement
+    depends_on: []
+    branch: fix-planner-profile-selection-errand-bias/fix-errand-bias
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
