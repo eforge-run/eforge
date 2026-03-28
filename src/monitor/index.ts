@@ -52,7 +52,11 @@ export async function ensureMonitor(cwd: string, options?: EnsureMonitorOptions)
     return buildMonitor(db, null, cwd);
   }
 
-  const preferredPort = allocatePort(cwd, options?.port);
+  const envPort = process.env.EFORGE_MONITOR_PORT ? parseInt(process.env.EFORGE_MONITOR_PORT, 10) : undefined;
+  if (envPort !== undefined && (Number.isNaN(envPort) || envPort < 1024 || envPort > 65535)) {
+    throw new Error(`Invalid EFORGE_MONITOR_PORT: "${process.env.EFORGE_MONITOR_PORT}" (must be 1024-65535)`);
+  }
+  const preferredPort = allocatePort(cwd, options?.port ?? envPort);
 
   // Check if a server is already alive
   const existingLock = readLockfile(cwd);

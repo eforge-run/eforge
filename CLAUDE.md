@@ -163,6 +163,7 @@ eforge loads config from two levels, merged together:
 - Engine uses `AsyncGenerator<EforgeEvent>` pattern — consumers iterate, no callbacks except clarification/approval
 - Clarification uses engine-level events (parsed from agent XML output), not SDK's built-in `AskUserQuestion`
 - Langfuse tracing for all agent calls via `src/engine/tracing.ts` (env vars: `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_BASE_URL`)
+- `EFORGE_MONITOR_PORT` env var pins the monitor to a specific port (useful in Docker/CI where port mappings are fixed). `EFORGE_MONITOR_DB` overrides the SQLite path.
 - MCP servers auto-loaded from `.mcp.json` (gitignored, same format as Claude Code). Agents get full tool access to configured servers (brain, langfuse, etc.). Programmatic callers can override via `EforgeEngineOptions.mcpServers`.
 - Claude Code plugins auto-discovered from `~/.claude/plugins/installed_plugins.json`. Provides skills, hooks, and plugin-bundled MCP servers to agents via the SDK's `plugins` option. Configured via `eforge.yaml` `plugins` section. `settingSources: ['project']` enabled by default so agents load CLAUDE.md.
 
