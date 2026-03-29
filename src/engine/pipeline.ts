@@ -591,6 +591,7 @@ registerCompileStage('plan-review-cycle', async function* planReviewCycleStage(c
           cwd: ctx.cwd,
           verbose,
           abortController,
+          outputDir: ctx.config.plan.outputDir,
           ...reviewerConfig,
         }),
       },
@@ -604,6 +605,7 @@ registerCompileStage('plan-review-cycle', async function* planReviewCycleStage(c
           cwd: ctx.cwd,
           verbose,
           abortController,
+          outputDir: ctx.config.plan.outputDir,
           ...evaluatorConfig,
         }),
       },
@@ -645,12 +647,12 @@ registerCompileStage('architecture-review-cycle', async function* architectureRe
       reviewer: {
         role: 'architecture-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, ...archReviewerConfig }),
+        run: () => runArchitectureReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...archReviewerConfig }),
       },
       evaluator: {
         role: 'architecture-evaluator',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, ...archEvaluatorConfig }),
+        run: () => runArchitectureEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...archEvaluatorConfig }),
       },
     });
   } catch (err) {
@@ -730,6 +732,7 @@ registerCompileStage('module-planning', async function* modulePlanningStage(ctx)
               verbose,
               onClarification,
               abortController,
+              outputDir: ctx.config.plan.outputDir,
               ...agentConfig,
             })) {
               modTracker.handleEvent(event);
@@ -801,12 +804,12 @@ registerCompileStage('cohesion-review-cycle', async function* cohesionReviewCycl
       reviewer: {
         role: 'cohesion-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runCohesionReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, ...cohesionReviewerConfig }),
+        run: () => runCohesionReview({ backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...cohesionReviewerConfig }),
       },
       evaluator: {
         role: 'cohesion-evaluator',
         metadata: { planSet: planSetName },
-        run: () => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, ...cohesionEvaluatorConfig }),
+        run: () => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...cohesionEvaluatorConfig }),
       },
     });
   } catch (err) {

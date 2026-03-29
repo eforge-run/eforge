@@ -133,6 +133,6 @@ Rules:
 
 - Do NOT run `git add` — fixes must remain unstaged
 - Do NOT run `git commit` — the evaluator decides what to accept
-- Do NOT modify files outside `plans/{{plan_set_name}}/`
+- Do NOT modify files outside `{{outputDir}}/{{plan_set_name}}/`
 - Review ONLY the architecture document — do not review or modify source code or plan files
 - Do NOT restructure the architecture (add/remove modules, change decomposition strategy) — only fix individual issues within the existing structure

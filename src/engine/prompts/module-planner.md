@@ -26,7 +26,7 @@ The following detailed plans have been completed by modules this module depends 
 - **Description**: {{moduleDescription}}
 - **Dependencies**: {{moduleDependsOn}}
 - **Plan set**: `{{planSetName}}`
-- **Output file**: `plans/{{planSetName}}/modules/{{moduleId}}.md`
+- **Output file**: `{{outputDir}}/{{planSetName}}/modules/{{moduleId}}.md`
 - **Working directory**: `{{cwd}}`
 
 ## Process
@@ -34,7 +34,7 @@ The following detailed plans have been completed by modules this module depends 
 1. **Understand the module's role** within the architecture — what it owns, what it depends on, what depends on it
 2. **Explore the codebase** for existing code, patterns, and conventions relevant to this module
 3. **Plan the implementation** in detail — files to create/modify, key decisions, testing strategy
-4. **Write the module plan** to `plans/{{planSetName}}/modules/{{moduleId}}.md`
+4. **Write the module plan** to `{{outputDir}}/{{planSetName}}/modules/{{moduleId}}.md`
 
 ## Module Plan Format
 

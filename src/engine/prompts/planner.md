@@ -15,7 +15,7 @@ The user wants you to plan the following:
 ## Plan Set
 
 - **Name**: `{{planSetName}}`
-- **Output directory**: `plans/{{planSetName}}/`
+- **Output directory**: `{{outputDir}}/{{planSetName}}/`
 - **Working directory**: `{{cwd}}`
 
 ## Process
@@ -103,7 +103,7 @@ Determine how many plans the work requires based on your codebase exploration:
 
 #### Errand / Excursion
 
-Create 1 or more plan files in `plans/{{planSetName}}/`.
+Create 1 or more plan files in `{{outputDir}}/{{planSetName}}/`.
 
 **Single plan** when all work is in one area and has no natural phasing.
 
@@ -114,13 +114,13 @@ Create 1 or more plan files in `plans/{{planSetName}}/`.
 - **Do NOT create separate test-only plans.** Tests belong in the same plan as the code they verify. Use `test-cycle` or `test-write` build stages to handle testing within a plan - never split tests into a standalone plan.
 - **Critical rule**: never split a type change from the updates to its consumers. If you make a field required or remove a type field, all files that construct that type must be updated in the same plan. Otherwise post-merge validation will fail on files that weren't updated.
 
-Then generate `plans/{{planSetName}}/orchestration.yaml` alongside the plan files (see format below).
+Then generate `{{outputDir}}/{{planSetName}}/orchestration.yaml` alongside the plan files (see format below).
 
 #### Expedition
 
 For expeditions, you are performing the **architecture phase**. Do NOT generate plan files — those will be created later from your module definitions.
 
-1. Write `plans/{{planSetName}}/architecture.md` containing:
+1. Write `{{outputDir}}/{{planSetName}}/architecture.md` containing:
    - Vision and goals
    - Core architectural principles
    - Shared data model (if applicable)
@@ -164,9 +164,9 @@ Rules for shared file identification:
 - Each region must be non-overlapping - no two modules may claim the same section of a file
 - Prefer append-style regions (each module appends its section) over interleaved regions
 
-2. Write `plans/{{planSetName}}/index.yaml` with module list (see format below)
+2. Write `{{outputDir}}/{{planSetName}}/index.yaml` with module list (see format below)
 
-3. Create the `plans/{{planSetName}}/modules/` directory
+3. Create the `{{outputDir}}/{{planSetName}}/modules/` directory
 
 4. Emit a `<modules>` XML block listing the modules you defined.
 
@@ -306,7 +306,7 @@ Important:
 
 ## Orchestration.yaml Format
 
-Create `plans/{{planSetName}}/orchestration.yaml` (errand/excursion only):
+Create `{{outputDir}}/{{planSetName}}/orchestration.yaml` (errand/excursion only):
 
 ```yaml
 name: {{planSetName}}
@@ -391,7 +391,7 @@ Common validation commands: type checking, linting, building, running tests. Ord
 
 ## Index.yaml Format
 
-Create `plans/{{planSetName}}/index.yaml` (expedition only):
+Create `{{outputDir}}/{{planSetName}}/index.yaml` (expedition only):
 
 ```yaml
 name: {{planSetName}}

@@ -10,9 +10,9 @@ The following source material was used to generate these plans:
 
 # Scope
 
-1. Read all plan files in `plans/{{plan_set_name}}/` (the `.md` files with YAML frontmatter).
-2. Read `plans/{{plan_set_name}}/orchestration.yaml` for the dependency structure and execution order.
-3. If present, read `plans/{{plan_set_name}}/architecture.md` for expedition context.
+1. Read all plan files in `{{outputDir}}/{{plan_set_name}}/` (the `.md` files with YAML frontmatter).
+2. Read `{{outputDir}}/{{plan_set_name}}/orchestration.yaml` for the dependency structure and execution order.
+3. If present, read `{{outputDir}}/{{plan_set_name}}/architecture.md` for expedition context.
 4. Review the plan set against the source/PRD above and the criteria below.
 
 # Review Categories
@@ -91,6 +91,6 @@ Rules:
 
 - Do NOT run `git add` — fixes must remain unstaged
 - Do NOT run `git commit` — the planner decides what to accept
-- Do NOT modify files outside `plans/{{plan_set_name}}/`
+- Do NOT modify files outside `{{outputDir}}/{{plan_set_name}}/`
 - Review ONLY the plan files — do not review or modify source code
 - Do NOT restructure plans (split, merge, reorder) — only fix individual issues within existing plans

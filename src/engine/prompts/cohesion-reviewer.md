@@ -16,7 +16,7 @@ The original source material used to generate these plans:
 
 # Scope
 
-1. Read all module plan files in `plans/{{plan_set_name}}/modules/` (the `.md` files - these are the source module plans, not compiled plan files).
+1. Read all module plan files in `{{outputDir}}/{{plan_set_name}}/modules/` (the `.md` files - these are the source module plans, not compiled plan files).
 2. Read the architecture document above for the dependency structure and module boundaries.
 3. Review the module plans against the architecture and the criteria below.
 
@@ -141,6 +141,6 @@ Rules:
 
 - Do NOT run `git add` — fixes must remain unstaged
 - Do NOT run `git commit` — the evaluator decides what to accept
-- Do NOT modify files outside `plans/{{plan_set_name}}/`
+- Do NOT modify files outside `{{outputDir}}/{{plan_set_name}}/`
 - Review ONLY the module plan files — do not review or modify source code
 - Do NOT restructure plans (split, merge, reorder) — only fix individual issues within existing plans

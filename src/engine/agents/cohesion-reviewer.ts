@@ -23,6 +23,8 @@ export interface CohesionReviewerOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Plan output directory (defaults to 'eforge/plans'). */
+  outputDir?: string;
 }
 
 /**
@@ -49,6 +51,7 @@ export async function* runCohesionReview(
     source_content: sourceContent,
     plan_set_name: planSetName,
     architecture_content: architectureContent,
+    outputDir: options.outputDir ?? 'eforge/plans',
     review_issue_schema: getPlanReviewIssueSchemaYaml(),
   });
 

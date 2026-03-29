@@ -19,6 +19,8 @@ export interface ModulePlannerOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Override max conversation turns (default: 20) */
   maxTurns?: number;
+  /** Plan output directory (defaults to 'eforge/plans'). */
+  outputDir?: string;
 }
 
 /**
@@ -40,6 +42,7 @@ export async function* runModulePlanner(
     architectureContent: options.architectureContent,
     dependencyPlans: options.dependencyPlanContent || 'No dependencies - this module is planned independently.',
     cwd: options.cwd,
+    outputDir: options.outputDir ?? 'eforge/plans',
   });
 
   for await (const event of options.backend.run(

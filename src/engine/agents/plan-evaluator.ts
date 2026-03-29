@@ -28,6 +28,8 @@ export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Plan output directory (defaults to 'eforge/plans'). */
+  outputDir?: string;
 }
 
 /**
@@ -46,6 +48,8 @@ export interface PlanEvaluatorOptions extends SdkPassthroughConfig {
   verbose?: boolean;
   /** AbortController for cancellation */
   abortController?: AbortController;
+  /** Plan output directory (defaults to 'eforge/plans'). */
+  outputDir?: string;
 }
 
 /**
@@ -134,6 +138,7 @@ async function* runEvaluate(
     plan_set_name: planSetName,
     source_content: sourceContent,
     evaluation_schema: getEvaluationSchemaYaml(),
+    outputDir: options.outputDir ?? 'eforge/plans',
     ...config.promptVars,
   });
 

@@ -150,7 +150,7 @@ After applying all verdicts:
 
 2. Commit all staged changes (original plans + accepted fixes):
    ```bash
-   git add plans/{{plan_set_name}}/ && git commit -m "plan({{plan_set_name}}): planning artifacts
+   git add {{outputDir}}/{{plan_set_name}}/ && git commit -m "plan({{plan_set_name}}): planning artifacts
 
 Forged by eforge https://eforge.build"
    ```
