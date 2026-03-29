@@ -210,7 +210,6 @@ export const piThinkingLevelSchema = z.enum(['off', 'medium', 'high']).describe(
 export const piConfigSchema = z.object({
   provider: z.string().optional().describe('Pi AI provider (e.g. "openrouter", "anthropic")'),
   apiKey: z.string().optional().describe('API key for the Pi provider'),
-  model: z.string().optional().describe('Model identifier (e.g. "anthropic/claude-sonnet-4-6")'),
   thinkingLevel: piThinkingLevelSchema.optional().describe('Thinking level for Pi agents'),
   extensions: z.object({
     autoDiscover: z.boolean().optional().describe('Automatically discover Pi extensions'),
@@ -307,7 +306,6 @@ export interface ResolvedAgentConfig {
 export interface PiConfig {
   provider: string;
   apiKey?: string;
-  model: string;
   thinkingLevel: 'off' | 'medium' | 'high';
   extensions: { autoDiscover: boolean; include?: string[]; exclude?: string[] };
   compaction: { enabled: boolean; threshold: number };
@@ -395,7 +393,6 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   pi: Object.freeze({
     provider: 'openrouter',
-    model: 'anthropic/claude-sonnet-4-6',
     thinkingLevel: 'medium' as const,
     extensions: Object.freeze({ autoDiscover: true }),
     compaction: Object.freeze({ enabled: true, threshold: 100_000 }),
@@ -507,7 +504,6 @@ export function resolveConfig(
     pi: Object.freeze({
       provider: fileConfig.pi?.provider ?? DEFAULT_CONFIG.pi.provider,
       apiKey: fileConfig.pi?.apiKey,
-      model: fileConfig.pi?.model ?? DEFAULT_CONFIG.pi.model,
       thinkingLevel: fileConfig.pi?.thinkingLevel ?? DEFAULT_CONFIG.pi.thinkingLevel,
       extensions: Object.freeze({
         autoDiscover: fileConfig.pi?.extensions?.autoDiscover ?? DEFAULT_CONFIG.pi.extensions.autoDiscover,

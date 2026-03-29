@@ -90,37 +90,21 @@ function resolveThinkingLevel(options: AgentRunOptions, piConfig?: PiConfig): Th
 // ---------------------------------------------------------------------------
 
 /**
- * Parse a model string like "anthropic/claude-sonnet-4" into provider + modelId.
- * Falls back to "openrouter" provider if no slash is present.
- */
-function parseModelString(model: string): { provider: string; modelId: string } {
-  const slashIdx = model.indexOf('/');
-  if (slashIdx > 0) {
-    return { provider: model.slice(0, slashIdx), modelId: model.slice(slashIdx + 1) };
-  }
-  return { provider: 'openrouter', modelId: model };
-}
-
-/**
  * Resolve a Pi Model from an eforge model string.
+ * Provider comes from piConfig.provider (defaults to 'openrouter') - never parsed from the model string.
  * Uses pi-ai's getModel for known provider/model combos.
  * Falls back to constructing a minimal model object for unknown combos.
  */
-function resolveModel(modelStr: string | undefined, piConfig?: PiConfig): Model<Api> {
-  const effectiveModel = modelStr ?? piConfig?.model;
-  if (!effectiveModel) {
-    // Default to anthropic/claude-sonnet-4-6
-    return getModel('anthropic', 'claude-sonnet-4-6' as never) as Model<Api>;
-  }
+function resolveModel(modelStr: string, piConfig?: PiConfig): Model<Api> {
+  const provider = piConfig?.provider ?? 'openrouter';
 
-  const { provider, modelId } = parseModelString(effectiveModel);
   try {
-    return getModel(provider as never, modelId as never) as Model<Api>;
+    return getModel(provider as never, modelStr as never) as Model<Api>;
   } catch {
     // Unknown model — construct a minimal model object for openrouter-style routing
     return {
-      id: modelId,
-      name: effectiveModel,
+      id: modelStr,
+      name: modelStr,
       api: 'openai-completions' as Api,
       provider,
       baseUrl: provider === 'openrouter' ? 'https://openrouter.ai/api/v1' : `https://api.${provider}.com`,
@@ -321,6 +305,11 @@ export class PiBackend implements AgentBackend {
     let model: Model<Api>;
     let thinkingLevel: ThinkingLevel;
     try {
+      if (!options.model) {
+        yield { type: 'agent:start', planId, agent, agentId, model: 'unknown', backend: 'pi', timestamp: new Date().toISOString() };
+        yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set agents.models.max (or the appropriate model class) in eforge/config.yaml.', timestamp: new Date().toISOString() };
+        return;
+      }
       model = resolveModel(options.model, this.piConfig);
       thinkingLevel = resolveThinkingLevel(options, this.piConfig);
     } catch (err) {

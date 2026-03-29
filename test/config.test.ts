@@ -706,7 +706,6 @@ describe('resolveConfig backend and pi', () => {
         pi: {
           provider: 'openrouter',
           apiKey: 'sk-test',
-          model: 'anthropic/claude-sonnet-4',
         },
       },
       {},
@@ -714,20 +713,18 @@ describe('resolveConfig backend and pi', () => {
     expect(config.backend).toBe('pi');
     expect(config.pi.provider).toBe('openrouter');
     expect(config.pi.apiKey).toBe('sk-test');
-    expect(config.pi.model).toBe('anthropic/claude-sonnet-4');
   });
 
   it('merges pi section with defaults for unset fields', () => {
     const config = resolveConfig(
       {
         backend: 'pi',
-        pi: { provider: 'anthropic', model: 'claude-opus' },
+        pi: { provider: 'anthropic' },
       },
       {},
     );
     // Explicitly set values preserved
     expect(config.pi.provider).toBe('anthropic');
-    expect(config.pi.model).toBe('claude-opus');
     // Defaults fill in unset values
     expect(config.pi.thinkingLevel).toBe('medium');
     expect(config.pi.extensions.autoDiscover).toBe(true);
@@ -864,8 +861,8 @@ describe('per-role modelClass schema validation', () => {
   });
 });
 
-describe('DEFAULT_CONFIG.pi model default', () => {
-  it('has updated model default to anthropic/claude-sonnet-4-6', () => {
-    expect(DEFAULT_CONFIG.pi.model).toBe('anthropic/claude-sonnet-4-6');
+describe('DEFAULT_CONFIG.pi', () => {
+  it('has no model field', () => {
+    expect('model' in DEFAULT_CONFIG.pi).toBe(false);
   });
 });
