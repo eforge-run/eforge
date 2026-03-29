@@ -168,6 +168,14 @@ export class EforgeEngine {
       }
     }
 
+    // Validate that a backend is configured
+    if (!options.backend && !config.backend) {
+      throw new Error(
+        'No backend configured. Set `backend: claude-sdk` or `backend: pi` in eforge/config.yaml, ' +
+        'or run /eforge:config to set up your configuration.',
+      );
+    }
+
     // Select Pi backend from config when no explicit backend is provided
     if (!options.backend && config.backend === 'pi') {
       try {

@@ -39,7 +39,7 @@ Walk the user through configuration sections, asking about each one. Only includ
 
 **Sections to cover:**
 
-1. **Backend selection** - Which LLM backend: `claude-sdk` (default, uses Claude Code's built-in SDK) or `pi` (experimental, multi-provider via Pi SDK supporting OpenRouter, Anthropic, OpenAI, Google, etc.). Most users keep the default.
+1. **Backend selection** (required) - Which LLM backend: `claude-sdk` (uses Claude Code's built-in SDK) or `pi` (experimental, multi-provider via Pi SDK supporting OpenRouter, Anthropic, OpenAI, Google, etc.).
 2. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `parallelism`, `maxValidationRetries`
 3. **Model & thinking tuning** (opt-in - "Would you like to customize model or thinking settings? Most users keep defaults.") - Model class overrides via `agents.models` (map class names `max`/`balanced`/`fast`/`auto` to model strings), global `agents.model` override (bypasses class system), `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`max`). Model resolution order: per-role model > global model > user class override > backend class default. Only relevant for `claude-sdk` backend.
 4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false, auto-enabled when `ANTHROPIC_API_KEY` env var is set - passes `--bare` to Claude Code subprocess)
@@ -50,7 +50,7 @@ Walk the user through configuration sections, asking about each one. Only includ
 9. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
 10. **PRD queue** - Queue directory (`dir`), `autoRevise`, `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms)
 11. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
-12. **Pi backend** (conditional - only if user chose `backend: pi` in step 1) - `provider` (e.g. `openrouter`, `anthropic`), `apiKey` (or use env var like `OPENROUTER_API_KEY`), `model` (format: `provider/model`, e.g. `anthropic/claude-sonnet-4-6`), `thinkingLevel` (`off`/`medium`/`high`), `extensions` (auto-discover from `.pi/extensions/`), `compaction` (context compaction threshold), `retry` config. Note: experimental and untested.
+12. **Pi backend** (conditional - only if user chose `backend: pi` in step 1) - `thinkingLevel` (`off`/`medium`/`high`), `extensions` (auto-discover from `.pi/extensions/`), `compaction` (context compaction threshold), `retry` config. Model and provider are configured via Pi extensions, not eforge config. Note: experimental and untested.
 
 For each section, explain what it controls and suggest values based on the project context gathered in Step 2. Skip sections the user isn't interested in.
 

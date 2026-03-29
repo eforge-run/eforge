@@ -686,9 +686,9 @@ describe('piConfigSchema', () => {
 });
 
 describe('resolveConfig backend and pi', () => {
-  it('defaults backend to claude-sdk when config is empty', () => {
+  it('backend is undefined when config is empty', () => {
     const config = resolveConfig({}, {});
-    expect(config.backend).toBe('claude-sdk');
+    expect(config.backend).toBeUndefined();
   });
 
   it('defaults pi section with sensible defaults', () => {
@@ -748,8 +748,8 @@ describe('DEFAULT_CONFIG.pi', () => {
     expect(DEFAULT_CONFIG.pi.retry.backoffMs).toBe(1000);
   });
 
-  it('has backend defaulting to claude-sdk', () => {
-    expect(DEFAULT_CONFIG.backend).toBe('claude-sdk');
+  it('has no backend in DEFAULT_CONFIG', () => {
+    expect(DEFAULT_CONFIG.backend).toBeUndefined();
   });
 });
 

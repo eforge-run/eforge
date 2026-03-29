@@ -49,6 +49,7 @@ describe('watchQueue', () => {
     const engine = await EforgeEngine.create({
       cwd,
       config: {
+        backend: 'claude-sdk',
         prdQueue: { dir: 'eforge/queue', autoRevise: false, watchPollIntervalMs: 50 },
         plugins: { enabled: false },
       },

@@ -1,0 +1,34 @@
+name: remove-default-backend-from-eforge-config
+description: Remove default backend value from eforge config, making backend an
+  explicit required choice
+created: 2026-03-29
+compiled: 2026-03-29
+mode: config-refactor
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-remove-default-backend
+    name: Remove Default Backend from Config
+    depends_on: []
+    branch: remove-default-backend-from-eforge-config/remove-default-backend
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors. Use when the full scope can
+    be planned in a single planner session - all plans enumerated, all file
+    changes listed, and cross-plan dependencies resolved. Covers tightly coupled
+    changes (type cascades, interface refactors, rename-and-update-all-callers)
+    and any work where one planning pass is sufficient.
+  compile:
+    - planner
+    - plan-review-cycle

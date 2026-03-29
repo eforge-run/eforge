@@ -313,7 +313,7 @@ export interface PiConfig {
 }
 
 export interface EforgeConfig {
-  backend: 'claude-sdk' | 'pi';
+  backend?: 'claude-sdk' | 'pi';
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
   agents: {
     maxTurns: number;
@@ -383,7 +383,6 @@ export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.fr
 });
 
 export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
-  backend: 'claude-sdk' as const,
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({ maxTurns: 30, maxContinuations: 3, permissionMode: 'bypass' as const, settingSources: ['project'] as string[], bare: false }),
   build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
@@ -456,7 +455,7 @@ export function resolveConfig(
   const langfuseEnabled = !!(langfusePublicKey && langfuseSecretKey);
 
   return Object.freeze({
-    backend: fileConfig.backend ?? DEFAULT_CONFIG.backend,
+    backend: fileConfig.backend,
     langfuse: Object.freeze({
       enabled: langfuseEnabled,
       publicKey: langfusePublicKey,

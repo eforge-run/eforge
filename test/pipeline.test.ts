@@ -401,7 +401,7 @@ describe('agent config threading', () => {
 
   it('resolveAgentConfig returns model class default for SDK fields when not configured', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
-    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG, 'claude-sdk');
     expect(result.maxTurns).toBe(50);
     // builder defaults to 'max' class, so claude-sdk default is 'claude-opus-4-6'
     expect(result.model).toBe('claude-opus-4-6');
@@ -644,7 +644,7 @@ describe('model class resolution', () => {
     const { resolveAgentConfig, AGENT_MODEL_CLASSES } = await import('../src/engine/pipeline.js');
     for (const role of Object.keys(AGENT_MODEL_CLASSES) as Array<keyof typeof AGENT_MODEL_CLASSES>) {
       expect(AGENT_MODEL_CLASSES[role]).toBe('max');
-      const result = resolveAgentConfig(role, DEFAULT_CONFIG);
+      const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
       expect(result.model).toBe('claude-opus-4-6');
     }
   });
@@ -660,7 +660,7 @@ describe('model class resolution', () => {
         },
       },
     };
-    const result = resolveAgentConfig('builder', config);
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
     expect(result.model).toBe('claude-sonnet-4-6');
   });
 

@@ -309,7 +309,7 @@ export const MODEL_CLASS_DEFAULTS: Record<string, Record<ModelClass, string | un
 export function resolveAgentConfig(
   role: AgentRole,
   config: EforgeConfig,
-  backend: 'claude-sdk' | 'pi' = 'claude-sdk',
+  backend?: 'claude-sdk' | 'pi',
 ): import('./config.js').ResolvedAgentConfig {
   const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
   const userGlobal: import('./config.js').ResolvedAgentConfig = {
@@ -354,17 +354,19 @@ export function resolveAgentConfig(
     if (userClassModel !== undefined) {
       result.model = userClassModel;
     } else {
-      // Fall back to backend defaults
-      const backendDefaults = MODEL_CLASS_DEFAULTS[backend];
-      if (backendDefaults) {
-        result.model = backendDefaults[effectiveClass];
+      // Fall back to backend defaults (skip when backend is undefined)
+      if (backend) {
+        const backendDefaults = MODEL_CLASS_DEFAULTS[backend];
+        if (backendDefaults) {
+          result.model = backendDefaults[effectiveClass];
+        }
       }
     }
   }
 
   // Backends without built-in defaults require the user to configure model mappings.
   // claude-sdk is exempt because undefined means "SDK picks based on subscription".
-  if (result.model === undefined && backend !== 'claude-sdk') {
+  if (result.model === undefined && backend !== 'claude-sdk' && backend !== undefined) {
     throw new Error(
       `No model configured for role "${role}" (model class "${effectiveClass}") on backend "${backend}". ` +
       `Set agents.models.${effectiveClass} in eforge/config.yaml.`,
