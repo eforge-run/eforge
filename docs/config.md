@@ -17,19 +17,24 @@ plugins:
 
 agents:
   maxTurns: 30                # Max agent turns before stopping
+  maxContinuations: 3         # Max continuation attempts after maxTurns hit
   permissionMode: bypass      # 'bypass' or 'default'
   settingSources:             # Which Claude Code settings to load
     - project                 # Loads CLAUDE.md and project settings
+  bare: false                 # Pass --bare to Claude Code subprocess (auto-true when ANTHROPIC_API_KEY set)
   # model: claude-sonnet-4-20250514  # Global model override for all agents
   # thinking:                 # Global thinking config
   #   type: adaptive          # 'adaptive', 'enabled' (with optional budgetTokens), or 'disabled'
   # effort: high              # Global effort level: 'low', 'medium', 'high', 'max'
   # roles:                    # Per-agent role overrides (override global settings)
-  #   formatter:
-  #     effort: low
-  #   builder:
-  #     model: claude-sonnet-4-20250514
-  #     maxTurns: 50
+  #   formatter:              # Per-role options: model, thinking, effort, maxBudgetUsd,
+  #     effort: low           #   fallbackModel, allowedTools, disallowedTools, maxTurns
+  #   builder:                # Available roles: planner, module-planner, builder, reviewer,
+  #     model: claude-sonnet-4-20250514  #   evaluator, plan-reviewer, plan-evaluator,
+  #     maxTurns: 50          #   architecture-reviewer, architecture-evaluator,
+  #                           #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
+  #                           #   review-fixer, merge-conflict-resolver, staleness-assessor,
+  #                           #   formatter, doc-updater, test-writer, tester
 
 build:
   parallelism: <cpu-count>    # Max parallel plan executions
@@ -55,7 +60,7 @@ daemon:
 pi:                            # Pi backend config (experimental/untested)
   provider: openrouter         # LLM provider
   model: anthropic/claude-sonnet-4  # Model identifier
-  thinkingLevel: medium        # 'medium', 'low', 'high'
+  thinkingLevel: medium        # 'off', 'medium', 'high'
   extensions:
     autoDiscover: true         # Auto-discover extensions from .pi/extensions/
   compaction:

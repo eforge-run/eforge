@@ -9,6 +9,9 @@ import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mc
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import http from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
+import { resolve, dirname } from 'node:path';
 import { ensureDaemon, daemonRequest, sleep, DAEMON_POLL_INTERVAL_MS } from './daemon-client.js';
 import { readLockfile } from '../monitor/lockfile.js';
 
@@ -290,9 +293,12 @@ function stopSseSubscriber(state: SseSubscriberState) {
 // --- End SSE Subscriber ---
 
 export async function runMcpProxy(cwd: string): Promise<void> {
+  const pkgPath = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'package.json');
+  const { version } = JSON.parse(await readFile(pkgPath, 'utf-8'));
+
   const server = new McpServer({
     name: 'eforge',
-    version: '0.5.0',
+    version,
   }, {
     capabilities: {
       resources: { listChanged: true },

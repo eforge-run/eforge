@@ -39,13 +39,18 @@ Walk the user through configuration sections, asking about each one. Only includ
 
 **Sections to cover:**
 
-1. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `parallelism`, `maxValidationRetries`
-2. **Profiles** - Custom workflow profiles or overrides of built-in profiles (`errand`, `excursion`, `expedition`). A profile defines compile stages only — build stages and review config are per-plan in orchestration.yaml. A profile can `extends` a built-in and override compile stages or agent settings.
-3. **Hooks** - Event-driven commands that run on specific eforge events (e.g. `session:start`, `phase:end`). Each hook has `event` (pattern), `command`, and optional `timeout`.
-4. **Agent settings** - Global `maxTurns`, `permissionMode` (`bypass` or `default`), `settingSources`
-5. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
-6. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
-7. **PRD queue** - Queue directory, auto-revise setting
+1. **Backend selection** - Which LLM backend: `claude-sdk` (default, uses Claude Code's built-in SDK) or `pi` (experimental, multi-provider via Pi SDK supporting OpenRouter, Anthropic, OpenAI, Google, etc.). Most users keep the default.
+2. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `parallelism`, `maxValidationRetries`
+3. **Model & thinking tuning** (opt-in - "Would you like to customize model or thinking settings? Most users keep defaults.") - Global `agents.model` override, `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`max`). Only relevant for `claude-sdk` backend.
+4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false, auto-enabled when `ANTHROPIC_API_KEY` env var is set - passes `--bare` to Claude Code subprocess)
+5. **Per-role agent overrides** (opt-in - "Would you like to tune specific agent roles differently? Most users skip this.") - Override settings per agent role. Available roles grouped: planning (`planner`, `module-planner`), building (`builder`), review/eval (`reviewer`, `evaluator`, `plan-reviewer`, `plan-evaluator`, `architecture-reviewer`, `architecture-evaluator`, `cohesion-reviewer`, `cohesion-evaluator`), fixers (`validation-fixer`, `review-fixer`, `merge-conflict-resolver`), utilities (`formatter`, `doc-updater`, `test-writer`, `tester`, `staleness-assessor`). Per-role options: `model`, `thinking`, `effort`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`, `maxTurns`.
+6. **Profiles** - Custom workflow profiles or overrides of built-in profiles (`errand`, `excursion`, `expedition`). A profile defines compile stages only - build stages and review config are per-plan in orchestration.yaml. A profile can `extends` a built-in and override compile stages or agent settings.
+7. **Hooks** - Event-driven commands that run on specific eforge events (e.g. `session:start`, `phase:end`). Each hook has `event` (pattern), `command`, and optional `timeout`.
+8. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
+9. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
+10. **PRD queue** - Queue directory (`dir`), `autoRevise`, `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms)
+11. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
+12. **Pi backend** (conditional - only if user chose `backend: pi` in step 1) - `provider` (e.g. `openrouter`, `anthropic`), `apiKey` (or use env var like `OPENROUTER_API_KEY`), `model` (format: `provider/model`, e.g. `anthropic/claude-sonnet-4`), `thinkingLevel` (`off`/`medium`/`high`), `extensions` (auto-discover from `.pi/extensions/`), `compaction` (context compaction threshold), `retry` config. Note: experimental and untested.
 
 For each section, explain what it controls and suggest values based on the project context gathered in Step 2. Skip sections the user isn't interested in.
 
@@ -100,23 +105,45 @@ This returns the merged result of defaults + global config + project config.
 Available top-level sections in `eforge/config.yaml`:
 
 ```yaml
+# Backend
+backend: claude-sdk                    # 'claude-sdk' or 'pi'
+
 # Build settings
 build:
-  parallelism: 4                    # Max parallel worktrees
-  worktreeDir: "../my-worktrees"    # Custom worktree directory
-  postMergeCommands:                # Commands to run after merge
+  parallelism: 4                       # Max parallel worktrees (default: CPU count)
+  worktreeDir: "../my-worktrees"       # Custom worktree directory
+  postMergeCommands:                   # Commands to run after merge
     - pnpm install
     - pnpm type-check
     - pnpm test
-  maxValidationRetries: 2           # Retry count for validation fixes
-  cleanupPlanFiles: true            # Remove plan files after successful build
+  maxValidationRetries: 2              # Retry count for validation fixes
+  cleanupPlanFiles: true               # Remove plan files after successful build
 
 # Agent settings
 agents:
-  maxTurns: 30                      # Global max agent turns
-  permissionMode: bypass            # bypass or default
-  settingSources:                   # Which settings files agents load
+  maxTurns: 30                         # Global max agent turns
+  maxContinuations: 3                  # Max continuation attempts after maxTurns hit
+  permissionMode: bypass               # bypass or default
+  settingSources:                      # Which settings files agents load
     - project
+  bare: false                          # Pass --bare to Claude Code (auto-true when ANTHROPIC_API_KEY set)
+  # --- SDK passthrough (claude-sdk backend) ---
+  # model: claude-sonnet-4-20250514    # Global model override
+  # thinking:                          # Thinking config
+  #   type: adaptive                   # 'adaptive', 'enabled' (+ budgetTokens), or 'disabled'
+  # effort: high                       # 'low', 'medium', 'high', 'max'
+  # --- Per-role overrides ---
+  # roles:
+  #   builder:
+  #     model: claude-sonnet-4-20250514
+  #     maxTurns: 50
+  #     maxBudgetUsd: 10.0
+  #   formatter:
+  #     effort: low
+
+# Plan output
+plan:
+  outputDir: eforge/plans              # Where plan artifacts are written
 
 # Langfuse tracing (keys usually via env vars)
 langfuse:
@@ -126,14 +153,20 @@ langfuse:
 # Plugin loading
 plugins:
   enabled: true
-  include: []                       # Only load these plugins
-  exclude: []                       # Skip these plugins
-  paths: []                         # Additional plugin paths
+  include: []                          # Only load these plugins
+  exclude: []                          # Skip these plugins
+  paths: []                            # Additional plugin paths
 
 # PRD queue
 prdQueue:
   dir: eforge/queue
   autoRevise: false
+  autoBuild: true                      # Daemon auto-builds after enqueue
+  watchPollIntervalMs: 5000            # Poll interval for watch mode (ms)
+
+# Daemon
+daemon:
+  idleShutdownMs: 7200000              # Idle timeout (2h). 0 = run forever.
 
 # Event hooks
 hooks:
@@ -141,14 +174,28 @@ hooks:
     command: "echo 'Starting eforge session'"
     timeout: 5000
 
-# Workflow profiles (compile stages only — build/review config is per-plan)
+# Workflow profiles (compile stages only - build/review config is per-plan)
 profiles:
   my-profile:
-    extends: excursion              # Inherit from a built-in
+    extends: excursion                 # Inherit from a built-in
     description: "Custom profile for my project"
     compile:
       - planner
       - plan-review-cycle
+
+# Pi backend (experimental - only used when backend: pi)
+# pi:
+#   provider: openrouter               # LLM provider (default: openrouter)
+#   model: anthropic/claude-sonnet-4   # Model identifier (provider/model format)
+#   thinkingLevel: medium              # 'off', 'medium', 'high'
+#   extensions:
+#     autoDiscover: true
+#   compaction:
+#     enabled: true
+#     threshold: 100000
+#   retry:
+#     maxRetries: 3
+#     backoffMs: 1000
 ```
 
 ## Error Handling
