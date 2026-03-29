@@ -1,0 +1,29 @@
+name: add-config-validation-to-eforge-build-skill
+description: Add config validation guard to the /eforge:build skill so config
+  errors are caught before enqueueing PRDs
+created: 2026-03-29
+compiled: 2026-03-29
+mode: docs-guard
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-build-skill-validation-guard
+    name: Add config validation guard to build skill
+    depends_on: []
+    branch: add-config-validation-to-eforge-build-skill/build-skill-validation-guard
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
