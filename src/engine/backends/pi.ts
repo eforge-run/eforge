@@ -320,6 +320,8 @@ export class PiBackend implements AgentBackend {
 
     let error: string | undefined;
     const startTime = Date.now();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let session: any;
 
     try {
       // Resolve model
@@ -367,7 +369,7 @@ export class PiBackend implements AgentBackend {
       const settingsManager = SettingsManager.create(options.cwd);
 
       // Create agent session
-      const { session } = await createAgentSession({
+      ({ session } = await createAgentSession({
         cwd: options.cwd,
         model,
         thinkingLevel,
@@ -377,7 +379,7 @@ export class PiBackend implements AgentBackend {
         modelRegistry,
         sessionManager,
         settingsManager,
-      });
+      }));
 
       // Set up extension tools on the session if we have extensions
       if (extensionPaths.length > 0) {
@@ -425,9 +427,9 @@ export class PiBackend implements AgentBackend {
         }
 
         // Handle error events — prevent the generator from hanging
-        if (event.type === 'error') {
-          const errMsg = 'error' in event && event.error instanceof Error
-            ? event.error.message
+        if ((event as { type: string }).type === 'error') {
+          const errMsg = 'error' in event && (event as { error: unknown }).error instanceof Error
+            ? ((event as { error: Error }).error).message
             : 'message' in event ? String((event as { message: unknown }).message) : 'Pi session error';
           error = errMsg;
         }
@@ -467,7 +469,7 @@ export class PiBackend implements AgentBackend {
         totalCacheRead = stats.tokens.cacheRead;
         totalCacheWrite = stats.tokens.cacheWrite;
         totalCost = stats.cost;
-      }).catch((err) => {
+      }).catch((err: unknown) => {
         error = err instanceof Error ? err.message : String(err);
       }).finally(() => {
         unsubscribe();
