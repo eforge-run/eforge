@@ -1,0 +1,30 @@
+name: add-third-party-license-notices-to-readme
+description: Expand README License section to document eforge's Apache 2.0
+  license and Claude Agent SDK proprietary backend terms
+created: 2026-03-29
+compiled: 2026-03-29
+mode: docs-only
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-license-section
+    name: Expand License Section with Third-Party Notices
+    depends_on: []
+    branch: add-third-party-license-notices-to-readme/license-section
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: docs
+  description: Documentation-only changes. Plans and implements but skips code
+    review since review categories (bugs, security, types, etc.) don't apply to
+    prose.
+  compile:
+    - prd-passthrough
