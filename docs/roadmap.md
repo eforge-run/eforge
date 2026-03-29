@@ -26,6 +26,7 @@
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
 
 - **Test and evaluate pi backend** — PiBackend is implemented but not yet tested end-to-end. Run builds against real providers, compare output quality and cost against ClaudeSDKBackend, and fix integration gaps.
+- **OpenAI Agents JS backend** — Evaluated (`@openai/agents` v0.8.1) and deferred. PiBackend already covers OpenAI models with turnkey coding tools. The SDK lacks a coding agent preset (Shell/Editor must be implemented from scratch) and is pre-1.0. Revisit when OpenAI ships a turnkey coding preset or a unique feature (hosted code interpreter, multi-agent handoffs) becomes valuable.
 - **Monorepo** — Extend pnpm workspaces (currently only monitor UI) so the engine, eforge-plugin, and marketing site each get their own package with isolated deps and build configs
 
 ---
