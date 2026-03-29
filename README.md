@@ -103,4 +103,14 @@ See [eforge-build/eval](https://github.com/eforge-build/eval) for the end-to-end
 
 ## License
 
-Apache-2.0
+eforge is licensed under [Apache-2.0](LICENSE).
+
+### Third-party backend licenses
+
+eforge's backend abstraction allows different AI providers. Each backend carries its own license terms:
+
+- **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`) - the default backend - is proprietary software owned by Anthropic PBC. By using eforge with this backend, you agree to Anthropic's [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) (API users) or [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) (Free/Pro/Max users), plus the [Acceptable Use Policy](https://www.anthropic.com/legal/aup). See [Anthropic's legal page](https://code.claude.com/docs/en/legal-and-compliance) for details.
+
+  **Note:** If you are building a product or service on top of eforge, Anthropic requires API key authentication through [Claude Console](https://platform.claude.com/) - OAuth tokens from Free, Pro, or Max plans may not be used for third-party products.
+
+eforge's Apache 2.0 license applies to eforge's own source code. It does not extend to or override the license terms of its dependencies.
