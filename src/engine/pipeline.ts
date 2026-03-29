@@ -260,17 +260,17 @@ export const AGENT_MODEL_CLASSES: Record<AgentRole, ModelClass> = {
   'module-planner': 'max',
   'plan-reviewer': 'max',
   'plan-evaluator': 'max',
-  builder: 'balanced',
-  reviewer: 'balanced',
-  evaluator: 'balanced',
-  'review-fixer': 'balanced',
-  'validation-fixer': 'balanced',
-  'merge-conflict-resolver': 'balanced',
-  'doc-updater': 'balanced',
-  'test-writer': 'balanced',
-  tester: 'balanced',
-  formatter: 'balanced',
-  'staleness-assessor': 'balanced',
+  builder: 'max',
+  reviewer: 'max',
+  evaluator: 'max',
+  'review-fixer': 'max',
+  'validation-fixer': 'max',
+  'merge-conflict-resolver': 'max',
+  'doc-updater': 'max',
+  'test-writer': 'max',
+  tester: 'max',
+  formatter: 'max',
+  'staleness-assessor': 'max',
 };
 
 /** Per-backend default model strings for each model class. `undefined` means the SDK picks its own model. */
@@ -278,13 +278,13 @@ export const MODEL_CLASS_DEFAULTS: Record<string, Record<ModelClass, string | un
   'claude-sdk': {
     max: 'claude-opus-4-6',
     balanced: 'claude-sonnet-4-6',
-    fast: 'claude-haiku-3-5',
+    fast: 'claude-haiku-4-5',
     auto: undefined,
   },
   pi: {
-    max: 'anthropic/claude-opus-4-6',
-    balanced: 'anthropic/claude-sonnet-4-6',
-    fast: 'anthropic/claude-haiku-3-5',
+    max: undefined,
+    balanced: undefined,
+    fast: undefined,
     auto: undefined,
   },
 };
@@ -342,14 +342,13 @@ export function resolveAgentConfig(
   //   per-role model > global model > user class override > backend class default
   const perRoleModel = userRole.model ?? builtinRoleDefaults.model;
   const globalModel = userGlobal.model;
+  const effectiveClass: ModelClass = userRole.modelClass ?? AGENT_MODEL_CLASSES[role];
+
   if (perRoleModel !== undefined) {
     result.model = perRoleModel;
   } else if (globalModel !== undefined) {
     result.model = globalModel;
   } else {
-    // Determine effective model class
-    const effectiveClass: ModelClass = userRole.modelClass ?? AGENT_MODEL_CLASSES[role];
-
     // Check user-configured class model overrides
     const userClassModel = config.agents.models?.[effectiveClass];
     if (userClassModel !== undefined) {
@@ -361,6 +360,15 @@ export function resolveAgentConfig(
         result.model = backendDefaults[effectiveClass];
       }
     }
+  }
+
+  // Backends without built-in defaults require the user to configure model mappings.
+  // claude-sdk is exempt because undefined means "SDK picks based on subscription".
+  if (result.model === undefined && backend !== 'claude-sdk') {
+    throw new Error(
+      `No model configured for role "${role}" (model class "${effectiveClass}") on backend "${backend}". ` +
+      `Set agents.models.${effectiveClass} in eforge/config.yaml.`,
+    );
   }
 
   return result;

@@ -131,7 +131,7 @@ agents:
   # models:                            # Map model classes to model strings
   #   max: claude-opus-4-6
   #   balanced: claude-sonnet-4-6
-  #   fast: claude-haiku-3-5
+  #   fast: claude-haiku-4-5
   # model: claude-sonnet-4-6           # Global model override (bypasses class system)
   # thinking:                          # Thinking config
   #   type: adaptive                   # 'adaptive', 'enabled' (+ budgetTokens), or 'disabled'

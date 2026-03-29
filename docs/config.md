@@ -27,13 +27,9 @@ agents:
   #   type: adaptive          # 'adaptive', 'enabled' (with optional budgetTokens), or 'disabled'
   # effort: high              # Global effort level: 'low', 'medium', 'high', 'max'
   # models:                    # Map model classes to model strings (override backend defaults)
-  #   max: claude-opus-4-6    # Used by: planner, module-planner, plan-reviewer, plan-evaluator,
-  #                           #   architecture-reviewer, architecture-evaluator, cohesion-reviewer,
-  #                           #   cohesion-evaluator
-  #   balanced: claude-sonnet-4-6  # Used by: builder, reviewer, evaluator, review-fixer,
-  #                           #   validation-fixer, merge-conflict-resolver, doc-updater,
-  #                           #   test-writer, tester, formatter, staleness-assessor
-  #   fast: claude-haiku-3-5  # Available for lightweight tasks via per-role modelClass override
+  #   max: claude-opus-4-6    # Used by all roles by default
+  #   balanced: claude-sonnet-4-6  # Available via per-role modelClass override
+  #   fast: claude-haiku-4-5  # Available via per-role modelClass override
   #   auto: null              # Let the SDK choose the model
   # roles:                    # Per-agent role overrides (override global settings)
   #   formatter:              # Per-role options: model, modelClass, thinking, effort, maxBudgetUsd,
@@ -82,14 +78,16 @@ pi:                            # Pi backend config (experimental/untested)
 
 ## Model Classes
 
-eforge assigns each agent role a **model class** that determines which model it uses by default. Four classes exist:
+eforge assigns each agent role a **model class** that determines which model it uses by default. All roles default to `max`. Four classes exist:
 
-| Class | Default model (claude-sdk) | Assigned roles |
-|-------|---------------------------|----------------|
-| `max` | `claude-opus-4-6` | planner, module-planner, plan-reviewer, plan-evaluator, architecture-reviewer, architecture-evaluator, cohesion-reviewer, cohesion-evaluator |
-| `balanced` | `claude-sonnet-4-6` | builder, reviewer, evaluator, review-fixer, validation-fixer, merge-conflict-resolver, doc-updater, test-writer, tester, formatter, staleness-assessor |
-| `fast` | `claude-haiku-3-5` | (none by default - available via per-role `modelClass` override) |
-| `auto` | (SDK default) | (none by default - lets the backend choose) |
+| Class | Default model (claude-sdk) | Notes |
+|-------|---------------------------|-------|
+| `max` | `claude-opus-4-6` | All roles default to this class |
+| `balanced` | `claude-sonnet-4-6` | Available via per-role `modelClass` override for cost optimization |
+| `fast` | `claude-haiku-4-5` | Available via per-role `modelClass` override for lightweight tasks |
+| `auto` | (SDK default) | Lets the backend choose the model |
+
+The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles). The engine throws a descriptive error if no model resolves for a non-claude-sdk backend.
 
 ### Model Resolution Order
 
@@ -103,16 +101,18 @@ Model selection follows this priority chain (highest to lowest):
 The "effective class" for a role is determined by: per-role `modelClass` override > built-in class assignment.
 
 ```yaml
-# Example: override model class defaults and reassign a role
+# Example: downgrade some roles to cheaper models
 agents:
   models:
-    max: claude-opus-4-6           # All 'max' class agents use this model
-    balanced: claude-sonnet-4-6    # All 'balanced' class agents use this model
+    balanced: claude-sonnet-4-6    # Define what 'balanced' class maps to
+    fast: claude-haiku-4-5         # Define what 'fast' class maps to
   roles:
-    staleness-assessor:
-      modelClass: fast             # Move staleness-assessor from 'balanced' to 'fast' class
     builder:
-      model: claude-opus-4-6      # Explicit model - bypasses the class system entirely
+      modelClass: balanced         # Move builder from 'max' to 'balanced' class
+    formatter:
+      modelClass: fast             # Move formatter to 'fast' class
+    staleness-assessor:
+      model: claude-haiku-4-5     # Explicit model - bypasses the class system entirely
 ```
 
 ## Profiles
