@@ -318,6 +318,44 @@ export async function startServer(
   }
   type PlanResponse = { id: string; name: string; body: string; dependsOn: string[]; type: 'architecture' | 'module' | 'plan'; build?: BuildStageSpec[]; review?: ReviewProfileConfig };
 
+  /**
+   * Return candidate paths for orchestration.yaml: main repo first, merge worktree fallback second.
+   */
+  function candidateOrchestrationPaths(
+    repoCwd: string,
+    planBase: string,
+    planSet: string,
+  ): Array<{ path: string; base: string }> {
+    const mainPath = resolve(repoCwd, planBase, planSet, 'orchestration.yaml');
+    const mainBase = resolve(repoCwd, planBase);
+    const worktreeBase = resolve(repoCwd, '..', `${basename(repoCwd)}-${planSet}-worktrees`, '__merge__');
+    const wtPath = resolve(worktreeBase, planBase, planSet, 'orchestration.yaml');
+    const wtBase = resolve(worktreeBase, planBase);
+    return [
+      { path: mainPath, base: mainBase },
+      { path: wtPath, base: wtBase },
+    ];
+  }
+
+  /**
+   * Return candidate plan directories: main repo first, merge worktree fallback second.
+   */
+  function candidatePlanDirs(
+    repoCwd: string,
+    planBase: string,
+    planSet: string,
+  ): Array<{ dir: string; base: string }> {
+    const mainDir = resolve(repoCwd, planBase, planSet);
+    const mainBase = resolve(repoCwd, planBase);
+    const worktreeBase = resolve(repoCwd, '..', `${basename(repoCwd)}-${planSet}-worktrees`, '__merge__');
+    const wtDir = resolve(worktreeBase, planBase, planSet);
+    const wtBase = resolve(worktreeBase, planBase);
+    return [
+      { dir: mainDir, base: mainBase },
+      { dir: wtDir, base: wtBase },
+    ];
+  }
+
   async function readExpeditionFiles(
     planDir: string,
     moduleMap: Map<string, { id: string; description: string; dependsOn: string[] }>,
@@ -375,11 +413,20 @@ export async function startServer(
 
     try {
       const planBase = options?.planOutputDir ?? 'eforge/plans';
-      const orchPath = resolve(run.cwd, planBase, run.planSet, 'orchestration.yaml');
-      const expectedBase = resolve(run.cwd, planBase);
-      if (!orchPath.startsWith(expectedBase + '/')) return null;
+      const candidates = candidateOrchestrationPaths(run.cwd, planBase, run.planSet);
 
-      const content = await readFile(orchPath, 'utf-8');
+      let content: string | null = null;
+      for (const candidate of candidates) {
+        if (!candidate.path.startsWith(candidate.base + '/')) continue;
+        try {
+          content = await readFile(candidate.path, 'utf-8');
+          break;
+        } catch {
+          // try next candidate
+        }
+      }
+      if (!content) return null;
+
       const orch = parseYaml(content);
       if (!orch?.plans || !Array.isArray(orch.plans)) return null;
 
@@ -430,12 +477,23 @@ export async function startServer(
       const compileRun = [...sessionRuns].reverse().find((r) => r.command === 'compile');
 
       if (compileRun) {
-        const { cwd, planSet } = compileRun;
+        const { cwd: runCwd, planSet } = compileRun;
         const planBase = options?.planOutputDir ?? 'eforge/plans';
-        const planDir = resolve(cwd, planBase, planSet);
-        const expectedBase = resolve(cwd, planBase);
-        if (!planDir.startsWith(expectedBase + '/')) {
-          // planSet contains path traversal — skip expedition files
+        const candidates = candidatePlanDirs(runCwd, planBase, planSet);
+
+        let resolvedPlanDir: string | null = null;
+        for (const candidate of candidates) {
+          if (!candidate.dir.startsWith(candidate.base + '/')) continue;
+          try {
+            await stat(candidate.dir);
+            resolvedPlanDir = candidate.dir;
+            break;
+          } catch {
+            // try next candidate
+          }
+        }
+
+        if (!resolvedPlanDir) {
           sendJson(res, compiledPlans);
           return;
         }
@@ -449,7 +507,7 @@ export async function startServer(
           // ignore
         }
 
-        expeditionFiles = await readExpeditionFiles(planDir, new Map(modules.map((m) => [m.id, m])));
+        expeditionFiles = await readExpeditionFiles(resolvedPlanDir, new Map(modules.map((m) => [m.id, m])));
       }
     }
 
@@ -592,11 +650,23 @@ export async function startServer(
     const run = [...sessionRuns].reverse().find((r) => r.cwd && r.planSet);
     if (!run) return null;
 
-    // Read orchestration.yaml
+    // Read orchestration.yaml — try main repo first, then merge worktree fallback
     try {
       const planBase = options?.planOutputDir ?? 'eforge/plans';
-      const orchPath = resolve(run.cwd, planBase, run.planSet, 'orchestration.yaml');
-      const content = await readFile(orchPath, 'utf-8');
+      const candidates = candidateOrchestrationPaths(run.cwd, planBase, run.planSet);
+
+      let content: string | null = null;
+      for (const candidate of candidates) {
+        if (!candidate.path.startsWith(candidate.base + '/')) continue;
+        try {
+          content = await readFile(candidate.path, 'utf-8');
+          break;
+        } catch {
+          // try next candidate
+        }
+      }
+      if (!content) return null;
+
       const orch = parseYaml(content);
       if (!orch?.base_branch || !Array.isArray(orch.plans)) return null;
 
