@@ -324,8 +324,8 @@ export class PiBackend implements AgentBackend {
       model = resolveModel(options.model, this.piConfig);
       thinkingLevel = resolveThinkingLevel(options, this.piConfig);
     } catch (err) {
-      yield { type: 'agent:start', planId, agent, agentId, model: options.model, backend: 'pi', timestamp: new Date().toISOString() };
-      yield { type: 'agent:stop', planId, agent, agentId, model: options.model, backend: 'pi', error: err instanceof Error ? err.message : String(err), durationMs: 0, inputTokens: 0, outputTokens: 0, timestamp: new Date().toISOString() };
+      yield { type: 'agent:start', planId, agent, agentId, model: options.model ?? 'unknown', backend: 'pi', timestamp: new Date().toISOString() };
+      yield { type: 'agent:stop', planId, agent, agentId, error: err instanceof Error ? err.message : String(err), timestamp: new Date().toISOString() };
       return;
     }
 
