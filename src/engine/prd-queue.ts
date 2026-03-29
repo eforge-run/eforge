@@ -12,7 +12,7 @@ import { resolve, basename } from 'node:path';
 import { promisify } from 'node:util';
 import { z } from 'zod/v4';
 import { resolveDependencyGraph } from './plan.js';
-import { forgeCommit } from './git.js';
+import { forgeCommit, retryOnLock } from './git.js';
 
 const exec = promisify(execFile);
 
@@ -279,9 +279,13 @@ export async function cleanupCompletedPrd(filePath: string, queueDir: string, cw
 
   // git rm (tracked files), fall back to fs rm (untracked)
   try {
-    await exec('git', ['rm', '-f', '--', filePath], { cwd });
+    await retryOnLock(() => exec('git', ['rm', '-f', '--', filePath], { cwd }), cwd);
   } catch {
     await rm(absFilePath);
+    // Stage the deletion so forgeCommit picks it up
+    try {
+      await retryOnLock(() => exec('git', ['add', '--', filePath], { cwd }), cwd);
+    } catch { /* file may have been untracked */ }
   }
 
   // Remove empty queue directory (non-recursive — fails safely if not empty)

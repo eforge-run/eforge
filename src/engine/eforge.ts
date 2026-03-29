@@ -915,7 +915,7 @@ async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir: string
 
   try {
     const planDir = resolve(cwd, outputDir, planSet);
-    await exec('git', ['rm', '-r', '--', planDir], { cwd });
+    await retryOnLock(() => exec('git', ['rm', '-r', '--', planDir], { cwd }), cwd);
 
     // Remove empty output directory
     const plansDir = resolve(cwd, outputDir);
@@ -931,9 +931,13 @@ async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir: string
       try {
         // git rm (tracked files), fall back to fs rm (untracked)
         try {
-          await exec('git', ['rm', '-f', '--', prdFilePath], { cwd });
+          await retryOnLock(() => exec('git', ['rm', '-f', '--', prdFilePath], { cwd }), cwd);
         } catch {
-          await rm(resolve(prdFilePath));
+          await rm(resolve(cwd, prdFilePath));
+          // Stage the deletion so forgeCommit picks it up
+          try {
+            await retryOnLock(() => exec('git', ['add', '--', prdFilePath], { cwd }), cwd);
+          } catch { /* file may have been untracked */ }
         }
 
         // Remove empty parent directory of the PRD file
