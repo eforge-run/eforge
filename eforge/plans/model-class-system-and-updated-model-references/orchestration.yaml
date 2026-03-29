@@ -1,0 +1,49 @@
+name: model-class-system-and-updated-model-references
+description: Introduce a model class system (max/balanced/fast/auto) with
+  per-backend defaults, update resolveAgentConfig resolution chain, and replace
+  all outdated claude-sonnet-4 model references with 4-6 versions.
+created: 2026-03-29
+compiled: 2026-03-29
+mode: type-system-refactor
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-model-class-system
+    name: Model Class System - Types, Resolution, and Config Schema
+    depends_on: []
+    branch: model-class-system-and-updated-model-references/model-class-system
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-docs-update
+    name: Documentation - Model Class System and Updated Model References
+    depends_on:
+      - plan-01-model-class-system
+    branch: model-class-system-and-updated-model-references/docs-update
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors. Use when the full scope can
+    be planned in a single planner session - all plans enumerated, all file
+    changes listed, and cross-plan dependencies resolved. Covers tightly coupled
+    changes (type cascades, interface refactors, rename-and-update-all-callers)
+    and any work where one planning pass is sufficient.
+  compile:
+    - planner
+    - plan-review-cycle
