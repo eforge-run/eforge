@@ -20,6 +20,8 @@ import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig } from '../engine/config.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
+import { openSync, closeSync, mkdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 let respawnDelayMs = 5000;
 const ORPHAN_CHECK_INTERVAL_MS = 5000;
@@ -149,12 +151,21 @@ async function main(): Promise<void> {
         if (command !== 'enqueue') {
           commandArgs.push('--no-monitor');
         }
-        const child = spawn('eforge', commandArgs, {
-          cwd,
-          detached: true,
-          stdio: 'ignore',
-        });
-        child.unref();
+        // Ensure .eforge/ directory exists and open a per-session log file
+        const eforgeDir = resolve(cwd, '.eforge');
+        mkdirSync(eforgeDir, { recursive: true });
+        const logFd = openSync(resolve(eforgeDir, `worker-${sessionId}.log`), 'w');
+        let child: ReturnType<typeof spawn>;
+        try {
+          child = spawn('eforge', commandArgs, {
+            cwd,
+            detached: true,
+            stdio: ['ignore', logFd, logFd],
+          });
+          child.unref();
+        } finally {
+          closeSync(logFd);
+        }
         const pid = child.pid;
         if (pid === undefined) {
           throw new Error(`Failed to spawn worker for command: ${command}`);
@@ -344,9 +355,19 @@ async function main(): Promise<void> {
     updateLockfile(cwd, { watcherPid: undefined });
   }
 
+  // Load config before starting server so we can pass it for validation
+  let config: Awaited<ReturnType<typeof loadConfig>> | undefined;
+  if (persistent) {
+    try {
+      config = await loadConfig(cwd);
+    } catch {
+      // Config load failure — leave config undefined
+    }
+  }
+
   let server: Awaited<ReturnType<typeof startServer>>;
   try {
-    server = await startServer(db, preferredPort, { cwd, workerTracker, daemonState });
+    server = await startServer(db, preferredPort, { cwd, workerTracker, daemonState, config });
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       // Another server won the race — exit cleanly
@@ -367,20 +388,15 @@ async function main(): Promise<void> {
   registerPort(cwd, server.port, process.pid);
 
   // --- Start watcher if autoBuild enabled + idle shutdown (persistent mode) ---
-  if (persistent && daemonState) {
-    try {
-      const config = await loadConfig(cwd);
-      respawnDelayMs = config.prdQueue.watchPollIntervalMs;
-      daemonState.autoBuild = config.prdQueue.autoBuild;
-      if (daemonState.autoBuild) {
-        spawnWatcher();
-      }
-      // Enable idle auto-shutdown for persistent mode when configured (0 = disabled)
-      if (config.daemon.idleShutdownMs > 0) {
-        setupStateMachine(config.daemon.idleShutdownMs);
-      }
-    } catch {
-      // Config load failure — leave autoBuild disabled, no idle shutdown
+  if (persistent && daemonState && config) {
+    respawnDelayMs = config.prdQueue.watchPollIntervalMs;
+    daemonState.autoBuild = config.prdQueue.autoBuild;
+    if (daemonState.autoBuild) {
+      spawnWatcher();
+    }
+    // Enable idle auto-shutdown for persistent mode when configured (0 = disabled)
+    if (config.daemon.idleShutdownMs > 0) {
+      setupStateMachine(config.daemon.idleShutdownMs);
     }
   }
 

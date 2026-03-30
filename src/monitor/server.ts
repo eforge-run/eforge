@@ -13,6 +13,7 @@ import { parse as parseYaml } from 'yaml';
 
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
+import type { EforgeConfig } from '../engine/config.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
@@ -91,7 +92,7 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'backend'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -1016,6 +1017,10 @@ export async function startServer(
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
       }
+      if (options.config && !options.config.backend) {
+        sendJsonError(res, 422, 'No backend configured. Set backend: claude-sdk or backend: pi in eforge/config.yaml');
+        return;
+      }
       try {
         const body = await parseJsonBody(req) as { source?: string; flags?: string[] };
         if (!body.source || typeof body.source !== 'string') {
@@ -1034,6 +1039,10 @@ export async function startServer(
     if (req.method === 'POST' && url === '/api/enqueue') {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      if (options.config && !options.config.backend) {
+        sendJsonError(res, 422, 'No backend configured. Set backend: claude-sdk or backend: pi in eforge/config.yaml');
         return;
       }
       try {
