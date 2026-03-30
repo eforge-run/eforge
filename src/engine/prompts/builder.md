@@ -8,8 +8,6 @@ You are working in a git worktree. All changes should be made within this workin
 
 - **Plan ID**: {{plan_id}}
 - **Plan Name**: {{plan_name}}
-- **Branch**: {{plan_branch}}
-
 {{continuation_context}}
 
 ## Plan Content
@@ -55,6 +53,7 @@ Forged by eforge https://eforge.build"
 
 ## Constraints
 
+- **No branch operations** — do not create, checkout, or switch git branches. The orchestrator manages all branching.
 - **No intermediate commits** — all changes must be in a single commit
 - **No out-of-scope changes** — only implement what the plan specifies
 - **No placeholder code** — every function must have a real implementation

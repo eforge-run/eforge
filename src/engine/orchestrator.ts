@@ -20,6 +20,7 @@ import {
   mergeWorktree,
   mergeFeatureBranchToBase,
   cleanupWorktrees,
+  recoverDriftedWorktree,
   type MergeResolver,
 } from './worktree.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
@@ -508,7 +509,11 @@ export class Orchestrator {
 
               if (builtOnMergeWorktree.has(planId)) {
                 // Plan built directly on the merge worktree — commits already on featureBranch.
-                // No squash merge needed. Just capture the current HEAD SHA.
+                // No squash merge needed. Recover from any branch drift first, then capture HEAD SHA.
+                const prefix = config.mode === 'errand' ? 'fix' : 'feat';
+                const driftCommitMessage = `${prefix}(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}`;
+                await recoverDriftedWorktree(mergeWorktreePath, featureBranch, driftCommitMessage);
+
                 const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: mergeWorktreePath });
                 const commitSha = shaOut.trim();
 

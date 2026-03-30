@@ -336,6 +336,55 @@ export async function mergeFeatureBranchToBase(
 }
 
 /**
+ * Detect and recover from branch drift in a worktree.
+ *
+ * If the worktree HEAD is on the expected branch, this is a no-op.
+ * If the builder (or any agent) switched to a different branch or detached HEAD,
+ * this function squash-merges the drifted changes back onto the expected branch.
+ *
+ * Recovery steps:
+ * 1. Detect current branch vs expectedBranch
+ * 2. If detached HEAD, create a temporary branch (`eforge/drift-recovery`) via `-B`
+ * 3. Squash-merge the drifted branch into expectedBranch using `mergeWorktree`
+ * 4. Best-effort delete the drift branch
+ */
+export async function recoverDriftedWorktree(
+  cwd: string,
+  expectedBranch: string,
+  commitMessage: string,
+): Promise<void> {
+  // Determine current branch (empty string if detached HEAD)
+  const { stdout: currentBranchRaw } = await exec('git', ['branch', '--show-current'], { cwd });
+  const currentBranch = currentBranchRaw.trim();
+
+  if (currentBranch === expectedBranch) {
+    // No drift — nothing to do
+    return;
+  }
+
+  let driftBranch: string;
+
+  if (currentBranch === '') {
+    // Detached HEAD — create a temporary branch to hold the drifted commits
+    driftBranch = 'eforge/drift-recovery';
+    await exec('git', ['checkout', '-B', driftBranch], { cwd });
+  } else {
+    // On a different named branch
+    driftBranch = currentBranch;
+  }
+
+  // Squash-merge drifted changes back onto the expected branch
+  await mergeWorktree(cwd, driftBranch, expectedBranch, commitMessage);
+
+  // Best-effort cleanup of the drift branch
+  try {
+    await exec('git', ['branch', '-D', driftBranch], { cwd });
+  } catch {
+    // Silently ignore — recovery already succeeded
+  }
+}
+
+/**
  * Cleanup all worktrees: prune git metadata and remove the base directory.
  */
 export async function cleanupWorktrees(repoRoot: string, worktreeBase: string): Promise<void> {

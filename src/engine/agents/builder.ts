@@ -123,7 +123,6 @@ Review the diff above, then continue implementing the remaining parts of the pla
     plan_id: plan.id,
     plan_name: plan.name,
     plan_content: plan.body,
-    plan_branch: plan.branch,
     parallelLanes,
     verification_scope: verificationScopeText,
     continuation_context: continuationContextText,
