@@ -545,6 +545,21 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(event.approved ? chalk.green('  \u2713 Approved') : chalk.red('  \u2717 Denied'));
       break;
 
+    // Reconciliation (resume)
+    case 'reconciliation:start':
+      startSpinner('reconciliation', 'Reconciling worktree state...');
+      break;
+
+    case 'reconciliation:complete': {
+      const r = event.report;
+      const parts: string[] = [];
+      if (r.valid.length > 0) parts.push(chalk.green(`${r.valid.length} valid`));
+      if (r.missing.length > 0) parts.push(chalk.yellow(`${r.missing.length} missing`));
+      if (r.corrupt.length > 0) parts.push(chalk.red(`${r.corrupt.length} corrupt`));
+      succeedSpinner('reconciliation', `Reconciliation complete: ${parts.join(', ')}`);
+      break;
+    }
+
     // Cleanup (post-build)
     case 'cleanup:start':
       startSpinner('cleanup', `Cleaning up plan files for ${chalk.cyan(event.planSet)}...`);

@@ -18,6 +18,7 @@ export type {
   EnqueueOptions,
   EforgeStatus,
   StalenessVerdict,
+  ReconciliationReport,
 } from './events.js';
 
 // --- plan ---

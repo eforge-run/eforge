@@ -67,14 +67,14 @@ export function initializeState(
   stateDir: string,
   config: OrchestrationConfig,
   repoRoot: string,
-): EforgeState {
+): { state: EforgeState; resumed: boolean } {
   const existing = loadState(stateDir);
 
   if (existing && existing.setName === config.name) {
     if (isResumable(existing)) {
       resumeState(existing);
       saveState(stateDir, existing);
-      return existing;
+      return { state: existing, resumed: true };
     }
     // Non-resumable (failed/completed) — fall through to fresh state creation
   }
@@ -106,7 +106,7 @@ export function initializeState(
   };
 
   saveState(stateDir, state);
-  return state;
+  return { state, resumed: false };
 }
 
 export class Orchestrator {
@@ -118,7 +118,7 @@ export class Orchestrator {
 
   async *execute(config: OrchestrationConfig): AsyncGenerator<EforgeEvent> {
     const { stateDir, repoRoot, signal } = this.options;
-    const state = initializeState(stateDir, config, repoRoot);
+    const { state, resumed } = initializeState(stateDir, config, repoRoot);
     if (state.status !== 'running') {
       yield { type: 'phase:end', runId: '', result: { status: 'failed', summary: `Non-resumable state: ${state.status}` }, timestamp: new Date().toISOString() };
       return;
@@ -135,7 +135,7 @@ export class Orchestrator {
       signal, postMergeCommands: this.options.postMergeCommands, validateCommands: this.options.validateCommands,
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
       mergeResolver: this.options.mergeResolver, worktreeManager: wm,
-      failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false,
+      failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, resumed,
     };
     try {
       yield* executePlans(ctx);

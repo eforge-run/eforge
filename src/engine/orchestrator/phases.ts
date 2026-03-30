@@ -44,6 +44,8 @@ export interface PhaseContext {
   recentlyMergedIds: string[];
   /** Whether the feature branch was successfully merged to baseBranch */
   featureBranchMerged: boolean;
+  /** Whether this execution is resuming from a prior interrupted run */
+  resumed: boolean;
 }
 
 /**
@@ -180,6 +182,14 @@ export function computeMaxConcurrency(
 export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
   const { state, config, stateDir, planRunner, signal } = ctx;
   const planMap = new Map(config.plans.map((p) => [p.id, p]));
+
+  // On resume, reconcile persisted state with actual filesystem/git state
+  if (ctx.resumed) {
+    yield { timestamp: new Date().toISOString(), type: 'reconciliation:start' };
+    const report = await ctx.worktreeManager.reconcile(state);
+    saveState(stateDir, state);
+    yield { timestamp: new Date().toISOString(), type: 'reconciliation:complete', report };
+  }
 
   // Determine if plan worktrees are needed based on dependency graph concurrency
   const maxConcurrency = computeMaxConcurrency(config.plans);

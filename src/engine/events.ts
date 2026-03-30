@@ -114,6 +114,17 @@ export interface EnqueueOptions {
   abortController?: AbortController;
 }
 
+export interface ReconciliationReport {
+  /** Plan IDs with valid, existing worktrees on correct branches. */
+  valid: string[];
+  /** Plan IDs whose worktrees are missing from the filesystem. */
+  missing: string[];
+  /** Plan IDs whose worktrees exist but are on the wrong branch or detached. */
+  corrupt: string[];
+  /** Plan IDs whose worktreePath was cleared in state (union of missing + corrupt). */
+  cleared: string[];
+}
+
 export interface EforgeStatus {
   running: boolean;
   setName?: string;
@@ -220,6 +231,10 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'validation:complete'; passed: boolean }
   | { type: 'validation:fix:start'; attempt: number; maxAttempts: number }
   | { type: 'validation:fix:complete'; attempt: number }
+
+  // Reconciliation (resume)
+  | { type: 'reconciliation:start' }
+  | { type: 'reconciliation:complete'; report: ReconciliationReport }
 
   // Cleanup (post-build)
   | { type: 'cleanup:start'; planSet: string }

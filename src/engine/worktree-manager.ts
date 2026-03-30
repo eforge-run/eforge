@@ -6,6 +6,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import { existsSync } from 'node:fs';
+
 import {
   createWorktree,
   removeWorktree,
@@ -16,6 +18,7 @@ import {
   type MergeResolver,
 } from './worktree-ops.js';
 import { ATTRIBUTION } from './git.js';
+import type { EforgeState, ReconciliationReport } from './events.js';
 
 const exec = promisify(execFile);
 
@@ -207,6 +210,102 @@ export class WorktreeManager {
       this.worktreeBase,
       mergeResolver,
     );
+  }
+
+  /**
+   * Reconcile persisted state with the actual filesystem and git state.
+   * Checks that worktrees referenced in state actually exist and are on the
+   * correct branches. Missing or corrupt worktrees have their worktreePath
+   * cleared so they'll be re-created on retry.
+   */
+  async reconcile(state: EforgeState): Promise<ReconciliationReport> {
+    const report: ReconciliationReport = {
+      valid: [],
+      missing: [],
+      corrupt: [],
+      cleared: [],
+    };
+
+    // Check the merge worktree
+    const mergeWtPath = state.mergeWorktreePath;
+    if (mergeWtPath) {
+      if (!existsSync(mergeWtPath)) {
+        report.missing.push('__merge__');
+        report.cleared.push('__merge__');
+        state.mergeWorktreePath = undefined;
+      } else {
+        try {
+          const { stdout } = await exec('git', ['branch', '--show-current'], { cwd: mergeWtPath });
+          const currentBranch = stdout.trim();
+          if (currentBranch !== this.featureBranch) {
+            report.corrupt.push('__merge__');
+            report.cleared.push('__merge__');
+            try { await removeWorktree(this.repoRoot, mergeWtPath); } catch { /* best-effort */ }
+            state.mergeWorktreePath = undefined;
+          } else {
+            report.valid.push('__merge__');
+          }
+        } catch {
+          report.corrupt.push('__merge__');
+          report.cleared.push('__merge__');
+          try { await removeWorktree(this.repoRoot, mergeWtPath); } catch { /* best-effort */ }
+          state.mergeWorktreePath = undefined;
+        }
+      }
+    }
+
+    // Check each plan's worktree
+    for (const [planId, planState] of Object.entries(state.plans)) {
+      const wtPath = planState.worktreePath;
+      if (!wtPath) continue;
+
+      if (!existsSync(wtPath)) {
+        report.missing.push(planId);
+        report.cleared.push(planId);
+        planState.worktreePath = undefined;
+        this.worktrees.delete(planId);
+        if (planState.status === 'running') {
+          planState.status = 'pending';
+        }
+        continue;
+      }
+
+      try {
+        const { stdout } = await exec('git', ['branch', '--show-current'], { cwd: wtPath });
+        const currentBranch = stdout.trim();
+        if (currentBranch !== planState.branch) {
+          report.corrupt.push(planId);
+          report.cleared.push(planId);
+          try { await removeWorktree(this.repoRoot, wtPath); } catch { /* best-effort */ }
+          planState.worktreePath = undefined;
+          if (planState.status === 'running') {
+            planState.status = 'pending';
+          }
+        } else {
+          report.valid.push(planId);
+          if (!this.worktrees.has(planId)) {
+            this.worktrees.set(planId, {
+              type: 'plan',
+              planId,
+              path: wtPath,
+              branch: planState.branch!,
+              status: 'active',
+              builtOnMerge: false,
+            });
+          }
+        }
+      } catch {
+        report.corrupt.push(planId);
+        report.cleared.push(planId);
+        try { await removeWorktree(this.repoRoot, wtPath); } catch { /* best-effort */ }
+        planState.worktreePath = undefined;
+        if (planState.status === 'running') {
+          planState.status = 'pending';
+        }
+      }
+    }
+
+    return report;
   }
 
   /**

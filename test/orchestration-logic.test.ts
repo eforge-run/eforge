@@ -394,7 +394,7 @@ describe('initializeState', () => {
   it('creates fresh state when no existing state', () => {
     const stateDir = makeTempDir();
     const config = makeConfig();
-    const state = initializeState(stateDir, config, '/tmp/repo');
+    const { state } = initializeState(stateDir, config, '/tmp/repo');
 
     expect(state.status).toBe('running');
     expect(state.setName).toBe('test-set');
@@ -405,7 +405,7 @@ describe('initializeState', () => {
   it('initializes featureBranch from config name', () => {
     const stateDir = makeTempDir();
     const config = makeConfig({ name: 'my-feature' });
-    const state = initializeState(stateDir, config, '/tmp/repo');
+    const { state } = initializeState(stateDir, config, '/tmp/repo');
 
     expect(state.featureBranch).toBe('eforge/my-feature');
   });
@@ -429,7 +429,7 @@ describe('initializeState', () => {
     };
     saveState(stateDir, failedState);
 
-    const state = initializeState(stateDir, config, '/tmp/repo');
+    const { state } = initializeState(stateDir, config, '/tmp/repo');
 
     expect(state.status).toBe('running');
     expect(state.plans['plan-a'].status).toBe('pending');
@@ -456,7 +456,7 @@ describe('initializeState', () => {
     };
     saveState(stateDir, completedState);
 
-    const state = initializeState(stateDir, config, '/tmp/repo');
+    const { state } = initializeState(stateDir, config, '/tmp/repo');
 
     expect(state.status).toBe('running');
     expect(state.plans['plan-a'].status).toBe('pending');
@@ -482,7 +482,7 @@ describe('initializeState', () => {
     };
     saveState(stateDir, resumableState);
 
-    const state = initializeState(stateDir, config, '/tmp/repo');
+    const { state } = initializeState(stateDir, config, '/tmp/repo');
 
     expect(state.status).toBe('running');
     expect(state.plans['plan-a'].status).toBe('completed');
@@ -507,7 +507,7 @@ describe('initializeState', () => {
     };
     saveState(stateDir, oldState);
 
-    const state = initializeState(stateDir, config, '/tmp/repo');
+    const { state } = initializeState(stateDir, config, '/tmp/repo');
 
     expect(state.status).toBe('running');
     expect(state.setName).toBe('new-set');
