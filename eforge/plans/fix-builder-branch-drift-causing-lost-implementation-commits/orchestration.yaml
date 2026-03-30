@@ -1,0 +1,37 @@
+name: fix-builder-branch-drift-causing-lost-implementation-commits
+description: Prevent builder agents from drifting off the feature branch, add
+  defensive drift recovery to the orchestrator merge path, and resurrect lost
+  eforge config init implementation commits
+created: 2026-03-30
+compiled: 2026-03-30
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-fix-branch-drift
+    name: Fix builder branch drift and add drift recovery
+    depends_on: []
+    branch: fix-builder-branch-drift-causing-lost-implementation-commits/fix-branch-drift
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors. Use when the full scope can
+    be planned in a single planner session - all plans enumerated, all file
+    changes listed, and cross-plan dependencies resolved. Covers tightly coupled
+    changes (type cascades, interface refactors, rename-and-update-all-callers)
+    and any work where one planning pass is sufficient.
+  compile:
+    - planner
+    - plan-review-cycle
