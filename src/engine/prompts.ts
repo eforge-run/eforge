@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { ATTRIBUTION } from './git.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROMPTS_DIR = resolve(__dirname, 'prompts');
@@ -34,9 +35,8 @@ export async function loadPrompt(
     }
   }
 
-  if (vars) {
-    content = content.replace(/\{\{(\w+)\}\}/g, (match, key) => vars[key] ?? match);
-  }
+  const allVars: Record<string, string> = { attribution: ATTRIBUTION, ...vars };
+  content = content.replace(/\{\{(\w+)\}\}/g, (match, key) => allVars[key] ?? match);
 
   return content;
 }

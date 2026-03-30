@@ -152,5 +152,5 @@ After applying all verdicts:
    ```bash
    git add {{outputDir}}/{{plan_set_name}}/ && git commit -m "plan({{plan_set_name}}): planning artifacts
 
-Forged by eforge https://eforge.build"
+{{attribution}}"
    ```

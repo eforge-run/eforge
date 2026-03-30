@@ -1,7 +1,7 @@
 /**
  * Git helpers — shared commit logic with eforge attribution.
  * All engine-level commits go through forgeCommit() to ensure
- * the "Forged by eforge" attribution is always appended.
+ * the Co-Authored-By trailer is always appended.
  */
 
 import { execFile } from 'node:child_process';
@@ -12,7 +12,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 
 const exec = promisify(execFile);
 
-export const ATTRIBUTION = 'Forged by eforge https://eforge.build';
+export const ATTRIBUTION = 'Co-Authored-By: forged-by-eforge <noreply@eforge.build>';
 
 /** Stale lock threshold in milliseconds (5 seconds). */
 const STALE_LOCK_THRESHOLD_MS = 5_000;

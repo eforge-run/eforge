@@ -34,7 +34,7 @@ For test bugs:
 ```
 git add <test-files> && git commit -m "fix({{plan_id}}): fix test issues
 
-Forged by eforge https://eforge.build"
+{{attribution}}"
 ```
 
 ### Phase 4: Report Production Bugs

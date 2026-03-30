@@ -202,5 +202,5 @@ After applying all verdicts:
    ```bash
    git add -A && git commit -m "feat({{plan_id}}): {{plan_name}}
 
-Forged by eforge https://eforge.build"
+{{attribution}}"
    ```

@@ -40,7 +40,7 @@ After writing all tests, stage and commit them:
 ```
 git add <test-files> && git commit -m "test({{plan_id}}): add tests
 
-Forged by eforge https://eforge.build"
+{{attribution}}"
 ```
 
 ## Constraints

@@ -30,5 +30,5 @@ This is attempt {{attempt}} of {{max_attempts}}.
   ```
   git add -u && git commit -m "fix: resolve validation failures
 
-  Forged by eforge https://eforge.build"
+  {{attribution}}"
   ```
