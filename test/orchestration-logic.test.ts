@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { propagateFailure, resumeState, shouldSkipMerge, initializeState, computeMaxConcurrency } from '../src/engine/orchestrator.js';
+import { propagateFailure, shouldSkipMerge, computeMaxConcurrency } from '../src/engine/orchestrator/phases.js';
+import { resumeState } from '../src/engine/orchestrator/plan-lifecycle.js';
+import { initializeState } from '../src/engine/orchestrator.js';
 import { saveState } from '../src/engine/state.js';
 import { BUILTIN_PROFILES } from '../src/engine/config.js';
 import type { EforgeState, OrchestrationConfig, PlanState } from '../src/engine/events.js';
