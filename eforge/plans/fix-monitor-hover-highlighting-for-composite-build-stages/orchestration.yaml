@@ -1,0 +1,30 @@
+name: fix-monitor-hover-highlighting-for-composite-build-stages
+description: Fix bidirectional hover highlighting between composite build stage
+  breadcrumbs and agent bars in the monitor pipeline view
+created: 2026-03-30
+compiled: 2026-03-30
+mode: single-file-ui-fix
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-fix-hover-highlighting
+    name: Fix monitor hover highlighting for composite build stages
+    depends_on: []
+    branch: fix-monitor-hover-highlighting-for-composite-build-stages/fix-hover-highlighting
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
