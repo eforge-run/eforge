@@ -271,6 +271,9 @@ export const eforgeConfigSchema = z.object({
   daemon: z.object({
     idleShutdownMs: z.number().int().nonnegative().optional(),
   }).optional(),
+  monitor: z.object({
+    retentionCount: z.number().int().positive().optional(),
+  }).optional(),
   pi: piConfigSchema.optional(),
   hooks: z.array(hookConfigSchema).optional(),
   profiles: z.record(z.string(), partialProfileConfigSchema).optional(),
@@ -334,6 +337,7 @@ export interface EforgeConfig {
   plugins: PluginConfig;
   prdQueue: { dir: string; autoRevise: boolean; autoBuild: boolean; watchPollIntervalMs: number; parallelism: number };
   daemon: { idleShutdownMs: number };
+  monitor: { retentionCount: number };
   pi: PiConfig;
   hooks: readonly HookConfig[];
   profiles: Record<string, ResolvedProfileConfig>;
@@ -393,6 +397,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   plugins: Object.freeze({ enabled: true }),
   prdQueue: Object.freeze({ dir: 'eforge/queue', autoRevise: true, autoBuild: true, watchPollIntervalMs: 5000, parallelism: 1 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
+  monitor: Object.freeze({ retentionCount: 20 }),
   pi: Object.freeze({
     thinkingLevel: 'medium' as const,
     extensions: Object.freeze({ autoDiscover: true }),
@@ -502,6 +507,9 @@ export function resolveConfig(
     }),
     daemon: Object.freeze({
       idleShutdownMs: fileConfig.daemon?.idleShutdownMs ?? DEFAULT_CONFIG.daemon.idleShutdownMs,
+    }),
+    monitor: Object.freeze({
+      retentionCount: fileConfig.monitor?.retentionCount ?? DEFAULT_CONFIG.monitor.retentionCount,
     }),
     pi: Object.freeze({
       provider: fileConfig.pi?.provider,
@@ -663,6 +671,9 @@ export function mergePartialConfigs(
   }
   if (global.daemon || project.daemon) {
     result.daemon = { ...global.daemon, ...project.daemon };
+  }
+  if (global.monitor || project.monitor) {
+    result.monitor = { ...global.monitor, ...project.monitor };
   }
   if (global.pi || project.pi) {
     result.pi = { ...global.pi, ...project.pi };

@@ -957,6 +957,28 @@ function arraysEqual(a: string[], b: string[]): boolean {
 }
 
 /**
+ * Capture per-file diffs between the working tree and a base branch.
+ * Runs a single `git diff <baseBranch>` and splits the output on `diff --git a/` headers.
+ * Returns an empty array on failure (non-critical).
+ */
+export async function captureFileDiffs(cwd: string, baseBranch: string): Promise<Array<{ path: string; diff: string }>> {
+  try {
+    const { stdout } = await exec('git', ['diff', baseBranch], { cwd });
+    if (!stdout.trim()) return [];
+
+    const chunks = stdout.split(/(?=^diff --git a\/)/m).filter(Boolean);
+    return chunks.map((chunk) => {
+      // Extract path from "diff --git a/<path> b/<path>"
+      const match = chunk.match(/^diff --git a\/(.+?) b\//);
+      const path = match?.[1] ?? 'unknown';
+      return { path, diff: chunk };
+    });
+  } catch {
+    return [];
+  }
+}
+
+/**
  * Wrap an inner agent async generator to periodically check for file changes
  * and interleave `build:files_changed` events. Uses `Promise.race` between
  * the next agent event and a timer so checks happen even during long agent turns.
@@ -997,7 +1019,8 @@ export async function* withPeriodicFileCheck(
           const files = stdout.trim().split('\n').filter(Boolean).sort();
           if (files.length > 0 && !arraysEqual(files, lastFiles)) {
             lastFiles = files;
-            yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files };
+            const diffs = await captureFileDiffs(ctx.worktreePath, ctx.orchConfig.baseBranch);
+            yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files, diffs, baseBranch: ctx.orchConfig.baseBranch };
           }
         } catch {
           // Non-critical — skip silently
@@ -1028,7 +1051,8 @@ async function* emitFilesChanged(ctx: BuildStageContext): AsyncGenerator<EforgeE
     const { stdout } = await exec('git', ['diff', '--name-only', ctx.orchConfig.baseBranch], { cwd: ctx.worktreePath });
     const files = stdout.trim().split('\n').filter(Boolean);
     if (files.length > 0) {
-      yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files };
+      const diffs = await captureFileDiffs(ctx.worktreePath, ctx.orchConfig.baseBranch);
+      yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files, diffs, baseBranch: ctx.orchConfig.baseBranch };
     }
   } catch {
     // Non-critical - skip silently

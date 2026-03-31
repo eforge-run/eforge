@@ -46,6 +46,21 @@ function mockGitDiff(stdout: string): void {
   mockedExecFilePromisified.mockResolvedValue({ stdout, stderr: '' });
 }
 
+/**
+ * Set up the promisified execFile mock to handle both --name-only and full diff calls.
+ * The first call pattern (with --name-only) returns file names.
+ * The second call pattern (without --name-only) returns full diff output.
+ */
+function mockGitDiffWithContent(nameOnlyStdout: string, fullDiffStdout: string): void {
+  mockedExecFilePromisified.mockImplementation((...args: any[]) => {
+    const gitArgs = args[1] as string[];
+    if (gitArgs.includes('--name-only')) {
+      return Promise.resolve({ stdout: nameOnlyStdout, stderr: '' });
+    }
+    return Promise.resolve({ stdout: fullDiffStdout, stderr: '' });
+  });
+}
+
 /** Set up the promisified execFile mock to reject with an error. */
 function mockGitDiffError(): void {
   mockedExecFilePromisified.mockRejectedValue(new Error('git failed'));
@@ -108,6 +123,43 @@ describe('withPeriodicFileCheck', () => {
     if (fileEvent && fileEvent.type === 'build:files_changed') {
       expect(fileEvent.files).toEqual(['src/bar.ts', 'src/foo.ts']); // sorted
       expect(fileEvent.planId).toBe('test-plan');
+    }
+  });
+
+  it('includes diffs and baseBranch in emitted file change events', async () => {
+    const fullDiff = [
+      'diff --git a/src/bar.ts b/src/bar.ts\n--- a/src/bar.ts\n+++ b/src/bar.ts\n+new line in bar',
+      'diff --git a/src/foo.ts b/src/foo.ts\n--- a/src/foo.ts\n+++ b/src/foo.ts\n+new line in foo',
+    ].join('\n');
+
+    mockGitDiffWithContent('src/foo.ts\nsrc/bar.ts\n', fullDiff);
+
+    const ctx = makeCtx();
+
+    async function* slowInner(): AsyncGenerator<EforgeEvent> {
+      yield { type: 'build:implement:start', planId: 'test-plan' } as EforgeEvent;
+      await sleep(TEST_INTERVAL_MS * 3);
+      yield { type: 'build:implement:complete', planId: 'test-plan' } as EforgeEvent;
+    }
+
+    const wrapped = withPeriodicFileCheck(slowInner(), ctx, TEST_INTERVAL_MS);
+
+    const collected: EforgeEvent[] = [];
+    for await (const event of wrapped) {
+      collected.push(event);
+    }
+
+    const fileEvent = collected.find((e) => e.type === 'build:files_changed');
+    expect(fileEvent).toBeDefined();
+    if (fileEvent && fileEvent.type === 'build:files_changed') {
+      expect(fileEvent.baseBranch).toBe('main');
+      expect(fileEvent.diffs).toBeDefined();
+      expect(fileEvent.diffs!.length).toBeGreaterThan(0);
+      // Each diff entry should have path and diff content
+      for (const d of fileEvent.diffs!) {
+        expect(d.path).toBeTruthy();
+        expect(d.diff).toContain('diff --git');
+      }
     }
   });
 

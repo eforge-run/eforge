@@ -408,6 +408,122 @@ describe('queue cycle recording with session:end presence', () => {
   });
 });
 
+describe('recorder extracts diffs from build:files_changed events', () => {
+  const makeTempDir = useTempDir();
+
+  it('inserts diffs into file_diffs table and strips them from serialized event', async () => {
+    const cwd = makeTempDir();
+    mkdirSync(resolve(cwd, '.eforge'), { recursive: true });
+    const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+    const db = openDatabase(dbPath);
+
+    const sessionId = 'session-diffs';
+    const runId = 'run-diffs';
+    const now = new Date().toISOString();
+
+    async function* fakeEvents(): AsyncGenerator<EforgeEvent> {
+      yield { type: 'session:start', sessionId, timestamp: now } as unknown as EforgeEvent;
+      yield {
+        type: 'phase:start', runId, sessionId, planSet: 'test-set', command: 'build', timestamp: now,
+      } as unknown as EforgeEvent;
+      yield {
+        type: 'build:files_changed',
+        runId,
+        planId: 'plan-01',
+        files: ['src/a.ts', 'src/b.ts'],
+        diffs: [
+          { path: 'src/a.ts', diff: 'diff content for a' },
+          { path: 'src/b.ts', diff: 'diff content for b' },
+        ],
+        timestamp: now,
+      } as unknown as EforgeEvent;
+      yield {
+        type: 'phase:end', runId, sessionId, result: { status: 'completed' }, timestamp: now,
+      } as unknown as EforgeEvent;
+      yield {
+        type: 'session:end', sessionId, result: { status: 'completed', summary: 'Done' }, timestamp: now,
+      } as unknown as EforgeEvent;
+    }
+
+    const { withRecording } = await import('../src/monitor/recorder.js');
+    const wrapped = withRecording(fakeEvents(), db, cwd);
+    const collected: EforgeEvent[] = [];
+    for await (const event of wrapped) {
+      collected.push(event);
+    }
+
+    // Diffs should be inserted into file_diffs table
+    const diffA = db.getFileDiff(sessionId, 'plan-01', 'src/a.ts');
+    expect(diffA).toBeDefined();
+    expect(diffA!.diffText).toBe('diff content for a');
+
+    const diffB = db.getFileDiff(sessionId, 'plan-01', 'src/b.ts');
+    expect(diffB).toBeDefined();
+    expect(diffB!.diffText).toBe('diff content for b');
+
+    // The serialized event in the events table should NOT contain diffs
+    const events = db.getEvents(runId);
+    const filesChangedEvent = events.find((e) => e.type === 'build:files_changed');
+    expect(filesChangedEvent).toBeDefined();
+    const parsed = JSON.parse(filesChangedEvent!.data);
+    expect(parsed.diffs).toBeUndefined();
+    expect(parsed.files).toEqual(['src/a.ts', 'src/b.ts']);
+
+    db.close();
+  });
+
+  it('passes through build:files_changed without diffs unchanged', async () => {
+    const cwd = makeTempDir();
+    mkdirSync(resolve(cwd, '.eforge'), { recursive: true });
+    const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+    const db = openDatabase(dbPath);
+
+    const sessionId = 'session-no-diffs';
+    const runId = 'run-no-diffs';
+    const now = new Date().toISOString();
+
+    async function* fakeEvents(): AsyncGenerator<EforgeEvent> {
+      yield { type: 'session:start', sessionId, timestamp: now } as unknown as EforgeEvent;
+      yield {
+        type: 'phase:start', runId, sessionId, planSet: 'test-set', command: 'build', timestamp: now,
+      } as unknown as EforgeEvent;
+      yield {
+        type: 'build:files_changed',
+        runId,
+        planId: 'plan-01',
+        files: ['src/a.ts'],
+        timestamp: now,
+      } as unknown as EforgeEvent;
+      yield {
+        type: 'phase:end', runId, sessionId, result: { status: 'completed' }, timestamp: now,
+      } as unknown as EforgeEvent;
+      yield {
+        type: 'session:end', sessionId, result: { status: 'completed', summary: 'Done' }, timestamp: now,
+      } as unknown as EforgeEvent;
+    }
+
+    const { withRecording } = await import('../src/monitor/recorder.js');
+    const wrapped = withRecording(fakeEvents(), db, cwd);
+    const collected: EforgeEvent[] = [];
+    for await (const event of wrapped) {
+      collected.push(event);
+    }
+
+    // No diffs should be in file_diffs table
+    const diffs = db.getFileDiffs(sessionId, 'plan-01');
+    expect(diffs).toHaveLength(0);
+
+    // The event should still be recorded normally
+    const events = db.getEvents(runId);
+    const filesChangedEvent = events.find((e) => e.type === 'build:files_changed');
+    expect(filesChangedEvent).toBeDefined();
+    const parsed = JSON.parse(filesChangedEvent!.data);
+    expect(parsed.files).toEqual(['src/a.ts']);
+
+    db.close();
+  });
+});
+
 describe('buildMonitor wiring', () => {
   const makeTempDir = useTempDir();
 

@@ -27,6 +27,38 @@ describe('build:files_changed event', () => {
     expect(event).toHaveProperty('files');
   });
 
+  it('accepts optional diffs and baseBranch fields', () => {
+    const event: EforgeEvent = {
+      type: 'build:files_changed',
+      planId: 'plan-01',
+      files: ['src/foo.ts'],
+      diffs: [{ path: 'src/foo.ts', diff: 'diff --git a/src/foo.ts b/src/foo.ts\n+added line' }],
+      baseBranch: 'main',
+    };
+
+    expect(event.type).toBe('build:files_changed');
+    if (event.type === 'build:files_changed') {
+      expect(event.diffs).toHaveLength(1);
+      expect(event.diffs![0].path).toBe('src/foo.ts');
+      expect(event.baseBranch).toBe('main');
+    }
+  });
+
+  it('works without diffs and baseBranch (backward compat)', () => {
+    // This tests that the fields are truly optional - no diffs or baseBranch
+    const event: EforgeEvent = {
+      type: 'build:files_changed',
+      planId: 'plan-01',
+      files: ['src/bar.ts'],
+    };
+
+    if (event.type === 'build:files_changed') {
+      expect(event.diffs).toBeUndefined();
+      expect(event.baseBranch).toBeUndefined();
+      expect(event.files).toEqual(['src/bar.ts']);
+    }
+  });
+
   it('can be discriminated from other build events', () => {
     const events: EforgeEvent[] = [
       { type: 'build:implement:start', planId: 'p1' },

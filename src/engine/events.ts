@@ -180,7 +180,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'build:implement:progress'; planId: string; message: string }
   | { type: 'build:implement:continuation'; planId: string; attempt: number; maxContinuations: number }
   | { type: 'build:implement:complete'; planId: string }
-  | { type: 'build:files_changed'; planId: string; files: string[] }
+  | { type: 'build:files_changed'; planId: string; files: string[]; diffs?: Array<{ path: string; diff: string }>; baseBranch?: string }
   | { type: 'build:review:start'; planId: string }
   | { type: 'build:review:complete'; planId: string; issues: ReviewIssue[] }
   | { type: 'build:review:parallel:start'; planId: string; perspectives: ReviewPerspective[] }

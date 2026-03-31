@@ -57,8 +57,21 @@ export interface MonitorDB {
   getLatestSessionId(): string | undefined;
   getSessionRuns(sessionId: string): RunRecord[];
   getSessionMetadataBatch(): Record<string, SessionMetadata>;
+  insertFileDiffs(runId: string, planId: string, diffs: Array<{ path: string; diff: string }>, timestamp: string): void;
+  getFileDiff(sessionId: string, planId: string, filePath: string): FileDiffRecord | undefined;
+  getFileDiffs(sessionId: string, planId: string): FileDiffRecord[];
+  cleanupOldSessions(keepCount: number): void;
   getLatestEventTimestamp(): string | undefined;
   close(): void;
+}
+
+export interface FileDiffRecord {
+  id: number;
+  runId: string;
+  planId: string;
+  filePath: string;
+  diffText: string;
+  timestamp: string;
 }
 
 export interface SessionMetadata {
@@ -93,6 +106,17 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_events_run_id ON events(run_id);
   CREATE INDEX IF NOT EXISTS idx_events_type ON events(type);
   CREATE INDEX IF NOT EXISTS idx_runs_session_id ON runs(session_id);
+
+  CREATE TABLE IF NOT EXISTS file_diffs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL REFERENCES runs(id),
+    plan_id TEXT NOT NULL,
+    file_path TEXT NOT NULL,
+    diff_text TEXT NOT NULL,
+    timestamp TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_file_diffs_plan_file ON file_diffs(plan_id, file_path);
+  CREATE INDEX IF NOT EXISTS idx_file_diffs_run_id ON file_diffs(run_id);
 `;
 
 export function openDatabase(dbPath: string): MonitorDB {
@@ -172,6 +196,27 @@ export function openDatabase(dbPath: string): MonitorDB {
     ),
     getSessionMetadataEvents: db.prepare(
       `SELECT e.type, e.data, r.session_id as sessionId FROM events e JOIN runs r ON e.run_id = r.id WHERE e.type IN ('plan:profile', 'plan:complete', 'agent:start') ORDER BY e.id`,
+    ),
+    insertFileDiff: db.prepare(
+      `INSERT INTO file_diffs (run_id, plan_id, file_path, diff_text, timestamp) VALUES (?, ?, ?, ?, ?)`,
+    ),
+    getFileDiff: db.prepare(
+      `SELECT fd.id, fd.run_id as runId, fd.plan_id as planId, fd.file_path as filePath, fd.diff_text as diffText, fd.timestamp FROM file_diffs fd JOIN runs r ON fd.run_id = r.id WHERE r.session_id = ? AND fd.plan_id = ? AND fd.file_path = ? ORDER BY fd.timestamp DESC LIMIT 1`,
+    ),
+    getFileDiffs: db.prepare(
+      `SELECT fd.id, fd.run_id as runId, fd.plan_id as planId, fd.file_path as filePath, fd.diff_text as diffText, fd.timestamp FROM file_diffs fd JOIN runs r ON fd.run_id = r.id WHERE r.session_id = ? AND fd.plan_id = ? ORDER BY fd.file_path, fd.timestamp DESC`,
+    ),
+    getDistinctSessionIds: db.prepare(
+      `SELECT session_id as sessionId FROM runs WHERE session_id IS NOT NULL GROUP BY session_id ORDER BY MAX(started_at) DESC`,
+    ),
+    deleteFileDiffsByRunIds: db.prepare(
+      `DELETE FROM file_diffs WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)`,
+    ),
+    deleteEventsByRunIds: db.prepare(
+      `DELETE FROM events WHERE run_id IN (SELECT id FROM runs WHERE session_id = ?)`,
+    ),
+    deleteRunsBySession: db.prepare(
+      `DELETE FROM runs WHERE session_id = ?`,
     ),
   };
 
@@ -303,6 +348,57 @@ export function openDatabase(dbPath: string): MonitorDB {
     getLatestEventTimestamp() {
       const row = stmts.getLatestEventTimestamp.get() as unknown as { timestamp: string } | undefined;
       return row?.timestamp;
+    },
+
+    insertFileDiffs(runId, planId, diffs, timestamp) {
+      db.exec('BEGIN');
+      try {
+        for (const d of diffs) {
+          stmts.insertFileDiff.run(runId, planId, d.path, d.diff, timestamp);
+        }
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
+    },
+
+    getFileDiff(sessionId, planId, filePath) {
+      return stmts.getFileDiff.get(sessionId, planId, filePath) as unknown as FileDiffRecord | undefined;
+    },
+
+    getFileDiffs(sessionId, planId) {
+      // Get all diffs, then deduplicate to latest per file path
+      const rows = stmts.getFileDiffs.all(sessionId, planId) as unknown as FileDiffRecord[];
+      // Since results are ordered by file_path, timestamp DESC, take first per file_path
+      const seen = new Set<string>();
+      const result: FileDiffRecord[] = [];
+      for (const row of rows) {
+        if (!seen.has(row.filePath)) {
+          seen.add(row.filePath);
+          result.push(row);
+        }
+      }
+      return result;
+    },
+
+    cleanupOldSessions(keepCount) {
+      const allSessions = stmts.getDistinctSessionIds.all() as unknown as { sessionId: string }[];
+      if (allSessions.length <= keepCount) return;
+
+      const sessionsToDelete = allSessions.slice(keepCount);
+      db.exec('BEGIN');
+      try {
+        for (const { sessionId } of sessionsToDelete) {
+          stmts.deleteFileDiffsByRunIds.run(sessionId);
+          stmts.deleteEventsByRunIds.run(sessionId);
+          stmts.deleteRunsBySession.run(sessionId);
+        }
+        db.exec('COMMIT');
+      } catch (e) {
+        db.exec('ROLLBACK');
+        throw e;
+      }
     },
 
     close() {

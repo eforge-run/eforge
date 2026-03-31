@@ -1176,6 +1176,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     plugins: overrides.plugins ? { ...base.plugins, ...overrides.plugins } : base.plugins,
     prdQueue: overrides.prdQueue ? { ...base.prdQueue, ...overrides.prdQueue } : base.prdQueue,
     daemon: overrides.daemon ? { ...base.daemon, ...overrides.daemon } : base.daemon,
+    monitor: overrides.monitor ? { ...base.monitor, ...overrides.monitor } : base.monitor,
     pi: overrides.pi ? { ...base.pi, ...overrides.pi } : base.pi,
     hooks: overrides.hooks ?? base.hooks,
     profiles: overrides.profiles ?? base.profiles,
