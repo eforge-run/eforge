@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { CheckCircle2, XCircle, Loader2, Clock, Zap, DollarSign, Layers } from 'lucide-react';
+import { CheckCircle2, XCircle, Loader2, Clock, Zap, DollarSign, Layers, MessageSquare, FileCode, AlertTriangle } from 'lucide-react';
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { AnimatedCounter } from './animated-counter';
@@ -14,6 +14,10 @@ interface SummaryCardsProps {
   plansCompleted: number;
   plansFailed: number;
   plansTotal: number;
+  totalTurns: number;
+  filesChanged: number;
+  reviewCritical: number;
+  reviewWarning: number;
   isComplete?: boolean;
   isFailed?: boolean;
   backend?: string | null;
@@ -37,6 +41,10 @@ export function SummaryCards({
   plansCompleted,
   plansFailed,
   plansTotal,
+  totalTurns,
+  filesChanged,
+  reviewCritical,
+  reviewWarning,
   isComplete,
   isFailed,
   backend,
@@ -88,6 +96,18 @@ export function SummaryCards({
         </>
       )}
 
+      {totalTurns > 0 && (
+        <>
+          <Separator />
+          <StatGroup>
+            <MessageSquare className="w-3 h-3 text-text-dim" />
+            <span className="text-text-bright">
+              <AnimatedCounter value={totalTurns} format={String} />
+            </span>
+          </StatGroup>
+        </>
+      )}
+
       {tokensIn + tokensOut > 0 && (
         <>
           <Separator />
@@ -113,6 +133,28 @@ export function SummaryCards({
             <span className="text-text-bright">
               <AnimatedCounter value={Math.round(totalCost * 10000)} format={formatCost} />
             </span>
+          </StatGroup>
+        </>
+      )}
+      {filesChanged > 0 && (
+        <>
+          <Separator />
+          <StatGroup>
+            <FileCode className="w-3 h-3 text-text-dim" />
+            <span className="text-text-bright">
+              <AnimatedCounter value={filesChanged} format={String} />
+            </span>
+          </StatGroup>
+        </>
+      )}
+
+      {(reviewCritical > 0 || reviewWarning > 0) && (
+        <>
+          <Separator />
+          <StatGroup>
+            <AlertTriangle className="w-3 h-3 text-text-dim" />
+            {reviewCritical > 0 && <span className="text-red">{reviewCritical} critical</span>}
+            {reviewWarning > 0 && <span className="text-yellow">{reviewWarning} warning</span>}
           </StatGroup>
         </>
       )}

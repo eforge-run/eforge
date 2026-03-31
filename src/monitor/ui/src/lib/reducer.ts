@@ -398,6 +398,10 @@ export function getSummaryStats(state: RunState): {
   plansCompleted: number;
   plansFailed: number;
   plansTotal: number;
+  totalTurns: number;
+  filesChanged: number;
+  reviewCritical: number;
+  reviewWarning: number;
 } {
   const end = state.endTime ?? Date.now();
   const duration = state.startTime
@@ -405,6 +409,29 @@ export function getSummaryStats(state: RunState): {
     : '--';
 
   const statuses = Object.values(state.planStatuses);
+
+  // Sum turns across all agent threads, treating null as 0
+  const totalTurns = state.agentThreads.reduce((sum, t) => sum + (t.numTurns ?? 0), 0);
+
+  // Deduplicate file paths across plans using a Set
+  const uniqueFiles = new Set<string>();
+  for (const files of state.fileChanges.values()) {
+    for (const f of files) {
+      uniqueFiles.add(f);
+    }
+  }
+  const filesChanged = uniqueFiles.size;
+
+  // Count review issues by severity across all plans
+  let reviewCritical = 0;
+  let reviewWarning = 0;
+  for (const issues of Object.values(state.reviewIssues)) {
+    for (const issue of issues) {
+      if (issue.severity === 'critical') reviewCritical++;
+      else if (issue.severity === 'warning') reviewWarning++;
+    }
+  }
+
   return {
     duration,
     tokensIn: state.tokensIn,
@@ -415,5 +442,9 @@ export function getSummaryStats(state: RunState): {
     plansCompleted: statuses.filter((s) => s === 'complete').length,
     plansFailed: statuses.filter((s) => s === 'failed').length,
     plansTotal: statuses.length,
+    totalTurns,
+    filesChanged,
+    reviewCritical,
+    reviewWarning,
   };
 }
