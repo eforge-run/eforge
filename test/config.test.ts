@@ -870,3 +870,82 @@ describe('DEFAULT_CONFIG.pi', () => {
     expect('model' in DEFAULT_CONFIG.pi).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// monitor config
+// ---------------------------------------------------------------------------
+
+describe('monitor config', () => {
+  it('DEFAULT_CONFIG.monitor.retentionCount equals 20', () => {
+    expect(DEFAULT_CONFIG.monitor.retentionCount).toBe(20);
+  });
+
+  it('monitor section is frozen in DEFAULT_CONFIG', () => {
+    expect(Object.isFrozen(DEFAULT_CONFIG.monitor)).toBe(true);
+  });
+
+  it('eforgeConfigSchema accepts { monitor: { retentionCount: 20 } }', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      monitor: { retentionCount: 20 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('eforgeConfigSchema accepts monitor with no retentionCount (optional)', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      monitor: {},
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('eforgeConfigSchema rejects non-positive retentionCount', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      monitor: { retentionCount: 0 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('resolveConfig returns default monitor.retentionCount when not set', () => {
+    const config = resolveConfig({}, {});
+    expect(config.monitor.retentionCount).toBe(20);
+  });
+
+  it('resolveConfig preserves monitor.retentionCount from file config', () => {
+    const config = resolveConfig({ monitor: { retentionCount: 50 } }, {});
+    expect(config.monitor.retentionCount).toBe(50);
+  });
+
+  it('monitor section is frozen in resolved config', () => {
+    const config = resolveConfig({}, {});
+    expect(Object.isFrozen(config.monitor)).toBe(true);
+  });
+});
+
+describe('mergePartialConfigs monitor', () => {
+  it('project monitor overrides global monitor fields', () => {
+    const global: PartialEforgeConfig = {
+      monitor: { retentionCount: 10 },
+    };
+    const project: PartialEforgeConfig = {
+      monitor: { retentionCount: 50 },
+    };
+    const merged = mergePartialConfigs(global, project);
+    expect(merged.monitor?.retentionCount).toBe(50);
+  });
+
+  it('global monitor survives when project has no monitor', () => {
+    const global: PartialEforgeConfig = {
+      monitor: { retentionCount: 15 },
+    };
+    const merged = mergePartialConfigs(global, {});
+    expect(merged.monitor?.retentionCount).toBe(15);
+  });
+
+  it('project monitor survives when global has no monitor', () => {
+    const merged = mergePartialConfigs({}, { monitor: { retentionCount: 30 } });
+    expect(merged.monitor?.retentionCount).toBe(30);
+  });
+});
