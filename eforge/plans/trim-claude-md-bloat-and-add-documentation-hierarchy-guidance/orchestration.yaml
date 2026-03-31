@@ -1,0 +1,33 @@
+name: trim-claude-md-bloat-and-add-documentation-hierarchy-guidance
+description: Trim CLAUDE.md from ~217 lines to ~120-140 by removing
+  implementation details derivable from source code, and add documentation
+  hierarchy guidance so agents find README.md and exclude node_modules/dist from
+  searches
+created: 2026-03-31
+compiled: 2026-03-31
+mode: docs-trim
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-trim-claude-md
+    name: Trim CLAUDE.md bloat and add documentation hierarchy guidance
+    depends_on: []
+    branch: trim-claude-md-bloat-and-add-documentation-hierarchy-guidance/trim-claude-md
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: docs
+  description: Documentation-only changes. Plans and implements but skips code
+    review since review categories (bugs, security, types, etc.) don't apply to
+    prose.
+  compile:
+    - prd-passthrough
