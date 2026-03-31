@@ -1,0 +1,51 @@
+name: parallel-queue-builds
+description: Replace sequential queue loop with greedy semaphore-limited
+  scheduler for concurrent PRD builds, plus automatic dependency detection at
+  enqueue time
+created: 2026-03-31
+compiled: 2026-03-31
+mode: parallel-scheduler
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-config-and-agent
+    name: Config, Pipeline Registration, and Dependency Detector Agent
+    depends_on: []
+    branch: parallel-queue-builds/config-and-agent
+    build:
+      - implement
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-02-greedy-scheduler
+    name: Greedy Queue Scheduler and CLI Flag
+    depends_on:
+      - plan-01-config-and-agent
+    branch: parallel-queue-builds/greedy-scheduler
+    build:
+      - implement
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors. Use when the full scope can
+    be planned in a single planner session - all plans enumerated, all file
+    changes listed, and cross-plan dependencies resolved. Covers tightly coupled
+    changes (type cascades, interface refactors, rename-and-update-all-callers)
+    and any work where one planning pass is sufficient.
+  compile:
+    - planner
+    - plan-review-cycle
