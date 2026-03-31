@@ -63,6 +63,9 @@ prdQueue:
 daemon:
   idleShutdownMs: 7200000     # Idle timeout before auto-shutdown (2 hours). Set to 0 to disable.
 
+monitor:
+  retentionCount: 20          # Number of recent builds to retain in the monitor DB (oldest pruned)
+
 pi:                            # Pi backend config (experimental/untested)
   provider: openrouter         # REQUIRED for pi backend - LLM provider (e.g. 'openrouter', 'anthropic')
   thinkingLevel: medium        # 'off', 'medium', 'high'
@@ -154,7 +157,7 @@ Config merges from two levels (lowest to highest priority):
 1. **Global** - `~/.config/eforge/config.yaml` (respects `$XDG_CONFIG_HOME`)
 2. **Project** - `eforge/config.yaml` found by walking up from cwd
 
-Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `pi`) shallow-merge per-field. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
+Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`, `pi`) shallow-merge per-field. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
 
 ## Parallelism
 

@@ -103,7 +103,7 @@ Tests live in `test/` and use vitest. Organize by **logical unit**, not source f
 
 ## Configuration
 
-eforge loads config from two levels: global (`~/.config/eforge/config.yaml`) and project-level (`eforge/config.yaml`). Priority (lowest to highest): defaults - global - project - env vars - CLI. See `src/engine/config.ts` for merge logic. Built-in profiles can be overridden by name.
+eforge loads config from two levels: global (`~/.config/eforge/config.yaml`) and project-level (`eforge/config.yaml`). Priority (lowest to highest): defaults - global - project - env vars - CLI. Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`, `pi`) shallow-merge per-field. See `src/engine/config.ts` for merge logic. Built-in profiles can be overridden by name.
 
 ## Conventions
 
