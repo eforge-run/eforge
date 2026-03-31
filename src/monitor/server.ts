@@ -92,7 +92,7 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'backend'> },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'backend' | 'monitor'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -105,6 +105,16 @@ export async function startServer(
       cachedGitRemote = stdout.trim() || null;
     } catch {
       cachedGitRemote = null;
+    }
+  }
+
+  // Retention cleanup on startup
+  {
+    const retentionCount = options?.config?.monitor?.retentionCount ?? 20;
+    try {
+      db.cleanupOldSessions(retentionCount);
+    } catch {
+      // Best-effort cleanup — don't fail startup
     }
   }
 
@@ -609,326 +619,15 @@ export async function startServer(
     sendJson(res, items);
   }
 
-  const MAX_DIFF_SIZE = 500 * 1024; // 500KB
-
-  /**
-   * Resolve the commit SHA for a plan's squash merge.
-   * Tries the `commitSha` field on the `merge:complete` event first,
-   * then falls back to `git log --grep` searching by plan ID in the commit message.
-   */
-  async function resolveCommitSha(sessionId: string, planId: string, cwd: string): Promise<string | null> {
-    // Try merge:complete events for this session
-    const mergeEvents = db.getEventsByTypeForSession(sessionId, 'merge:complete');
-    for (const event of mergeEvents) {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.planId === planId && data.commitSha && /^[0-9a-f]{40}$/.test(data.commitSha)) {
-          return data.commitSha;
-        }
-      } catch {
-        // skip unparseable events
-      }
-    }
-
-    // Legacy fallback: search git log for commit message containing the plan ID
-    try {
-      const { stdout } = await execAsync('git', ['log', '--grep', planId, '--format=%H', '-1'], { cwd });
-      const sha = stdout.trim();
-      if (sha && /^[0-9a-f]{40}$/.test(sha)) return sha;
-    } catch {
-      // git command failed
-    }
-
-    return null;
-  }
-
-  async function resolvePlanBranch(
-    sessionId: string,
-    planId: string,
-  ): Promise<{ branch: string; baseBranch: string } | null> {
-    // Get cwd and planSet from the session's run records
-    const sessionRuns = db.getSessionRuns(sessionId);
-    const run = [...sessionRuns].reverse().find((r) => r.cwd && r.planSet);
-    if (!run) return null;
-
-    // Read orchestration.yaml — try main repo first, then merge worktree fallback
-    try {
-      const planBase = options?.planOutputDir ?? 'eforge/plans';
-      const candidates = candidateOrchestrationPaths(run.cwd, planBase, run.planSet);
-
-      let content: string | null = null;
-      for (const candidate of candidates) {
-        if (!candidate.path.startsWith(candidate.base + '/')) continue;
-        try {
-          content = await readFile(candidate.path, 'utf-8');
-          break;
-        } catch {
-          // try next candidate
-        }
-      }
-      if (!content) return null;
-
-      const orch = parseYaml(content);
-      if (!orch?.base_branch || !Array.isArray(orch.plans)) return null;
-
-      const plan = orch.plans.find((p: { id: string }) => p.id === planId);
-      if (!plan?.branch) return null;
-
-      return { branch: plan.branch, baseBranch: orch.base_branch };
-    } catch {
-      return null;
-    }
-  }
-
-  async function resolveFeatureBranch(
-    sessionId: string,
-  ): Promise<{ branch: string; baseBranch: string } | null> {
-    const sessionRuns = db.getSessionRuns(sessionId);
-    const run = [...sessionRuns].reverse().find((r) => r.cwd && r.planSet);
-    if (!run) return null;
-
-    // Resolve the repo root — run.cwd may be a worktree path (e.g. .eforge/worktrees/merge)
-    // which would cause candidateOrchestrationPaths to produce incorrect paths.
-    let repoDir: string;
-    try {
-      repoDir = (await execAsync('git', ['rev-parse', '--show-toplevel'], { cwd: run.cwd })).stdout.trim();
-    } catch {
-      repoDir = run.cwd; // fallback to run.cwd if git fails
-    }
-
-    try {
-      const planBase = options?.planOutputDir ?? 'eforge/plans';
-      const candidates = candidateOrchestrationPaths(repoDir, planBase, run.planSet);
-
-      let content: string | null = null;
-      for (const candidate of candidates) {
-        if (!candidate.path.startsWith(candidate.base + '/')) continue;
-        try {
-          content = await readFile(candidate.path, 'utf-8');
-          break;
-        } catch {
-          // try next candidate
-        }
-      }
-      if (!content) return null;
-
-      const orch = parseYaml(content);
-      if (!orch?.base_branch || !orch?.name) return null;
-
-      const branch = `eforge/${orch.name}`;
-
-      // Verify the branch exists in git
-      try {
-        await execAsync('git', ['rev-parse', '--verify', branch], { cwd: repoDir });
-      } catch {
-        return null;
-      }
-
-      return { branch, baseBranch: orch.base_branch };
-    } catch {
-      return null;
-    }
-  }
-
-  /**
-   * Resolve the working directory from the run's DB record for git operations.
-   * Prefers the build run's cwd, but falls back to the compile run's cwd
-   * when the build cwd no longer exists on disk (e.g. worktree was cleaned up).
-   */
-  async function resolveCwd(sessionId: string): Promise<string | null> {
-    const sessionRuns = db.getSessionRuns(sessionId);
-    const buildRun = [...sessionRuns].reverse().find((r) => r.command === 'build');
-    const compileRun = [...sessionRuns].reverse().find((r) => r.command === 'compile');
-
-    // Try the build run's cwd first
-    if (buildRun?.cwd) {
-      try {
-        await stat(buildRun.cwd);
-        return buildRun.cwd;
-      } catch {
-        // Directory doesn't exist (worktree cleaned up), fall through
-      }
-    }
-
-    // Fall back to compile run's cwd (always the repo root)
-    if (compileRun?.cwd) {
-      try {
-        await stat(compileRun.cwd);
-        return compileRun.cwd;
-      } catch {
-        // Compile cwd also doesn't exist
-      }
-    }
-
-    return null;
-  }
-
-  async function serveDiff(_req: IncomingMessage, res: ServerResponse, sessionId: string, planId: string, file?: string): Promise<void> {
-    const cwd = await resolveCwd(sessionId);
-    if (!cwd) {
-      res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: 'Commit not found' }));
-      return;
-    }
-
-    const commitSha = await resolveCommitSha(sessionId, planId, cwd);
-
-    if (!commitSha) {
-      // Fallback: branch-based diffing for pre-merge builds
-      let branchInfo = await resolvePlanBranch(sessionId, planId);
-
-      // Verify the plan branch actually exists in git
-      if (branchInfo) {
-        try {
-          await execAsync('git', ['rev-parse', '--verify', branchInfo.branch], { cwd });
-        } catch {
-          branchInfo = null;
-        }
-      }
-
-      // Fall back to feature branch (eforge/{name}) for sequential builds
-      if (!branchInfo) {
-        branchInfo = await resolveFeatureBranch(sessionId);
-      }
-
-      if (!branchInfo) {
-        res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Commit not found' }));
-        return;
-      }
-
-      const diffRef = `${branchInfo.baseBranch}..${branchInfo.branch}`;
-
-      if (file) {
-        // Single-file branch diff
-        try {
-          const { stdout } = await execAsync('git', ['diff', diffRef, '--', file], { cwd, maxBuffer: MAX_DIFF_SIZE + 1024 });
-
-          if (stdout.includes('Binary file') && stdout.includes('differ')) {
-            sendJson(res, { diff: null, binary: true, branch: branchInfo.branch });
-            return;
-          }
-
-          if (Buffer.byteLength(stdout, 'utf-8') > MAX_DIFF_SIZE) {
-            sendJson(res, { diff: null, tooLarge: true, branch: branchInfo.branch });
-            return;
-          }
-
-          sendJson(res, { diff: stdout, branch: branchInfo.branch });
-        } catch (err) {
-          if (err instanceof Error && err.message.includes('maxBuffer')) {
-            sendJson(res, { diff: null, tooLarge: true, branch: branchInfo.branch });
-          } else {
-            res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-            res.end(JSON.stringify({ error: 'Commit not found' }));
-          }
-        }
-        return;
-      }
-
-      // Bulk branch diff
-      try {
-        const { stdout: nameOutput } = await execAsync('git', ['diff', diffRef, '--name-only'], { cwd });
-        const filePaths = nameOutput.trim().split('\n').filter(Boolean);
-
-        const files: Array<{ path: string; diff: string | null; tooLarge?: boolean; binary?: boolean }> = [];
-
-        for (const fp of filePaths) {
-          try {
-            const { stdout: diffOutput } = await execAsync('git', ['diff', diffRef, '--', fp], { cwd, maxBuffer: MAX_DIFF_SIZE + 1024 });
-
-            if (diffOutput.includes('Binary file') && diffOutput.includes('differ')) {
-              files.push({ path: fp, diff: null, binary: true });
-              continue;
-            }
-
-            if (Buffer.byteLength(diffOutput, 'utf-8') > MAX_DIFF_SIZE) {
-              files.push({ path: fp, diff: null, tooLarge: true });
-              continue;
-            }
-
-            files.push({ path: fp, diff: diffOutput });
-          } catch (err) {
-            if (err instanceof Error && err.message.includes('maxBuffer')) {
-              files.push({ path: fp, diff: null, tooLarge: true });
-            } else {
-              files.push({ path: fp, diff: null });
-            }
-          }
-        }
-
-        sendJson(res, { files, branch: branchInfo.branch });
-      } catch {
-        res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-        res.end(JSON.stringify({ error: 'Commit not found' }));
-      }
-      return;
-    }
-
+  function serveDiff(_req: IncomingMessage, res: ServerResponse, sessionId: string, planId: string, file?: string): void {
     if (file) {
-      // Single-file diff
-      try {
-        const { stdout } = await execAsync('git', ['diff-tree', '--no-commit-id', '-p', commitSha, '--', file], { cwd, maxBuffer: MAX_DIFF_SIZE + 1024 });
-
-        // Detect binary
-        if (stdout.includes('Binary file') && stdout.includes('differ')) {
-          sendJson(res, { diff: null, binary: true, commitSha });
-          return;
-        }
-
-        if (Buffer.byteLength(stdout, 'utf-8') > MAX_DIFF_SIZE) {
-          sendJson(res, { diff: null, tooLarge: true, commitSha });
-          return;
-        }
-
-        sendJson(res, { diff: stdout, commitSha });
-      } catch (err) {
-        if (err instanceof Error && err.message.includes('maxBuffer')) {
-          sendJson(res, { diff: null, tooLarge: true, commitSha });
-        } else {
-          res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-          res.end(JSON.stringify({ error: 'Commit not found' }));
-        }
-      }
-      return;
-    }
-
-    // Bulk: all files for the commit
-    try {
-      // Get list of changed files
-      const { stdout: nameOutput } = await execAsync('git', ['diff-tree', '--no-commit-id', '-r', '--name-only', commitSha], { cwd });
-      const filePaths = nameOutput.trim().split('\n').filter(Boolean);
-
-      const files: Array<{ path: string; diff: string | null; tooLarge?: boolean; binary?: boolean }> = [];
-
-      for (const fp of filePaths) {
-        try {
-          const { stdout: diffOutput } = await execAsync('git', ['diff-tree', '--no-commit-id', '-p', commitSha, '--', fp], { cwd, maxBuffer: MAX_DIFF_SIZE + 1024 });
-
-          if (diffOutput.includes('Binary file') && diffOutput.includes('differ')) {
-            files.push({ path: fp, diff: null, binary: true });
-            continue;
-          }
-
-          if (Buffer.byteLength(diffOutput, 'utf-8') > MAX_DIFF_SIZE) {
-            files.push({ path: fp, diff: null, tooLarge: true });
-            continue;
-          }
-
-          files.push({ path: fp, diff: diffOutput });
-        } catch (err) {
-          if (err instanceof Error && err.message.includes('maxBuffer')) {
-            files.push({ path: fp, diff: null, tooLarge: true });
-          } else {
-            files.push({ path: fp, diff: null });
-          }
-        }
-      }
-
-      sendJson(res, { files, commitSha });
-    } catch {
-      res.writeHead(404, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
-      res.end(JSON.stringify({ error: 'Commit not found' }));
+      // Single-file diff from DB
+      const record = db.getFileDiff(sessionId, planId, file);
+      sendJson(res, { diff: record?.diffText ?? null });
+    } else {
+      // Bulk: all files for the plan from DB
+      const records = db.getFileDiffs(sessionId, planId);
+      sendJson(res, { files: records.map((r) => ({ path: r.filePath, diff: r.diffText })) });
     }
   }
 
@@ -1403,7 +1102,7 @@ export async function startServer(
         ? new URLSearchParams(queryString).get('file') ?? undefined
         : undefined;
 
-      await serveDiff(req, res, resolvedSessionId, planIdParam, fileParam);
+      serveDiff(req, res, resolvedSessionId, planIdParam, fileParam);
     } else {
       // Serve static files (SPA)
       await serveStaticFile(req, res, url);

@@ -79,12 +79,23 @@ export async function* withRecording(
     const activeRunId = event.runId ?? enqueueRunId;
 
     if (activeRunId && event.type !== 'session:start') {
+      // Extract diffs from build:files_changed events into file_diffs table
+      let serializedData: string;
+      if (event.type === 'build:files_changed' && event.diffs && event.diffs.length > 0) {
+        db.insertFileDiffs(activeRunId, event.planId, event.diffs, event.timestamp);
+        // Strip diffs from the event before serializing to events table
+        const { diffs: _diffs, ...eventWithoutDiffs } = event;
+        serializedData = JSON.stringify(eventWithoutDiffs);
+      } else {
+        serializedData = JSON.stringify(event);
+      }
+
       db.insertEvent({
         runId: activeRunId,
         type: event.type,
         planId: extractPlanId(event),
         agent: extractAgent(event),
-        data: JSON.stringify(event),
+        data: serializedData,
         timestamp: event.timestamp,
       });
     }
