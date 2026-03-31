@@ -215,6 +215,23 @@ function AppContent() {
     return { label: planStart.event.label ?? 'Build PRD', content: planStart.event.source };
   }, [runState.events]);
 
+  // Derive plan artifacts from plan:complete events
+  const planArtifacts = useMemo(() => {
+    const seen = new Set<string>();
+    const plans: Array<{ id: string; name: string; body: string }> = [];
+    for (const { event } of runState.events) {
+      if (event.type === 'plan:complete') {
+        for (const p of event.plans) {
+          if (!seen.has(p.id)) {
+            seen.add(p.id);
+            plans.push({ id: p.id, name: p.name, body: p.body });
+          }
+        }
+      }
+    }
+    return plans;
+  }, [runState.events]);
+
   // Reset active tab if its feature becomes unavailable
   useEffect(() => {
     if (activeTab === 'graph' && !graphEnabled) setActiveTab('changes');
@@ -285,7 +302,7 @@ function AppContent() {
               <>
                 <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} backend={runState.backend} />
                 <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} profileInfo={runState.profileInfo} events={runState.events} orchestration={effectiveOrchestration} />
-                <ArtifactsStrip sessionId={currentSessionId} prdSource={prdSource} />
+                <ArtifactsStrip prdSource={prdSource} plans={planArtifacts} />
 
                 {/* Content tabs */}
                 <div className="flex gap-2 border-b border-border pb-px">

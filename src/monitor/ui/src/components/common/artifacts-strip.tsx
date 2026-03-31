@@ -1,55 +1,69 @@
 import { usePlanPreview } from '@/components/preview';
-import { useApi } from '@/hooks/use-api';
-import type { PlanData } from '@/lib/types';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
-interface ArtifactsStripProps {
-  sessionId: string | null;
-  prdSource: { label: string; content: string } | null;
+interface PlanArtifact {
+  id: string;
+  name: string;
+  body: string;
 }
 
-const linkClass = "text-blue cursor-pointer hover:underline bg-transparent border-none p-0 font-inherit text-inherit";
+interface ArtifactsStripProps {
+  prdSource: { label: string; content: string } | null;
+  plans: PlanArtifact[];
+}
 
-export function ArtifactsStrip({ sessionId, prdSource }: ArtifactsStripProps) {
-  const { openPreview, openContentPreview } = usePlanPreview();
-  const { data: plans } = useApi<PlanData[]>(
-    sessionId ? `/api/plans/${sessionId}` : null,
-  );
+const pillClass =
+  'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition-colors border-none';
 
-  const architectureDocs = plans?.filter((p) => p.type === 'architecture') ?? [];
-  const planFiles = plans?.filter((p) => p.type === 'plan' || p.type === 'module') ?? [];
+const prdPillClass = `${pillClass} bg-yellow/15 text-yellow/70 hover:bg-yellow/25`;
+const planPillClass = `${pillClass} bg-cyan/15 text-cyan/70 hover:bg-cyan/25`;
 
-  const hasArtifacts = prdSource !== null || architectureDocs.length > 0 || planFiles.length > 0;
+/** Abbreviate plan IDs like "plan-01-some-name" to "Plan 01" */
+function abbreviatePlanId(id: string): string {
+  const match = id.match(/^plan-(\d+)/);
+  if (match) return `Plan ${match[1]}`;
+  return id;
+}
+
+export function ArtifactsStrip({ prdSource, plans }: ArtifactsStripProps) {
+  const { openContentPreview } = usePlanPreview();
+
+  const hasArtifacts = prdSource !== null || plans.length > 0;
 
   if (!hasArtifacts) return null;
 
   return (
-    <div className="flex items-center gap-3 text-xs text-text-dim flex-wrap">
-      {prdSource && (
-        <button
-          className={linkClass}
-          onClick={() => openContentPreview(prdSource.label, prdSource.content)}
-        >
-          Build PRD
-        </button>
-      )}
-      {architectureDocs.map((doc) => (
-        <button
-          key={doc.id}
-          className={linkClass}
-          onClick={() => openPreview(doc.id)}
-        >
-          Architecture
-        </button>
-      ))}
-      {planFiles.map((plan) => (
-        <button
-          key={plan.id}
-          className={linkClass}
-          onClick={() => openPreview(plan.id)}
-        >
-          {plan.name || plan.id}
-        </button>
-      ))}
-    </div>
+    <TooltipProvider>
+      <div className="flex items-center gap-2 text-xs flex-wrap">
+        {prdSource && (
+          <button
+            className={prdPillClass}
+            onClick={() => openContentPreview(prdSource.label, prdSource.content)}
+          >
+            Build PRD
+          </button>
+        )}
+        {plans.map((plan) => (
+          <Tooltip key={plan.id}>
+            <TooltipTrigger asChild>
+              <button
+                className={planPillClass}
+                onClick={() => openContentPreview(plan.name || plan.id, plan.body)}
+              >
+                {abbreviatePlanId(plan.id)}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent>
+              {plan.name || plan.id}
+            </TooltipContent>
+          </Tooltip>
+        ))}
+      </div>
+    </TooltipProvider>
   );
 }
