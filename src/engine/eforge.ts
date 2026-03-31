@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { resolve } from 'node:path';
+import { relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import type {
@@ -669,7 +669,7 @@ export class EforgeEngine {
         shouldCleanup,
         cleanupPlanSet: planSet,
         cleanupOutputDir: this.config.plan.outputDir,
-        cleanupPrdFilePath: options.prdFilePath,
+        cleanupPrdFilePath: options.prdFilePath ? relative(cwd, options.prdFilePath) : undefined,
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {

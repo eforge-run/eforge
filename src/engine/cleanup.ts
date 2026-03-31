@@ -48,7 +48,7 @@ export async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir:
 
         // Remove empty parent directory of the PRD file
         const { dirname } = await import('node:path');
-        const prdDir = dirname(prdFilePath);
+        const prdDir = resolve(cwd, dirname(prdFilePath));
         try {
           const remaining = await readdir(prdDir);
           if (remaining.length === 0) {
