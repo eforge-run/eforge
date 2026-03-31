@@ -67,7 +67,8 @@ monitor:
   retentionCount: 20          # Number of recent builds to retain in the monitor DB (oldest pruned)
 
 pi:                            # Pi backend config (experimental/untested)
-  provider: openrouter         # REQUIRED for pi backend - LLM provider (e.g. 'openrouter', 'anthropic')
+  provider: openrouter         # REQUIRED for pi backend - LLM provider (e.g. 'openrouter', 'anthropic', 'openai-codex')
+  # apiKey: ...                # Optional API key override (env vars and ~/.pi/agent/auth.json used automatically)
   thinkingLevel: medium        # 'off', 'medium', 'high'
   extensions:
     autoDiscover: true         # Auto-discover extensions from .pi/extensions/
@@ -140,7 +141,25 @@ MCP servers are auto-loaded from `.mcp.json` in the project root (same format Cl
 
 ## Pi Backend
 
-Set `backend: pi` to use the Pi multi-provider backend instead of the Claude SDK. The Pi backend requires a `PI_API_KEY` environment variable (or a provider-specific API key, e.g. `OPENROUTER_API_KEY` for the default OpenRouter provider). Configure provider, model, and other Pi-specific settings in the `pi` section of `eforge/config.yaml`. Note: the Pi backend is experimental and untested.
+Set `backend: pi` to use the Pi multi-provider backend instead of the Claude SDK. The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which supports API keys, environment variables, and OAuth tokens automatically. Configure provider, model, and other Pi-specific settings in the `pi` section of `eforge/config.yaml`. Note: the Pi backend is experimental and untested.
+
+### Authentication
+
+Pi resolves credentials in this order:
+
+1. **Explicit override** - `pi.apiKey` in `eforge/config.yaml` (highest priority)
+2. **Environment variables** - Provider-specific env vars (e.g. `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)
+3. **Auth file** - `~/.pi/agent/auth.json` - supports both API keys and OAuth tokens
+
+The `pi.apiKey` config option is optional. Most users should rely on environment variables or the auth file.
+
+### OAuth Providers
+
+Providers like `openai-codex` and `github-copilot` use OAuth for authentication. To set up an OAuth provider:
+
+1. Run `pi auth login <provider>` to authenticate (this writes tokens to `~/.pi/agent/auth.json`)
+2. Set `pi.provider` to the OAuth provider name in `eforge/config.yaml`
+3. No `pi.apiKey` or environment variable is needed - tokens are read from the auth file automatically
 
 ## Plugins
 
