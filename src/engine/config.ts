@@ -17,7 +17,7 @@ export const AGENT_ROLES = [
   'cohesion-reviewer', 'cohesion-evaluator',
   'validation-fixer', 'merge-conflict-resolver',
   'staleness-assessor', 'formatter', 'doc-updater',
-  'test-writer', 'tester', 'prd-validator',
+  'test-writer', 'tester', 'prd-validator', 'dependency-detector',
 ] as const;
 
 const agentRoleSchema = z.enum(AGENT_ROLES);
@@ -266,6 +266,7 @@ export const eforgeConfigSchema = z.object({
     autoRevise: z.boolean().optional(),
     autoBuild: z.boolean().optional(),
     watchPollIntervalMs: z.number().int().positive().optional(),
+    parallelism: z.number().int().positive().optional(),
   }).optional(),
   daemon: z.object({
     idleShutdownMs: z.number().int().nonnegative().optional(),
@@ -331,7 +332,7 @@ export interface EforgeConfig {
   build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
   plugins: PluginConfig;
-  prdQueue: { dir: string; autoRevise: boolean; autoBuild: boolean; watchPollIntervalMs: number };
+  prdQueue: { dir: string; autoRevise: boolean; autoBuild: boolean; watchPollIntervalMs: number; parallelism: number };
   daemon: { idleShutdownMs: number };
   pi: PiConfig;
   hooks: readonly HookConfig[];
@@ -390,7 +391,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
   plugins: Object.freeze({ enabled: true }),
-  prdQueue: Object.freeze({ dir: 'eforge/queue', autoRevise: true, autoBuild: true, watchPollIntervalMs: 5000 }),
+  prdQueue: Object.freeze({ dir: 'eforge/queue', autoRevise: true, autoBuild: true, watchPollIntervalMs: 5000, parallelism: 1 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   pi: Object.freeze({
     thinkingLevel: 'medium' as const,
@@ -497,6 +498,7 @@ export function resolveConfig(
       autoRevise: fileConfig.prdQueue?.autoRevise ?? DEFAULT_CONFIG.prdQueue.autoRevise,
       autoBuild: fileConfig.prdQueue?.autoBuild ?? DEFAULT_CONFIG.prdQueue.autoBuild,
       watchPollIntervalMs: fileConfig.prdQueue?.watchPollIntervalMs ?? DEFAULT_CONFIG.prdQueue.watchPollIntervalMs,
+      parallelism: fileConfig.prdQueue?.parallelism ?? DEFAULT_CONFIG.prdQueue.parallelism,
     }),
     daemon: Object.freeze({
       idleShutdownMs: fileConfig.daemon?.idleShutdownMs ?? DEFAULT_CONFIG.daemon.idleShutdownMs,

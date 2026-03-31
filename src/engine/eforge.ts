@@ -23,6 +23,7 @@ import type {
 import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, updatePrdStatus, enqueuePrd, inferTitle, claimPrd, releasePrd } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runFormatter } from './agents/formatter.js';
+import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
 import type { EforgeConfig, PluginConfig, PartialProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
 import type { AgentBackend } from './backend.js';
 import type { ClaudeSDKBackendOptions } from './backends/claude-sdk.js';
@@ -364,12 +365,55 @@ export class EforgeEngine {
       // Infer title from formatted content (or from name override)
       const title = options.name ?? inferTitle(formattedBody, !source.includes('\n') ? source : undefined);
 
+      // Run dependency detection (graceful fallback on failure)
+      let dependsOn: string[] = [];
+      try {
+        const queue = await loadQueue(this.config.prdQueue.dir, cwd);
+        const queueItems: QueueItemSummary[] = queue
+          .filter((p) => p.frontmatter.status === 'pending')
+          .map((p) => ({
+            id: p.id,
+            title: p.frontmatter.title,
+            scopeSummary: p.content.slice(0, 500),
+          }));
+
+        const state = loadState(cwd);
+        const runningBuilds: RunningBuildSummary[] = [];
+        if (state && state.status === 'running') {
+          runningBuilds.push({
+            planSetName: state.setName,
+            planTitles: Object.keys(state.plans),
+          });
+        }
+
+        if (queueItems.length > 0 || runningBuilds.length > 0) {
+          const depGen = runDependencyDetector({
+            backend: this.backend,
+            prdContent: formattedBody,
+            queueItems,
+            runningBuilds,
+            verbose,
+            abortController,
+          });
+          let depResult = await depGen.next();
+          while (!depResult.done) {
+            yield depResult.value;
+            depResult = await depGen.next();
+          }
+          dependsOn = depResult.value?.dependsOn ?? [];
+        }
+      } catch {
+        // Dependency detection failure should not block enqueue
+        dependsOn = [];
+      }
+
       // Write to queue
       const enqueueResult = await enqueuePrd({
         body: formattedBody,
         title,
         queueDir: this.config.prdQueue.dir,
         cwd,
+        depends_on: dependsOn,
       });
 
       // Commit the enqueued PRD
