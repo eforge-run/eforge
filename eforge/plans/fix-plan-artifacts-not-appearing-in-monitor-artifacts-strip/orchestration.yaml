@@ -1,0 +1,31 @@
+name: fix-plan-artifacts-not-appearing-in-monitor-artifacts-strip
+description: Derive plan artifacts reactively from SSE events and redesign
+  artifacts strip with pill-style chips
+created: 2026-03-31
+compiled: 2026-03-31
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-reactive-plan-artifacts
+    name: Reactive Plan Artifacts with Pill Chips
+    depends_on: []
+    branch: fix-plan-artifacts-not-appearing-in-monitor-artifacts-strip/reactive-plan-artifacts
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
