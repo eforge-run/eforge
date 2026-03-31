@@ -310,6 +310,7 @@ export interface ResolvedAgentConfig {
 
 export interface PiConfig {
   provider?: string;
+  /** Optional explicit API key override. When set, takes highest priority via setRuntimeApiKey. When omitted, Pi's file-backed AuthStorage handles auth automatically (env vars, ~/.pi/agent/auth.json, OAuth tokens). */
   apiKey?: string;
   thinkingLevel: 'off' | 'medium' | 'high';
   extensions: { autoDiscover: boolean; include?: string[]; exclude?: string[]; paths?: string[] };

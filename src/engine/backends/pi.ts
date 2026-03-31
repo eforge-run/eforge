@@ -255,36 +255,6 @@ function truncateOutput(output: string, maxLength: number): string {
 }
 
 // ---------------------------------------------------------------------------
-// Auth resolution
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve API key from config or environment variables.
- * Priority: piConfig.apiKey > provider-specific env vars > Pi's auth.json
- */
-function resolveApiKey(provider: string, piConfig?: PiConfig): string | undefined {
-  if (piConfig?.apiKey) return piConfig.apiKey;
-
-  // Check provider-specific env vars
-  const envVarMap: Record<string, string> = {
-    openrouter: 'OPENROUTER_API_KEY',
-    anthropic: 'ANTHROPIC_API_KEY',
-    openai: 'OPENAI_API_KEY',
-    google: 'GOOGLE_API_KEY',
-    mistral: 'MISTRAL_API_KEY',
-    groq: 'GROQ_API_KEY',
-    xai: 'XAI_API_KEY',
-  };
-
-  const envVar = envVarMap[provider];
-  if (envVar && process.env[envVar]) {
-    return process.env[envVar];
-  }
-
-  return undefined;
-}
-
-// ---------------------------------------------------------------------------
 // PiBackend
 // ---------------------------------------------------------------------------
 
@@ -330,13 +300,13 @@ export class PiBackend implements AgentBackend {
     let session: any;
 
     try {
-      // Resolve API key
-      const apiKey = resolveApiKey(model.provider, this.piConfig);
+      // Build file-backed auth storage (reads ~/.pi/agent/auth.json, env vars, and OAuth tokens)
+      const authStorage = AuthStorage.create();
 
-      // Build auth storage with resolved key
-      const authStorage = apiKey
-        ? AuthStorage.inMemory({ [model.provider]: { type: 'api_key', key: apiKey } })
-        : AuthStorage.inMemory();
+      // Apply explicit API key override from piConfig if set
+      if (this.piConfig?.apiKey) {
+        authStorage.setRuntimeApiKey(model.provider, this.piConfig.apiKey);
+      }
 
       // Build tools
       const isCoding = options.tools === 'coding';
