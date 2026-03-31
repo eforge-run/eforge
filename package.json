@@ -60,7 +60,7 @@
     "@mariozechner/pi-agent-core": "^0.63.2",
     "@mariozechner/pi-ai": "^0.63.2",
     "@mariozechner/pi-coding-agent": "^0.63.2",
-    "@modelcontextprotocol/sdk": "^1.28.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@sinclair/typebox": "^0.34.49",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
