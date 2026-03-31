@@ -1,0 +1,33 @@
+name: support-oauth-providers-openai-codex-in-pi-backend
+description: Switch Pi backend from AuthStorage.inMemory() to
+  AuthStorage.create() (file-backed) to support OAuth providers like
+  openai-codex and github-copilot
+created: 2026-03-31
+compiled: 2026-03-31
+mode: simple-refactor-with-docs
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-oauth-auth
+    name: Switch Pi Backend to File-Backed AuthStorage
+    depends_on: []
+    branch: support-oauth-providers-openai-codex-in-pi-backend/oauth-auth
+    build:
+      - - implement
+        - doc-update
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
