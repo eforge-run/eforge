@@ -1,0 +1,36 @@
+name: periodic-file-heatmap-updates-during-build-stages
+description: Add periodic file heatmap updates during long-running build stages
+  by interleaving build:files_changed events every 15 seconds
+created: 2026-03-31
+compiled: 2026-03-31
+mode: engine-feature
+base_branch: main
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors. Use when the full scope can
+    be planned in a single planner session - all plans enumerated, all file
+    changes listed, and cross-plan dependencies resolved. Covers tightly coupled
+    changes (type cascades, interface refactors, rename-and-update-all-callers)
+    and any work where one planning pass is sufficient.
+  compile:
+    - planner
+    - plan-review-cycle
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-periodic-file-check
+    name: Periodic File Heatmap Updates During Build Stages
+    depends_on: []
+    branch: periodic-file-heatmap-updates-during-build-stages/periodic-file-check
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard

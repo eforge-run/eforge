@@ -944,6 +944,80 @@ async function buildContinuationDiff(cwd: string, baseBranch: string): Promise<s
   return `[Diff too large (${diff.length} chars) — showing file summary instead]\n\n${stat}`;
 }
 
+/** Interval (ms) between periodic file-change checks during long-running build stages. */
+export const FILE_CHECK_INTERVAL_MS = 15_000;
+
+/** Compare two sorted string arrays for equality. */
+function arraysEqual(a: string[], b: string[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+/**
+ * Wrap an inner agent async generator to periodically check for file changes
+ * and interleave `build:files_changed` events. Uses `Promise.race` between
+ * the next agent event and a timer so checks happen even during long agent turns.
+ *
+ * Non-critical — silently skips on git failure. Deduplicates by comparing sorted file lists.
+ */
+export async function* withPeriodicFileCheck(
+  inner: AsyncGenerator<EforgeEvent>,
+  ctx: BuildStageContext,
+  intervalMs: number = FILE_CHECK_INTERVAL_MS,
+): AsyncGenerator<EforgeEvent> {
+  const iterator = inner[Symbol.asyncIterator]();
+  let lastFiles: string[] = [];
+  let pending: Promise<IteratorResult<EforgeEvent>> | null = null;
+
+  try {
+    while (true) {
+      if (!pending) {
+        pending = iterator.next();
+      }
+
+      // Race between the next agent event and a timer
+      let timerId: ReturnType<typeof setTimeout>;
+      const timer = new Promise<'tick'>((resolve) => {
+        timerId = setTimeout(() => resolve('tick'), intervalMs);
+        timerId.unref();
+      });
+
+      const result = await Promise.race([
+        pending.then((r) => ({ kind: 'event' as const, result: r })),
+        timer.then((t) => ({ kind: t })),
+      ]);
+
+      if (result.kind === 'tick') {
+        // Timer fired — check for file changes
+        try {
+          const { stdout } = await exec('git', ['diff', '--name-only', ctx.orchConfig.baseBranch], { cwd: ctx.worktreePath });
+          const files = stdout.trim().split('\n').filter(Boolean).sort();
+          if (files.length > 0 && !arraysEqual(files, lastFiles)) {
+            lastFiles = files;
+            yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files };
+          }
+        } catch {
+          // Non-critical — skip silently
+        }
+        continue;
+      }
+
+      // Agent event arrived — clear the losing timer to avoid accumulating pending callbacks
+      clearTimeout(timerId!);
+      const { result: iterResult } = result;
+      pending = null;
+
+      if (iterResult.done) break;
+      yield iterResult.value;
+    }
+  } finally {
+    await iterator.return?.(undefined);
+  }
+}
+
 /**
  * Emit a build:files_changed event listing all files changed vs the base branch.
  * Uses two-dot diff (baseBranch) to capture committed, staged, and unstaged changes.
@@ -994,7 +1068,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
     }
 
     try {
-      for await (const event of builderImplement(ctx.planFile, {
+      for await (const event of withPeriodicFileCheck(builderImplement(ctx.planFile, {
         backend: ctx.backend,
         cwd: ctx.worktreePath,
         verbose: ctx.verbose,
@@ -1003,7 +1077,7 @@ registerBuildStage('implement', async function* implementStage(ctx) {
         parallelStages,
         verificationScope,
         continuationContext,
-      })) {
+      }), ctx)) {
         implTracker.handleEvent(event);
         if (event.type === 'build:failed') {
           implFailed = true;
@@ -1176,7 +1250,7 @@ async function* reviewFixStageInner(
   const fixTracker = createToolTracker(fixSpan);
 
   try {
-    for await (const event of runReviewFixer({
+    for await (const event of withPeriodicFileCheck(runReviewFixer({
       backend: ctx.backend,
       planId: ctx.planId,
       cwd: ctx.worktreePath,
@@ -1184,7 +1258,7 @@ async function* reviewFixStageInner(
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...fixerConfig,
-    })) {
+    }), ctx)) {
       fixTracker.handleEvent(event);
       yield event;
     }
@@ -1237,7 +1311,7 @@ registerBuildStage('doc-update', async function* docUpdateStage(ctx) {
   const docTracker = createToolTracker(docSpan);
 
   try {
-    for await (const event of runDocUpdater({
+    for await (const event of withPeriodicFileCheck(runDocUpdater({
       backend: ctx.backend,
       cwd: ctx.worktreePath,
       planId: ctx.planId,
@@ -1245,7 +1319,7 @@ registerBuildStage('doc-update', async function* docUpdateStage(ctx) {
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-    })) {
+    }), ctx)) {
       docTracker.handleEvent(event);
       yield event;
     }
@@ -1283,7 +1357,7 @@ registerBuildStage('test-write', async function* testWriteStage(ctx) {
   }
 
   try {
-    for await (const event of runTestWriter({
+    for await (const event of withPeriodicFileCheck(runTestWriter({
       backend: ctx.backend,
       cwd: ctx.worktreePath,
       planId: ctx.planId,
@@ -1292,7 +1366,7 @@ registerBuildStage('test-write', async function* testWriteStage(ctx) {
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-    })) {
+    }), ctx)) {
       tracker.handleEvent(event);
       yield event;
     }
@@ -1319,7 +1393,7 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
   const tracker = createToolTracker(span);
 
   try {
-    for await (const event of runTester({
+    for await (const event of withPeriodicFileCheck(runTester({
       backend: ctx.backend,
       cwd: ctx.worktreePath,
       planId: ctx.planId,
@@ -1327,7 +1401,7 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-    })) {
+    }), ctx)) {
       tracker.handleEvent(event);
       yield event;
 
