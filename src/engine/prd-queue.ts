@@ -20,15 +20,11 @@ const exec = promisify(execFile);
 // Frontmatter schema
 // ---------------------------------------------------------------------------
 
-const PRD_STATUSES = ['pending', 'running', 'completed', 'failed', 'skipped'] as const;
-export type PrdStatus = (typeof PRD_STATUSES)[number];
-
 const prdFrontmatterSchema = z.object({
   title: z.string(),
   created: z.string().optional(),
   priority: z.number().int().optional(),
   depends_on: z.array(z.string()).optional(),
-  status: z.enum(PRD_STATUSES).optional(),
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -169,23 +165,22 @@ export async function loadQueue(dir: string, cwd: string): Promise<QueuedPrd[]> 
 // ---------------------------------------------------------------------------
 
 /**
- * Filter to pending PRDs and resolve execution order.
+ * Resolve execution order for PRDs.
+ * All PRDs in the queue directory are pending by definition (file-location state model).
  * Uses the same topological sort as plan orchestration for dependency ordering.
  * Within each wave, sorts by priority (ascending, nulls last) then created (ascending).
  */
 export function resolveQueueOrder(prds: QueuedPrd[]): QueuedPrd[] {
-  // Filter to pending only
-  const pending = prds.filter((p) => (p.frontmatter.status ?? 'pending') === 'pending');
-  if (pending.length === 0) return [];
+  if (prds.length === 0) return [];
 
-  // Build lookup of all PRD ids (including non-pending) for dependency filtering
-  const allIds = new Set(pending.map((p) => p.id));
+  // Build lookup of all PRD ids for dependency filtering
+  const allIds = new Set(prds.map((p) => p.id));
 
   // Build plans-like structure for dependency resolution.
   // Filter out dependsOn entries that reference non-pending PRDs (e.g., completed)
   // since resolveDependencyGraph throws on unknown ids, and completed deps are
   // already satisfied.
-  const plans = pending.map((p) => ({
+  const plans = prds.map((p) => ({
     id: p.id,
     name: p.frontmatter.title,
     dependsOn: (p.frontmatter.depends_on ?? []).filter((dep) => allIds.has(dep)),
@@ -195,7 +190,7 @@ export function resolveQueueOrder(prds: QueuedPrd[]): QueuedPrd[] {
   const { waves } = resolveDependencyGraph(plans);
 
   // Build lookup for sorting within waves
-  const prdMap = new Map(pending.map((p) => [p.id, p]));
+  const prdMap = new Map(prds.map((p) => [p.id, p]));
 
   const ordered: QueuedPrd[] = [];
   for (const wave of waves) {
@@ -267,7 +262,6 @@ export async function getPrdDiffSummary(hash: string, cwd: string): Promise<stri
 /**
  * Remove a completed PRD file from disk and git.
  * Handles `git rm`, empty queue directory cleanup, and commit.
- * Throws on failure — callers should catch and fall back to `updatePrdStatus`.
  */
 export async function cleanupCompletedPrd(filePath: string, queueDir: string, cwd: string): Promise<void> {
   // Guard: filePath must reside within the queue directory
@@ -298,32 +292,36 @@ export async function cleanupCompletedPrd(filePath: string, queueDir: string, cw
 }
 
 // ---------------------------------------------------------------------------
-// Status updates
+// File-location state helpers
 // ---------------------------------------------------------------------------
 
 /**
- * Update the status field in a PRD file's frontmatter via regex replacement.
- * If no status field exists, inserts one before the closing `---`.
+ * Move a PRD file to a subdirectory (e.g. `failed/` or `skipped/`) via `git mv` + commit.
+ * Keeps the working tree clean by committing the move.
  */
-export async function updatePrdStatus(filePath: string, newStatus: PrdStatus): Promise<void> {
-  const content = await readFile(filePath, 'utf-8');
+export async function movePrdToSubdir(filePath: string, subdir: string, cwd: string): Promise<void> {
+  const dir = resolve(filePath, '..');
+  const destDir = resolve(dir, subdir);
+  await mkdir(destDir, { recursive: true });
 
-  let updated: string;
-  if (/^status\s*:/m.test(content)) {
-    // Replace existing status line
-    updated = content.replace(/^(status\s*:\s*).*$/m, `$1${newStatus}`);
-  } else {
-    // Insert status before closing --- (skip the opening ---)
-    const closingIdx = content.indexOf('\n---', content.indexOf('---') + 3);
-    if (closingIdx !== -1) {
-      updated = content.slice(0, closingIdx) + `\nstatus: ${newStatus}` + content.slice(closingIdx);
-    } else {
-      // No closing --- found — append after opening frontmatter
-      updated = content;
-    }
+  const destPath = resolve(destDir, basename(filePath));
+  const prdId = basename(filePath, '.md');
+
+  await retryOnLock(() => exec('git', ['mv', '--', filePath, destPath], { cwd }), cwd);
+  await forgeCommit(cwd, `queue(${prdId}): move to ${subdir}`);
+}
+
+/**
+ * Check whether a PRD is currently being processed by looking for its lock file.
+ */
+export async function isPrdRunning(prdId: string, cwd: string): Promise<boolean> {
+  const lockPath = resolve(cwd, '.eforge', 'queue-locks', `${prdId}.lock`);
+  try {
+    await readFile(lockPath);
+    return true;
+  } catch {
+    return false;
   }
-
-  await writeFile(filePath, updated, 'utf-8');
 }
 
 // ---------------------------------------------------------------------------
@@ -526,7 +524,6 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   const frontmatter: PrdFrontmatter = {
     title,
     created,
-    status: 'pending',
     ...(priority !== undefined && { priority }),
     ...(depends_on !== undefined && depends_on.length > 0 && { depends_on }),
   };
@@ -535,7 +532,6 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   const fmLines: string[] = [
     `title: ${title}`,
     `created: ${created}`,
-    `status: pending`,
   ];
   if (priority !== undefined) {
     fmLines.push(`priority: ${priority}`);

@@ -94,23 +94,22 @@ describe('greedy queue scheduler', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveQueueOrder dependency semantics for greedy scheduler', () => {
-  it('filters depends_on to only pending PRDs in the queue', () => {
-    // PRD "api" depends on "db" which is already completed - should not block "api"
+  it('filters depends_on to only PRDs in the queue', () => {
+    // Only "api" is in the queue - "db" is not present (already completed and removed)
     const prds = [
-      makeQueuedPrd({ id: 'db', frontmatter: { title: 'DB', status: 'completed' } }),
-      makeQueuedPrd({ id: 'api', frontmatter: { title: 'API', status: 'pending', depends_on: ['db'] } }),
+      makeQueuedPrd({ id: 'api', frontmatter: { title: 'API', depends_on: ['db'] } }),
     ];
 
     const ordered = resolveQueueOrder(prds);
-    // Only pending PRDs are returned
+    // "db" dependency is filtered out since it's not in the queue
     expect(ordered).toHaveLength(1);
     expect(ordered[0].id).toBe('api');
   });
 
-  it('preserves depends_on between pending PRDs for scheduler dependency tracking', () => {
+  it('preserves depends_on between PRDs in queue for scheduler dependency tracking', () => {
     const prds = [
-      makeQueuedPrd({ id: 'foundation', frontmatter: { title: 'Foundation', status: 'pending' } }),
-      makeQueuedPrd({ id: 'feature', frontmatter: { title: 'Feature', status: 'pending', depends_on: ['foundation'] } }),
+      makeQueuedPrd({ id: 'foundation', frontmatter: { title: 'Foundation' } }),
+      makeQueuedPrd({ id: 'feature', frontmatter: { title: 'Feature', depends_on: ['foundation'] } }),
     ];
 
     const ordered = resolveQueueOrder(prds);
@@ -125,10 +124,10 @@ describe('resolveQueueOrder dependency semantics for greedy scheduler', () => {
   it('handles diamond dependency graphs', () => {
     // Diamond: A -> B, A -> C, B -> D, C -> D
     const prds = [
-      makeQueuedPrd({ id: 'd', frontmatter: { title: 'D', status: 'pending' } }),
-      makeQueuedPrd({ id: 'b', frontmatter: { title: 'B', status: 'pending', depends_on: ['d'] } }),
-      makeQueuedPrd({ id: 'c', frontmatter: { title: 'C', status: 'pending', depends_on: ['d'] } }),
-      makeQueuedPrd({ id: 'a', frontmatter: { title: 'A', status: 'pending', depends_on: ['b', 'c'] } }),
+      makeQueuedPrd({ id: 'd', frontmatter: { title: 'D' } }),
+      makeQueuedPrd({ id: 'b', frontmatter: { title: 'B', depends_on: ['d'] } }),
+      makeQueuedPrd({ id: 'c', frontmatter: { title: 'C', depends_on: ['d'] } }),
+      makeQueuedPrd({ id: 'a', frontmatter: { title: 'A', depends_on: ['b', 'c'] } }),
     ];
 
     const ordered = resolveQueueOrder(prds);
@@ -150,7 +149,7 @@ describe('resolveQueueOrder dependency semantics for greedy scheduler', () => {
     const prds = [
       makeQueuedPrd({
         id: 'feature',
-        frontmatter: { title: 'Feature', status: 'pending', depends_on: ['nonexistent'] },
+        frontmatter: { title: 'Feature', depends_on: ['nonexistent'] },
       }),
     ];
 

@@ -20,7 +20,7 @@ import type {
   PlanFile,
   ClarificationQuestion,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, updatePrdStatus, enqueuePrd, inferTitle, claimPrd, releasePrd } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runFormatter } from './agents/formatter.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
@@ -372,7 +372,6 @@ export class EforgeEngine {
       try {
         const queue = await loadQueue(this.config.prdQueue.dir, cwd);
         const queueItems: QueueItemSummary[] = queue
-          .filter((p) => p.frontmatter.status === 'pending')
           .map((p) => ({
             id: p.id,
             title: p.frontmatter.title,
@@ -776,7 +775,7 @@ export class EforgeEngine {
 
       if (stalenessVerdict === 'obsolete') {
         await releasePrd(prd.id, cwd);
-        await updatePrdStatus(prd.filePath, 'skipped');
+        await movePrdToSubdir(prd.filePath, 'skipped', cwd);
         yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: 'obsolete' };
         yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
         return;
@@ -815,9 +814,6 @@ export class EforgeEngine {
     };
 
     try {
-      // Update status to running
-      await updatePrdStatus(prd.filePath, 'running');
-
       yield {
         type: 'session:start',
         sessionId: prdSessionId,
@@ -885,7 +881,12 @@ export class EforgeEngine {
         await releasePrd(prd.id, cwd);
       } catch { /* best-effort lock cleanup */ }
       try {
-        await updatePrdStatus(prd.filePath, prdResult.status);
+        if (prdResult.status === 'failed') {
+          await movePrdToSubdir(prd.filePath, 'failed', cwd);
+        } else if (prdResult.status === 'skipped') {
+          await movePrdToSubdir(prd.filePath, 'skipped', cwd);
+        }
+        // completed: no-op — cleanupCompletedPrd handles deletion during build
       } catch { /* prevent double-throw */ }
 
       yield {

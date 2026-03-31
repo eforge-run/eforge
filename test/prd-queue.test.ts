@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { writeFileSync, readFileSync } from 'node:fs';
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { existsSync } from 'node:fs';
-import { validatePrdFrontmatter, resolveQueueOrder, updatePrdStatus, claimPrd, releasePrd, type QueuedPrd } from '../src/engine/prd-queue.js';
+import { execFileSync } from 'node:child_process';
+import { validatePrdFrontmatter, resolveQueueOrder, claimPrd, releasePrd, movePrdToSubdir, isPrdRunning, type QueuedPrd } from '../src/engine/prd-queue.js';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -30,14 +31,12 @@ describe('validatePrdFrontmatter', () => {
       title: 'Add user auth',
       created: '2026-01-15',
       priority: 1,
-      status: 'pending',
       depends_on: ['setup-db'],
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.title).toBe('Add user auth');
       expect(result.data.priority).toBe(1);
-      expect(result.data.status).toBe('pending');
       expect(result.data.depends_on).toEqual(['setup-db']);
     }
   });
@@ -58,14 +57,6 @@ describe('validatePrdFrontmatter', () => {
     expect(result.success).toBe(true);
   });
 
-  it('rejects frontmatter with invalid status', () => {
-    const result = validatePrdFrontmatter({
-      title: 'Bad status',
-      status: 'in-progress',
-    });
-    expect(result.success).toBe(false);
-  });
-
   it('ignores extra fields gracefully', () => {
     const result = validatePrdFrontmatter({
       title: 'Extra fields',
@@ -78,13 +69,6 @@ describe('validatePrdFrontmatter', () => {
       expect(result.data.title).toBe('Extra fields');
     }
   });
-
-  it('accepts all valid status values', () => {
-    for (const status of ['pending', 'running', 'completed', 'failed', 'skipped']) {
-      const result = validatePrdFrontmatter({ title: 'Test', status });
-      expect(result.success).toBe(true);
-    }
-  });
 });
 
 // ---------------------------------------------------------------------------
@@ -94,9 +78,9 @@ describe('validatePrdFrontmatter', () => {
 describe('resolveQueueOrder', () => {
   it('sorts by priority ascending (lower = higher priority)', () => {
     const prds = [
-      makeQueuedPrd({ id: 'low', frontmatter: { title: 'Low', priority: 3, status: 'pending' } }),
-      makeQueuedPrd({ id: 'high', frontmatter: { title: 'High', priority: 1, status: 'pending' } }),
-      makeQueuedPrd({ id: 'mid', frontmatter: { title: 'Mid', priority: 2, status: 'pending' } }),
+      makeQueuedPrd({ id: 'low', frontmatter: { title: 'Low', priority: 3 } }),
+      makeQueuedPrd({ id: 'high', frontmatter: { title: 'High', priority: 1 } }),
+      makeQueuedPrd({ id: 'mid', frontmatter: { title: 'Mid', priority: 2 } }),
     ];
 
     const ordered = resolveQueueOrder(prds);
@@ -107,11 +91,11 @@ describe('resolveQueueOrder', () => {
     const prds = [
       makeQueuedPrd({
         id: 'api',
-        frontmatter: { title: 'API', status: 'pending', depends_on: ['db'] },
+        frontmatter: { title: 'API', depends_on: ['db'] },
       }),
       makeQueuedPrd({
         id: 'db',
-        frontmatter: { title: 'Database', status: 'pending' },
+        frontmatter: { title: 'Database' },
       }),
     ];
 
@@ -123,15 +107,15 @@ describe('resolveQueueOrder', () => {
     const prds = [
       makeQueuedPrd({
         id: 'feature-b',
-        frontmatter: { title: 'Feature B', priority: 1, status: 'pending', depends_on: ['foundation'] },
+        frontmatter: { title: 'Feature B', priority: 1, depends_on: ['foundation'] },
       }),
       makeQueuedPrd({
         id: 'feature-a',
-        frontmatter: { title: 'Feature A', priority: 2, status: 'pending', depends_on: ['foundation'] },
+        frontmatter: { title: 'Feature A', priority: 2, depends_on: ['foundation'] },
       }),
       makeQueuedPrd({
         id: 'foundation',
-        frontmatter: { title: 'Foundation', priority: 3, status: 'pending' },
+        frontmatter: { title: 'Foundation', priority: 3 },
       }),
     ];
 
@@ -140,82 +124,69 @@ describe('resolveQueueOrder', () => {
     expect(ordered.map((p) => p.id)).toEqual(['foundation', 'feature-b', 'feature-a']);
   });
 
-  it('filters to only pending PRDs', () => {
+  it('returns all PRDs in queue (all are pending by definition)', () => {
     const prds = [
-      makeQueuedPrd({ id: 'done', frontmatter: { title: 'Done', status: 'completed' } }),
-      makeQueuedPrd({ id: 'todo', frontmatter: { title: 'Todo', status: 'pending' } }),
-      makeQueuedPrd({ id: 'skip', frontmatter: { title: 'Skip', status: 'skipped' } }),
+      makeQueuedPrd({ id: 'a', frontmatter: { title: 'A' } }),
+      makeQueuedPrd({ id: 'b', frontmatter: { title: 'B' } }),
     ];
 
     const ordered = resolveQueueOrder(prds);
-    expect(ordered).toHaveLength(1);
-    expect(ordered[0].id).toBe('todo');
+    expect(ordered).toHaveLength(2);
   });
 
-  it('returns empty array when no pending PRDs', () => {
-    const prds = [
-      makeQueuedPrd({ id: 'done', frontmatter: { title: 'Done', status: 'completed' } }),
-    ];
-    expect(resolveQueueOrder(prds)).toEqual([]);
-  });
-
-  it('treats PRDs without status as pending', () => {
-    const prds = [
-      makeQueuedPrd({ id: 'no-status', frontmatter: { title: 'No Status' } }),
-    ];
-
-    const ordered = resolveQueueOrder(prds);
-    expect(ordered).toHaveLength(1);
-    expect(ordered[0].id).toBe('no-status');
-  });
-
-  it('filters out dependencies referencing non-pending PRDs', () => {
-    const prds = [
-      makeQueuedPrd({ id: 'completed-dep', frontmatter: { title: 'Completed', status: 'completed' } }),
-      makeQueuedPrd({
-        id: 'feature',
-        frontmatter: { title: 'Feature', status: 'pending', depends_on: ['completed-dep'] },
-      }),
-    ];
-
-    // completed-dep is not pending, so feature's dependency on it should be filtered out
-    const ordered = resolveQueueOrder(prds);
-    expect(ordered).toHaveLength(1);
-    expect(ordered[0].id).toBe('feature');
+  it('returns empty array for empty input', () => {
+    expect(resolveQueueOrder([])).toEqual([]);
   });
 });
 
 // ---------------------------------------------------------------------------
-// updatePrdStatus
+// movePrdToSubdir
 // ---------------------------------------------------------------------------
 
-describe('updatePrdStatus', () => {
-  const makeTempDir = useTempDir('eforge-prd-status-');
+describe('movePrdToSubdir', () => {
+  const makeTempDir = useTempDir('eforge-prd-move-');
 
-  it('replaces existing status line', async () => {
+  it('moves a PRD file to a subdirectory via git mv', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\nstatus: pending\n---\n\n# Test\n');
+    // Initialize git repo
+    execFileSync('git', ['init'], { cwd: dir });
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], { cwd: dir });
+    execFileSync('git', ['config', 'user.name', 'Test'], { cwd: dir });
 
-    await updatePrdStatus(filePath, 'completed');
+    const queueDir = join(dir, 'eforge', 'queue');
+    mkdirSync(queueDir, { recursive: true });
 
-    const content = readFileSync(filePath, 'utf-8');
-    expect(content).toContain('status: completed');
-    expect(content).not.toContain('status: pending');
+    const filePath = join(queueDir, 'test-prd.md');
+    writeFileSync(filePath, '---\ntitle: Test\n---\n\n# Test\n');
+    execFileSync('git', ['add', '.'], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'init'], { cwd: dir });
+
+    await movePrdToSubdir(filePath, 'failed', dir);
+
+    expect(existsSync(join(queueDir, 'failed', 'test-prd.md'))).toBe(true);
+    expect(existsSync(filePath)).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// isPrdRunning
+// ---------------------------------------------------------------------------
+
+describe('isPrdRunning', () => {
+  const makeTempDir = useTempDir('eforge-prd-running-');
+
+  it('returns false when no lock file exists', async () => {
+    const dir = makeTempDir();
+    expect(await isPrdRunning('test', dir)).toBe(false);
   });
 
-  it('inserts status when absent', async () => {
+  it('returns true when lock file exists', async () => {
     const dir = makeTempDir();
-    const filePath = join(dir, 'test.md');
-    writeFileSync(filePath, '---\ntitle: Test\n---\n\n# Test\n');
+    const lockDir = join(dir, '.eforge', 'queue-locks');
+    mkdirSync(lockDir, { recursive: true });
+    writeFileSync(join(lockDir, 'test.lock'), String(process.pid));
 
-    await updatePrdStatus(filePath, 'running');
-
-    const content = readFileSync(filePath, 'utf-8');
-    expect(content).toContain('status: running');
-    // Should still have valid frontmatter structure
-    expect(content).toMatch(/^---\n/);
-    expect(content).toMatch(/\n---\n/);
+    expect(await isPrdRunning('test', dir)).toBe(true);
   });
 });
 
@@ -252,7 +223,6 @@ describe('claimPrd', () => {
     const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
     // Write a lock file with a PID that does not exist
-    const { mkdirSync } = await import('node:fs');
     mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
     writeFileSync(lockPath, '999999');
 
@@ -270,7 +240,6 @@ describe('claimPrd', () => {
     const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
     // Write a lock file with the current (alive) process PID
-    const { mkdirSync } = await import('node:fs');
     mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
     writeFileSync(lockPath, String(process.pid));
 
@@ -284,7 +253,6 @@ describe('claimPrd', () => {
     const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
     // Write a lock file with non-numeric content
-    const { mkdirSync } = await import('node:fs');
     mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
     writeFileSync(lockPath, 'not-a-pid');
 
@@ -298,7 +266,6 @@ describe('claimPrd', () => {
     const lockPath = join(dir, '.eforge', 'queue-locks', `${prdId}.lock`);
 
     // Write an empty lock file
-    const { mkdirSync } = await import('node:fs');
     mkdirSync(join(dir, '.eforge', 'queue-locks'), { recursive: true });
     writeFileSync(lockPath, '');
 

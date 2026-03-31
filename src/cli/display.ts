@@ -737,21 +737,20 @@ export function renderStatus(status: EforgeStatus): void {
 }
 
 /**
- * Render the PRD queue as a formatted table, grouped by status.
+ * Render the PRD queue as a formatted table, grouped by location-based status.
+ * Accepts separate arrays for each state (pending, running, failed, skipped).
  */
-export function renderQueueList(prds: QueuedPrd[]): void {
-  if (prds.length === 0) {
+export function renderQueueList(groups: {
+  pending: QueuedPrd[];
+  running: QueuedPrd[];
+  failed: QueuedPrd[];
+  skipped: QueuedPrd[];
+}): void {
+  const total = groups.pending.length + groups.running.length + groups.failed.length + groups.skipped.length;
+  if (total === 0) {
     console.log(chalk.dim('No PRDs in queue.'));
     return;
   }
-
-  // Group by status
-  const pending = prds.filter((p) => (p.frontmatter.status ?? 'pending') === 'pending');
-  const completed = prds.filter((p) => p.frontmatter.status === 'completed');
-  const other = prds.filter((p) => {
-    const s = p.frontmatter.status;
-    return s === 'failed' || s === 'skipped' || s === 'running';
-  });
 
   function staleDaysColor(days: number): string {
     const padded = String(days).padStart(5);
@@ -782,9 +781,6 @@ export function renderQueueList(prds: QueuedPrd[]): void {
       const created = prd.frontmatter.created ?? '-';
       const deps = prd.frontmatter.depends_on?.join(', ') ?? '-';
 
-      // Calculate stale days from created date.
-      // Pad the raw number BEFORE applying chalk colors,
-      // since ANSI escape codes break padStart alignment.
       let staleDaysStr: string;
       if (prd.frontmatter.created) {
         const createdDate = new Date(prd.frontmatter.created);
@@ -800,9 +796,10 @@ export function renderQueueList(prds: QueuedPrd[]): void {
     }
   }
 
-  renderGroup(pending, 'Pending', false);
-  renderGroup(completed, 'Completed', true);
-  renderGroup(other, 'Other', true);
+  renderGroup(groups.pending, 'Pending', false);
+  renderGroup(groups.running, 'Running', false);
+  renderGroup(groups.failed, 'Failed', true);
+  renderGroup(groups.skipped, 'Skipped', true);
 }
 
 /**

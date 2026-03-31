@@ -489,11 +489,31 @@ export function createProgram(abortController?: AbortController): Command {
     .command('list')
     .description('Show PRDs in the queue')
     .action(async () => {
-      const { loadQueue } = await import('../engine/prd-queue.js');
+      const { loadQueue, isPrdRunning } = await import('../engine/prd-queue.js');
       const { loadConfig } = await import('../engine/config.js');
       const config = await loadConfig();
-      const prds = await loadQueue(config.prdQueue.dir, process.cwd());
-      renderQueueList(prds);
+      const cwd = process.cwd();
+      const queueDir = config.prdQueue.dir;
+
+      // Load PRDs from main queue dir and subdirectories
+      const [allPending, failed, skipped] = await Promise.all([
+        loadQueue(queueDir, cwd),
+        loadQueue(`${queueDir}/failed`, cwd),
+        loadQueue(`${queueDir}/skipped`, cwd),
+      ]);
+
+      // Split pending into running vs pending by checking lock files
+      const pending: typeof allPending = [];
+      const running: typeof allPending = [];
+      for (const prd of allPending) {
+        if (await isPrdRunning(prd.id, cwd)) {
+          running.push(prd);
+        } else {
+          pending.push(prd);
+        }
+      }
+
+      renderQueueList({ pending, running, failed, skipped });
     });
 
   queue

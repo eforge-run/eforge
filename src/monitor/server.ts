@@ -577,44 +577,65 @@ export async function startServer(
     }
 
     const queueDir = resolve(cwd, options?.queueDir ?? 'eforge/queue');
-    let entries: string[];
-    try {
-      entries = await readdir(queueDir);
-    } catch {
-      sendJson(res, []);
-      return;
-    }
+    const lockDir = resolve(cwd, '.eforge', 'queue-locks');
 
-    const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
-    const items: Array<{
+    type QueueItem = {
       id: string;
       title: string;
       status: string;
       priority?: number;
       created?: string;
       dependsOn?: string[];
-    }> = [];
+    };
+    const items: QueueItem[] = [];
 
-    for (const file of mdFiles) {
+    // Helper: load PRDs from a directory with a given derived status
+    async function loadFromDir(dir: string, derivedStatus: string): Promise<void> {
+      let entries: string[];
       try {
-        const content = await readFile(resolve(queueDir, file), 'utf-8');
-        const fm = parseQueueFrontmatter(content);
-        if (!fm || typeof fm.title !== 'string') continue;
-
-        const item: (typeof items)[number] = {
-          id: basename(file, '.md'),
-          title: fm.title,
-          status: typeof fm.status === 'string' ? fm.status : 'pending',
-        };
-        if (typeof fm.priority === 'number') item.priority = fm.priority;
-        if (typeof fm.created === 'string') item.created = fm.created;
-        if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
-
-        items.push(item);
+        entries = await readdir(dir);
       } catch {
-        // skip unreadable files
+        return;
+      }
+
+      const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
+      for (const file of mdFiles) {
+        try {
+          const content = await readFile(resolve(dir, file), 'utf-8');
+          const fm = parseQueueFrontmatter(content);
+          if (!fm || typeof fm.title !== 'string') continue;
+
+          const id = basename(file, '.md');
+
+          // For PRDs in the main queue dir, check lock files to determine running vs pending
+          let status = derivedStatus;
+          if (derivedStatus === 'pending') {
+            try {
+              await readFile(resolve(lockDir, `${id}.lock`));
+              status = 'running';
+            } catch {
+              // No lock file — stays pending
+            }
+          }
+
+          const item: QueueItem = { id, title: fm.title, status };
+          if (typeof fm.priority === 'number') item.priority = fm.priority;
+          if (typeof fm.created === 'string') item.created = fm.created;
+          if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
+
+          items.push(item);
+        } catch {
+          // skip unreadable files
+        }
       }
     }
+
+    // Scan main queue dir (pending/running) and subdirectories (failed, skipped)
+    await Promise.all([
+      loadFromDir(queueDir, 'pending'),
+      loadFromDir(resolve(queueDir, 'failed'), 'failed'),
+      loadFromDir(resolve(queueDir, 'skipped'), 'skipped'),
+    ]);
 
     sendJson(res, items);
   }

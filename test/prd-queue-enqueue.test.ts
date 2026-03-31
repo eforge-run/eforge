@@ -49,12 +49,11 @@ describe('enqueuePrd', () => {
     expect(result.id).toBe('fix-the-widget');
     expect(result.filePath).toBe(join(cwd, 'queue', 'fix-the-widget.md'));
     expect(result.frontmatter.title).toBe('Fix the Widget');
-    expect(result.frontmatter.status).toBe('pending');
     expect(result.frontmatter.created).toMatch(/^\d{4}-\d{2}-\d{2}$/);
 
     const content = readFileSync(result.filePath, 'utf-8');
     expect(content).toContain('title: Fix the Widget');
-    expect(content).toContain('status: pending');
+    expect(content).not.toContain('status:');
     expect(content).toContain('## Problem');
     expect(content).toContain('Something is broken.');
   });
