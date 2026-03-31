@@ -7,6 +7,9 @@ build:
     - pnpm test
     - pnpm build
 
+prdQueue:
+  parallelism: 2
+
 profiles:
   docs:
     extends: errand
