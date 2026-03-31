@@ -6,7 +6,7 @@ import type { AgentThread, StoredEvent } from '@/lib/reducer';
 import type { AgentRole, PipelineStage, ReviewIssue, ProfileInfo, OrchestrationConfig, BuildStageSpec } from '@/lib/types';
 
 const REVIEW_AGENTS = new Set([
-  'reviewer', 'plan-reviewer', 'architecture-reviewer', 'cohesion-reviewer',
+  'reviewer', 'review-fixer', 'plan-reviewer', 'architecture-reviewer', 'cohesion-reviewer',
   'evaluator', 'plan-evaluator', 'architecture-evaluator', 'cohesion-evaluator',
 ]);
 
@@ -16,6 +16,7 @@ const AGENT_COLORS: Record<AgentRole, { bg: string; border: string }> = {
   'module-planner':         { bg: 'bg-yellow/30',  border: 'border-yellow/50' },
   'builder':                { bg: 'bg-blue/30',    border: 'border-blue/50' },
   'reviewer':               { bg: 'bg-green/30',   border: 'border-green/50' },
+  'review-fixer':           { bg: 'bg-green/30',   border: 'border-green/50' },
   'plan-reviewer':          { bg: 'bg-green/30',   border: 'border-green/50' },
   'cohesion-reviewer':      { bg: 'bg-green/30',   border: 'border-green/50' },
   'architecture-reviewer':  { bg: 'bg-green/30',   border: 'border-green/50' },
@@ -69,6 +70,7 @@ const AGENT_TO_STAGE: Record<AgentRole, string> = {
   'builder': 'implement',
   'doc-updater': 'doc-update',
   'reviewer': 'review',
+  'review-fixer': 'review-fix',
   'evaluator': 'evaluate',
   'validation-fixer': 'validate',
   'formatter': 'formatter',

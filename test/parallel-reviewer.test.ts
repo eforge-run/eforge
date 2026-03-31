@@ -1,6 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import type { ReviewIssue } from '../src/engine/events.js';
+import { StubBackend } from './stub-backend.js';
+import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { deduplicateIssues } from '../src/engine/agents/parallel-reviewer.js';
+import { runReviewFixer } from '../src/engine/agents/review-fixer.js';
 
 describe('deduplicateIssues', () => {
   it('removes exact duplicates keeping highest severity', () => {
@@ -60,3 +63,81 @@ describe('deduplicateIssues', () => {
   });
 });
 
+describe('runReviewFixer', () => {
+  it('emits fix start and complete events', async () => {
+    const backend = new StubBackend([{ text: 'Fixed all issues.' }]);
+
+    const issues: ReviewIssue[] = [
+      { severity: 'critical', category: 'bugs', file: 'a.ts', line: 10, description: 'Null pointer', fix: 'Add null check' },
+    ];
+
+    const events = await collectEvents(
+      runReviewFixer({
+        backend,
+        planId: 'plan-01',
+        cwd: '/tmp/test',
+        issues,
+      }),
+    );
+
+    const fixStart = findEvent(events, 'build:review:fix:start');
+    expect(fixStart).toBeDefined();
+    expect(fixStart!.planId).toBe('plan-01');
+    expect(fixStart!.issueCount).toBe(1);
+
+    const fixComplete = findEvent(events, 'build:review:fix:complete');
+    expect(fixComplete).toBeDefined();
+    expect(fixComplete!.planId).toBe('plan-01');
+  });
+
+  it('runs with coding tools', async () => {
+    const backend = new StubBackend([{ text: 'Done.' }]);
+
+    await collectEvents(
+      runReviewFixer({
+        backend,
+        planId: 'plan-01',
+        cwd: '/tmp/test',
+        issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],
+      }),
+    );
+
+    expect(backend.calls).toHaveLength(1);
+    expect(backend.calls[0].tools).toBe('coding');
+  });
+
+  it('uses review-fixer agent role', async () => {
+    const backend = new StubBackend([{ text: 'Done.' }]);
+
+    const events = await collectEvents(
+      runReviewFixer({
+        backend,
+        planId: 'plan-01',
+        cwd: '/tmp/test',
+        issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],
+      }),
+    );
+
+    const agentStart = findEvent(events, 'agent:start');
+    expect(agentStart).toBeDefined();
+    expect(agentStart!.agent).toBe('review-fixer');
+  });
+
+  it('survives backend errors gracefully', async () => {
+    const backend = new StubBackend([{ error: new Error('Backend failed') }]);
+
+    // Should not throw — review fixer errors are non-fatal
+    const events = await collectEvents(
+      runReviewFixer({
+        backend,
+        planId: 'plan-01',
+        cwd: '/tmp/test',
+        issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],
+      }),
+    );
+
+    // Should still emit fix:start and fix:complete
+    expect(findEvent(events, 'build:review:fix:start')).toBeDefined();
+    expect(findEvent(events, 'build:review:fix:complete')).toBeDefined();
+  });
+});

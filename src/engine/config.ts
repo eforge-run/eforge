@@ -12,7 +12,7 @@ import type { AgentRole } from './events.js';
 
 /** Agent roles matching the AgentRole union in events.ts. */
 export const AGENT_ROLES = [
-  'planner', 'builder', 'reviewer', 'evaluator', 'module-planner',
+  'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator', 'module-planner',
   'plan-reviewer', 'plan-evaluator', 'architecture-reviewer', 'architecture-evaluator',
   'cohesion-reviewer', 'cohesion-evaluator',
   'validation-fixer', 'merge-conflict-resolver',

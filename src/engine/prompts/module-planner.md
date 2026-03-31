@@ -153,7 +153,7 @@ After writing the module plan, emit a `<build-config>` XML block containing JSON
 
 **Fields:**
 
-- **`build`** — array of stage specs. Each element is a stage name (string) or an array of stage names (parallel group). `review-cycle` is a composite stage that expands to `[review, evaluate]`. `test-cycle` expands to `[test, evaluate]` — use it when the module has testable behavior.
+- **`build`** — array of stage specs. Each element is a stage name (string) or an array of stage names (parallel group). `review-cycle` is a composite stage that expands to `[review, review-fix, evaluate]`. `test-cycle` expands to `[test, evaluate]` — use it when the module has testable behavior.
 - **`review`** — object controlling the review cycle:
   - `strategy` — `auto`, `single`, or `parallel`
   - `perspectives` — array of review perspectives: `code`, `security`, `api`, `docs`

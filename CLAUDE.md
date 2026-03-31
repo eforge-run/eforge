@@ -39,9 +39,9 @@ node --env-file=.env dist/cli.js build some-prd.md --verbose
 
 Compile stages: `prd-passthrough`, `planner`, `plan-review-cycle`, `architecture-review-cycle`, `module-planning`, `cohesion-review-cycle`, `compile-expedition`
 
-Build stages: `implement`, `review`, `evaluate`, `review-cycle`, `validate`, `doc-update`, `test-write`, `test`, `test-cycle`
+Build stages: `implement`, `review`, `review-fix`, `evaluate`, `review-cycle`, `validate`, `doc-update`, `test-write`, `test`, `test-cycle`
 
-`review-cycle` is a composite stage that expands to `[review, evaluate]`.
+`review-cycle` is a composite stage that expands to `[review, review-fix, evaluate]`.
 
 `test-cycle` is a composite stage that expands to `[test, evaluate]`. Use it when the plan has testable behavior.
 
@@ -69,7 +69,8 @@ Build stages and review config are determined per-plan by the planner (for singl
 - **Architecture Evaluator** — one-shot query (expedition mode only). Evaluates architecture reviewer's fixes against planner intent. Implemented as a thin wrapper around the plan evaluator with `mode: 'architecture'`.
 - **Staleness Assessor** — one-shot query. Checks whether existing plans need regeneration based on codebase changes.
 - **Builder** — multi-turn agent. Turn 1: implement plan. Turn 2: evaluate reviewer's unstaged fixes (accept/reject/review).
-- **Reviewer** — one-shot query. Blind code review (no builder context), leaves fixes unstaged.
+- **Reviewer** — one-shot query. Blind code review (no builder context), identifies issues without writing fixes.
+- **Review Fixer** — one-shot coding agent. Receives aggregated review issues and applies minimal fixes as unstaged changes.
 - **Parallel Reviewer** — one-shot query. Multi-perspective code review that runs review perspectives in parallel.
 - **Doc Updater** — one-shot coding agent. Updates documentation to reflect implementation changes, runs in parallel with the builder.
 - **Merge Conflict Resolver** — one-shot coding agent. Resolves git merge conflicts by understanding intent from each plan.

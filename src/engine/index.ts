@@ -77,6 +77,10 @@ export type { BuilderOptions } from './agents/builder.js';
 export { runReview, parseReviewIssues, composeReviewPrompt } from './agents/reviewer.js';
 export type { ReviewerOptions } from './agents/reviewer.js';
 
+// --- review-fixer ---
+export { runReviewFixer } from './agents/review-fixer.js';
+export type { ReviewFixerOptions } from './agents/review-fixer.js';
+
 // --- parallel-reviewer ---
 export { runParallelReview, deduplicateIssues } from './agents/parallel-reviewer.js';
 export type { ParallelReviewerOptions } from './agents/parallel-reviewer.js';

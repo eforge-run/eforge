@@ -327,7 +327,7 @@ plans:
     branch: {{planSetName}}/{identifier}
     build:                              # Per-plan build stages
       - [implement, doc-update]         # Parallel group
-      - review-cycle                    # Composite: expands to review → evaluate
+      - review-cycle                    # Composite: expands to review → review-fix → evaluate
     review:                             # Per-plan review config
       strategy: auto
       perspectives: [code]
@@ -357,9 +357,9 @@ Important:
 
 Each plan entry in orchestration.yaml carries its own `build` and `review` fields. These determine how the plan is built after merge — the profile only controls compile stages.
 
-**`build`** — array of stage specs. Each element is either a stage name (string) or an array of stage names (parallel group). Available stages: `implement`, `doc-update`, `test-write`, `test`, `test-cycle`, `review`, `evaluate`, `validate`, `review-cycle`.
+**`build`** — array of stage specs. Each element is either a stage name (string) or an array of stage names (parallel group). Available stages: `implement`, `doc-update`, `test-write`, `test`, `test-cycle`, `review`, `review-fix`, `evaluate`, `validate`, `review-cycle`.
 
-**`review-cycle`** is a composite stage that expands to `[review, evaluate]`. The reviewer writes fixes directly as unstaged changes, which the evaluator then judges.
+**`review-cycle`** is a composite stage that expands to `[review, review-fix, evaluate]`. The reviewer identifies issues, the review-fixer applies fixes as unstaged changes, which the evaluator then judges.
 
 **`test-cycle`** is a composite stage that expands to `[test, evaluate]`. Use it when the plan has testable behavior. The tester agent runs tests, fixes test bugs, and writes production fixes as unstaged changes for the evaluator to judge.
 

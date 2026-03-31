@@ -49,24 +49,11 @@ Assign one severity level per issue:
 - **warning** — Should fix. Edge cases, error handling gaps, type safety issues that could cause problems.
 - **suggestion** — Nice to have. Performance improvements, readability, DRY improvements.
 
-# Fix Instructions
+# Fix Descriptions
 
-When you identify an issue that has a clear, unambiguous fix:
+When you identify an issue, describe the recommended fix in the `<fix>` element of your output. The review-fixer agent will apply fixes based on your descriptions.
 
-1. Write the fix directly to the file using your editing tools.
-2. **Do NOT stage the fix.** Do not run `git add` on any file.
-3. **Do NOT commit.** Do not run `git commit`.
-4. For issues where a fix would fundamentally change the architecture or require understanding builder intent you cannot infer, describe the problem and possible approaches in the issue description instead of modifying files.
-
-# Fix Criteria
-
-**Always attempt a fix for every issue you report**, regardless of severity. The evaluator will decide whether to accept or reject your fix — your job is to provide the best fix you can. Pick the simplest, most minimal approach and write it.
-
-A fix should be minimal — only change what is necessary to resolve the issue. Do not alter the implementation's design or architecture.
-
-Skip the fix only when:
-- The fix would require understanding builder intent that you cannot infer from the code
-- The fix would fundamentally change the architectural approach
+Do NOT write fixes to files - describe them in the `<fix>` element only. Your role is to identify and describe issues; the review-fixer agent handles the actual code changes.
 
 # Review Issue Schema
 
@@ -84,7 +71,7 @@ After completing your review, output your findings in this exact XML format:
 <review-issues>
   <issue severity="critical|warning|suggestion" category="bugs|security|error-handling|edge-cases|types|dry|performance|maintainability" file="path/to/file.ts" line="42">
     Description of the issue.
-    <fix>Description of the fix applied, if any.</fix>
+    <fix>Description of the recommended fix for the review-fixer agent to apply.</fix>
   </issue>
 </review-issues>
 ```
@@ -94,14 +81,14 @@ Rules:
 - The `category` attribute must be one of: `bugs`, `security`, `error-handling`, `edge-cases`, `types`, `dry`, `performance`, `maintainability`
 - The `file` attribute is the relative path from the repository root
 - The `line` attribute is optional — include it when you can identify a specific line
-- The `<fix>` element should be included for every issue where you wrote a fix (which should be most issues)
+- The `<fix>` element should be included for every issue, describing the recommended fix for the review-fixer agent
 - If you find no issues, output an empty block: `<review-issues></review-issues>`
 - Always output exactly one `<review-issues>` block at the end of your response
 
 # Constraints
 
-- Do NOT run `git add` — fixes must remain unstaged
-- Do NOT run `git commit` — the builder decides what to accept
+- Do NOT write fixes to files - describe them in the `<fix>` element only
+- Do NOT run `git add` or `git commit`
 - Do NOT modify files outside the scope of `git diff {{base_branch}}...HEAD`
 - Do NOT review or modify test files unless they are part of the diff
 - Review ONLY the changed files — ignore pre-existing issues in unchanged code

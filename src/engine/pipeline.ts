@@ -33,6 +33,7 @@ import { runModulePlanner } from './agents/module-planner.js';
 import { builderImplement, builderEvaluate } from './agents/builder.js';
 import { runDocUpdater } from './agents/doc-updater.js';
 import { runParallelReview } from './agents/parallel-reviewer.js';
+import { runReviewFixer } from './agents/review-fixer.js';
 import { runPlanReview } from './agents/plan-reviewer.js';
 import { runPlanEvaluate, runCohesionEvaluate, runArchitectureEvaluate } from './agents/plan-evaluator.js';
 import { runCohesionReview } from './agents/cohesion-reviewer.js';
@@ -261,6 +262,7 @@ export const AGENT_MODEL_CLASSES: Record<AgentRole, ModelClass> = {
   'plan-evaluator': 'max',
   builder: 'max',
   reviewer: 'max',
+  'review-fixer': 'max',
   evaluator: 'max',
   'validation-fixer': 'max',
   'merge-conflict-resolver': 'max',
@@ -1158,6 +1160,44 @@ async function* evaluateStageInner(
   }
 }
 
+registerBuildStage('review-fix', async function* reviewFixStage(ctx) {
+  yield* reviewFixStageInner(ctx);
+});
+
+async function* reviewFixStageInner(
+  ctx: BuildStageContext,
+): AsyncGenerator<EforgeEvent> {
+  if (ctx.reviewIssues.length === 0) return;
+
+  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.config.backend);
+  const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
+  fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
+  const fixTracker = createToolTracker(fixSpan);
+
+  try {
+    for await (const event of runReviewFixer({
+      backend: ctx.backend,
+      planId: ctx.planId,
+      cwd: ctx.worktreePath,
+      issues: ctx.reviewIssues,
+      verbose: ctx.verbose,
+      abortController: ctx.abortController,
+      ...fixerConfig,
+    })) {
+      fixTracker.handleEvent(event);
+      yield event;
+    }
+    fixTracker.cleanup();
+    fixSpan.end();
+  } catch (err) {
+    fixTracker.cleanup();
+    fixSpan.error(err as Error);
+    // Re-throw abort errors so the pipeline can respect cancellation
+    if (err instanceof Error && err.name === 'AbortError') throw err;
+    // Review fixer failures are non-fatal
+  }
+}
+
 registerBuildStage('review-cycle', async function* reviewCycleStage(ctx) {
   const maxRounds = ctx.review.maxRounds;
   const strategy = ctx.review.strategy;
@@ -1166,7 +1206,7 @@ registerBuildStage('review-cycle', async function* reviewCycleStage(ctx) {
   const strictness = ctx.review.evaluatorStrictness;
 
   for (let round = 0; round < maxRounds; round++) {
-    // 1. Review (reviewer writes fixes directly as unstaged changes)
+    // 1. Review (reviewer identifies issues, does not write fixes)
     yield* reviewStageInner(ctx, { strategy, perspectives });
 
     // 2. Filter issues
@@ -1175,7 +1215,10 @@ registerBuildStage('review-cycle', async function* reviewCycleStage(ctx) {
 
     if (filtered.length === 0) break; // No actionable issues
 
-    // 3. Evaluate
+    // 3. Review-fix (apply fixes from aggregated issues)
+    yield* reviewFixStageInner(ctx);
+
+    // 4. Evaluate
     yield* evaluateStageInner(ctx, { strictness });
   }
 });
