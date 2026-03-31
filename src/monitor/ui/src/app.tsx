@@ -7,6 +7,7 @@ import { Sidebar } from '@/components/layout/sidebar';
 import { ShutdownBanner } from '@/components/layout/shutdown-banner';
 import { SummaryCards } from '@/components/common/summary-cards';
 import { ArtifactsStrip } from '@/components/common/artifacts-strip';
+import { FailureBanner } from '@/components/common/failure-banner';
 import { ThreadPipeline } from '@/components/pipeline/thread-pipeline';
 import { Timeline } from '@/components/timeline/timeline';
 import { DependencyGraph } from '@/components/graph';
@@ -232,6 +233,28 @@ function AppContent() {
     return plans;
   }, [runState.events]);
 
+  // Derive build failures from build:failed events
+  const buildFailures = useMemo(() => {
+    const failures: Array<{ planId: string; error: string }> = [];
+    for (const { event } of runState.events) {
+      if (event.type === 'build:failed') {
+        failures.push({ planId: event.planId, error: event.error });
+      }
+    }
+    return failures;
+  }, [runState.events]);
+
+  // Derive phase summary from the last failed phase:end event
+  const phaseSummary = useMemo(() => {
+    for (let i = runState.events.length - 1; i >= 0; i--) {
+      const { event } = runState.events[i];
+      if (event.type === 'phase:end' && event.result.status === 'failed') {
+        return event.result.summary;
+      }
+    }
+    return null;
+  }, [runState.events]);
+
   // Reset active tab if its feature becomes unavailable
   useEffect(() => {
     if (activeTab === 'graph' && !graphEnabled) setActiveTab('changes');
@@ -303,6 +326,7 @@ function AppContent() {
                 <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} backend={runState.backend} />
                 <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} profileInfo={runState.profileInfo} events={runState.events} orchestration={effectiveOrchestration} />
                 <ArtifactsStrip prdSource={prdSource} plans={planArtifacts} />
+                <FailureBanner failures={buildFailures} phaseSummary={phaseSummary} />
 
                 {/* Content tabs */}
                 <div className="flex gap-2 border-b border-border pb-px">
