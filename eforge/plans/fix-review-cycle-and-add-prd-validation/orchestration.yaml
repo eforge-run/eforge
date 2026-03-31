@@ -1,0 +1,51 @@
+name: fix-review-cycle-and-add-prd-validation
+description: Fix the review cycle so reviewers inspect real code and write fixes
+  directly, remove the redundant review-fixer stage, and add a final PRD
+  validation gate
+created: 2026-03-31
+compiled: 2026-03-31
+mode: review-pipeline-refactor
+base_branch: main
+profile:
+  extends: excursion
+  description: Multi-file feature work or refactors. Use when the full scope can
+    be planned in a single planner session - all plans enumerated, all file
+    changes listed, and cross-plan dependencies resolved. Covers tightly coupled
+    changes (type cascades, interface refactors, rename-and-update-all-callers)
+    and any work where one planning pass is sufficient.
+  compile:
+    - planner
+    - plan-review-cycle
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-fix-review-cycle
+    name: Fix Review Cycle - Give Reviewer Tools and Remove Review-Fixer
+    depends_on: []
+    branch: fix-review-cycle-and-add-prd-validation/fix-review-cycle
+    build:
+      - implement
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-prd-validation
+    name: Add PRD Validation Gate
+    depends_on:
+      - plan-01-fix-review-cycle
+    branch: fix-review-cycle-and-add-prd-validation/prd-validation
+    build:
+      - implement
+      - review-cycle
+      - test-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
