@@ -10,7 +10,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
-import type { EforgeEvent, OrchestrationConfig, EforgeState, PlanState } from './events.js';
+import type { EforgeEvent, OrchestrationConfig, EforgeState, PlanState, PrdValidationGap } from './events.js';
 import { loadState, saveState, isResumable } from './state.js';
 import {
   computeWorktreeBase,
@@ -51,6 +51,17 @@ export type PrdValidator = (
   cwd: string,
 ) => AsyncGenerator<EforgeEvent>;
 
+/**
+ * Callback that attempts to close PRD validation gaps.
+ * Injected by the consumer (typically wraps the gap-closer agent).
+ * @param cwd - Working directory (merge worktree path)
+ * @param gaps - The gaps identified by PRD validation
+ */
+export type GapCloser = (
+  cwd: string,
+  gaps: PrdValidationGap[],
+) => AsyncGenerator<EforgeEvent>;
+
 export interface OrchestratorOptions {
   stateDir: string;
   repoRoot: string;
@@ -62,6 +73,7 @@ export interface OrchestratorOptions {
   maxValidationRetries?: number;
   mergeResolver?: MergeResolver;
   prdValidator?: PrdValidator;
+  gapCloser?: GapCloser;
   /** Path to the merge worktree (created during compile, loaded from state during build). */
   mergeWorktreePath?: string;
   /** Whether to run cleanup on the feature branch before the final merge. */
@@ -150,8 +162,8 @@ export class Orchestrator {
       planRunner: this.options.planRunner, parallelism: config.plans.length || 1,
       signal, postMergeCommands: this.options.postMergeCommands, validateCommands: this.options.validateCommands,
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
-      mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, worktreeManager: wm,
-      failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, resumed,
+      mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, gapCloser: this.options.gapCloser, worktreeManager: wm,
+      failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, resumed, gapClosePerformed: false,
       shouldCleanup: this.options.shouldCleanup, cleanupPlanSet: this.options.cleanupPlanSet,
       cleanupOutputDir: this.options.cleanupOutputDir, cleanupPrdFilePath: this.options.cleanupPrdFilePath,
     };
@@ -159,6 +171,7 @@ export class Orchestrator {
       yield* executePlans(ctx);
       if ((state.status as string) !== 'failed') yield* validate(ctx);
       if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
+      if ((state.status as string) !== 'failed' && ctx.gapClosePerformed) yield* validate(ctx);
       if ((state.status as string) !== 'failed') yield* finalize(ctx);
     } finally {
       await wm.cleanupAll();

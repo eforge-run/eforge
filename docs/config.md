@@ -40,7 +40,7 @@ agents:
   #   staleness-assessor:     #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
   #     modelClass: fast      #   review-fixer, merge-conflict-resolver, staleness-assessor,
   #                           #   formatter, doc-updater, test-writer, tester,
-  #                           #   prd-validator, dependency-detector
+  #                           #   prd-validator, dependency-detector, gap-closer
 
 maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (default: 2)
 

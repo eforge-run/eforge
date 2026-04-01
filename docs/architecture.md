@@ -65,6 +65,7 @@ graph TD
 | `validation:*` | Post-merge validation |
 | `queue:*` / `enqueue:*` | PRD queue operations |
 | `prd_validation:*` | PRD validation (`prd_validation:start`, `prd_validation:complete`) |
+| `gap_close:*` | PRD validation gap closing (`gap_close:start`, `gap_close:complete`) |
 | `reconciliation:*` | Reconciliation (`reconciliation:start`, `reconciliation:complete`) |
 | `cleanup:*` | Cleanup (`cleanup:start`, `cleanup:complete`) |
 | `approval:*` | Approval flow (`approval:needed`, `approval:response`) |
@@ -149,7 +150,7 @@ Agent roles by function:
 | **Planning** | formatter, planner, module-planner, staleness-assessor, prd-validator, dependency-detector |
 | **Building** | builder, doc-updater, test-writer, tester |
 | **Review** | reviewer, parallel-reviewer, review-fixer, plan-evaluator, cohesion-reviewer, architecture-reviewer |
-| **Recovery** | validation-fixer, merge-conflict-resolver |
+| **Recovery** | validation-fixer, merge-conflict-resolver, gap-closer |
 
 Per-role configuration (model, thinking mode, effort level, budget, tool filters) is set via `eforge/config.yaml` under `agents.roles`. See [config.md](config.md).
 
@@ -185,6 +186,8 @@ graph TD
 Each plan builds in an **isolated git worktree**. Worktrees live in a sibling directory to avoid polluting the main repo. Plans run as soon as their dependencies are met - since plan execution is IO-bound (LLM calls), no throttle is needed.
 
 When a plan completes and merges, the orchestrator immediately checks if any pending plans now have all dependencies satisfied, and launches them. Plans squash-merge back to the feature branch as they finish - a plan only merges after all its dependencies have merged. If a merge conflict occurs, the merge-conflict-resolver agent attempts resolution using context from both plans. After all plans merge, the feature branch merges to the base branch via `--no-ff`, creating a merge commit that preserves the full branch history while keeping the base branch's first-parent history clean.
+
+**PRD validation gap closing** - When PRD validation finds gaps between the spec and implementation, the gap-closer agent makes a single automatic attempt to address them. If changes are made, post-merge validation re-runs to verify the fixes. This mirrors the validation-fixer pattern but operates on PRD-level gaps rather than command failures.
 
 **Post-merge validation** runs commands from `orchestration.yaml` (planner-generated) and `eforge/config.yaml` `postMergeCommands` (user-configured). On failure, the validation-fixer agent attempts repairs up to a configurable retry limit.
 

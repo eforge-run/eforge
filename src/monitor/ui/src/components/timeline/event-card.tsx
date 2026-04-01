@@ -85,6 +85,8 @@ function eventSummary(event: EforgeEvent): string {
     case 'validation:fix:complete': return `Fix attempt ${event.attempt} complete`;
     case 'prd_validation:start': return 'PRD Validation started';
     case 'prd_validation:complete': return event.passed ? 'PRD Validation: passed' : `PRD Validation: ${event.gaps?.length || 0} gap(s) found`;
+    case 'gap_close:start': return 'Gap closing started';
+    case 'gap_close:complete': return 'Gap closing complete';
     case 'approval:needed': return `Approval needed: ${event.action}`;
     case 'approval:response': return event.approved ? 'Approved' : 'Rejected';
     case 'enqueue:start': return `Enqueuing from: ${event.source}`;

@@ -35,7 +35,8 @@ import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
 import { runPrdValidator } from './agents/prd-validator.js';
-import { Orchestrator, type ValidationFixer, type PrdValidator } from './orchestrator.js';
+import { runGapCloser } from './agents/gap-closer.js';
+import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser } from './orchestrator.js';
 import type { MergeResolver } from './worktree-ops.js';
 import { computeWorktreeBase, createMergeWorktree } from './worktree-ops.js';
 import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
@@ -645,6 +646,40 @@ export class EforgeEngine {
         }
       } : undefined;
 
+      // Create gap closer closure
+      const gapCloser: GapCloser | undefined = options.prdFilePath ? async function* (gapCloserCwd, gaps) {
+        // Read PRD content
+        let prdContent: string;
+        try {
+          prdContent = await readFile(resolve(cwd, options.prdFilePath!), 'utf-8');
+        } catch {
+          return;
+        }
+
+        const gapSpan = tracing!.createSpan('gap-closer', {});
+        gapSpan.setInput({ gapCount: gaps.length });
+        const gapTracker = createToolTracker(gapSpan);
+        try {
+          for await (const event of runGapCloser({
+            backend,
+            cwd: gapCloserCwd,
+            gaps,
+            prdContent,
+            verbose,
+            abortController,
+          })) {
+            gapTracker.handleEvent(event);
+            yield event;
+          }
+          gapTracker.cleanup();
+          gapSpan.end();
+        } catch (err) {
+          gapTracker.cleanup();
+          gapSpan.error(err as Error);
+          throw err;
+        }
+      } : undefined;
+
       // Create and run orchestrator
       const signal = abortController?.signal;
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
@@ -659,6 +694,7 @@ export class EforgeEngine {
         maxValidationRetries: config.build.maxValidationRetries,
         mergeResolver,
         prdValidator,
+        gapCloser,
         mergeWorktreePath,
         shouldCleanup,
         cleanupPlanSet: planSet,

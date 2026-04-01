@@ -444,6 +444,7 @@ export const AGENT_MODEL_CLASSES: Record<AgentRole, ModelClass> = {
   'prd-validator': 'max',
   'dependency-detector': 'max',
   'pipeline-composer': 'max',
+  'gap-closer': 'max',
 };
 
 /** Per-backend default model strings for each model class. `undefined` means the SDK picks its own model. */

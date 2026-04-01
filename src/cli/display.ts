@@ -683,6 +683,14 @@ export function renderEvent(event: EforgeEvent): void {
       }
       break;
 
+    case 'gap_close:start':
+      startSpinner('gap-close', 'Closing PRD validation gaps...');
+      break;
+
+    case 'gap_close:complete':
+      succeedSpinner('gap-close', 'Gap closing complete');
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

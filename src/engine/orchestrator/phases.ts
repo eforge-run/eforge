@@ -14,7 +14,7 @@ import { saveState } from '../state.js';
 import { transitionPlan } from './plan-lifecycle.js';
 import { WorktreeManager } from '../worktree-manager.js';
 import { Semaphore, AsyncEventQueue } from '../concurrency.js';
-import type { PlanRunner, ValidationFixer, PrdValidator } from '../orchestrator.js';
+import type { PlanRunner, ValidationFixer, PrdValidator, GapCloser } from '../orchestrator.js';
 import type { MergeResolver } from '../worktree-ops.js';
 import { ATTRIBUTION } from '../git.js';
 import { cleanupPlanFiles } from '../cleanup.js';
@@ -37,6 +37,8 @@ export interface PhaseContext {
   maxValidationRetries: number;
   mergeResolver?: MergeResolver;
   prdValidator?: PrdValidator;
+  gapCloser?: GapCloser;
+  gapClosePerformed: boolean;
   mergeWorktreePath: string;
   featureBranch: string;
   worktreeManager: WorktreeManager;
@@ -499,11 +501,24 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     for await (const event of prdValidator(ctx.mergeWorktreePath)) {
       yield event;
 
-      // If PRD validation fails, mark state as failed
+      // If PRD validation fails, attempt gap closing or mark as failed
       if (event.type === 'prd_validation:complete' && !event.passed) {
-        state.status = 'failed';
-        state.completedAt = new Date().toISOString();
-        saveState(stateDir, state);
+        if (ctx.gapCloser && !ctx.gapClosePerformed) {
+          try {
+            yield* ctx.gapCloser(ctx.mergeWorktreePath, event.gaps);
+            ctx.gapClosePerformed = true;
+          } catch (err) {
+            if (err instanceof Error && err.name === 'AbortError') throw err;
+            // Gap closer errors are non-fatal — fall through to fail
+            state.status = 'failed';
+            state.completedAt = new Date().toISOString();
+            saveState(stateDir, state);
+          }
+        } else {
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
+          saveState(stateDir, state);
+        }
       }
     }
   } catch (err) {

@@ -7,7 +7,7 @@ import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSc
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'review-fixer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater' | 'test-writer' | 'tester' | 'prd-validator' | 'dependency-detector' | 'pipeline-composer';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'review-fixer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater' | 'test-writer' | 'tester' | 'prd-validator' | 'dependency-detector' | 'pipeline-composer' | 'gap-closer';
 
 export interface PrdValidationGap {
   requirement: string;
@@ -240,6 +240,10 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   // PRD validation (post-merge, after validation)
   | { type: 'prd_validation:start' }
   | { type: 'prd_validation:complete'; passed: boolean; gaps: PrdValidationGap[] }
+
+  // Gap closing (PRD validation gap remediation)
+  | { type: 'gap_close:start' }
+  | { type: 'gap_close:complete' }
 
   // Reconciliation (resume)
   | { type: 'reconciliation:start' }
