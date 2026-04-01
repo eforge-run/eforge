@@ -46,15 +46,7 @@ export async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir:
           } catch { /* file may have been untracked */ }
         }
 
-        // Remove empty parent directory of the PRD file
-        const { dirname } = await import('node:path');
-        const prdDir = resolve(cwd, dirname(prdFilePath));
-        try {
-          const remaining = await readdir(prdDir);
-          if (remaining.length === 0) {
-            await rm(prdDir, { recursive: true });
-          }
-        } catch { /* may already be gone */ }
+
       } catch { /* PRD file may not exist or already removed */ }
     }
 

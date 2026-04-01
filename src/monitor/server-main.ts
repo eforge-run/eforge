@@ -100,12 +100,12 @@ export function evaluateStateCheck(ctx: StateCheckContext): {
   return { state, lastActivityTimestamp, hasSeenActivity };
 }
 
-function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string): void {
+function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string, reason = 'Watcher exited with non-zero code'): void {
   try {
     db.insertEvent({
       runId: sessionId,
       type: 'daemon:auto-build:paused',
-      data: JSON.stringify({ reason: 'Watcher exited with non-zero code', timestamp: new Date().toISOString() }),
+      data: JSON.stringify({ reason, timestamp: new Date().toISOString() }),
       timestamp: new Date().toISOString(),
     });
   } catch {
@@ -255,6 +255,7 @@ async function main(): Promise<void> {
   // --- Watcher lifecycle for auto-build (persistent mode only) ---
   let watcherProcess: ChildProcess | null = null;
   let watcherKilledByUs = false;
+  const respawnTimestamps: number[] = [];
 
   const daemonState: DaemonState | undefined = persistent ? {
     autoBuild: false, // will be set from config below
@@ -309,7 +310,7 @@ async function main(): Promise<void> {
       writeAutoBuildPausedEvent(db, sessionId);
     });
 
-    child.on('exit', (code) => {
+    child.on('exit', (code, signal) => {
       if (watcherProcess !== thisChild) return; // stale — a new watcher replaced us
       watcherProcess = null;
       daemonState.watcher = { running: false, pid: null, sessionId: null };
@@ -328,8 +329,29 @@ async function main(): Promise<void> {
         return;
       }
 
-      // Clean exit (code 0) — watcher is long-lived, no respawn needed.
-      // The watcher stays alive via fs.watch; clean exit means intentional shutdown.
+      if (signal !== null) {
+        // Signal kill (code is null) — something unexpected killed the watcher
+        daemonState.autoBuild = false;
+        writeAutoBuildPausedEvent(db, sessionId, `Watcher killed by signal ${signal}`);
+        return;
+      }
+
+      // Clean exit (code 0) — respawn if autoBuild is still enabled
+      if (daemonState.autoBuild) {
+        // Circuit breaker: prevent runaway respawning
+        const now = Date.now();
+        respawnTimestamps.push(now);
+        // Filter out entries older than 60 seconds
+        while (respawnTimestamps.length > 0 && respawnTimestamps[0] < now - 60_000) {
+          respawnTimestamps.shift();
+        }
+        if (respawnTimestamps.length >= 3) {
+          daemonState.autoBuild = false;
+          writeAutoBuildPausedEvent(db, sessionId, 'Watcher respawn circuit breaker triggered (3 respawns within 60s)');
+          return;
+        }
+        setTimeout(() => spawnWatcher(), 1000);
+      }
     });
   }
 

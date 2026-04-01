@@ -5,7 +5,7 @@
  * same dependency graph algorithm as plan orchestration.
  */
 
-import { readFile, readdir, writeFile, mkdir, rm, rmdir, open } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir, rm, open } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
 import { resolve, basename } from 'node:path';
@@ -282,10 +282,6 @@ export async function cleanupCompletedPrd(filePath: string, queueDir: string, cw
     } catch { /* file may have been untracked */ }
   }
 
-  // Remove empty queue directory (non-recursive — fails safely if not empty)
-  try {
-    await rmdir(absQueueDir);
-  } catch { /* not empty or already gone */ }
 
   const prdId = basename(filePath, '.md');
   await forgeCommit(cwd, `cleanup(${prdId}): remove completed PRD`, [filePath]);
