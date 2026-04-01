@@ -45,7 +45,7 @@ describe('withRunId', () => {
       yield { type: 'queue:start', prdCount: 2, dir: '/tmp/queue' } as unknown as EforgeEvent;
       yield { type: 'queue:prd:start', prdId: 'prd-1', title: 'Feature 1' } as unknown as EforgeEvent;
       yield { type: 'queue:prd:complete', prdId: 'prd-1', status: 'completed' } as unknown as EforgeEvent;
-      yield { type: 'queue:watch:waiting', pollIntervalMs: 5000 } as unknown as EforgeEvent;
+      yield { type: 'queue:prd:skip', prdId: 'prd-2', reason: 'already completed' } as unknown as EforgeEvent;
       yield { type: 'queue:complete', processed: 1, skipped: 0 } as unknown as EforgeEvent;
     }
 

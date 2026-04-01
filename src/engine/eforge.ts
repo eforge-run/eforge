@@ -916,9 +916,9 @@ export class EforgeEngine {
     const allOrdered = resolveQueueOrder(allPrds);
 
     // If a name is provided, filter to only that PRD (used by foreground build)
-    const orderedPrds = options.name
+    let orderedPrds = options.name
       ? allOrdered.filter((p) => p.id === options.name)
-      : allOrdered;
+      : [...allOrdered];
 
     yield {
       timestamp: new Date().toISOString(),
@@ -971,6 +971,37 @@ export class EforgeEngine {
 
     let processed = 0;
     let skipped = 0;
+
+    /**
+     * Re-scan the queue directory, discover new PRDs not yet in prdState,
+     * and emit queue:prd:discovered for each. Idempotent - safe to call repeatedly.
+     */
+    const discoverNewPrds = async (): Promise<void> => {
+      let freshPrds: Awaited<ReturnType<typeof loadQueue>>;
+      try {
+        freshPrds = await loadQueue(queueDir, cwd);
+      } catch {
+        // Filesystem or parse error during re-scan — skip discovery this cycle
+        // rather than crashing the queue while other PRDs may be running.
+        return;
+      }
+      const freshOrdered = resolveQueueOrder(freshPrds);
+      for (const prd of freshOrdered) {
+        if (!prdState.has(prd.id)) {
+          const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
+            prdState.has(dep) || freshOrdered.some((p) => p.id === dep),
+          );
+          prdState.set(prd.id, { status: 'pending', dependsOn: deps });
+          orderedPrds.push(prd);
+          eventQueue.push({
+            timestamp: new Date().toISOString(),
+            type: 'queue:prd:discovered',
+            prdId: prd.id,
+            title: prd.frontmatter.title ?? prd.id,
+          } as EforgeEvent);
+        }
+      }
+    };
 
     const startReadyPrds = (): void => {
       for (const prd of orderedPrds) {
@@ -1056,7 +1087,8 @@ export class EforgeEngine {
           processed++;
         }
 
-        // Try to launch newly-unblocked PRDs
+        // Discover any new PRDs enqueued mid-cycle, then launch newly-ready PRDs
+        await discoverNewPrds();
         startReadyPrds();
       }
     }
@@ -1077,64 +1109,11 @@ export class EforgeEngine {
   }
 
   /**
-   * Watch queue: wrap runQueue() in a polling loop, checking for new PRDs
-   * after each cycle. Yields queue:watch:* events to communicate state.
-   * Exits cleanly when the abort signal fires.
+   * Watch queue: delegates to runQueue(). Will be rewritten in Plan 02
+   * to use fs.watch for event-driven discovery.
    */
   async *watchQueue(options: QueueOptions = {}): AsyncGenerator<EforgeEvent> {
-    const pollIntervalMs = options.pollIntervalMs ?? this.config.prdQueue.watchPollIntervalMs;
-    const signal = options.abortController?.signal;
-
-    let totalProcessed = 0;
-    let totalSkipped = 0;
-
-    while (!signal?.aborted) {
-      // Delegate to runQueue for this cycle, intercepting queue:complete
-      let cycleProcessed = 0;
-      let cycleSkipped = 0;
-
-      for await (const event of this.runQueue(options)) {
-        if (event.type === 'queue:complete') {
-          // Swallow queue:complete, emit queue:watch:cycle instead
-          cycleProcessed = event.processed;
-          cycleSkipped = event.skipped;
-        } else {
-          yield event;
-        }
-      }
-
-      totalProcessed += cycleProcessed;
-      totalSkipped += cycleSkipped;
-
-      yield {
-        timestamp: new Date().toISOString(),
-        type: 'queue:watch:cycle',
-        processed: cycleProcessed,
-        skipped: cycleSkipped,
-      };
-
-      // Check abort before sleeping
-      if (signal?.aborted) break;
-
-      yield {
-        timestamp: new Date().toISOString(),
-        type: 'queue:watch:waiting',
-        pollIntervalMs,
-      };
-
-      const aborted = await abortableSleep(pollIntervalMs, signal);
-      if (aborted) break;
-
-      yield { timestamp: new Date().toISOString(), type: 'queue:watch:poll' };
-    }
-
-    // Final queue:complete after watch loop exits
-    yield {
-      timestamp: new Date().toISOString(),
-      type: 'queue:complete',
-      processed: totalProcessed,
-      skipped: totalSkipped,
-    };
+    yield* this.runQueue(options);
   }
 
   /**

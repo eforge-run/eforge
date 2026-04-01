@@ -243,8 +243,8 @@ describe('queue cycle event scoping', () => {
       yield { type: 'session:end', sessionId: 'session-1', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
 
       // --- Queue-level events between sessions ---
-      yield { type: 'queue:watch:cycle', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'queue:watch:waiting', timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'queue:prd:skip', prdId: 'prd-skip', reason: 'already done', timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'queue:prd:discovered', prdId: 'prd-new', title: 'New PRD', timestamp: now } as unknown as EforgeEvent;
 
       // --- PRD 2 session ---
       yield { type: 'session:start', sessionId: 'session-2', timestamp: now } as unknown as EforgeEvent;
@@ -272,14 +272,14 @@ describe('queue cycle event scoping', () => {
     // Queue-level events should NOT be in run-1's events
     const run1Events = db.getEvents('run-1');
     const run1Types = run1Events.map((e) => e.type);
-    expect(run1Types).not.toContain('queue:watch:cycle');
-    expect(run1Types).not.toContain('queue:watch:waiting');
+    expect(run1Types).not.toContain('queue:prd:skip');
+    expect(run1Types).not.toContain('queue:prd:discovered');
 
     // Queue-level events should NOT be in run-2's events
     const run2Events = db.getEvents('run-2');
     const run2Types = run2Events.map((e) => e.type);
-    expect(run2Types).not.toContain('queue:watch:cycle');
-    expect(run2Types).not.toContain('queue:watch:waiting');
+    expect(run2Types).not.toContain('queue:prd:skip');
+    expect(run2Types).not.toContain('queue:prd:discovered');
 
     db.close();
   });
@@ -363,7 +363,7 @@ describe('queue cycle recording with session:end presence', () => {
       yield { type: 'session:end', sessionId: 'session-1', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
 
       // --- Queue-level events between sessions ---
-      yield { type: 'queue:watch:cycle', processed: 1, skipped: 0 , timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'queue:prd:skip', prdId: 'prd-skip', reason: 'already done', timestamp: now } as unknown as EforgeEvent;
 
       // --- PRD 2 session ---
       yield { type: 'session:start', sessionId: 'session-2', timestamp: now } as unknown as EforgeEvent;
@@ -401,8 +401,8 @@ describe('queue cycle recording with session:end presence', () => {
     expect(run2Types).toContain('session:end');
 
     // Queue-level events should NOT be in either run
-    expect(run1Types).not.toContain('queue:watch:cycle');
-    expect(run2Types).not.toContain('queue:watch:cycle');
+    expect(run1Types).not.toContain('queue:prd:skip');
+    expect(run2Types).not.toContain('queue:prd:skip');
 
     db.close();
   });

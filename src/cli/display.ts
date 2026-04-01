@@ -644,20 +644,8 @@ export function renderEvent(event: EforgeEvent): void {
       console.log('');
       break;
 
-    case 'queue:watch:waiting':
-      console.log(chalk.dim(`  Watching for new PRDs (polling every ${event.pollIntervalMs / 1000}s)...`));
-      break;
-
-    case 'queue:watch:poll':
-      console.log(chalk.dim('  Polling for new PRDs...'));
-      break;
-
-    case 'queue:watch:cycle':
-      console.log(
-        chalk.dim('  Watch cycle complete: ') +
-        chalk.green(`${event.processed} processed`) +
-        (event.skipped > 0 ? chalk.dim(`, ${event.skipped} skipped`) : ''),
-      );
+    case 'queue:prd:discovered':
+      console.log(chalk.cyan(`  Discovered new PRD: ${event.title} (${event.prdId})`));
       break;
 
     case 'enqueue:start':

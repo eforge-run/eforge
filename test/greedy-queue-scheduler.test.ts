@@ -161,6 +161,68 @@ describe('resolveQueueOrder dependency semantics for greedy scheduler', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Mid-cycle PRD discovery
+// ---------------------------------------------------------------------------
+
+describe('discoverNewPrds in runQueue', () => {
+  it('emits queue:prd:discovered when a new PRD file appears mid-build', async () => {
+    const { engine, cwd } = await createTestEngine({
+      prdQueue: { dir: 'eforge/queue', autoRevise: false, watchPollIntervalMs: 50, parallelism: 2 },
+    });
+
+    // Write the first PRD before starting
+    const queueDir = join(cwd, 'eforge', 'queue');
+    await writeFile(
+      join(queueDir, 'prd-initial.md'),
+      '---\ntitle: Initial PRD\nstatus: pending\n---\n\n# Initial PRD\n\nDo something.',
+    );
+
+    // Start runQueue, then inject a second PRD while the first is processing.
+    // The first build will fail (no git repo), triggering discoverNewPrds()
+    // on its queue:prd:complete event — at which point the second PRD should
+    // be found and a queue:prd:discovered event emitted.
+    const gen = engine.runQueue();
+    const events: EforgeEvent[] = [];
+
+    // Write the second PRD asynchronously so it exists before discovery runs
+    const writePromise = writeFile(
+      join(queueDir, 'prd-second.md'),
+      '---\ntitle: Second PRD\nstatus: pending\n---\n\n# Second PRD\n\nDo something else.',
+    );
+
+    for await (const event of gen) {
+      events.push(event);
+      // Ensure the second PRD is on disk before the first build completes
+      if (event.type === 'queue:prd:start') {
+        await writePromise;
+      }
+    }
+
+    const types = events.map((e) => e.type);
+
+    expect(types).toContain('queue:start');
+    expect(types).toContain('queue:complete');
+    expect(types).toContain('queue:prd:discovered');
+
+    const discovered = events.filter((e) => e.type === 'queue:prd:discovered');
+    expect(discovered).toHaveLength(1);
+    expect((discovered[0] as { prdId: string }).prdId).toBe('prd-second');
+  });
+
+  it('does not emit queue:prd:discovered when re-scanning finds no new PRDs', async () => {
+    const { engine } = await createTestEngine({
+      prdQueue: { dir: 'eforge/queue', autoRevise: false, watchPollIntervalMs: 50, parallelism: 2 },
+    });
+
+    // Empty queue - no PRDs to discover
+    const events = await collectEvents(engine.runQueue());
+    const discoveredEvents = events.filter((e) => e.type === 'queue:prd:discovered');
+
+    expect(discoveredEvents).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // No git reset --hard in queue code
 // ---------------------------------------------------------------------------
 
