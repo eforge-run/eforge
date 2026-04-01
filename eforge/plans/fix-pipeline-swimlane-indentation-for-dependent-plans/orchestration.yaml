@@ -1,0 +1,43 @@
+name: fix-pipeline-swimlane-indentation-for-dependent-plans
+description: Fix pipeline swimlane indentation so only pill labels indent for
+  dependent plans while swimlane bars stay aligned
+created: 2026-04-01
+compiled: 2026-04-01
+mode: errand
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-fix-indentation
+    name: Fix PlanRow Swimlane Indentation
+    depends_on: []
+    branch: fix-pipeline-swimlane-indentation-for-dependent-plans/fix-indentation
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: errand
+  compile:
+    - prd-passthrough
+  defaultBuild:
+    - implement
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - correctness
+    maxRounds: 1
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: lenient
+  rationale: "This is a single-file cosmetic fix: moving marginLeft to paddingLeft
+    on label wrappers and removing an unused component. The PRD is already
+    highly prescriptive with exact file and line references, so prd-passthrough
+    is sufficient - no LLM decomposition needed. No review cycle is warranted
+    for a low-risk UI alignment tweak; a single lightweight review round catches
+    any regressions."
