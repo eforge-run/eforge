@@ -12,7 +12,7 @@ import http from 'node:http';
 import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname, join } from 'node:path';
-import { ensureDaemon, daemonRequest, sleep, DAEMON_POLL_INTERVAL_MS } from './daemon-client.js';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, DAEMON_POLL_INTERVAL_MS } from './daemon-client.js';
 import { readLockfile } from '../monitor/lockfile.js';
 
 const ALLOWED_FLAGS = new Set([
@@ -49,7 +49,7 @@ function sanitizeFlags(flags?: string[]): string[] | undefined {
 }
 
 // Re-export for any consumers that imported from here
-export { ensureDaemon, daemonRequest };
+export { ensureDaemon, daemonRequest, daemonRequestIfRunning };
 
 // --- SSE Subscriber ---
 
@@ -254,11 +254,9 @@ function startSseSubscriber(server: McpServer, cwd: string): SseSubscriberState 
   async function pollForSession() {
     if (state.stopped) return;
     try {
-      const lock = readLockfile(cwd);
-      if (!lock) return;
-      const port = lock.port;
-
-      const { data } = await daemonRequest(cwd, 'GET', '/api/latest-run');
+      const result = await daemonRequestIfRunning(cwd, 'GET', '/api/latest-run');
+      if (!result) return; // Daemon not running - don't auto-start for polling
+      const { data, port } = result;
       const latestRun = data as { sessionId?: string };
       if (!latestRun?.sessionId) return;
 
@@ -330,6 +328,13 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
   // --- Resources ---
 
+  /** Request from an already-running daemon, or throw if not running. */
+  async function requireDaemon(method: string, path: string, body?: unknown): Promise<{ data: unknown; port: number }> {
+    const result = await daemonRequestIfRunning(cwd, method, path, body);
+    if (!result) throw new Error('Daemon not running');
+    return result;
+  }
+
   // Resource: eforge://status
   server.resource(
     'eforge-status',
@@ -337,7 +342,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     { description: 'Current eforge build status - latest session summary or idle state' },
     async () => {
       try {
-        const { data: latestRun } = await daemonRequest(cwd, 'GET', '/api/latest-run');
+        const { data: latestRun } = await requireDaemon('GET', '/api/latest-run');
         const latestRunObj = latestRun as { sessionId?: string };
         if (!latestRunObj?.sessionId) {
           return {
@@ -348,7 +353,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
             }],
           };
         }
-        const { data: summary } = await daemonRequest(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`);
+        const { data: summary } = await requireDaemon('GET', `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`);
         return {
           contents: [{
             uri: 'eforge://status',
@@ -376,7 +381,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     async (uri, variables) => {
       const sessionId = Array.isArray(variables.sessionId) ? variables.sessionId[0] : variables.sessionId;
       try {
-        const { data: summary } = await daemonRequest(cwd, 'GET', `/api/run-summary/${encodeURIComponent(sessionId)}`);
+        const { data: summary } = await requireDaemon('GET', `/api/run-summary/${encodeURIComponent(sessionId)}`);
         return {
           contents: [{
             uri: uri.href,
@@ -403,7 +408,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     { description: 'Current eforge PRD queue listing' },
     async () => {
       try {
-        const { data } = await daemonRequest(cwd, 'GET', '/api/queue');
+        const { data } = await requireDaemon('GET', '/api/queue');
         return {
           contents: [{
             uri: 'eforge://queue',
@@ -430,7 +435,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     { description: 'Resolved eforge configuration' },
     async () => {
       try {
-        const { data } = await daemonRequest(cwd, 'GET', '/api/config/show');
+        const { data } = await requireDaemon('GET', '/api/config/show');
         return {
           contents: [{
             uri: 'eforge://config',

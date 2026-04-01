@@ -46,13 +46,27 @@ export async function ensureDaemon(cwd: string): Promise<number> {
   );
 }
 
-export async function daemonRequest(
+/**
+ * Like daemonRequest but only talks to an already-running daemon.
+ * Returns null if daemon is not running instead of trying to start it.
+ */
+export async function daemonRequestIfRunning(
   cwd: string,
   method: string,
   path: string,
   body?: unknown,
+): Promise<{ data: unknown; port: number } | null> {
+  const lock = readLockfile(cwd);
+  if (!lock || !(await isServerAlive(lock))) return null;
+  return daemonRequestWithPort(lock.port, method, path, body);
+}
+
+async function daemonRequestWithPort(
+  port: number,
+  method: string,
+  path: string,
+  body?: unknown,
 ): Promise<{ data: unknown; port: number }> {
-  const port = await ensureDaemon(cwd);
   const url = `http://127.0.0.1:${port}${path}`;
   const options: RequestInit = {
     method,
@@ -73,4 +87,14 @@ export async function daemonRequest(
   } catch {
     return { data: text, port };
   }
+}
+
+export async function daemonRequest(
+  cwd: string,
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<{ data: unknown; port: number }> {
+  const port = await ensureDaemon(cwd);
+  return daemonRequestWithPort(port, method, path, body);
 }
