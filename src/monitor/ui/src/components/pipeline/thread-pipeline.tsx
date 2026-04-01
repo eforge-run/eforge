@@ -448,10 +448,8 @@ function computeDepthMap(plans: OrchestrationConfig['plans']): Map<string, numbe
   return depthMap;
 }
 
-/** Width in pixels per depth level for the thread-line gutter */
-const DEPTH_LEVEL_WIDTH = 8;
-/** Maximum gutter width to prevent runaway indentation */
-const MAX_GUTTER_WIDTH = 48;
+/** Width in pixels per depth level for indentation */
+const DEPTH_LEVEL_WIDTH = 20;
 
 // --- Main component ---
 
@@ -494,16 +492,11 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
     return map;
   }, [orchestration]);
 
-  const { depthMap, maxDepth } = useMemo(() => {
+  const depthMap = useMemo(() => {
     if (!orchestration || orchestration.plans.length === 0) {
-      return { depthMap: new Map<string, number>(), maxDepth: 0 };
+      return new Map<string, number>();
     }
-    const dm = computeDepthMap(orchestration.plans);
-    let md = 0;
-    for (const d of dm.values()) {
-      if (d > md) md = d;
-    }
-    return { depthMap: dm, maxDepth: md };
+    return computeDepthMap(orchestration.plans);
   }, [orchestration]);
 
   // Compute the time span across all threads
@@ -623,8 +616,6 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   compileStages={profileInfo?.config.compile}
                   compileActiveStages={activeStages}
                   compileCompletedStages={completedStages}
-                  depth={0}
-                  maxDepth={maxDepth}
                 />
               )}
               {entries.map(([planId]) => (
@@ -644,7 +635,6 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   planArtifact={planArtifactMap.get(planId)}
                   dependsOn={dependsByPlan.get(planId)}
                   depth={depthMap.get(planId) ?? 0}
-                  maxDepth={maxDepth}
                 />
               ))}
             </div>
@@ -672,7 +662,6 @@ interface PlanRowProps {
   planArtifact?: { name: string; body: string };
   dependsOn?: string[];
   depth?: number;
-  maxDepth?: number;
   compileStages?: string[];
   compileActiveStages?: Set<string>;
   compileCompletedStages?: Set<string>;
@@ -699,29 +688,7 @@ function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
   );
 }
 
-function ThreadLineGutter({ depth, maxDepth }: { depth: number; maxDepth: number }) {
-  if (maxDepth === 0) return null;
-  const gutterWidth = Math.min(maxDepth * DEPTH_LEVEL_WIDTH, MAX_GUTTER_WIDTH);
-  return (
-    <div className="shrink-0 flex items-stretch self-stretch overflow-hidden" style={{ width: gutterWidth }}>
-      {Array.from({ length: Math.min(depth, Math.floor(MAX_GUTTER_WIDTH / DEPTH_LEVEL_WIDTH)) }, (_, i) => (
-        <div
-          key={i}
-          className="border-l border-text-dim/20"
-          style={{ width: DEPTH_LEVEL_WIDTH }}
-        />
-      ))}
-      {depth > 0 && (
-        <div
-          className="border-b border-text-dim/20 self-center"
-          style={{ width: DEPTH_LEVEL_WIDTH / 2, height: 0 }}
-        />
-      )}
-    </div>
-  );
-}
-
-function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, events, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, maxDepth, compileStages, compileActiveStages, compileCompletedStages }: PlanRowProps) {
+function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, events, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -815,9 +782,8 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
   })();
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex flex-col gap-1" style={{ marginLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
       <div className="flex items-start gap-2 text-xs">
-        {(maxDepth ?? 0) > 0 && <ThreadLineGutter depth={depth ?? 0} maxDepth={maxDepth ?? 0} />}
         {leftLabel}
         <div className="flex-1 flex flex-col gap-0.5">
           {compileStages && (
