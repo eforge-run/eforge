@@ -218,9 +218,65 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     mode: (data.mode as OrchestrationConfig['mode']) ?? 'errand',
     baseBranch: (data.base_branch as string) ?? 'main',
     profile: profileResult.data,
-    plans,
+    plans: transitiveReduce(plans),
     ...(validate && validate.length > 0 && { validate }),
   };
+}
+
+/**
+ * Remove redundant transitive edges from a plans dependency graph.
+ * For each plan, if a dependency is reachable through another dependency's
+ * transitive closure, the direct edge is redundant and removed.
+ *
+ * Returns a new array with minimized `dependsOn` arrays (does not mutate input).
+ */
+export function transitiveReduce<T extends { id: string; dependsOn: string[] }>(
+  plans: T[],
+): T[] {
+  if (plans.length === 0) return [];
+
+  // Build adjacency: id -> set of direct dependencies
+  const depsMap = new Map<string, string[]>();
+  for (const plan of plans) {
+    depsMap.set(plan.id, plan.dependsOn);
+  }
+
+  // For a given start node, collect all nodes reachable via BFS (excluding start itself)
+  function reachableFrom(startId: string): Set<string> {
+    const visited = new Set<string>();
+    const queue = [...(depsMap.get(startId) ?? [])];
+    while (queue.length > 0) {
+      const current = queue.pop()!;
+      if (visited.has(current)) continue;
+      visited.add(current);
+      for (const dep of depsMap.get(current) ?? []) {
+        if (!visited.has(dep)) queue.push(dep);
+      }
+    }
+    return visited;
+  }
+
+  return plans.map((plan) => {
+    if (plan.dependsOn.length <= 1) return plan;
+
+    // For each direct dep, check if it's reachable through any other direct dep
+    const redundant = new Set<string>();
+    for (const dep of plan.dependsOn) {
+      // Check if `dep` is reachable from any other direct dependency
+      for (const otherDep of plan.dependsOn) {
+        if (otherDep === dep) continue;
+        if (redundant.has(otherDep)) continue; // already redundant, skip
+        const reachable = reachableFrom(otherDep);
+        if (reachable.has(dep)) {
+          redundant.add(dep);
+          break;
+        }
+      }
+    }
+
+    if (redundant.size === 0) return plan;
+    return { ...plan, dependsOn: plan.dependsOn.filter((d) => !redundant.has(d)) };
+  });
 }
 
 /**

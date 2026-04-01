@@ -4,7 +4,7 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { parsePlanFile, parseOrchestrationConfig, injectProfileIntoOrchestrationYaml } from '../src/engine/plan.js';
+import { parsePlanFile, parseOrchestrationConfig, injectProfileIntoOrchestrationYaml, transitiveReduce } from '../src/engine/plan.js';
 import { BUILTIN_PROFILES, type ResolvedProfileConfig } from '../src/engine/config.js';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -120,6 +120,63 @@ describe('parseOrchestrationConfig', () => {
 
     await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/profile/i);
     rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe('transitiveReduce', () => {
+  it('returns empty array for empty input', () => {
+    expect(transitiveReduce([])).toEqual([]);
+  });
+
+  it('returns single plan with no deps unchanged', () => {
+    const plans = [{ id: 'A', dependsOn: [] as string[] }];
+    expect(transitiveReduce(plans)).toEqual(plans);
+  });
+
+  it('removes redundant edge in linear chain (A->B->C)', () => {
+    const plans = [
+      { id: 'A', dependsOn: [] as string[] },
+      { id: 'B', dependsOn: ['A'] },
+      { id: 'C', dependsOn: ['A', 'B'] },
+    ];
+    const result = transitiveReduce(plans);
+    expect(result.find((p) => p.id === 'C')!.dependsOn).toEqual(['B']);
+    // A and B should be unchanged
+    expect(result.find((p) => p.id === 'A')!.dependsOn).toEqual([]);
+    expect(result.find((p) => p.id === 'B')!.dependsOn).toEqual(['A']);
+  });
+
+  it('reduces diamond dependency pattern', () => {
+    const plans = [
+      { id: 'A', dependsOn: [] as string[] },
+      { id: 'B', dependsOn: ['A'] },
+      { id: 'C', dependsOn: ['A'] },
+      { id: 'D', dependsOn: ['A', 'B', 'C'] },
+    ];
+    const result = transitiveReduce(plans);
+    const dDeps = result.find((p) => p.id === 'D')!.dependsOn;
+    expect(dDeps).toEqual(['B', 'C']);
+  });
+
+  it('passes through already-minimal graph unchanged', () => {
+    const plans = [
+      { id: 'A', dependsOn: [] as string[] },
+      { id: 'B', dependsOn: ['A'] },
+      { id: 'C', dependsOn: ['B'] },
+    ];
+    const result = transitiveReduce(plans);
+    expect(result).toEqual(plans);
+  });
+
+  it('does not mutate the input array', () => {
+    const plans = [
+      { id: 'A', dependsOn: [] as string[] },
+      { id: 'B', dependsOn: ['A'] },
+      { id: 'C', dependsOn: ['A', 'B'] },
+    ];
+    const original = plans.map((p) => ({ ...p, dependsOn: [...p.dependsOn] }));
+    transitiveReduce(plans);
+    expect(plans).toEqual(original);
   });
 });
 
