@@ -1,0 +1,31 @@
+name: add-dependency-indicator-to-queue-items-in-monitor-ui-sidebar
+description: Add a "blocked by" dependency indicator to pending queue items in
+  the monitor UI sidebar
+created: 2026-04-01
+compiled: 2026-04-01
+mode: ui-tweak
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-dependency-indicator
+    name: Add dependency indicator to queue sidebar items
+    depends_on: []
+    branch: add-dependency-indicator-to-queue-items-in-monitor-ui-sidebar/dependency-indicator
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+profile:
+  extends: errand
+  description: Small, self-contained changes. Single file or a few lines. Low
+    risk, no architectural impact.
+  compile:
+    - prd-passthrough
