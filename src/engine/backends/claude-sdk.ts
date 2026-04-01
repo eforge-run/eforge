@@ -220,9 +220,29 @@ export async function* mapSDKMessages(
         break;
       }
 
-      default:
-        // Other SDK message types (system, hooks, etc.) are not mapped
+      default: {
+        // Handle task_progress system messages for live usage tracking
+        const anyMsg = msg as { type: string; subtype?: string; usage?: { total_tokens?: number; tool_uses?: number } };
+        if (anyMsg.type === 'system' && anyMsg.subtype === 'task_progress' && anyMsg.usage) {
+          yield {
+            timestamp: new Date().toISOString(),
+            type: 'agent:usage',
+            planId,
+            agentId: agentId!,
+            agent,
+            usage: {
+              input: 0,
+              output: 0,
+              total: anyMsg.usage.total_tokens ?? 0,
+              cacheRead: 0,
+              cacheCreation: 0,
+            },
+            costUsd: 0,
+            numTurns: anyMsg.usage.tool_uses ?? 0,
+          };
+        }
         break;
+      }
     }
   }
 }

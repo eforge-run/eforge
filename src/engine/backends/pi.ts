@@ -391,6 +391,24 @@ export class PiBackend implements AgentBackend {
           totalCacheWrite = stats.tokens.cacheWrite;
           totalCost = stats.cost;
 
+          // Emit agent:usage event for live monitoring
+          eventQueue.push({
+            timestamp: new Date().toISOString(),
+            type: 'agent:usage',
+            planId,
+            agentId,
+            agent,
+            usage: {
+              input: totalInputTokens,
+              output: totalOutputTokens,
+              total: totalInputTokens + totalOutputTokens,
+              cacheRead: totalCacheRead,
+              cacheCreation: totalCacheWrite,
+            },
+            costUsd: totalCost,
+            numTurns,
+          });
+
           // Enforce budget per-turn to abort early
           if (options.maxBudgetUsd !== undefined && totalCost > options.maxBudgetUsd) {
             session.abort();

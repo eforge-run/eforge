@@ -46,6 +46,7 @@ export interface RunState {
   endTime: number | null;
   mergeCommits: Record<string, string>;
   backend: string | null;
+  liveAgentUsage: Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number; turns: number }>;
   enqueueStatus: 'running' | 'complete' | 'failed' | null;
   enqueueTitle: string | null;
   enqueueSource: string | null;
@@ -72,6 +73,7 @@ export const initialRunState: RunState = {
   endTime: null,
   mergeCommits: {},
   backend: null,
+  liveAgentUsage: {},
   enqueueStatus: null,
   enqueueTitle: null,
   enqueueSource: null,
@@ -105,6 +107,7 @@ function processEvent(
     profileInfo: ProfileInfo | null;
     mergeCommits: Record<string, string>;
     backend: string | null;
+    liveAgentUsage: Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number; turns: number }>;
     enqueueStatus: 'running' | 'complete' | 'failed' | null;
     enqueueTitle: string | null;
     enqueueSource: string | null;
@@ -285,11 +288,33 @@ function processEvent(
     });
   }
 
+  if (event.type === 'agent:usage') {
+    state.liveAgentUsage[event.agentId] = {
+      input: event.usage.input,
+      output: event.usage.output,
+      cacheRead: event.usage.cacheRead,
+      cacheCreation: event.usage.cacheCreation,
+      cost: event.costUsd,
+      turns: event.numTurns,
+    };
+    // Update matching AgentThread with live usage
+    const thread = state.agentThreads.find((t) => t.agentId === event.agentId);
+    if (thread) {
+      thread.inputTokens = event.usage.input;
+      thread.outputTokens = event.usage.output;
+      thread.totalTokens = event.usage.total;
+      thread.cacheRead = event.usage.cacheRead;
+      thread.costUsd = event.costUsd;
+      thread.numTurns = event.numTurns;
+    }
+  }
+
   if (event.type === 'agent:stop' && 'timestamp' in event && event.timestamp) {
     const thread = state.agentThreads.find((t) => t.agentId === event.agentId);
     if (thread) {
       thread.endedAt = event.timestamp;
     }
+    delete state.liveAgentUsage[event.agentId];
   }
 
   if (event.type === 'agent:result' && event.result) {
@@ -306,6 +331,8 @@ function processEvent(
         thread.cacheRead = event.result.usage?.cacheRead ?? null;
         thread.costUsd = event.result.totalCostUsd ?? null;
         thread.numTurns = event.result.numTurns ?? null;
+        // Clear live usage overlay — finalized totals are now in agent:result
+        delete state.liveAgentUsage[thread.agentId];
         break;
       }
     }
@@ -315,7 +342,7 @@ function processEvent(
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null, mergeCommits: {}, backend: null, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null, mergeCommits: {}, backend: null, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -338,6 +365,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         profileInfo: null as ProfileInfo | null,
         mergeCommits: {} as Record<string, string>,
         backend: null as string | null,
+        liveAgentUsage: {} as Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number; turns: number }>,
         enqueueStatus: null as 'running' | 'complete' | 'failed' | null,
         enqueueTitle: null as string | null,
         enqueueSource: null as string | null,
@@ -376,6 +404,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         earlyOrchestration: state.earlyOrchestration,
         profileInfo: state.profileInfo,
         mergeCommits: { ...state.mergeCommits },
+        liveAgentUsage: { ...state.liveAgentUsage },
       };
 
       processEvent(event, newState);
@@ -432,17 +461,32 @@ export function getSummaryStats(state: RunState): {
     }
   }
 
+  // Overlay live agent usage (in-flight agents not yet finalized via agent:result)
+  const liveValues = Object.values(state.liveAgentUsage);
+  const liveExtra = liveValues.reduce(
+    (acc, v) => {
+      acc.input += v.input;
+      acc.output += v.output;
+      acc.cacheRead += v.cacheRead;
+      acc.cacheCreation += v.cacheCreation;
+      acc.cost += v.cost;
+      acc.turns += v.turns;
+      return acc;
+    },
+    { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0, turns: 0 },
+  );
+
   return {
     duration,
-    tokensIn: state.tokensIn,
-    tokensOut: state.tokensOut,
-    cacheRead: state.cacheRead,
-    cacheCreation: state.cacheCreation,
-    totalCost: state.totalCost,
+    tokensIn: state.tokensIn + liveExtra.input,
+    tokensOut: state.tokensOut + liveExtra.output,
+    cacheRead: state.cacheRead + liveExtra.cacheRead,
+    cacheCreation: state.cacheCreation + liveExtra.cacheCreation,
+    totalCost: state.totalCost + liveExtra.cost,
     plansCompleted: statuses.filter((s) => s === 'complete').length,
     plansFailed: statuses.filter((s) => s === 'failed').length,
     plansTotal: statuses.length,
-    totalTurns,
+    totalTurns: totalTurns + liveExtra.turns,
     filesChanged,
     reviewCritical,
     reviewWarning,

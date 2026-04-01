@@ -583,6 +583,7 @@ export function renderEvent(event: EforgeEvent): void {
     // Agent lifecycle (consumed by hooks, monitor, tracing — no CLI display)
     case 'agent:start':
     case 'agent:stop':
+    case 'agent:usage':
       break;
 
     // Merge conflict resolution
