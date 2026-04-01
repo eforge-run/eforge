@@ -623,6 +623,8 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   compileStages={profileInfo?.config.compile}
                   compileActiveStages={activeStages}
                   compileCompletedStages={completedStages}
+                  depth={0}
+                  maxDepth={maxDepth}
                 />
               )}
               {entries.map(([planId]) => (

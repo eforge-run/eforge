@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { BaseEdge, getBezierPath, type EdgeProps } from '@xyflow/react';
+import { BaseEdge, getSmoothStepPath, type EdgeProps } from '@xyflow/react';
 import { getStatusStyle, type GraphNodeStatus } from './graph-status';
 
 export interface DagEdgeData {
@@ -32,13 +32,14 @@ function DagEdgeComponent({
   const isPending =
     edgeData?.sourceStatus === 'pending' && edgeData?.targetStatus === 'pending';
 
-  const [edgePath] = getBezierPath({
+  const [edgePath] = getSmoothStepPath({
     sourceX,
     sourceY,
     targetX,
     targetY,
     sourcePosition,
     targetPosition,
+    borderRadius: 8,
   });
 
   return (
