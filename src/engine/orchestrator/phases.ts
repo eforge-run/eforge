@@ -5,7 +5,6 @@
  */
 
 import { execFile } from 'node:child_process';
-import { availableParallelism } from 'node:os';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);

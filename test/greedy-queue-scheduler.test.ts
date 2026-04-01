@@ -3,9 +3,9 @@
  *
  * Verifies:
  * - Empty queue produces queue:start + queue:complete with zero counts
- * - Scheduler respects prdQueue.parallelism config
+ * - Scheduler respects maxConcurrentBuilds config
  * - No git reset --hard in the queue processing path
- * - buildConfigOverrides maps queueParallelism to config
+ * - buildConfigOverrides maps maxConcurrentBuilds to config
  */
 
 import { describe, it, expect } from 'vitest';
@@ -38,7 +38,8 @@ async function createTestEngine(configOverrides: Record<string, unknown> = {}): 
     cwd,
     config: {
       backend: 'claude-sdk',
-      prdQueue: { dir: 'eforge/queue', autoRevise: false, watchPollIntervalMs: 50, parallelism: 1 },
+      maxConcurrentBuilds: 1,
+      prdQueue: { dir: 'eforge/queue', watchPollIntervalMs: 50 },
       plugins: { enabled: false },
       ...configOverrides,
     },
@@ -76,9 +77,9 @@ describe('greedy queue scheduler', () => {
     expect(completeEvent.skipped).toBe(0);
   });
 
-  it('accepts prdQueue.parallelism config', async () => {
+  it('accepts maxConcurrentBuilds config', async () => {
     const { engine } = await createTestEngine({
-      prdQueue: { dir: 'eforge/queue', autoRevise: false, watchPollIntervalMs: 50, parallelism: 4 },
+      maxConcurrentBuilds: 4,
     });
 
     // Verify it runs without error - the parallelism is used internally by the semaphore
@@ -167,7 +168,7 @@ describe('resolveQueueOrder dependency semantics for greedy scheduler', () => {
 describe('discoverNewPrds in runQueue', () => {
   it('emits queue:prd:discovered when a new PRD file appears mid-build', async () => {
     const { engine, cwd } = await createTestEngine({
-      prdQueue: { dir: 'eforge/queue', autoRevise: false, watchPollIntervalMs: 50, parallelism: 2 },
+      maxConcurrentBuilds: 2,
     });
 
     // Write the first PRD before starting
@@ -211,7 +212,7 @@ describe('discoverNewPrds in runQueue', () => {
 
   it('does not emit queue:prd:discovered when re-scanning finds no new PRDs', async () => {
     const { engine } = await createTestEngine({
-      prdQueue: { dir: 'eforge/queue', autoRevise: false, watchPollIntervalMs: 50, parallelism: 2 },
+      maxConcurrentBuilds: 2,
     });
 
     // Empty queue - no PRDs to discover

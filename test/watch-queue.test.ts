@@ -53,7 +53,7 @@ describe('watchQueue', () => {
       cwd,
       config: {
         backend: 'claude-sdk',
-        prdQueue: { dir: 'eforge/queue', autoRevise: false },
+        prdQueue: { dir: 'eforge/queue' },
         plugins: { enabled: false },
       },
     });

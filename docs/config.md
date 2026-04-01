@@ -42,8 +42,9 @@ agents:
   #                           #   formatter, doc-updater, test-writer, tester,
   #                           #   prd-validator, dependency-detector
 
+maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (default: 2)
+
 build:
-  parallelism: <cpu-count>    # Max parallel plan executions
   maxValidationRetries: 2     # Fix attempts on validation failure (0 = no retries)
   cleanupPlanFiles: true      # Remove plan files after successful build
   # worktreeDir: /custom/path # Override worktree base directory
@@ -56,9 +57,7 @@ plan:
 
 prdQueue:
   dir: eforge/queue           # Where queued PRDs are stored
-  autoRevise: true            # Auto-revise stale PRDs before building
   autoBuild: true             # Daemon automatically builds after enqueue
-  parallelism: 1              # Max concurrent PRD builds from the queue
   watchPollIntervalMs: 5000   # Poll interval for watch mode (ms)
 
 daemon:
@@ -177,35 +176,27 @@ Config merges from two levels (lowest to highest priority):
 1. **Global** - `~/.config/eforge/config.yaml` (respects `$XDG_CONFIG_HOME`)
 2. **Project** - `eforge/config.yaml` found by walking up from cwd
 
-Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`, `pi`) shallow-merge per-field. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
+Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`, `pi`) shallow-merge per-field. Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
 
 ## Parallelism
 
-eforge has three dimensions of parallelism:
+eforge has two dimensions of parallelism:
 
-### Queue processing (`prdQueue.parallelism`)
+### Queue concurrency (`maxConcurrentBuilds`)
 
-Controls the maximum number of PRDs built concurrently when processing the queue (`eforge build --queue` or `eforge queue run`). Default: `1` (sequential).
+Controls the maximum number of PRDs built concurrently when processing the queue (`eforge build --queue` or `eforge queue run`). Default: `2`.
 
 PRDs with `depends_on` frontmatter wait for their dependencies to complete before starting. If a dependency fails, all transitive dependents are marked as blocked and skipped.
 
-CLI override: `--queue-parallelism <n>`
+CLI override: `--max-concurrent-builds <n>`
 
 ```yaml
-prdQueue:
-  parallelism: 3    # Build up to 3 PRDs concurrently
+maxConcurrentBuilds: 3    # Build up to 3 PRDs concurrently
 ```
 
-### Plan execution (`build.parallelism`)
+### Plan execution
 
-Controls the maximum number of plans executed in parallel within a single build. Applies to expedition and multi-plan profiles where plans run in separate git worktrees. Default: CPU core count via `os.availableParallelism()`.
-
-This is config-only - there is no CLI override.
-
-```yaml
-build:
-  parallelism: 4    # Run up to 4 plan worktrees in parallel
-```
+Within a single build, plans run as soon as their dependencies are met. Since plan execution is IO-bound (LLM calls), no throttle is needed - all ready plans launch immediately. This is automatic and requires no configuration.
 
 ### Enqueuing
 

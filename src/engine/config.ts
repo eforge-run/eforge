@@ -1,6 +1,6 @@
 import { readFile, access } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
-import { availableParallelism, homedir } from 'node:os';
+import { homedir } from 'node:os';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
@@ -229,6 +229,7 @@ export const piConfigSchema = z.object({
 
 export const eforgeConfigSchema = z.object({
   backend: backendSchema,
+  maxConcurrentBuilds: z.number().int().positive().optional(),
   langfuse: z.object({
     enabled: z.boolean().optional(),
     publicKey: z.string().optional(),
@@ -251,7 +252,6 @@ export const eforgeConfigSchema = z.object({
     }).optional()).optional().describe('Per-agent role overrides'),
   }).optional(),
   build: z.object({
-    parallelism: z.number().int().positive().optional(),
     worktreeDir: z.string().optional(),
     postMergeCommands: z.array(z.string()).optional(),
     maxValidationRetries: z.number().int().nonnegative().optional(),
@@ -263,10 +263,8 @@ export const eforgeConfigSchema = z.object({
   plugins: pluginConfigSchema.optional(),
   prdQueue: z.object({
     dir: z.string().optional(),
-    autoRevise: z.boolean().optional(),
     autoBuild: z.boolean().optional(),
     watchPollIntervalMs: z.number().int().positive().optional(),
-    parallelism: z.number().int().positive().optional(),
   }).optional(),
   daemon: z.object({
     idleShutdownMs: z.number().int().nonnegative().optional(),
@@ -320,6 +318,7 @@ export interface PiConfig {
 
 export interface EforgeConfig {
   backend?: 'claude-sdk' | 'pi';
+  maxConcurrentBuilds: number;
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
   agents: {
     maxTurns: number;
@@ -333,10 +332,10 @@ export interface EforgeConfig {
     models?: Partial<Record<ModelClass, string>>;
     roles?: Record<string, Partial<ResolvedAgentConfig>>;
   };
-  build: { parallelism: number; worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
+  build: { worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
   plugins: PluginConfig;
-  prdQueue: { dir: string; autoRevise: boolean; autoBuild: boolean; watchPollIntervalMs: number; parallelism: number };
+  prdQueue: { dir: string; autoBuild: boolean; watchPollIntervalMs: number };
   daemon: { idleShutdownMs: number };
   monitor: { retentionCount: number };
   pi: PiConfig;
@@ -391,12 +390,13 @@ export const BUILTIN_PROFILES: Record<string, ResolvedProfileConfig> = Object.fr
 });
 
 export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
+  maxConcurrentBuilds: 2,
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({ maxTurns: 30, maxContinuations: 3, permissionMode: 'bypass' as const, settingSources: ['project'] as string[], bare: false }),
-  build: Object.freeze({ parallelism: availableParallelism(), worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
+  build: Object.freeze({ worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
   plugins: Object.freeze({ enabled: true }),
-  prdQueue: Object.freeze({ dir: 'eforge/queue', autoRevise: true, autoBuild: true, watchPollIntervalMs: 5000, parallelism: 1 }),
+  prdQueue: Object.freeze({ dir: 'eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   monitor: Object.freeze({ retentionCount: 20 }),
   pi: Object.freeze({
@@ -465,6 +465,7 @@ export function resolveConfig(
 
   return Object.freeze({
     backend: fileConfig.backend,
+    maxConcurrentBuilds: fileConfig.maxConcurrentBuilds ?? DEFAULT_CONFIG.maxConcurrentBuilds,
     langfuse: Object.freeze({
       enabled: langfuseEnabled,
       publicKey: langfusePublicKey,
@@ -484,7 +485,6 @@ export function resolveConfig(
       roles: fileConfig.agents?.roles as Record<string, Partial<ResolvedAgentConfig>> | undefined,
     }),
     build: Object.freeze({
-      parallelism: fileConfig.build?.parallelism ?? DEFAULT_CONFIG.build.parallelism,
       worktreeDir: fileConfig.build?.worktreeDir ?? DEFAULT_CONFIG.build.worktreeDir,
       postMergeCommands: fileConfig.build?.postMergeCommands ?? DEFAULT_CONFIG.build.postMergeCommands,
       maxValidationRetries: fileConfig.build?.maxValidationRetries ?? DEFAULT_CONFIG.build.maxValidationRetries,
@@ -501,10 +501,8 @@ export function resolveConfig(
     }),
     prdQueue: Object.freeze({
       dir: fileConfig.prdQueue?.dir ?? DEFAULT_CONFIG.prdQueue.dir,
-      autoRevise: fileConfig.prdQueue?.autoRevise ?? DEFAULT_CONFIG.prdQueue.autoRevise,
       autoBuild: fileConfig.prdQueue?.autoBuild ?? DEFAULT_CONFIG.prdQueue.autoBuild,
       watchPollIntervalMs: fileConfig.prdQueue?.watchPollIntervalMs ?? DEFAULT_CONFIG.prdQueue.watchPollIntervalMs,
-      parallelism: fileConfig.prdQueue?.parallelism ?? DEFAULT_CONFIG.prdQueue.parallelism,
     }),
     daemon: Object.freeze({
       idleShutdownMs: fileConfig.daemon?.idleShutdownMs ?? DEFAULT_CONFIG.daemon.idleShutdownMs,
@@ -568,6 +566,13 @@ function parseRawConfigFallback(data: Record<string, unknown>): PartialEforgeCon
       (result as Record<string, unknown>).backend = backendResult.data;
     }
   }
+  if (data.maxConcurrentBuilds !== undefined) {
+    const mcbSchema = z.number().int().positive();
+    const mcbResult = mcbSchema.safeParse(data.maxConcurrentBuilds);
+    if (mcbResult.success) {
+      (result as Record<string, unknown>).maxConcurrentBuilds = mcbResult.data;
+    }
+  }
   const sections = ['langfuse', 'agents', 'build', 'plan', 'plugins', 'prdQueue', 'daemon', 'pi', 'hooks', 'profiles'] as const;
   for (const key of sections) {
     if (data[key] === undefined) continue;
@@ -588,6 +593,7 @@ function parseRawConfigFallback(data: Record<string, unknown>): PartialEforgeCon
 function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfig {
   const out: PartialEforgeConfig = {};
   if (config.backend !== undefined) out.backend = config.backend;
+  if (config.maxConcurrentBuilds !== undefined) out.maxConcurrentBuilds = config.maxConcurrentBuilds;
   if (config.langfuse !== undefined) out.langfuse = config.langfuse;
   if (config.agents !== undefined) out.agents = config.agents;
   if (config.build !== undefined) out.build = config.build;
@@ -628,6 +634,9 @@ export function mergePartialConfigs(
   // Scalar fields: project wins
   if (project.backend !== undefined || global.backend !== undefined) {
     result.backend = project.backend ?? global.backend;
+  }
+  if (project.maxConcurrentBuilds !== undefined || global.maxConcurrentBuilds !== undefined) {
+    result.maxConcurrentBuilds = project.maxConcurrentBuilds ?? global.maxConcurrentBuilds;
   }
 
   // Object sections: shallow merge

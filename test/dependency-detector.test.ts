@@ -223,7 +223,7 @@ describe('dependency-detector registration', () => {
     expect(AGENT_ROLES).toContain('dependency-detector');
   });
 
-  it('prdQueue.parallelism defaults to 1', () => {
-    expect(DEFAULT_CONFIG.prdQueue.parallelism).toBe(1);
+  it('maxConcurrentBuilds defaults to 2', () => {
+    expect(DEFAULT_CONFIG.maxConcurrentBuilds).toBe(2);
   });
 });

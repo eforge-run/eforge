@@ -9,7 +9,7 @@ describe('resolveConfig', () => {
   it('returns defaults for empty inputs', () => {
     const config = resolveConfig({}, {});
     expect(config.agents).toEqual(DEFAULT_CONFIG.agents);
-    expect(config.build.parallelism).toBe(DEFAULT_CONFIG.build.parallelism);
+    expect(config.maxConcurrentBuilds).toBe(DEFAULT_CONFIG.maxConcurrentBuilds);
     expect(config.plan).toEqual(DEFAULT_CONFIG.plan);
     expect(config.langfuse.enabled).toBe(false);
   });
@@ -65,7 +65,6 @@ describe('resolveConfig', () => {
     const config = resolveConfig(
       {
         build: {
-          parallelism: 4,
           postMergeCommands: ['pnpm run type-check', 'pnpm test'],
         },
       },
@@ -232,14 +231,21 @@ describe('mergePartialConfigs', () => {
 
   it('build sections merge shallowly', () => {
     const global: PartialEforgeConfig = {
-      build: { parallelism: 8 },
+      build: { cleanupPlanFiles: true },
     };
     const project: PartialEforgeConfig = {
       build: { maxValidationRetries: 5 },
     };
     const merged = mergePartialConfigs(global, project);
-    expect(merged.build?.parallelism).toBe(8);
+    expect(merged.build?.cleanupPlanFiles).toBe(true);
     expect(merged.build?.maxValidationRetries).toBe(5);
+  });
+
+  it('maxConcurrentBuilds merges as scalar (project wins)', () => {
+    const global: PartialEforgeConfig = { maxConcurrentBuilds: 3 };
+    const project: PartialEforgeConfig = { maxConcurrentBuilds: 5 };
+    const merged = mergePartialConfigs(global, project);
+    expect(merged.maxConcurrentBuilds).toBe(5);
   });
 });
 
@@ -348,19 +354,16 @@ describe('prdQueue config', () => {
       {
         prdQueue: {
           dir: 'custom/queue',
-          autoRevise: true,
         },
       },
       {},
     );
     expect(config.prdQueue.dir).toBe('custom/queue');
-    expect(config.prdQueue.autoRevise).toBe(true);
   });
 
   it('applies defaults when prdQueue is omitted', () => {
     const config = resolveConfig({}, {});
     expect(config.prdQueue.dir).toBe(DEFAULT_CONFIG.prdQueue.dir);
-    expect(config.prdQueue.autoRevise).toBe(DEFAULT_CONFIG.prdQueue.autoRevise);
   });
 
   it('merges prdQueue per-field (project overrides global)', () => {
@@ -371,13 +374,25 @@ describe('prdQueue config', () => {
     };
     const project: PartialEforgeConfig = {
       prdQueue: {
-        autoRevise: true,
+        autoBuild: false,
       },
     };
     const merged = mergePartialConfigs(global, project);
-    expect(merged.prdQueue?.autoRevise).toBe(true);
+    expect(merged.prdQueue?.autoBuild).toBe(false);
     // Global dir survives since project didn't override it
     expect(merged.prdQueue?.dir).toBe('global/queue');
+  });
+});
+
+describe('maxConcurrentBuilds config', () => {
+  it('defaults to 2', () => {
+    const config = resolveConfig({}, {});
+    expect(config.maxConcurrentBuilds).toBe(2);
+  });
+
+  it('accepts override from file config', () => {
+    const config = resolveConfig({ maxConcurrentBuilds: 4 }, {});
+    expect(config.maxConcurrentBuilds).toBe(4);
   });
 });
 

@@ -7,7 +7,6 @@
  */
 
 import { execFile } from 'node:child_process';
-import { availableParallelism } from 'node:os';
 import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
@@ -56,7 +55,6 @@ export interface OrchestratorOptions {
   stateDir: string;
   repoRoot: string;
   planRunner: PlanRunner;
-  parallelism?: number;
   signal?: AbortSignal;
   postMergeCommands?: string[];
   validateCommands?: string[];
@@ -149,7 +147,7 @@ export class Orchestrator {
     const planMap = new Map(config.plans.map((p) => [p.id, p]));
     const ctx: PhaseContext = {
       state, config, stateDir, repoRoot, featureBranch, mergeWorktreePath,
-      planRunner: this.options.planRunner, parallelism: this.options.parallelism ?? availableParallelism(),
+      planRunner: this.options.planRunner, parallelism: config.plans.length || 1,
       signal, postMergeCommands: this.options.postMergeCommands, validateCommands: this.options.validateCommands,
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
       mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, worktreeManager: wm,

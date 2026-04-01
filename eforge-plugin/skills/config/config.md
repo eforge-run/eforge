@@ -40,7 +40,7 @@ Walk the user through configuration sections, asking about each one. Only includ
 **Sections to cover:**
 
 1. **Backend selection** (required) - Which LLM backend: `claude-sdk` (uses Claude Code's built-in SDK) or `pi` (experimental, multi-provider via Pi SDK supporting OpenRouter, Anthropic, OpenAI, Google, etc.).
-2. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `parallelism`, `maxValidationRetries`
+2. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`
 3. **Model & thinking tuning** (opt-in - "Would you like to customize model or thinking settings? Most users keep defaults.") - Model class overrides via `agents.models` (map class names `max`/`balanced`/`fast`/`auto` to model strings), global `agents.model` override (bypasses class system), `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`max`). Model resolution order: per-role model > global model > user class override > backend class default. Only relevant for `claude-sdk` backend.
 4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false, auto-enabled when `ANTHROPIC_API_KEY` env var is set - passes `--bare` to Claude Code subprocess)
 5. **Per-role agent overrides** (opt-in - "Would you like to tune specific agent roles differently? Most users skip this.") - Override settings per agent role. Available roles grouped: planning (`planner`, `module-planner`), building (`builder`), review/eval (`reviewer`, `evaluator`, `plan-reviewer`, `plan-evaluator`, `architecture-reviewer`, `architecture-evaluator`, `cohesion-reviewer`, `cohesion-evaluator`), fixers (`validation-fixer`, `review-fixer`, `merge-conflict-resolver`), utilities (`formatter`, `doc-updater`, `test-writer`, `tester`, `staleness-assessor`). Per-role options: `model`, `modelClass` (override which class the role belongs to: `max`/`balanced`/`fast`/`auto`), `thinking`, `effort`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`, `maxTurns`.
@@ -48,7 +48,7 @@ Walk the user through configuration sections, asking about each one. Only includ
 7. **Hooks** - Event-driven commands that run on specific eforge events (e.g. `session:start`, `phase:end`). Each hook has `event` (pattern), `command`, and optional `timeout`.
 8. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
 9. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
-10. **PRD queue** - Queue directory (`dir`), `autoRevise`, `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms)
+10. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue, CLI override: `--max-concurrent-builds`)
 11. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
 12. **Pi backend** (conditional - only if user chose `backend: pi` in step 1) - `thinkingLevel` (`off`/`medium`/`high`), `extensions` (auto-discover from `.pi/extensions/`), `compaction` (context compaction threshold), `retry` config. Model and provider are configured via Pi extensions, not eforge config. Note: experimental and untested.
 
@@ -108,9 +108,11 @@ Available top-level sections in `eforge/config.yaml`:
 # Backend
 backend: claude-sdk                    # REQUIRED - 'claude-sdk' or 'pi'
 
+# Queue concurrency
+maxConcurrentBuilds: 2                 # Max concurrent PRD builds (default: 2)
+
 # Build settings
 build:
-  parallelism: 4                       # Max parallel worktrees (default: CPU count)
   worktreeDir: "../my-worktrees"       # Custom worktree directory
   postMergeCommands:                   # Commands to run after merge
     - pnpm install
@@ -166,7 +168,6 @@ plugins:
 # PRD queue
 prdQueue:
   dir: eforge/queue
-  autoRevise: false
   autoBuild: true                      # Daemon auto-builds after enqueue
   watchPollIntervalMs: 5000            # Poll interval for watch mode (ms)
 

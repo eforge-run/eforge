@@ -651,14 +651,12 @@ export class EforgeEngine {
       } : undefined;
 
       // Create and run orchestrator
-      const parallelism = config.build.parallelism;
       const signal = abortController?.signal;
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
       const orchestrator = new Orchestrator({
         stateDir: cwd,
         repoRoot: cwd,
         planRunner,
-        parallelism,
         signal,
         postMergeCommands: config.build.postMergeCommands,
         validateCommands: orchConfig.validate,
@@ -784,7 +782,7 @@ export class EforgeEngine {
       }
 
       if (stalenessVerdict === 'revise') {
-        if (this.config.prdQueue.autoRevise && revision) {
+        if (revision) {
           // Auto-apply revision and commit
           await writeFile(prd.filePath, revision, 'utf-8');
           try {
@@ -967,7 +965,7 @@ export class EforgeEngine {
       }
     };
 
-    const parallelism = this.config.prdQueue.parallelism;
+    const parallelism = this.config.maxConcurrentBuilds;
     const semaphore = new Semaphore(parallelism);
     const eventQueue = new AsyncEventQueue<EforgeEvent>();
 
@@ -1186,7 +1184,7 @@ export class EforgeEngine {
       }
     };
 
-    const parallelism = this.config.prdQueue.parallelism;
+    const parallelism = this.config.maxConcurrentBuilds;
     const semaphore = new Semaphore(parallelism);
     const eventQueue = new AsyncEventQueue<EforgeEvent>();
 
@@ -1393,6 +1391,7 @@ export class EforgeEngine {
 function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): EforgeConfig {
   return {
     backend: overrides.backend ?? base.backend,
+    maxConcurrentBuilds: overrides.maxConcurrentBuilds ?? base.maxConcurrentBuilds,
     langfuse: overrides.langfuse ? { ...base.langfuse, ...overrides.langfuse } : base.langfuse,
     agents: overrides.agents ? { ...base.agents, ...overrides.agents } : base.agents,
     build: overrides.build ? { ...base.build, ...overrides.build } : base.build,
