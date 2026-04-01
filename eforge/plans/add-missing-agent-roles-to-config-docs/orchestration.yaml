@@ -1,0 +1,30 @@
+name: add-missing-agent-roles-to-config-docs
+description: Add prd-validator and dependency-detector to the commented role
+  list in docs/config.md
+created: 2026-04-01
+compiled: 2026-04-01
+mode: docs
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-add-roles
+    name: Add missing agent roles to config docs
+    depends_on: []
+    branch: add-missing-agent-roles-to-config-docs/add-roles
+    build:
+      - implement
+    review:
+      strategy: auto
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: lenient
+profile:
+  extends: docs
+  description: Documentation-only changes. Plans and implements but skips code
+    review since review categories (bugs, security, types, etc.) don't apply to
+    prose.
+  compile:
+    - prd-passthrough
