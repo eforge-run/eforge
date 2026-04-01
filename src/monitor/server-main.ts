@@ -275,7 +275,7 @@ async function main(): Promise<void> {
     watcherKilledByUs = false;
     const sessionId = `watcher-${Date.now()}-${randomBytes(6).toString('hex')}`;
 
-    const child = spawn('eforge', ['run', '--queue', '--auto', '--no-monitor'], {
+    const child = spawn('eforge', ['run', '--queue', '--watch', '--auto', '--no-monitor'], {
       cwd,
       detached: true,
       stdio: 'ignore',
@@ -328,12 +328,8 @@ async function main(): Promise<void> {
         return;
       }
 
-      // Clean exit (code 0) — delayed respawn if autoBuild re-enabled
-      setTimeout(() => {
-        if (daemonState.autoBuild && !watcherProcess) {
-          spawnWatcher();
-        }
-      }, respawnDelayMs);
+      // Clean exit (code 0) — watcher is long-lived, no respawn needed.
+      // The watcher stays alive via fs.watch; clean exit means intentional shutdown.
     });
   }
 

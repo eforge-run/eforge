@@ -6,7 +6,8 @@
 
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
+import { watch as fsWatch, type FSWatcher } from 'node:fs';
+import { readFile, readdir, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -895,9 +896,9 @@ export class EforgeEngine {
         result: prdResult,
         timestamp: new Date().toISOString(),
       } as EforgeEvent;
-    }
 
-    yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: prdResult.status };
+      yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: prdResult.status };
+    }
   }
 
   /**
@@ -916,9 +917,9 @@ export class EforgeEngine {
     const allOrdered = resolveQueueOrder(allPrds);
 
     // If a name is provided, filter to only that PRD (used by foreground build)
-    const orderedPrds = options.name
+    let orderedPrds = options.name
       ? allOrdered.filter((p) => p.id === options.name)
-      : allOrdered;
+      : [...allOrdered];
 
     yield {
       timestamp: new Date().toISOString(),
@@ -971,6 +972,37 @@ export class EforgeEngine {
 
     let processed = 0;
     let skipped = 0;
+
+    /**
+     * Re-scan the queue directory, discover new PRDs not yet in prdState,
+     * and emit queue:prd:discovered for each. Idempotent - safe to call repeatedly.
+     */
+    const discoverNewPrds = async (): Promise<void> => {
+      let freshPrds: Awaited<ReturnType<typeof loadQueue>>;
+      try {
+        freshPrds = await loadQueue(queueDir, cwd);
+      } catch {
+        // Filesystem or parse error during re-scan — skip discovery this cycle
+        // rather than crashing the queue while other PRDs may be running.
+        return;
+      }
+      const freshOrdered = resolveQueueOrder(freshPrds);
+      for (const prd of freshOrdered) {
+        if (!prdState.has(prd.id)) {
+          const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
+            prdState.has(dep) || freshOrdered.some((p) => p.id === dep),
+          );
+          prdState.set(prd.id, { status: 'pending', dependsOn: deps });
+          orderedPrds.push(prd);
+          eventQueue.push({
+            timestamp: new Date().toISOString(),
+            type: 'queue:prd:discovered',
+            prdId: prd.id,
+            title: prd.frontmatter.title ?? prd.id,
+          } as EforgeEvent);
+        }
+      }
+    };
 
     const startReadyPrds = (): void => {
       for (const prd of orderedPrds) {
@@ -1056,8 +1088,12 @@ export class EforgeEngine {
           processed++;
         }
 
-        // Try to launch newly-unblocked PRDs
+        // Keep the queue open during discovery so pushed events are not dropped
+        eventQueue.addProducer();
+        // Discover any new PRDs enqueued mid-cycle, then launch newly-ready PRDs
+        await discoverNewPrds();
         startReadyPrds();
+        eventQueue.removeProducer();
       }
     }
 
@@ -1077,63 +1113,249 @@ export class EforgeEngine {
   }
 
   /**
-   * Watch queue: wrap runQueue() in a polling loop, checking for new PRDs
-   * after each cycle. Yields queue:watch:* events to communicate state.
-   * Exits cleanly when the abort signal fires.
+   * Watch queue: long-lived fs.watch-based watcher that discovers new PRDs
+   * via filesystem events. Uses a 500ms debounce to coalesce rapid events.
+   * Stays alive until abort signal fires or SIGTERM.
    */
   async *watchQueue(options: QueueOptions = {}): AsyncGenerator<EforgeEvent> {
-    const pollIntervalMs = options.pollIntervalMs ?? this.config.prdQueue.watchPollIntervalMs;
-    const signal = options.abortController?.signal;
-
-    let totalProcessed = 0;
-    let totalSkipped = 0;
-
-    while (!signal?.aborted) {
-      // Delegate to runQueue for this cycle, intercepting queue:complete
-      let cycleProcessed = 0;
-      let cycleSkipped = 0;
-
-      for await (const event of this.runQueue(options)) {
-        if (event.type === 'queue:complete') {
-          // Swallow queue:complete, emit queue:watch:cycle instead
-          cycleProcessed = event.processed;
-          cycleSkipped = event.skipped;
-        } else {
-          yield event;
-        }
-      }
-
-      totalProcessed += cycleProcessed;
-      totalSkipped += cycleSkipped;
-
-      yield {
-        timestamp: new Date().toISOString(),
-        type: 'queue:watch:cycle',
-        processed: cycleProcessed,
-        skipped: cycleSkipped,
-      };
-
-      // Check abort before sleeping
-      if (signal?.aborted) break;
-
-      yield {
-        timestamp: new Date().toISOString(),
-        type: 'queue:watch:waiting',
-        pollIntervalMs,
-      };
-
-      const aborted = await abortableSleep(pollIntervalMs, signal);
-      if (aborted) break;
-
-      yield { timestamp: new Date().toISOString(), type: 'queue:watch:poll' };
+    const cwd = this.cwd;
+    const queueDir = this.config.prdQueue.dir;
+    const absQueueDir = resolve(cwd, queueDir);
+    // If no abortController provided, create an internal one wired to process
+    // signals so the watcher can be gracefully shut down on SIGTERM/SIGINT
+    const abortController = options.abortController ?? new AbortController();
+    if (!options.abortController) {
+      const signalHandler = (): void => { abortController.abort(); };
+      process.once('SIGTERM', signalHandler);
+      process.once('SIGINT', signalHandler);
     }
 
-    // Final queue:complete after watch loop exits
+    // Ensure queue directory exists before watching
+    await mkdir(absQueueDir, { recursive: true });
+
+    // Load and order initial queue
+    const allPrds = await loadQueue(queueDir, cwd);
+    const allOrdered = resolveQueueOrder(allPrds);
+
+    let orderedPrds = options.name
+      ? allOrdered.filter((p) => p.id === options.name)
+      : [...allOrdered];
+
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'queue:start',
+      prdCount: orderedPrds.length,
+      dir: queueDir,
+    };
+
+    // Per-PRD state tracking for the greedy scheduler
+    type PrdRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'blocked';
+    interface PrdRunState {
+      status: PrdRunStatus;
+      dependsOn: string[];
+    }
+
+    const prdState = new Map<string, PrdRunState>();
+    for (const prd of orderedPrds) {
+      const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
+        orderedPrds.some((p) => p.id === dep),
+      );
+      prdState.set(prd.id, { status: 'pending', dependsOn: deps });
+    }
+
+    const isReady = (prdId: string): boolean => {
+      const state = prdState.get(prdId)!;
+      if (state.status !== 'pending') return false;
+      return state.dependsOn.every((dep) => {
+        const depState = prdState.get(dep);
+        return depState && (depState.status === 'completed' || depState.status === 'skipped');
+      });
+    };
+
+    const propagateBlocked = (failedId: string): void => {
+      const queue = [failedId];
+      while (queue.length > 0) {
+        const current = queue.shift()!;
+        for (const [id, state] of prdState) {
+          if (state.status === 'pending' && state.dependsOn.includes(current)) {
+            state.status = 'blocked';
+            queue.push(id);
+          }
+        }
+      }
+    };
+
+    const parallelism = this.config.prdQueue.parallelism;
+    const semaphore = new Semaphore(parallelism);
+    const eventQueue = new AsyncEventQueue<EforgeEvent>();
+
+    let processed = 0;
+    let skipped = 0;
+
+    /**
+     * Re-scan the queue directory, discover new PRDs not yet in prdState,
+     * and emit queue:prd:discovered for each.
+     */
+    const discoverNewPrds = async (): Promise<void> => {
+      let freshPrds: Awaited<ReturnType<typeof loadQueue>>;
+      try {
+        freshPrds = await loadQueue(queueDir, cwd);
+      } catch {
+        return;
+      }
+      const freshOrdered = resolveQueueOrder(freshPrds);
+      for (const prd of freshOrdered) {
+        if (!prdState.has(prd.id)) {
+          const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
+            prdState.has(dep) || freshOrdered.some((p) => p.id === dep),
+          );
+          prdState.set(prd.id, { status: 'pending', dependsOn: deps });
+          orderedPrds.push(prd);
+          eventQueue.push({
+            timestamp: new Date().toISOString(),
+            type: 'queue:prd:discovered',
+            prdId: prd.id,
+            title: prd.frontmatter.title ?? prd.id,
+          } as EforgeEvent);
+        }
+      }
+    };
+
+    const startReadyPrds = (): void => {
+      for (const prd of orderedPrds) {
+        if (abortController?.signal.aborted) break;
+        if (!isReady(prd.id)) continue;
+
+        const state = prdState.get(prd.id)!;
+        state.status = 'running';
+
+        eventQueue.addProducer();
+
+        void (async () => {
+          let acquired = false;
+          let lastCompletionStatus: string | undefined;
+          try {
+            await semaphore.acquire();
+            acquired = true;
+
+            for await (const event of this.buildSinglePrd(prd, options)) {
+              if (event.type === 'queue:prd:complete') {
+                lastCompletionStatus = (event as { status: string }).status;
+              }
+              eventQueue.push(event);
+            }
+          } catch (err) {
+            lastCompletionStatus = 'failed';
+            eventQueue.push({
+              timestamp: new Date().toISOString(),
+              type: 'queue:prd:complete',
+              prdId: prd.id,
+              status: 'failed',
+            } as EforgeEvent);
+          } finally {
+            if (acquired) semaphore.release();
+
+            const finalState = prdState.get(prd.id)!;
+            if (finalState.status === 'running') {
+              if (lastCompletionStatus === 'completed') {
+                finalState.status = 'completed';
+              } else if (lastCompletionStatus === 'skipped') {
+                finalState.status = 'skipped';
+              } else {
+                finalState.status = 'failed';
+              }
+            }
+
+            if (finalState.status === 'failed') {
+              propagateBlocked(prd.id);
+            }
+
+            eventQueue.removeProducer();
+          }
+        })();
+      }
+    };
+
+    // Register fs.watch as a producer — keeps the consumer loop alive
+    eventQueue.addProducer();
+
+    // Set up fs.watch with 500ms debounce
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+    let watcher: FSWatcher | null = null;
+
+    const onFsChange = async (): Promise<void> => {
+      await discoverNewPrds();
+      startReadyPrds();
+    };
+
+    watcher = fsWatch(absQueueDir, { persistent: true }, () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        debounceTimer = null;
+        void onFsChange();
+      }, 500);
+    });
+
+    // Handle watcher errors (e.g. directory removed, permission change)
+    // to avoid unhandled 'error' events crashing the process.
+    watcher.on('error', () => {
+      onAbort();
+    });
+
+    // Clean shutdown on abort: close watcher, let in-flight builds drain
+    const onAbort = (): void => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+        debounceTimer = null;
+      }
+      if (watcher) {
+        watcher.close();
+        watcher = null;
+      }
+      // Remove the fs.watch producer — consumer will drain remaining events
+      // and terminate once all build producers also finish
+      eventQueue.removeProducer();
+    };
+
+    if (abortController.signal.aborted) {
+      onAbort();
+    } else {
+      abortController.signal.addEventListener('abort', onAbort, { once: true });
+    }
+
+    // Initial scan + launch ready PRDs
+    startReadyPrds();
+
+    // Consume multiplexed events
+    for await (const event of eventQueue) {
+      yield event;
+
+      if (event.type === 'queue:prd:complete') {
+        const completionStatus = event.status;
+        if (completionStatus === 'skipped') {
+          skipped++;
+        } else {
+          processed++;
+        }
+
+        // Discover any new PRDs and launch newly-ready PRDs
+        await discoverNewPrds();
+        startReadyPrds();
+      }
+    }
+
+    // Count blocked PRDs as skipped
+    for (const [, state] of prdState) {
+      if (state.status === 'blocked') {
+        skipped++;
+      }
+    }
+
     yield {
       timestamp: new Date().toISOString(),
       type: 'queue:complete',
-      processed: totalProcessed,
-      skipped: totalSkipped,
+      processed,
+      skipped,
     };
   }
 
