@@ -138,6 +138,14 @@ Run `eforge --help` for the full command and flag reference. Key commands: `buil
 - **Don't duplicate it** - implementation details belong in plan files or CLAUDE.md
 - **Delete PRDs after implementation** - `docs/` should reflect current state and planned work only
 
+## Plugin candidate skills
+
+New plugin skills are dogfooded as project-level Claude Code skills before promotion to the eforge plugin (`eforge-plugin/skills/`). They live in `.claude/skills/eforge-plugin-<name>/SKILL.md` and are invoked via `/eforge-plugin-<name>`.
+
+- **Must be project-generic** - skills work in any project, not just this repo. They discover project structure dynamically.
+- **Delegate to eforge** - the skill's job is to analyze, compose a focused prompt, and enqueue it via the eforge MCP server. The build pipeline does the actual work.
+- **Promote when proven** - once a skill is working well, move it to `eforge-plugin/skills/` and bump the plugin version.
+
 ## Key references
 
 - Roadmap: `docs/roadmap.md`
