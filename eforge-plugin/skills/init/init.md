@@ -1,19 +1,35 @@
 ---
 description: Initialize eforge in the current project with an interactive setup form
-disable-model-invocation: true
+argument-hint: "[--force]"
 ---
 
 # /eforge:init
 
-Initialize eforge in this project. Calls the `mcp__eforge__eforge_init` tool which presents a form to select a backend and creates `eforge/config.yaml` with sensible defaults.
+Initialize eforge in this project. Presents a form to select a backend and creates `eforge/config.yaml` with sensible defaults.
 
-## Usage
+## Workflow
 
-Run `mcp__eforge__eforge_init` with `{}` to start fresh initialization, or `{ force: true }` to re-initialize an existing project.
+### Step 1: Determine postMergeCommands
 
-If `$ARGUMENTS` contains `--force` or `force`, pass `{ force: true }`.
+Inspect the project to figure out the right `postMergeCommands`:
 
-## After Initialization
+1. Read `package.json` (if it exists) and note which scripts are available (e.g. `install`, `type-check`, `typecheck`, `test`, `build`, `lint`)
+2. Detect the package manager from lockfiles: `pnpm-lock.yaml` -> pnpm, `yarn.lock` -> yarn, `package-lock.json` -> npm, `bun.lockb` -> bun
+3. Build a suggested command list. Always start with the install command, then add validation scripts in order: type-check, test, build. For example: `["pnpm install", "pnpm type-check", "pnpm test", "pnpm build"]`
+4. For non-JS projects: check for `Cargo.toml` (cargo build, cargo test), `go.mod` (go build ./..., go test ./...), `Makefile` (make), etc.
+5. If you can't determine commands, use an empty list
+
+If `eforge/config.yaml` already exists, also read its current `build.postMergeCommands` and compare against your analysis. If the existing commands look good, keep them. If your analysis suggests improvements (missing scripts, outdated commands), propose the updated set instead.
+
+Present your suggested commands to the user briefly: "I'd suggest these postMergeCommands based on your project: ..." and ask if they look right. Accept corrections.
+
+### Step 2: Call the tool
+
+Call `mcp__eforge__eforge_init` with:
+- `force: true` if `$ARGUMENTS` contains `--force` or `force`
+- `postMergeCommands`: the commands from Step 1 (only applied when creating a new config - the tool preserves existing config formatting when the file already exists)
+
+### Step 3: Report
 
 Once the tool completes successfully, inform the user:
 

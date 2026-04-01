@@ -644,8 +644,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     'Initialize eforge in a project: creates eforge/config.yaml and updates .gitignore. Presents an elicitation form for backend selection.',
     {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
+      postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands (e.g. ["pnpm install", "pnpm test"]). Only applied when creating a new config, not when merging with existing.'),
     },
-    async ({ force }) => {
+    async ({ force, postMergeCommands }) => {
       const configDir = join(cwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
 
@@ -714,8 +715,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         };
       }
 
-      // Ensure .gitignore has eforge/ and .eforge/ entries
-      await ensureGitignoreEntries(cwd, ['eforge/', '.eforge/']);
+      // Ensure .gitignore has .eforge/ entry (daemon state/logs - not eforge/ which is committed)
+      await ensureGitignoreEntries(cwd, ['.eforge/']);
 
       // Create eforge/ directory if it doesn't exist
       try {
@@ -724,15 +725,29 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         // Directory may already exist
       }
 
-      // Write eforge/config.yaml
-      const configContent = [
-        `backend: ${backend}`,
-        '',
-        'build:',
-        '  # postMergeCommands: Commands to run after merging worktrees (e.g. pnpm install, pnpm type-check)',
-        '  postMergeCommands: []',
-        '',
-      ].join('\n');
+      // Read existing config (if any) and merge - only update backend, preserve formatting
+      let configContent: string;
+      try {
+        const existing = await readFile(configPath, 'utf-8');
+        // Replace or prepend backend line, preserving everything else
+        if (/^backend\s*:/m.test(existing)) {
+          configContent = existing.replace(/^backend\s*:.*$/m, `backend: ${backend}`);
+        } else {
+          configContent = `backend: ${backend}\n\n${existing}`;
+        }
+      } catch {
+        // No existing config - create new one with backend and optional postMergeCommands
+        const lines = [`backend: ${backend}`, ''];
+        if (postMergeCommands && postMergeCommands.length > 0) {
+          lines.push('build:');
+          lines.push('  postMergeCommands:');
+          for (const cmd of postMergeCommands) {
+            lines.push(`    - ${cmd}`);
+          }
+          lines.push('');
+        }
+        configContent = lines.join('\n');
+      }
 
       await writeFile(configPath, configContent, 'utf-8');
 

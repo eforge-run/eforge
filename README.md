@@ -62,7 +62,10 @@ Claude Code plugin (recommended):
 ```
 /plugin marketplace add eforge-build/eforge
 /plugin install eforge@eforge
+/eforge:init
 ```
+
+The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. It presents a form to choose your backend (claude-sdk or pi) - everything else uses defaults. For further customization, run `/eforge:config --edit`.
 
 Standalone CLI:
 
@@ -73,7 +76,7 @@ npx eforge build plans/my-feature-prd.md
 
 Or install globally: `npm install -g eforge`
 
-Create `eforge/config.yaml` with at minimum `backend: claude-sdk` (or `backend: pi` for the Pi multi-provider backend).
+For standalone use, create `eforge/config.yaml` with at minimum `backend: claude-sdk` (or `backend: pi` for the Pi multi-provider backend).
 
 ## Configuration
 
