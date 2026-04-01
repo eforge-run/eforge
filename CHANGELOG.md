@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.2.7] - 2026-04-01
+
+### Features
+
+- eforge_init MCP Tool with Elicitation
+- Remove build.parallelism, autoRevise, prdQueue.parallelism config fields; add top-level maxConcurrentBuilds with default 2
+- Remove config fields, add maxConcurrentBuilds, update all consumers and tests
+- Fix parallel PRD event isolation
+- Add missing agent roles to config docs
+- Update architecture.md with missing agents, events, and plugin communication
+
+### Bug Fixes
+
+- Don't auto-start daemon from resource handlers
+- Preserve existing config, smart postMergeCommands, gitignore fix
+
+### Documentation
+
+- Split CLAUDE.md into cross-tool AGENTS.md
+- Trim redundancy from README and rewrite CLAUDE.md for lean agent guidance
+- Add plugin candidate skill strategy and first candidate skill
+- Update Integration & Maturity section
+
+### Maintenance
+
+- Remove duplicate init PRDs and stale locks
+
 ## [0.2.6] - 2026-03-31
 
 ### Features
