@@ -55,7 +55,7 @@ export async function* composePipeline(
     {
       prompt,
       cwd,
-      maxTurns: 1,
+      maxTurns: 2, // structured output requires a tool-call + response cycle
       tools: 'none',
       outputFormat: { type: 'json_schema', schema: jsonSchema },
       abortSignal: abortController?.signal,
