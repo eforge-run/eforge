@@ -1276,24 +1276,71 @@ export class EforgeEngine {
     let debounceTimer: ReturnType<typeof setTimeout> | null = null;
     let watcher: FSWatcher | null = null;
 
+    // Circuit breaker: track consecutive fs.watch failures for recovery
+    const failureTimestamps: number[] = [];
+    const MAX_CONSECUTIVE_FAILURES = 3;
+    const FAILURE_WINDOW_MS = 10_000;
+
     const onFsChange = async (): Promise<void> => {
       await discoverNewPrds();
       startReadyPrds();
     };
 
-    watcher = fsWatch(absQueueDir, { persistent: true }, () => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(() => {
-        debounceTimer = null;
-        void onFsChange();
-      }, 500);
-    });
+    /**
+     * Set up (or re-establish) the fs.watch watcher on the queue directory.
+     * Called during initial setup and during recovery after directory deletion.
+     */
+    const setupWatcher = (): void => {
+      watcher = fsWatch(absQueueDir, { persistent: true }, () => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          debounceTimer = null;
+          void onFsChange();
+        }, 500);
+      });
 
-    // Handle watcher errors (e.g. directory removed, permission change)
-    // to avoid unhandled 'error' events crashing the process.
-    watcher.on('error', () => {
-      onAbort();
-    });
+      // Handle watcher errors (e.g. directory removed, permission change)
+      // with recovery: recreate directory, re-establish watcher, re-scan.
+      watcher.on('error', () => {
+        const now = Date.now();
+        failureTimestamps.push(now);
+
+        // Prune failures outside the window
+        while (failureTimestamps.length > 0 && failureTimestamps[0] <= now - FAILURE_WINDOW_MS) {
+          failureTimestamps.shift();
+        }
+
+        // Circuit breaker: too many consecutive failures within the window
+        if (failureTimestamps.length >= MAX_CONSECUTIVE_FAILURES) {
+          onAbort();
+          return;
+        }
+
+        // Recovery: close broken watcher, recreate directory, re-establish watcher
+        if (debounceTimer) {
+          clearTimeout(debounceTimer);
+          debounceTimer = null;
+        }
+        if (watcher) {
+          watcher.close();
+          watcher = null;
+        }
+
+        void (async () => {
+          try {
+            await mkdir(absQueueDir, { recursive: true });
+            setupWatcher();
+            await discoverNewPrds();
+            startReadyPrds();
+          } catch {
+            // Recovery itself failed — abort
+            onAbort();
+          }
+        })();
+      });
+    };
+
+    setupWatcher();
 
     // Clean shutdown on abort: close watcher, let in-flight builds drain
     const onAbort = (): void => {
