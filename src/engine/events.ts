@@ -222,6 +222,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   // Agent lifecycle (emitted by backend for every agent invocation)
   | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; model: string; backend: string }
   | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string }
+  | { type: 'agent:usage'; planId?: string; agentId: string; agent: AgentRole; usage: { input: number; output: number; total: number; cacheRead: number; cacheCreation: number }; costUsd: number; numTurns: number }
 
   // Agent-level (verbose streaming)
   | { type: 'agent:message'; planId?: string; agentId: string; agent: AgentRole; content: string }
@@ -282,6 +283,7 @@ export function isAlwaysYieldedAgentEvent(event: EforgeEvent): boolean {
   return event.type === 'agent:start'
     || event.type === 'agent:stop'
     || event.type === 'agent:result'
+    || event.type === 'agent:usage'
     || event.type === 'agent:tool_use'
     || event.type === 'agent:tool_result';
 }
