@@ -1,0 +1,59 @@
+name: remove-outputformat-from-backend-interface-handle-structured-output-parsing-in-pipeline-composer
+description: Remove outputFormat from the backend interface and switch the
+  pipeline composer to text-based JSON extraction with retry, making it
+  backend-agnostic
+created: 2026-04-01
+compiled: 2026-04-01
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-remove-outputformat
+    name: Remove outputFormat from backend interface and switch pipeline composer to
+      text-based JSON extraction
+    depends_on: []
+    branch: remove-outputformat-from-backend-interface-handle-structured-output-parsing-in-pipeline-composer/remove-outputformat
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - correctness
+      - completeness
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "Excursion scope: this is a focused refactor touching ~6 files across
+    the pipeline composer, backend interface, event types, and schemas. Not
+    trivial (multiple interconnected changes with removal of a cross-cutting
+    feature) but not expedition-scale (single cohesive subsystem, no independent
+    modules). Plan-review-cycle is included because the changes span core
+    infrastructure - getting the plan right matters to avoid missing references
+    to outputFormat/structuredOutput. Review uses correctness perspective to
+    verify all outputFormat/structuredOutput references are cleanly removed
+    without breaking the backend contract, and completeness perspective to
+    ensure nothing is missed across the interface boundary (backend.ts,
+    claude-sdk.ts, events.ts, schemas.ts). Two review rounds at standard
+    strictness is appropriate for internal infrastructure refactoring with clear
+    acceptance criteria. No doc-update needed since the prompt file change
+    (pipeline-composer.md) is part of the core implementation. No test-write
+    since acceptance criteria call for existing tests to pass, not new test
+    creation."
