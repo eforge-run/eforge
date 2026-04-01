@@ -5,7 +5,7 @@ import { resolve, dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import type { PlanFile, OrchestrationConfig, ExpeditionModule } from './events.js';
-import type { ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
+import type { BuildStageSpec, ReviewProfileConfig } from './config.js';
 import { buildStageSpecSchema, reviewProfileConfigSchema } from './config.js';
 import { pipelineCompositionSchema } from './schemas.js';
 import type { PipelineComposition } from './schemas.js';

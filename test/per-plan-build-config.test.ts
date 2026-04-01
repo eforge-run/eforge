@@ -5,8 +5,16 @@ import { stringify as stringifyYaml } from 'yaml';
 
 import { parseOrchestrationConfig, validatePlanSet } from '../src/engine/plan.js';
 import { parseBuildConfigBlock } from '../src/engine/agents/common.js';
-import { BUILTIN_PROFILES } from '../src/engine/config.js';
 import { useTempDir } from './test-tmpdir.js';
+import type { PipelineComposition } from '../src/engine/schemas.js';
+
+const TEST_PIPELINE: PipelineComposition = {
+  scope: 'excursion',
+  compile: ['planner', 'plan-review-cycle'],
+  defaultBuild: ['implement', 'review-cycle'],
+  defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
+  rationale: 'test pipeline',
+};
 
 describe('parseOrchestrationConfig per-plan build/review', () => {
   const makeTempDir = useTempDir();
@@ -19,7 +27,7 @@ describe('parseOrchestrationConfig per-plan build/review', () => {
       created: '2026-01-01',
       mode: 'expedition',
       base_branch: 'main',
-      profile: BUILTIN_PROFILES['excursion'],
+      pipeline: TEST_PIPELINE,
       plans: [
         {
           id: 'plan-01-auth',
@@ -60,7 +68,7 @@ describe('parseOrchestrationConfig per-plan build/review', () => {
       created: '2026-01-01',
       mode: 'errand',
       base_branch: 'main',
-      profile: BUILTIN_PROFILES['errand'],
+      pipeline: TEST_PIPELINE,
       plans: [
         {
           id: 'plan-01-bad',
@@ -86,7 +94,7 @@ describe('parseOrchestrationConfig per-plan build/review', () => {
       created: '2026-01-01',
       mode: 'errand',
       base_branch: 'main',
-      profile: BUILTIN_PROFILES['errand'],
+      pipeline: TEST_PIPELINE,
       plans: [
         {
           id: 'plan-01-bad',
@@ -123,7 +131,7 @@ describe('validatePlanSet per-plan stage name validation', () => {
       created: '2026-01-01',
       mode: 'errand',
       base_branch: 'main',
-      profile: BUILTIN_PROFILES['errand'],
+      pipeline: TEST_PIPELINE,
       plans: [
         {
           id: 'plan-01-test',

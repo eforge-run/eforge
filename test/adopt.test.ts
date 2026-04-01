@@ -3,8 +3,27 @@ import { writeFileSync, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { extractPlanTitle, deriveNameFromContent, detectValidationCommands, writePlanArtifacts } from '../src/engine/plan.js';
 import { parsePlanFile, parseOrchestrationConfig } from '../src/engine/plan.js';
-import { BUILTIN_PROFILES, DEFAULT_BUILD, DEFAULT_REVIEW } from '../src/engine/config.js';
+import { DEFAULT_REVIEW } from '../src/engine/config.js';
 import { useTempDir } from './test-tmpdir.js';
+import type { PipelineComposition } from '../src/engine/schemas.js';
+
+const DEFAULT_BUILD = ['implement', 'review-cycle'];
+
+const ERRAND_PIPELINE: PipelineComposition = {
+  scope: 'errand',
+  compile: ['prd-passthrough'],
+  defaultBuild: DEFAULT_BUILD,
+  defaultReview: DEFAULT_REVIEW,
+  rationale: 'test errand pipeline',
+};
+
+const EXCURSION_PIPELINE: PipelineComposition = {
+  scope: 'excursion',
+  compile: ['planner', 'plan-review-cycle'],
+  defaultBuild: DEFAULT_BUILD,
+  defaultReview: DEFAULT_REVIEW,
+  rationale: 'test excursion pipeline',
+};
 
 // --- extractPlanTitle ---
 
@@ -136,7 +155,7 @@ describe('writePlanArtifacts', () => {
       sourceContent,
       planName: 'Add Auth',
       baseBranch: 'main',
-      profile: BUILTIN_PROFILES['errand'],
+      pipeline: ERRAND_PIPELINE,
       validate: ['pnpm type-check', 'pnpm test'],
       build: DEFAULT_BUILD,
       review: DEFAULT_REVIEW,
@@ -179,7 +198,7 @@ describe('writePlanArtifacts', () => {
       sourceContent: 'Plan content here',
       planName: 'My Plan',
       baseBranch: 'develop',
-      profile: BUILTIN_PROFILES['errand'],
+      pipeline: ERRAND_PIPELINE,
       build: DEFAULT_BUILD,
       review: DEFAULT_REVIEW,
     });
@@ -196,7 +215,7 @@ describe('writePlanArtifacts', () => {
       sourceContent: '# Multi Plan\n\nContent',
       planName: 'Multi Plan',
       baseBranch: 'main',
-      profile: BUILTIN_PROFILES['excursion'],
+      pipeline: EXCURSION_PIPELINE,
       mode: 'excursion',
       build: DEFAULT_BUILD,
       review: DEFAULT_REVIEW,
@@ -217,7 +236,7 @@ describe('writePlanArtifacts', () => {
       sourceContent: 'Content',
       planName: 'Default Mode',
       baseBranch: 'main',
-      profile: BUILTIN_PROFILES['errand'],
+      pipeline: ERRAND_PIPELINE,
       build: DEFAULT_BUILD,
       review: DEFAULT_REVIEW,
     });
@@ -237,7 +256,7 @@ describe('writePlanArtifacts', () => {
       sourceContent: 'Content',
       planName: 'No Validate',
       baseBranch: 'main',
-      profile: BUILTIN_PROFILES['errand'],
+      pipeline: ERRAND_PIPELINE,
       validate: [],
       build: DEFAULT_BUILD,
       review: DEFAULT_REVIEW,

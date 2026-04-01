@@ -4,9 +4,25 @@ import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { parsePlanFile, parseOrchestrationConfig, injectProfileIntoOrchestrationYaml } from '../src/engine/plan.js';
-import { BUILTIN_PROFILES, type ResolvedProfileConfig } from '../src/engine/config.js';
+import { parsePlanFile, parseOrchestrationConfig, injectPipelineIntoOrchestrationYaml } from '../src/engine/plan.js';
 import { useTempDir } from './test-tmpdir.js';
+import type { PipelineComposition } from '../src/engine/schemas.js';
+
+const TEST_PIPELINE: PipelineComposition = {
+  scope: 'excursion',
+  compile: ['planner', 'plan-review-cycle'],
+  defaultBuild: ['implement', 'review-cycle'],
+  defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
+  rationale: 'test pipeline',
+};
+
+const ERRAND_PIPELINE: PipelineComposition = {
+  scope: 'errand',
+  compile: ['prd-passthrough'],
+  defaultBuild: ['implement', 'review-cycle'],
+  defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
+  rationale: 'test errand pipeline',
+};
 
 const fixturesDir = resolve(import.meta.dirname, 'fixtures');
 
@@ -76,11 +92,10 @@ describe('parseOrchestrationConfig', () => {
     });
     expect(config.plans[1].dependsOn).toEqual(['core']);
 
-    // Profile fields
-    expect(config.profile.description).toBe(
-      'Multi-file feature work or refactors that need planning and review but fit in a single plan.',
-    );
-    expect(config.profile.compile).toEqual(['planner', 'plan-review-cycle']);
+    // Pipeline fields
+    expect(config.pipeline.scope).toBe('excursion');
+    expect(config.pipeline.compile).toEqual(['planner', 'plan-review-cycle']);
+    expect(config.pipeline.rationale).toBe('test pipeline');
   });
 
   it('throws on missing name', async () => {
@@ -89,7 +104,7 @@ describe('parseOrchestrationConfig', () => {
     ).rejects.toThrow(/name/i);
   });
 
-  it('throws when YAML has no profile field', async () => {
+  it('throws when YAML has no pipeline field', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'eforge-orch-test-'));
     const yamlPath = join(dir, 'orchestration.yaml');
     writeFileSync(yamlPath, stringifyYaml({
@@ -101,11 +116,11 @@ describe('parseOrchestrationConfig', () => {
       plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
 
-    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/profile/i);
+    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/pipeline/i);
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it('throws when profile field is malformed', async () => {
+  it('throws when pipeline field is malformed', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'eforge-orch-test-'));
     const yamlPath = join(dir, 'orchestration.yaml');
     writeFileSync(yamlPath, stringifyYaml({
@@ -114,23 +129,23 @@ describe('parseOrchestrationConfig', () => {
       created: '2026-01-01',
       mode: 'errand',
       base_branch: 'main',
-      profile: { description: '' }, // Missing required fields and empty description
+      pipeline: { scope: 'invalid' }, // Missing required fields and invalid scope
       plans: [{ id: 'p1', name: 'Plan 1', branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
 
-    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/profile/i);
+    await expect(parseOrchestrationConfig(yamlPath)).rejects.toThrow(/pipeline/i);
     rmSync(dir, { recursive: true, force: true });
   });
 });
 
-describe('injectProfileIntoOrchestrationYaml', () => {
-  const makeTempDir = useTempDir('eforge-inject-profile-');
+describe('injectPipelineIntoOrchestrationYaml', () => {
+  const makeTempDir = useTempDir('eforge-inject-pipeline-');
 
-  it('reads existing orchestration.yaml, adds profile, and writes it back', async () => {
+  it('reads existing orchestration.yaml, adds pipeline, and writes it back', async () => {
     const dir = makeTempDir();
     const yamlPath = join(dir, 'orchestration.yaml');
 
-    // Write a minimal orchestration.yaml without profile
+    // Write a minimal orchestration.yaml without pipeline
     writeFileSync(yamlPath, stringifyYaml({
       name: 'inject-test',
       description: 'Test injection',
@@ -140,14 +155,13 @@ describe('injectProfileIntoOrchestrationYaml', () => {
       plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
 
-    const profile: ResolvedProfileConfig = BUILTIN_PROFILES['errand'];
-    await injectProfileIntoOrchestrationYaml(yamlPath, profile);
+    await injectPipelineIntoOrchestrationYaml(yamlPath, ERRAND_PIPELINE);
 
     // Parse the result to verify
     const config = await parseOrchestrationConfig(yamlPath);
     expect(config.name).toBe('inject-test');
-    expect(config.profile.description).toBe(profile.description);
-    expect(config.profile.compile).toEqual(profile.compile);
+    expect(config.pipeline.scope).toBe('errand');
+    expect(config.pipeline.compile).toEqual(ERRAND_PIPELINE.compile);
   });
 
   it('overrides base_branch when provided', async () => {
@@ -164,8 +178,7 @@ describe('injectProfileIntoOrchestrationYaml', () => {
       plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
 
-    const profile: ResolvedProfileConfig = BUILTIN_PROFILES['errand'];
-    await injectProfileIntoOrchestrationYaml(yamlPath, profile, 'develop');
+    await injectPipelineIntoOrchestrationYaml(yamlPath, ERRAND_PIPELINE, 'develop');
 
     const config = await parseOrchestrationConfig(yamlPath);
     expect(config.baseBranch).toBe('develop');
@@ -184,8 +197,7 @@ describe('injectProfileIntoOrchestrationYaml', () => {
       plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1', build: ['implement', 'review-cycle'], review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' } }],
     }));
 
-    const profile: ResolvedProfileConfig = BUILTIN_PROFILES['errand'];
-    await injectProfileIntoOrchestrationYaml(yamlPath, profile);
+    await injectPipelineIntoOrchestrationYaml(yamlPath, ERRAND_PIPELINE);
 
     const config = await parseOrchestrationConfig(yamlPath);
     expect(config.baseBranch).toBe('main');

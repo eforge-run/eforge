@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseClarificationBlocks, parseSkipBlock, parseModulesBlock, parseProfileBlock, parseStalenessBlock } from '../src/engine/agents/common.js';
+import { parseClarificationBlocks, parseSkipBlock, parseModulesBlock, parseStalenessBlock } from '../src/engine/agents/common.js';
 import { parseReviewIssues } from '../src/engine/agents/reviewer.js';
 import { parseEvaluationBlock } from '../src/engine/agents/common.js';
 import { formatPriorClarifications } from '../src/engine/agents/planner.js';
@@ -205,46 +205,6 @@ And some trailing text.`;
     const result = parseModulesBlock(text);
     expect(result).toHaveLength(1);
     expect(result[0].id).toBe('core');
-  });
-});
-
-describe('parseProfileBlock', () => {
-  it('parses a valid profile block', () => {
-    const text = '<profile name="excursion">Rationale text</profile>';
-    const result = parseProfileBlock(text);
-    expect(result).toEqual({ profileName: 'excursion', rationale: 'Rationale text' });
-  });
-
-  it('returns null for text with no profile block', () => {
-    expect(parseProfileBlock('just plain text')).toBeNull();
-  });
-
-  it('returns null for profile with empty name attribute', () => {
-    const text = '<profile name="">Some rationale</profile>';
-    expect(parseProfileBlock(text)).toBeNull();
-  });
-
-  it('returns null for profile with empty body', () => {
-    const text = '<profile name="errand">   </profile>';
-    expect(parseProfileBlock(text)).toBeNull();
-  });
-
-  it('handles multiline rationale text', () => {
-    const text = `<profile name="expedition">
-      This is a complex change spanning
-      multiple modules and files.
-    </profile>`;
-    const result = parseProfileBlock(text);
-    expect(result?.profileName).toBe('expedition');
-    expect(result?.rationale).toContain('multiple modules');
-  });
-
-  it('ignores surrounding text', () => {
-    const text = `Here is some analysis.
-<profile name="errand">Simple change</profile>
-And trailing text.`;
-    const result = parseProfileBlock(text);
-    expect(result).toEqual({ profileName: 'errand', rationale: 'Simple change' });
   });
 });
 

@@ -3,11 +3,22 @@ description: A test orchestration config
 created: "2026-01-01"
 mode: excursion
 base_branch: main
-profile:
-  description: Multi-file feature work or refactors that need planning and review but fit in a single plan.
+pipeline:
+  scope: excursion
   compile:
     - planner
     - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-update
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: test pipeline
 plans:
   - id: core
     name: Core Module

@@ -194,8 +194,6 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--no-cleanup', 'Keep plan files after successful build')
     .option('--no-monitor', 'Disable web monitor')
     .option('--no-plugins', 'Disable plugin loading')
-    .option('--profiles <paths...>', 'Additional workflow profile files to load')
-    .option('--no-generate-profile', 'Disable custom profile generation (enabled by default)')
     .option('--watch', 'Watch mode: continuously poll the queue for new PRDs')
     .option('--poll-interval <ms>', 'Poll interval in milliseconds for watch mode', parseInt)
     .action(
@@ -212,7 +210,6 @@ export function createProgram(abortController?: AbortController): Command {
           foreground?: boolean;
           monitor?: boolean;
           plugins?: boolean;
-          profiles?: string[];
           watch?: boolean;
           pollInterval?: number;
         },
@@ -294,34 +291,10 @@ export function createProgram(abortController?: AbortController): Command {
 
         const configOverrides = buildConfigOverrides(options);
 
-        // Parse --profiles files into profile overrides
-        let profileOverrides: Record<string, import('../engine/config.js').PartialProfileConfig> | undefined;
-        if (options.profiles?.length) {
-          const { parseProfilesFile } = await import('../engine/config.js');
-          profileOverrides = {};
-          for (const profilePath of options.profiles) {
-            const resolvedPath = resolve(profilePath);
-            let parsed: Record<string, import('../engine/config.js').PartialProfileConfig>;
-            try {
-              parsed = await parseProfilesFile(resolvedPath);
-            } catch (err) {
-              console.error(chalk.red(`Error loading profiles file: ${resolvedPath}`));
-              console.error(chalk.dim(err instanceof Error ? err.message : String(err)));
-              process.exit(1);
-            }
-            // Later files override earlier ones for same-name profiles
-            Object.assign(profileOverrides, parsed);
-          }
-          if (Object.keys(profileOverrides).length === 0) {
-            profileOverrides = undefined;
-          }
-        }
-
         const engine = await EforgeEngine.create({
           onClarification: createClarificationHandler(options.auto ?? false),
           onApproval: createApprovalHandler(options.auto ?? false),
           ...(configOverrides && { config: configOverrides }),
-          ...(profileOverrides && { profileOverrides }),
         });
 
         // Phase 1: Enqueue — format and add to queue, capture file path and name

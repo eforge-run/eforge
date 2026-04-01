@@ -146,10 +146,20 @@ description: Test
 created: "2024-01-01"
 mode: errand
 base_branch: main
-profile:
-  description: "Test profile"
+pipeline:
+  scope: errand
   compile:
     - prd-passthrough
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: test
 plans:
   - id: plan-01
     name: Test Plan
@@ -181,10 +191,20 @@ description: Test
 created: "2024-01-01"
 mode: errand
 base_branch: main
-profile:
-  description: "Test profile"
+pipeline:
+  scope: errand
   compile:
     - prd-passthrough
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - code
+    maxRounds: 1
+    evaluatorStrictness: standard
+  rationale: test
 plans:
   - id: plan-01
     name: Test Plan

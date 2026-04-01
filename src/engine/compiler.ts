@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { stringify as stringifyYaml } from 'yaml';
 import type { PlanFile } from './events.js';
-import type { ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig } from './config.js';
+import type { BuildStageSpec, ReviewProfileConfig } from './config.js';
 import { parseExpeditionIndex, resolveDependencyGraph } from './plan.js';
 
 const exec = promisify(execFile);
@@ -27,7 +27,7 @@ const exec = promisify(execFile);
 export async function compileExpedition(
   cwd: string,
   planSetName: string,
-  profile?: ResolvedProfileConfig,
+  profile?: { description: string; compile: string[] },
   moduleBuildConfigs?: Map<string, { build: BuildStageSpec[]; review: ReviewProfileConfig }>,
   outputDir?: string,
 ): Promise<PlanFile[]> {

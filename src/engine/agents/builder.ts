@@ -22,7 +22,7 @@ export interface BuilderOptions extends SdkPassthroughConfig {
   maxTurns?: number;
   /** Evaluator strictness level — controls the accept/reject threshold text injected into the prompt */
   strictness?: 'strict' | 'standard' | 'lenient';
-  /** Parallel stage groups from the profile build config — used for lane awareness */
+  /** Parallel stage groups from the pipeline build config — used for lane awareness */
   parallelStages?: string[][];
   /** Verification scope: 'full' runs all checks, 'build-only' skips tests (handled by test stages) */
   verificationScope?: 'full' | 'build-only';

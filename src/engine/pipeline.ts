@@ -1,9 +1,9 @@
 /**
- * Pipeline — named stages with a uniform interface, driven by resolved profiles.
+ * Pipeline — named stages with a uniform interface, driven by dynamically composed pipelines.
  *
  * Pipeline stages are named units: each accepts a context and yields EforgeEvents.
- * The engine iterates the stage list from the resolved profile and calls each stage
- * in sequence. Profile selection is a pre-pipeline step handled by the engine.
+ * The engine iterates the stage list from the composed pipeline and calls each stage
+ * in sequence. Pipeline composition is a pre-pipeline step handled by the engine.
  */
 
 import { execFile } from 'node:child_process';
@@ -24,7 +24,7 @@ import {
   type ReviewIssue,
   type OrchestrationConfig,
 } from './events.js';
-import type { EforgeConfig, ResolvedProfileConfig, BuildStageSpec, ReviewProfileConfig, ModelClass } from './config.js';
+import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig, ModelClass } from './config.js';
 import { DEFAULT_REVIEW, MODEL_CLASSES } from './config.js';
 import type { PipelineComposition } from './schemas.js';
 import type { AgentBackend } from './backend.js';
@@ -88,9 +88,9 @@ export interface BuildStageContext extends PipelineContext {
   planFile: PlanFile;
   orchConfig: OrchestrationConfig;
   reviewIssues: ReviewIssue[];
-  /** Per-plan build stage sequence (resolved from per-plan config or profile fallback). */
+  /** Per-plan build stage sequence (resolved from per-plan config or pipeline fallback). */
   build: BuildStageSpec[];
-  /** Per-plan review config (resolved from per-plan config or profile fallback). */
+  /** Per-plan review config (resolved from per-plan config or pipeline fallback). */
   review: ReviewProfileConfig;
   /** Set to true by the implement stage on failure — signals the pipeline runner to stop. */
   buildFailed?: boolean;
@@ -149,12 +149,12 @@ export function getBuildStage(name: string): BuildStage {
   return entry.fn;
 }
 
-/** Return the set of registered compile stage names (for profile validation). */
+/** Return the set of registered compile stage names (for pipeline validation). */
 export function getCompileStageNames(): Set<string> {
   return new Set(compileStages.keys());
 }
 
-/** Return the set of registered build stage names (for profile validation). */
+/** Return the set of registered build stage names (for pipeline validation). */
 export function getBuildStageNames(): Set<string> {
   return new Set(buildStages.keys());
 }
@@ -644,7 +644,7 @@ function humanizeName(name: string): string {
 registerCompileStage({
   name: 'prd-passthrough',
   phase: 'compile',
-  description: 'Converts a PRD directly into plan artifacts without LLM planning, using the errand profile.',
+  description: 'Converts a PRD directly into plan artifacts without LLM planning.',
   whenToUse: 'For small, well-defined tasks where the PRD itself serves as the implementation plan.',
   costHint: 'low',
   conflictsWith: ['planner'],
@@ -1141,8 +1141,7 @@ registerCompileStage({
   if (ctx.expeditionModules.length === 0) return;
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:start' };
-  // Build a ResolvedProfileConfig from the pipeline for the compiler
-  const profileForCompiler: ResolvedProfileConfig = {
+  const profileForCompiler = {
     description: ctx.pipeline.rationale,
     compile: ctx.pipeline.compile,
   };
@@ -1598,14 +1597,14 @@ registerBuildStage({
 registerBuildStage({
   name: 'validate',
   phase: 'build',
-  description: 'Placeholder for inline validation. Custom profiles can include this for pre-merge checks.',
+  description: 'Placeholder for inline validation. Custom pipelines can include this for pre-merge checks.',
   whenToUse: 'When inline validation is needed before merge. Post-merge validation is handled by the Orchestrator.',
   costHint: 'low',
   predecessors: ['implement'],
 }, async function* validateStage(_ctx) {
-  // Placeholder for inline validation (not used in default profiles).
+  // Placeholder for inline validation (not used in default pipelines).
   // Post-merge validation continues to be handled by the Orchestrator.
-  // Custom profiles can include this stage for inline validation.
+  // Custom pipelines can include this stage for inline validation.
 });
 
 registerBuildStage({
@@ -1868,7 +1867,7 @@ export async function* runCompilePipeline(
 
 /**
  * Run the build pipeline stages for a single plan.
- * Each entry in `profile.build` is either a single stage name (run sequentially)
+ * Each entry in the build pipeline is either a single stage name (run sequentially)
  * or an array of stage names (run concurrently via `runParallel`).
  * After a parallel group completes, any uncommitted changes are auto-committed.
  */

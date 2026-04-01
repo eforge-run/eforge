@@ -8,13 +8,25 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '../src/engine/events.js';
-import type { EforgeConfig, ResolvedProfileConfig } from '../src/engine/config.js';
+import type { EforgeConfig } from '../src/engine/config.js';
 import type { AgentBackend } from '../src/engine/backend.js';
-import { BUILTIN_PROFILES, DEFAULT_CONFIG, DEFAULT_REVIEW, DEFAULT_BUILD, DEFAULT_BUILD_WITH_DOCS } from '../src/engine/config.js';
+import type { PipelineComposition } from '../src/engine/schemas.js';
+import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '../src/engine/config.js';
+
+const DEFAULT_BUILD = ['implement', 'review-cycle'];
+
+const TEST_PIPELINE: PipelineComposition = {
+  scope: 'excursion',
+  compile: ['planner', 'plan-review-cycle'],
+  defaultBuild: DEFAULT_BUILD,
+  defaultReview: DEFAULT_REVIEW,
+  rationale: 'test pipeline',
+};
 import { createNoopTracingContext } from '../src/engine/tracing.js';
 import {
   getCompileStage,
   getBuildStage,
+  getCompileStageNames,
   registerCompileStage,
   registerBuildStage,
   runCompilePipeline,
@@ -49,7 +61,7 @@ function makePipelineCtx(overrides: Partial<PipelineContext> = {}): PipelineCont
   return {
     backend: {} as AgentBackend,
     config: DEFAULT_CONFIG,
-    profile: BUILTIN_PROFILES['excursion'],
+    pipeline: TEST_PIPELINE,
     tracing: createNoopTracingContext(),
     cwd: '/tmp/test',
     planSetName: 'test-plan',
@@ -77,16 +89,14 @@ function makeBuildCtx(overrides: Partial<BuildStageContext> = {}): BuildStageCon
     created: new Date().toISOString(),
     mode: 'errand',
     baseBranch: 'main',
-    profile: BUILTIN_PROFILES['excursion'],
+    pipeline: TEST_PIPELINE,
     plans: [{ id: 'plan-01', name: 'Test Plan', dependsOn: [], branch: 'test/plan-01', build: DEFAULT_BUILD, review: DEFAULT_REVIEW }],
   };
-
-  const profile = overrides?.profile ?? BUILTIN_PROFILES['excursion'];
 
   return {
     backend: {} as AgentBackend,
     config: DEFAULT_CONFIG,
-    profile,
+    pipeline: overrides?.pipeline ?? TEST_PIPELINE,
     tracing: createNoopTracingContext(),
     cwd: '/tmp/test',
     planSetName: 'test-plan',
@@ -162,7 +172,7 @@ describe('stage registry', () => {
 // ---------------------------------------------------------------------------
 
 describe('runCompilePipeline', () => {
-  it('calls stages in order from profile compile list', async () => {
+  it('calls stages in order from pipeline compile list', async () => {
     const order: string[] = [];
 
     registerCompileStage(testDescriptor('test-stage-a', 'compile'), async function* () {
@@ -174,12 +184,12 @@ describe('runCompilePipeline', () => {
       yield { type: 'plan:progress', message: 'stage-b' };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
       compile: ['test-stage-a', 'test-stage-b'],
     };
 
-    const ctx = makePipelineCtx({ profile });
+    const ctx = makePipelineCtx({ pipeline });
     const events = await collect(runCompilePipeline(ctx));
 
     expect(order).toEqual(['a', 'b']);
@@ -189,12 +199,12 @@ describe('runCompilePipeline', () => {
   });
 
   it('yields zero events with empty compile list', async () => {
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
       compile: [],
     };
 
-    const ctx = makePipelineCtx({ profile });
+    const ctx = makePipelineCtx({ pipeline });
     const events = await collect(runCompilePipeline(ctx));
 
     expect(events).toHaveLength(0);
@@ -213,12 +223,12 @@ describe('runCompilePipeline', () => {
       yield { type: 'plan:progress', message: 'review' };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
       compile: ['test-skip-planner', 'test-skip-review'],
     };
 
-    const ctx = makePipelineCtx({ profile });
+    const ctx = makePipelineCtx({ pipeline });
     const events = await collect(runCompilePipeline(ctx));
 
     expect(stagesRun).toEqual(['planner']);
@@ -227,12 +237,12 @@ describe('runCompilePipeline', () => {
   });
 
   it('throws for unknown stage name in compile list', async () => {
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
       compile: ['unknown-stage-xyz'],
     };
 
-    const ctx = makePipelineCtx({ profile });
+    const ctx = makePipelineCtx({ pipeline });
 
     await expect(collect(runCompilePipeline(ctx))).rejects.toThrow('Unknown compile stage');
   });
@@ -245,12 +255,12 @@ describe('runCompilePipeline', () => {
       yield { type: 'plan:progress', message: 'planned' };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
       compile: ['test-planner-only'],
     };
 
-    const ctx = makePipelineCtx({ profile });
+    const ctx = makePipelineCtx({ pipeline });
     const events = await collect(runCompilePipeline(ctx));
 
     expect(stagesRun).toEqual(['planner']);
@@ -352,12 +362,12 @@ describe('PipelineContext mutable state', () => {
       yield { type: 'plan:progress', message: 'read-plans' };
     });
 
-    const profile: ResolvedProfileConfig = {
-      ...BUILTIN_PROFILES['excursion'],
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
       compile: ['test-set-plans', 'test-read-plans'],
     };
 
-    const ctx = makePipelineCtx({ profile });
+    const ctx = makePipelineCtx({ pipeline });
     await collect(runCompilePipeline(ctx));
 
     expect(readPlans).toEqual([testPlan]);
@@ -589,47 +599,34 @@ describe('runBuildPipeline parallel stage groups', () => {
   });
 });
 
-describe('default profile behavior', () => {
-  it('excursion profile compile stages match today\'s hardcoded sequence', () => {
-    const excursion = BUILTIN_PROFILES['excursion'];
-    expect(excursion.compile).toEqual(['planner', 'plan-review-cycle']);
+describe('default pipeline compile stages', () => {
+  it('getCompileStageNames includes planner and plan-review-cycle', () => {
+    const names = getCompileStageNames();
+    expect(names.has('planner')).toBe(true);
+    expect(names.has('plan-review-cycle')).toBe(true);
   });
 
-  it('errand profile compile stages use prd-passthrough', () => {
-    const errand = BUILTIN_PROFILES['errand'];
-    expect(errand.compile).toEqual(['prd-passthrough']);
+  it('getCompileStageNames includes prd-passthrough', () => {
+    const names = getCompileStageNames();
+    expect(names.has('prd-passthrough')).toBe(true);
   });
 
-  it('expedition profile compile stages include module-planning and compile-expedition', () => {
-    const expedition = BUILTIN_PROFILES['expedition'];
-    expect(expedition.compile).toContain('module-planning');
-    expect(expedition.compile).toContain('compile-expedition');
-    expect(expedition.compile).toContain('cohesion-review-cycle');
+  it('getCompileStageNames includes module-planning, compile-expedition, cohesion-review-cycle', () => {
+    const names = getCompileStageNames();
+    expect(names.has('module-planning')).toBe(true);
+    expect(names.has('compile-expedition')).toBe(true);
+    expect(names.has('cohesion-review-cycle')).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// EforgeEngineOptions profileOverrides Tests
+// EforgeEngineOptions Tests
 // ---------------------------------------------------------------------------
 
-describe('EforgeEngineOptions.profileOverrides type', () => {
-  it('profileOverrides is optional on EforgeEngineOptions', async () => {
-    // Runtime check: the option type accepts undefined
+describe('EforgeEngineOptions type', () => {
+  it('EforgeEngineOptions accepts empty object', async () => {
     const opts: import('../src/engine/eforge.js').EforgeEngineOptions = {};
-    expect(opts.profileOverrides).toBeUndefined();
-  });
-
-  it('profileOverrides accepts Record<string, PartialProfileConfig>', async () => {
-    const opts: import('../src/engine/eforge.js').EforgeEngineOptions = {
-      profileOverrides: {
-        'custom-profile': {
-          description: 'Custom profile',
-          compile: ['planner', 'plan-review-cycle'],
-        },
-      },
-    };
-    expect(opts.profileOverrides).toBeDefined();
-    expect(opts.profileOverrides!['custom-profile'].compile).toEqual(['planner', 'plan-review-cycle']);
+    expect(opts.cwd).toBeUndefined();
   });
 });
 

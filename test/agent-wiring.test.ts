@@ -15,7 +15,6 @@ import { runModulePlanner } from '../src/engine/agents/module-planner.js';
 import { runArchitectureReview } from '../src/engine/agents/architecture-reviewer.js';
 import { runPrdValidator } from '../src/engine/agents/prd-validator.js';
 import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors } from '../src/engine/pipeline.js';
-import type { ResolvedProfileConfig } from '../src/engine/config.js';
 
 // --- Planner ---
 
@@ -207,17 +206,6 @@ Do the thing.
     expect(complete!.plans[0].name).toBe('Add feature');
   });
 });
-
-// --- Profile formatting ---
-
-const stubProfile: ResolvedProfileConfig = {
-  description: 'Small focused change',
-  compile: ['planner'],
-  build: ['builder', 'reviewer', 'evaluator'],
-  agents: {},
-  review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
-};
-
 
 // --- Reviewer ---
 
@@ -782,7 +770,7 @@ describe('validatePipeline', () => {
   it('returns valid for a correct pipeline', () => {
     const result = validatePipeline(
       ['planner', 'plan-review-cycle'],
-      [['implement', 'doc-update'], 'review-cycle'],
+      ['implement', 'doc-update', 'review-cycle'],
     );
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);

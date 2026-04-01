@@ -491,7 +491,7 @@ export class EforgeEngine {
         planFileMap.set(plan.id, planFile);
       }
 
-      // Per-plan runner closure — iterates build stages from the resolved profile
+      // Per-plan runner closure — iterates build stages from the composed pipeline
       const config = this.config;
       const backend = this.backend;
       const verbose = options.verbose;
@@ -1396,7 +1396,6 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     monitor: overrides.monitor ? { ...base.monitor, ...overrides.monitor } : base.monitor,
     pi: overrides.pi ? { ...base.pi, ...overrides.pi } : base.pi,
     hooks: overrides.hooks ?? base.hooks,
-    profiles: overrides.profiles ?? base.profiles,
   };
 }
 

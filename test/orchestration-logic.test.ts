@@ -3,8 +3,8 @@ import { propagateFailure, shouldSkipMerge, computeMaxConcurrency } from '../src
 import { resumeState } from '../src/engine/orchestrator/plan-lifecycle.js';
 import { initializeState } from '../src/engine/orchestrator.js';
 import { saveState } from '../src/engine/state.js';
-import { BUILTIN_PROFILES } from '../src/engine/config.js';
 import type { EforgeState, OrchestrationConfig, PlanState } from '../src/engine/events.js';
+import type { PipelineComposition } from '../src/engine/schemas.js';
 import { useTempDir } from './test-tmpdir.js';
 
 // --- Helpers ---
@@ -36,6 +36,9 @@ function makeState(
   };
 }
 
+const TEST_REVIEW = { strategy: 'auto' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
+const TEST_BUILD = ['implement', 'review-cycle'];
+
 function makePlans(
   specs: Array<{ id: string; dependsOn?: string[] }>,
 ): OrchestrationConfig['plans'] {
@@ -44,6 +47,8 @@ function makePlans(
     name: s.id,
     dependsOn: s.dependsOn ?? [],
     branch: `feature/${s.id}`,
+    build: TEST_BUILD,
+    review: TEST_REVIEW,
   }));
 }
 
@@ -370,6 +375,14 @@ describe('computeMaxConcurrency', () => {
 
 // --- initializeState helpers ---
 
+const TEST_PIPELINE: PipelineComposition = {
+  scope: 'excursion',
+  compile: ['planner', 'plan-review-cycle'],
+  defaultBuild: ['implement', 'review-cycle'],
+  defaultReview: TEST_REVIEW,
+  rationale: 'test pipeline',
+};
+
 function makeConfig(
   overrides?: Partial<OrchestrationConfig>,
 ): OrchestrationConfig {
@@ -379,10 +392,10 @@ function makeConfig(
     created: '2026-01-01T00:00:00Z',
     mode: 'excursion',
     baseBranch: 'main',
-    profile: BUILTIN_PROFILES['excursion'],
+    pipeline: TEST_PIPELINE,
     plans: [
-      { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a' },
-      { id: 'plan-b', name: 'Plan B', dependsOn: ['plan-a'], branch: 'feature/plan-b' },
+      { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+      { id: 'plan-b', name: 'Plan B', dependsOn: ['plan-a'], branch: 'feature/plan-b', build: TEST_BUILD, review: TEST_REVIEW },
     ],
     ...overrides,
   };

@@ -23,9 +23,7 @@ const ALLOWED_FLAGS = new Set([
   '--dry-run',
   '--no-monitor',
   '--no-plugins',
-  '--no-generate-profile',
   '--poll-interval',
-  '--profiles',
 ]);
 
 function sanitizeFlags(flags?: string[]): string[] | undefined {
