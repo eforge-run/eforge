@@ -439,8 +439,9 @@ export function getSummaryStats(state: RunState): {
 
   const statuses = Object.values(state.planStatuses);
 
-  // Sum turns across all agent threads, treating null as 0
-  const totalTurns = state.agentThreads.reduce((sum, t) => sum + (t.numTurns ?? 0), 0);
+  // Sum turns across finalized agent threads only (live agents tracked via liveAgentUsage overlay)
+  const liveAgentIds = new Set(Object.keys(state.liveAgentUsage));
+  const totalTurns = state.agentThreads.reduce((sum, t) => liveAgentIds.has(t.agentId) ? sum : sum + (t.numTurns ?? 0), 0);
 
   // Deduplicate file paths across plans using a Set
   const uniqueFiles = new Set<string>();
