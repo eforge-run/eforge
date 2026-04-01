@@ -37,6 +37,20 @@ const AGENT_COLORS: Record<AgentRole, { bg: string; border: string }> = {
 const FALLBACK_COLOR = { bg: 'bg-cyan/30', border: 'border-cyan/50' };
 const EMPTY_THREADS: AgentThread[] = [];
 const EMPTY_EVENTS: StoredEvent[] = [];
+const EMPTY_SET = new Set<string>();
+
+// --- Pill constants for artifact labels ---
+
+const pillClass =
+  'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition-colors border-none';
+const prdPillClass = `${pillClass} bg-yellow/15 text-yellow/70 hover:bg-yellow/25`;
+const planPillClass = `${pillClass} bg-cyan/15 text-cyan/70 hover:bg-cyan/25`;
+
+function abbreviatePlanId(id: string): string {
+  const match = id.match(/^plan-(\d+)/);
+  if (match) return `Plan ${match[1]}`;
+  return id;
+}
 
 function getAgentColor(agent: string) {
   return AGENT_COLORS[agent as AgentRole] ?? FALLBACK_COLOR;
@@ -145,12 +159,8 @@ function StageOverview({ compile, activeStages, completedStages, hoveredStage, o
   );
 }
 
-function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStage, onStageHover }: {
+function ProfileHeader({ profileInfo }: {
   profileInfo: ProfileInfo;
-  activeStages: Set<string>;
-  completedStages: Set<string>;
-  hoveredStage: string | null;
-  onStageHover: (stage: string | null) => void;
 }) {
   const tier = getTierColor(profileInfo.profileName);
   return (
@@ -187,7 +197,6 @@ function ProfileHeader({ profileInfo, activeStages, completedStages, hoveredStag
           </span>
         )}
       </div>
-      <StageOverview compile={profileInfo.config.compile} activeStages={activeStages} completedStages={completedStages} hoveredStage={hoveredStage} onStageHover={onStageHover} />
     </div>
   );
 }
@@ -414,11 +423,35 @@ interface ThreadPipelineProps {
   profileInfo?: ProfileInfo | null;
   events: StoredEvent[];
   orchestration?: OrchestrationConfig | null;
+  prdSource?: { label: string; content: string } | null;
+  planArtifacts?: Array<{ id: string; name: string; body: string }>;
 }
 
-export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, profileInfo, events, orchestration }: ThreadPipelineProps) {
+export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, profileInfo, events, orchestration, prdSource, planArtifacts }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const entries = Object.entries(planStatuses);
+
+  const planArtifactMap = useMemo(() => {
+    const map = new Map<string, { name: string; body: string }>();
+    if (planArtifacts) {
+      for (const p of planArtifacts) {
+        map.set(p.id, { name: p.name, body: p.body });
+      }
+    }
+    return map;
+  }, [planArtifacts]);
+
+  const dependsByPlan = useMemo(() => {
+    const map = new Map<string, string[]>();
+    if (orchestration) {
+      for (const plan of orchestration.plans) {
+        if (plan.dependsOn.length > 0) {
+          map.set(plan.id, plan.dependsOn);
+        }
+      }
+    }
+    return map;
+  }, [orchestration]);
 
   // Compute the time span across all threads
   const { sessionStart, totalSpan } = useMemo(() => {
@@ -508,7 +541,7 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
       <div>
         {/* Header: profile badge + description, or fallback "Pipeline" label */}
         {profileInfo ? (
-          <ProfileHeader profileInfo={profileInfo} activeStages={activeStages} completedStages={completedStages} hoveredStage={hoveredStage} onStageHover={setHoveredStage} />
+          <ProfileHeader profileInfo={profileInfo} />
         ) : (
           <h3 className="text-[11px] uppercase tracking-wider text-text-dim mb-2 flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-blue" />
@@ -533,6 +566,10 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   hoveredStage={hoveredStage}
                   onStageHover={setHoveredStage}
                   events={events}
+                  prdSource={prdSource}
+                  compileStages={profileInfo?.config.compile}
+                  compileActiveStages={activeStages}
+                  compileCompletedStages={completedStages}
                 />
               )}
               {entries.map(([planId]) => (
@@ -549,6 +586,8 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   events={events}
                   buildStages={buildStagesByPlan.get(planId)}
                   currentStage={planStatuses[planId]}
+                  planArtifact={planArtifactMap.get(planId)}
+                  dependsOn={dependsByPlan.get(planId)}
                 />
               ))}
             </div>
@@ -572,6 +611,12 @@ interface PlanRowProps {
   events: StoredEvent[];
   buildStages?: BuildStageSpec[];
   currentStage?: PipelineStage;
+  prdSource?: { label: string; content: string } | null;
+  planArtifact?: { name: string; body: string };
+  dependsOn?: string[];
+  compileStages?: string[];
+  compileActiveStages?: Set<string>;
+  compileCompletedStages?: Set<string>;
 }
 
 function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -595,8 +640,8 @@ function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
   );
 }
 
-function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, events, buildStages, currentStage }: PlanRowProps) {
-  const { openPreview } = usePlanPreview();
+function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, events, buildStages, currentStage, prdSource, planArtifact, dependsOn, compileStages, compileActiveStages, compileCompletedStages }: PlanRowProps) {
+  const { openPreview, openContentPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
     () => [...threads].sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()),
@@ -621,21 +666,87 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
     return map;
   }, [events]);
 
+  // Build tooltip text for plan pills (always returns string[] for consistent rendering)
+  const planTooltipText = useMemo(() => {
+    if (!planArtifact) return [planId];
+    const parts = [planArtifact.name || planId];
+    if (dependsOn && dependsOn.length > 0) {
+      const depLabels = dependsOn.map((d) => abbreviatePlanId(d)).join(', ');
+      parts.push(`Depends on: ${depLabels}`);
+    }
+    return parts;
+  }, [planId, planArtifact, dependsOn]);
+
+  // Render left column label
+  const leftLabel = (() => {
+    if (prdSource) {
+      return (
+        <div className={`w-[100px] shrink-0 mt-0.5`}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className={prdPillClass}
+                onClick={() => openContentPreview(prdSource.label, prdSource.content)}
+              >
+                PRD
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="left">{prdSource.label}</TooltipContent>
+          </Tooltip>
+        </div>
+      );
+    }
+    if (planArtifact) {
+      return (
+        <div className={`w-[100px] shrink-0 mt-0.5${dependsOn && dependsOn.length > 0 ? ' pl-4' : ''}`}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className={planPillClass}
+                onClick={() => openContentPreview(planArtifact.name || planId, planArtifact.body)}
+              >
+                {abbreviatePlanId(planId)}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              {planTooltipText.map((line, i) => (
+                <div key={i}>{line}</div>
+              ))}
+            </TooltipContent>
+          </Tooltip>
+        </div>
+      );
+    }
+    // Fallback: monospace text label
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span
+            className={`w-[100px] shrink-0 mt-0.5 text-text-dim overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] ${disablePreview ? '' : 'cursor-pointer hover:text-foreground hover:underline'}`}
+            onClick={disablePreview ? undefined : () => openPreview(planId)}
+          >
+            {planId}
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="left">{planId}</TooltipContent>
+      </Tooltip>
+    );
+  })();
+
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-start gap-2 text-xs">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span
-              className={`w-[140px] shrink-0 mt-0.5 text-text-dim overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] ${disablePreview ? '' : 'cursor-pointer hover:text-foreground hover:underline'}`}
-              onClick={disablePreview ? undefined : () => openPreview(planId)}
-            >
-              {planId}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="left">{planId}</TooltipContent>
-        </Tooltip>
+        {leftLabel}
         <div className="flex-1 flex flex-col gap-0.5">
+          {compileStages && (
+            <StageOverview
+              compile={compileStages}
+              activeStages={compileActiveStages ?? EMPTY_SET}
+              completedStages={compileCompletedStages ?? EMPTY_SET}
+              hoveredStage={hoveredStage}
+              onStageHover={onStageHover}
+            />
+          )}
           {!disablePreview && (
             <BuildStageProgress buildStages={buildStages} currentStage={currentStage} hoveredStage={hoveredStage} onStageHover={onStageHover} threads={threads} />
           )}
