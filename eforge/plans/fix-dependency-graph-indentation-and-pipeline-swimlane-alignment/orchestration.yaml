@@ -1,0 +1,44 @@
+name: fix-dependency-graph-indentation-and-pipeline-swimlane-alignment
+description: Fix pipeline swimlane indentation so PRD and independent plans
+  render flush left while dependent plans indent proportionally to depth
+created: 2026-04-01
+compiled: 2026-04-01
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-pipeline-swimlane-indent
+    name: Fix pipeline swimlane indentation
+    depends_on: []
+    branch: fix-dependency-graph-indentation-and-pipeline-swimlane-alignment/pipeline-swimlane-indent
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: errand
+  compile:
+    - prd-passthrough
+  defaultBuild:
+    - implement
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - correctness
+    maxRounds: 1
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: lenient
+  rationale: This is a well-defined cosmetic fix touching 3 UI files with explicit
+    code snippets in the PRD. The changes are purely visual (indentation, edge
+    style) with no logic, API, or data risk. prd-passthrough is sufficient since
+    the PRD already serves as a detailed implementation plan. A single lenient
+    review round catches any type errors (acceptance criterion 1) without
+    over-investing in review for a low-risk UI tweak.
