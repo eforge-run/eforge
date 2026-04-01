@@ -117,6 +117,11 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
                 </span>
               )}
             </div>
+            {item.dependsOn && item.dependsOn.length > 0 && (
+              <div className="pl-[calc(8px+0.5rem)] text-[11px] text-text-dim truncate">
+                blocked by: {item.dependsOn.join(', ')}
+              </div>
+            )}
           </div>
         ))}
       </Collapsible.Content>
