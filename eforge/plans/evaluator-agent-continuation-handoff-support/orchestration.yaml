@@ -1,0 +1,53 @@
+name: evaluator-agent-continuation-handoff-support
+description: Add continuation loops around evaluator agent calls so evaluators
+  can recover from error_max_turns and complete work across multiple attempts
+created: 2026-04-02
+compiled: 2026-04-02
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-evaluator-continuation
+    name: Evaluator Agent Continuation Support
+    depends_on: []
+    branch: evaluator-agent-continuation-handoff-support/evaluator-continuation
+    build:
+      - - implement
+        - doc-update
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - test-write
+      - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "Excursion scope: this touches 9+ files across events, pipeline,
+    agents, prompts, CLI, and tests - clearly multi-file but a single coherent
+    feature following established patterns. Plan review cycle included because
+    the changes touch core pipeline control flow (continuation loops in
+    evaluateStageInner and runReviewCycle) where a planning mistake could break
+    existing behavior. Test-write runs in parallel with review-cycle since the
+    PRD explicitly specifies a new test file. Single correctness perspective
+    with 2 rounds is appropriate - the work is pattern-following (mirroring
+    existing builder/planner continuation) so the main risk is correctness bugs
+    in loop logic and error propagation, not architectural issues. Standard
+    strictness since this is internal pipeline machinery with no security or
+    data sensitivity."
