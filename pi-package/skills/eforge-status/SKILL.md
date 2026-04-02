@@ -1,17 +1,18 @@
 ---
-description: Check eforge run status and queue state via MCP tools
+name: eforge-status
+description: Check eforge run status and queue state via daemon tools
 disable-model-invocation: true
 ---
 
 # /eforge:status
 
-Quick inline status check — queries the eforge daemon via MCP tools for current run state and queue contents.
+Quick inline status check — queries the eforge daemon for current run state and queue contents.
 
 ## Workflow
 
 ### Step 1: Get Run Status
 
-Call the `mcp__eforge__eforge_status` tool (no parameters needed).
+Call the `eforge_status` tool (no parameters needed).
 
 - If the response indicates no active sessions, report:
 
@@ -38,7 +39,7 @@ Status values: `pending`, `running`, `completed`, `failed`, `blocked`, `merged`
 
 ### Step 3: Queue State
 
-Call the `mcp__eforge__eforge_queue_list` tool (no parameters needed).
+Call the `eforge_queue_list` tool (no parameters needed).
 
 Parse the response. If PRD files are found, display a summary:
 
@@ -60,6 +61,6 @@ If the status is `completed` or `failed`:
 
 | Condition | Action |
 |-----------|--------|
-| MCP tool returns error | Show the error, suggest running `eforge daemon start` manually |
-| Daemon not running | The MCP proxy auto-starts the daemon; if it still fails, suggest running `eforge daemon start` manually |
+| Tool returns error | Show the error, suggest running `eforge daemon start` manually |
+| Daemon not running | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
 | Response is malformed | Report parse error, suggest running `eforge status` CLI directly |

@@ -26,7 +26,7 @@ An agentic build system applies build-system thinking to this multi-agent pipeli
 
 ## Typical Use
 
-Plan a feature interactively in Claude Code, then hand it off with `/eforge:build`. The plugin enqueues the input and a daemon picks it up - planning, building, reviewing, and validating autonomously. A web monitor (default `localhost:4567`) tracks progress, cost, and token usage in real time.
+Plan a feature interactively in Claude Code or Pi, then hand it off with `/eforge:build`. The extension enqueues the input and a daemon picks it up - planning, building, reviewing, and validating autonomously. A web monitor (default `localhost:4567`) tracks progress, cost, and token usage in real time.
 
 <img src="docs/images/claude-code-handoff.png" alt="eforge invoked from Claude Code" width="800">
 
@@ -55,7 +55,7 @@ For a deeper look at the engine internals, see the [architecture docs](docs/arch
 
 ## Install
 
-**Prerequisites:** Node.js 22+, and an LLM provider credential - Anthropic API key or [Claude subscription](https://claude.ai/upgrade) for the `claude-sdk` backend, or a provider-specific API key or OAuth token for the `pi` backend
+**Prerequisites:** Node.js 22+, [Claude Code](https://claude.ai/code) or [Pi](https://github.com/nicories/pi-mono), and an LLM provider credential - Anthropic API key or [Claude subscription](https://claude.ai/upgrade) for the `claude-sdk` backend, or a provider-specific API key or OAuth token for the `pi` backend
 
 Claude Code plugin (recommended):
 
@@ -65,7 +65,14 @@ Claude Code plugin (recommended):
 /eforge:init
 ```
 
-The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. It presents a form to choose your backend (claude-sdk or pi) - everything else uses defaults. For further customization, run `/eforge:config --edit`.
+Pi package:
+
+```
+pi install git:github.com/eforge-build/eforge#pi-package
+/eforge:init
+```
+
+The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. In Claude Code it presents a form to choose your backend (claude-sdk or pi); in Pi it defaults to `backend: pi`. For further customization, run `/eforge:config --edit`.
 
 Standalone CLI:
 
