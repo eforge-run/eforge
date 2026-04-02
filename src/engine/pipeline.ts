@@ -1545,6 +1545,11 @@ async function* evaluateStageInner(
       }
 
       evalSpan.error(err as Error);
+      // Yield build:failed so the pipeline knows evaluation did not complete
+      // (builderEvaluate re-throws error_max_turns instead of yielding build:failed)
+      if (isMaxTurns) {
+        yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: ctx.planId, error: (err as Error).message } as EforgeEvent;
+      }
       break; // Non-max_turns error or exhausted continuations
     }
   }
