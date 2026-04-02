@@ -415,6 +415,10 @@ export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, Partial<import('./co
 /** Per-role default maxContinuations for agents that support continuation loops. */
 export const AGENT_MAX_CONTINUATIONS_DEFAULTS: Partial<Record<AgentRole, number>> = {
   planner: 2,
+  evaluator: 1,
+  'plan-evaluator': 1,
+  'cohesion-evaluator': 1,
+  'architecture-evaluator': 1,
 };
 
 // ---------------------------------------------------------------------------
@@ -887,7 +891,7 @@ registerCompileStage({
       evaluator: {
         role: 'plan-evaluator',
         metadata: { planSet: ctx.planSetName },
-        run: () => runPlanEvaluate({
+        run: (continuationContext) => runPlanEvaluate({
           backend: ctx.backend,
           planSetName: ctx.planSetName,
           sourceContent: ctx.sourceContent,
@@ -896,8 +900,10 @@ registerCompileStage({
           abortController,
           outputDir: ctx.config.plan.outputDir,
           ...evaluatorConfig,
+          continuationContext,
         }),
       },
+      continuationEventType: 'plan:evaluate:continuation',
     });
   } catch (err) {
     // Plan review failure is non-fatal - plan artifacts are already committed
@@ -949,8 +955,9 @@ registerCompileStage({
       evaluator: {
         role: 'architecture-evaluator',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...archEvaluatorConfig }),
+        run: (continuationContext) => runArchitectureEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...archEvaluatorConfig, continuationContext }),
       },
+      continuationEventType: 'plan:architecture:evaluate:continuation',
     });
   } catch (err) {
     yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Architecture review skipped: ${(err as Error).message}` };
@@ -1122,8 +1129,9 @@ registerCompileStage({
       evaluator: {
         role: 'cohesion-evaluator',
         metadata: { planSet: planSetName },
-        run: () => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...cohesionEvaluatorConfig }),
+        run: (continuationContext) => runCohesionEvaluate({ backend, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, ...cohesionEvaluatorConfig, continuationContext }),
       },
+      continuationEventType: 'plan:cohesion:evaluate:continuation',
     });
   } catch (err) {
     yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
@@ -1491,29 +1499,54 @@ async function* evaluateStageInner(
   if (!(await hasUnstagedChanges(ctx.worktreePath))) return;
 
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
+  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.config.backend);
+  const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['evaluator'] ?? 0;
 
-  const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId });
-  evalSpan.setInput({ planId: ctx.planId });
-  const evalTracker = createToolTracker(evalSpan);
+  for (let attempt = 0; attempt <= maxContinuations; attempt++) {
+    const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId, ...(attempt > 0 && { attempt }) });
+    evalSpan.setInput({ planId: ctx.planId, ...(attempt > 0 && { attempt }) });
+    const evalTracker = createToolTracker(evalSpan);
 
-  try {
-    const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.config.backend);
-    for await (const event of builderEvaluate(ctx.planFile, {
-      backend: ctx.backend,
-      cwd: ctx.worktreePath,
-      verbose: ctx.verbose,
-      abortController: ctx.abortController,
-      ...evalAgentConfig,
-      strictness,
-    })) {
-      evalTracker.handleEvent(event);
-      yield event;
+    let evaluatorContinuationContext: { attempt: number; maxContinuations: number } | undefined;
+    if (attempt > 0) {
+      evaluatorContinuationContext = { attempt, maxContinuations };
     }
-    evalTracker.cleanup();
-    evalSpan.end();
-  } catch (err) {
-    evalTracker.cleanup();
-    evalSpan.error(err as Error);
+
+    try {
+      for await (const event of builderEvaluate(ctx.planFile, {
+        backend: ctx.backend,
+        cwd: ctx.worktreePath,
+        verbose: ctx.verbose,
+        abortController: ctx.abortController,
+        ...evalAgentConfig,
+        strictness,
+        evaluatorContinuationContext,
+      })) {
+        evalTracker.handleEvent(event);
+        yield event;
+      }
+      evalTracker.cleanup();
+      evalSpan.end();
+      break; // Success — exit loop
+    } catch (err) {
+      evalTracker.cleanup();
+
+      const isMaxTurns = (err as Error).message.includes('error_max_turns');
+      if (isMaxTurns && attempt < maxContinuations) {
+        // Check if there are still unstaged changes to process
+        if (!(await hasUnstagedChanges(ctx.worktreePath))) {
+          // All files processed — treat as success
+          evalSpan.end();
+          break;
+        }
+        evalSpan.end();
+        yield { timestamp: new Date().toISOString(), type: 'build:evaluate:continuation', planId: ctx.planId, attempt: attempt + 1, maxContinuations } as EforgeEvent;
+        continue;
+      }
+
+      evalSpan.error(err as Error);
+      break; // Non-max_turns error or exhausted continuations
+    }
   }
 }
 
@@ -1789,14 +1822,17 @@ interface ReviewCycleConfig {
   evaluator: {
     role: AgentRole;
     metadata: Record<string, unknown>;
-    run: () => AsyncGenerator<EforgeEvent>;
+    run: (continuationContext?: { attempt: number; maxContinuations: number }) => AsyncGenerator<EforgeEvent>;
   };
+  /** Event type to emit on evaluator continuation. */
+  continuationEventType?: EforgeEvent['type'];
 }
 
 /**
  * Run a review -> evaluate cycle. The reviewer runs first (non-fatal on error).
  * If the reviewer left unstaged changes, the evaluator runs to accept/reject them.
- * Both phases are traced with Langfuse spans.
+ * Both phases are traced with Langfuse spans. The evaluator phase supports
+ * continuation loops on error_max_turns.
  */
 async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator<EforgeEvent> {
   // Phase: Review (non-fatal on error)
@@ -1818,19 +1854,44 @@ async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator<Eforge
 
   // Phase: Evaluate (only if reviewer left unstaged changes, non-fatal)
   if (await hasUnstagedChanges(config.cwd)) {
-    const evalSpan = config.tracing.createSpan(config.evaluator.role, config.evaluator.metadata);
-    evalSpan.setInput(config.evaluator.metadata);
-    const evalTracker = createToolTracker(evalSpan);
-    try {
-      for await (const event of config.evaluator.run()) {
-        evalTracker.handleEvent(event);
-        yield event;
+    const evalRole = config.evaluator.role as keyof typeof AGENT_MAX_CONTINUATIONS_DEFAULTS;
+    const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS[evalRole] ?? 0;
+
+    for (let attempt = 0; attempt <= maxContinuations; attempt++) {
+      const evalSpan = config.tracing.createSpan(config.evaluator.role, { ...config.evaluator.metadata, ...(attempt > 0 && { attempt }) });
+      evalSpan.setInput({ ...config.evaluator.metadata, ...(attempt > 0 && { attempt }) });
+      const evalTracker = createToolTracker(evalSpan);
+
+      const continuationContext = attempt > 0 ? { attempt, maxContinuations } : undefined;
+
+      try {
+        for await (const event of config.evaluator.run(continuationContext)) {
+          evalTracker.handleEvent(event);
+          yield event;
+        }
+        evalTracker.cleanup();
+        evalSpan.end();
+        break; // Success
+      } catch (err) {
+        evalTracker.cleanup();
+
+        const isMaxTurns = (err as Error).message.includes('error_max_turns');
+        if (isMaxTurns && attempt < maxContinuations) {
+          // Check if there are still unstaged changes to process
+          if (!(await hasUnstagedChanges(config.cwd))) {
+            evalSpan.end();
+            break; // All files processed
+          }
+          evalSpan.end();
+          if (config.continuationEventType) {
+            yield { timestamp: new Date().toISOString(), type: config.continuationEventType, attempt: attempt + 1, maxContinuations } as EforgeEvent;
+          }
+          continue;
+        }
+
+        evalSpan.error(err as Error);
+        break; // Non-max_turns error or exhausted continuations
       }
-      evalTracker.cleanup();
-      evalSpan.end();
-    } catch (err) {
-      evalTracker.cleanup();
-      evalSpan.error(err as Error);
     }
   }
 }

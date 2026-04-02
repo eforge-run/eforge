@@ -30,6 +30,11 @@ export interface PlanPhaseEvaluatorOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Plan output directory (defaults to 'eforge/plans'). */
   outputDir?: string;
+  /** Continuation context when retrying after maxTurns exhaustion */
+  continuationContext?: {
+    attempt: number;
+    maxContinuations: number;
+  };
 }
 
 /**
@@ -50,6 +55,11 @@ export interface PlanEvaluatorOptions extends SdkPassthroughConfig {
   abortController?: AbortController;
   /** Plan output directory (defaults to 'eforge/plans'). */
   outputDir?: string;
+  /** Continuation context when retrying after maxTurns exhaustion */
+  continuationContext?: {
+    attempt: number;
+    maxContinuations: number;
+  };
 }
 
 /**
@@ -134,11 +144,24 @@ async function* runEvaluate(
 
   yield { timestamp: new Date().toISOString(), type: config.startEvent };
 
+  let continuationContextText = '';
+  if (options.continuationContext) {
+    const { attempt, maxContinuations } = options.continuationContext;
+    continuationContextText = `## Continuation Context
+
+**This is evaluator continuation attempt ${attempt} of ${maxContinuations}.**
+
+The previous evaluator run was interrupted because it ran out of conversation turns. Some files have already been evaluated (accepted via \`git add\` or rejected via \`git checkout --\`). Do NOT redo already-evaluated files - only evaluate files that still have unstaged changes.
+
+Do NOT run \`git reset --soft HEAD~1\` again - the staged vs unstaged comparison is already set up from the previous run.`;
+  }
+
   const prompt = await loadPrompt(config.promptName, {
     plan_set_name: planSetName,
     source_content: sourceContent,
     evaluation_schema: getEvaluationSchemaYaml(),
     outputDir: options.outputDir ?? 'eforge/plans',
+    continuation_context: continuationContextText,
     ...config.promptVars,
   });
 

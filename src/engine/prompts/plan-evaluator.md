@@ -8,6 +8,8 @@ You are evaluating fixes from a blind reviewer. Your job is to inspect the stage
 
 {{evaluator_context}}
 
+{{continuation_context}}
+
 ## Source / PRD
 
 The original source material used to generate these plans:

@@ -160,18 +160,21 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'plan:review:start' }
   | { type: 'plan:review:complete'; issues: ReviewIssue[] }
   | { type: 'plan:evaluate:start' }
+  | { type: 'plan:evaluate:continuation'; attempt: number; maxContinuations: number }
   | { type: 'plan:evaluate:complete'; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
 
   // Architecture review (expedition architecture validation)
   | { type: 'plan:architecture:review:start' }
   | { type: 'plan:architecture:review:complete'; issues: ReviewIssue[] }
   | { type: 'plan:architecture:evaluate:start' }
+  | { type: 'plan:architecture:evaluate:continuation'; attempt: number; maxContinuations: number }
   | { type: 'plan:architecture:evaluate:complete'; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
 
   // Cohesion review (expedition cross-module validation)
   | { type: 'plan:cohesion:start' }
   | { type: 'plan:cohesion:complete'; issues: ReviewIssue[] }
   | { type: 'plan:cohesion:evaluate:start' }
+  | { type: 'plan:cohesion:evaluate:continuation'; attempt: number; maxContinuations: number }
   | { type: 'plan:cohesion:evaluate:complete'; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
 
   // Building (per-plan)
@@ -189,6 +192,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'build:review:fix:start'; planId: string; issueCount: number }
   | { type: 'build:review:fix:complete'; planId: string }
   | { type: 'build:evaluate:start'; planId: string }
+  | { type: 'build:evaluate:continuation'; planId: string; attempt: number; maxContinuations: number }
   | { type: 'build:evaluate:complete'; planId: string; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
   | { type: 'build:doc-update:start'; planId: string }
   | { type: 'build:doc-update:complete'; planId: string; docsUpdated: number }

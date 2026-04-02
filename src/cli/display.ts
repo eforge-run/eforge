@@ -175,6 +175,12 @@ export function renderEvent(event: EforgeEvent): void {
       startSpinner('plan-evaluate', 'Evaluating plan review fixes...');
       break;
 
+    case 'plan:evaluate:continuation': {
+      const s = spinners.get('plan-evaluate');
+      if (s) s.text = `Evaluating plan review fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
+      break;
+    }
+
     case 'plan:evaluate:complete':
       if (event.accepted === 0 && event.rejected === 0) {
         succeedSpinner('plan-evaluate', 'Plan evaluation: no fixes to evaluate');
@@ -204,6 +210,12 @@ export function renderEvent(event: EforgeEvent): void {
       startSpinner('architecture-evaluate', 'Evaluating architecture review fixes...');
       break;
 
+    case 'plan:architecture:evaluate:continuation': {
+      const s = spinners.get('architecture-evaluate');
+      if (s) s.text = `Evaluating architecture review fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
+      break;
+    }
+
     case 'plan:architecture:evaluate:complete':
       if (event.accepted === 0 && event.rejected === 0) {
         succeedSpinner('architecture-evaluate', 'Architecture evaluation: no fixes to evaluate');
@@ -232,6 +244,12 @@ export function renderEvent(event: EforgeEvent): void {
     case 'plan:cohesion:evaluate:start':
       startSpinner('cohesion-evaluate', 'Evaluating cohesion review fixes...');
       break;
+
+    case 'plan:cohesion:evaluate:continuation': {
+      const s = spinners.get('cohesion-evaluate');
+      if (s) s.text = `Evaluating cohesion review fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
+      break;
+    }
 
     case 'plan:cohesion:evaluate:complete':
       if (event.accepted === 0 && event.rejected === 0) {
@@ -321,6 +339,12 @@ export function renderEvent(event: EforgeEvent): void {
     case 'build:evaluate:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 evaluating fixes...`;
+      break;
+    }
+
+    case 'build:evaluate:continuation': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} \u2014 evaluating fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
       break;
     }
 

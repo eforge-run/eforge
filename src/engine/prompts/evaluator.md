@@ -9,6 +9,8 @@ You are evaluating fixes from a blind code reviewer. Your job is to inspect the 
 
 A builder agent implemented a plan and committed the changes. A blind reviewer then reviewed the committed code and left fixes as unstaged changes. You must evaluate each fix and decide whether to accept, reject, or flag for review.
 
+{{continuation_context}}
+
 ## Setup
 
 First, run this command to create the staged vs unstaged comparison:

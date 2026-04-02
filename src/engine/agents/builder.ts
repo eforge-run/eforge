@@ -32,6 +32,11 @@ export interface BuilderOptions extends SdkPassthroughConfig {
     maxContinuations: number;
     completedDiff: string;
   };
+  /** Evaluator continuation context when retrying evaluator after maxTurns exhaustion */
+  evaluatorContinuationContext?: {
+    attempt: number;
+    maxContinuations: number;
+  };
 }
 
 /**
@@ -158,12 +163,25 @@ export async function* builderEvaluate(
 ): AsyncGenerator<EforgeEvent> {
   yield { timestamp: new Date().toISOString(), type: 'build:evaluate:start', planId: plan.id };
 
+  let continuationContextText = '';
+  if (options.evaluatorContinuationContext) {
+    const { attempt, maxContinuations } = options.evaluatorContinuationContext;
+    continuationContextText = `## Continuation Context
+
+**This is evaluator continuation attempt ${attempt} of ${maxContinuations}.**
+
+The previous evaluator run was interrupted because it ran out of conversation turns. Some files have already been evaluated (accepted via \`git add\` or rejected via \`git checkout --\`). Do NOT redo already-evaluated files - only evaluate files that still have unstaged changes.
+
+Do NOT run \`git reset --soft HEAD~1\` again - the staged vs unstaged comparison is already set up from the previous run.`;
+  }
+
   const strictnessKey = options.strictness ?? 'standard';
   const prompt = await loadPrompt('evaluator', {
     plan_id: plan.id,
     plan_name: plan.name,
     strictness: STRICTNESS_BLOCKS[strictnessKey] ?? '',
     evaluation_schema: getEvaluationSchemaYaml(),
+    continuation_context: continuationContextText,
   });
 
   let fullText = '';
@@ -181,6 +199,10 @@ export async function* builderEvaluate(
       }
     }
   } catch (err) {
+    // Re-throw error_max_turns to enable pipeline continuation loop
+    if ((err as Error).message.includes('error_max_turns')) {
+      throw err;
+    }
     yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message };
     return;
   }
