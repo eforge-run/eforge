@@ -772,20 +772,21 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
         </div>
       );
     }
-    // Fallback: monospace text label
+    // Fallback: pill label (e.g. gap-close or plans without artifacts)
     return (
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            className={`w-[100px] shrink-0 mt-0.5 text-text-dim overflow-hidden text-ellipsis whitespace-nowrap font-mono text-[11px] ${disablePreview ? '' : 'cursor-pointer hover:text-foreground hover:underline'}`}
-            style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}
-            onClick={disablePreview ? undefined : () => openPreview(planId)}
-          >
-            {planId}
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="left">{planId}</TooltipContent>
-      </Tooltip>
+      <div className="w-[100px] shrink-0 mt-0.5" style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              className={planPillClass}
+              onClick={disablePreview ? undefined : () => openPreview(planId)}
+            >
+              {abbreviatePlanId(planId)}
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="left">{planId}</TooltipContent>
+        </Tooltip>
+      </div>
     );
   })();
 
