@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.3.0] - 2026-04-01
+
+### Features
+
+- Replace the simple one-shot gap closer with a multi-stage pipeline that assesses completion, gates on viability, and executes gap fixes through the existing build infrastructure
+- Plan-Based Gap Closer Execution
+- Enhanced PRD Validation Output and Viability Gate
+- Automatic PRD Validation Gap Closing
+- Structured Output and Pipeline Composer Agent
+- Remove outputFormat from backend interface and switch pipeline composer to text-based JSON extraction
+- Stage Registry with Rich Metadata
+- Fix daemon stopping queue watch after build completion due to directory deletion, stale prdState cache, and missing watcher respawn logic
+- Daemon Watcher Respawn and PRD Re-queue Support
+- Queue Directory Preservation and fs.watch Recovery
+- Apply transitive reduction at orchestration parse time and replace binary swimlane indentation with thread-line depth indicators
+- Transitive Reduction in Orchestration Config Parsing
+- Thread-Line Swimlane UI for Dependency Depth
+- Integration and Profile System Removal
+- Add dependency indicator to queue sidebar items
+- Fix pipeline swimlane indentation
+
+### Bug Fixes
+
+- Fix PlanRow Swimlane Indentation
+- Fix pipeline swimlane alignment and graph indentation
+- Strip unsupported JSON Schema keys from pipeline composition schema
+- Increase maxTurns for structured output cycle
+- Enable tool preset when outputFormat requires structured output
+
 ## [0.2.7] - 2026-04-01
 
 ### Features
