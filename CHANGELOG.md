@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.3.4] - 2026-04-03
+
+### Features
+
+- Filter eforge MCP servers and Pi extensions from build agents
+- Add renderCall/renderResult to eforge_status tool
+- Add eforge-plan skill for structured planning conversations
+- Add eforge_confirm_build TUI tool to Pi extension
+- Add Pi Package as architecture consumer
+
+### Bug Fixes
+
+- Use separate DynamicBorder instances for top and bottom borders in Pi package
+
+### Documentation
+
+- Note Pi-specific plan skill in README
+- Add eforge-plugin / pi-package parity convention to AGENTS.md
+
 ## [0.3.3] - 2026-04-03
 
 ### Features
