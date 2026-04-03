@@ -32,9 +32,9 @@ Determine the working source from one of three branches:
 1. **Check for active session plan** — Scan `.eforge/session-plans/` for files where YAML frontmatter `status` is `ready` or `planning`. If found:
    - If one session plan exists, read it and present a summary: "I found a planning session: _{topic}_. Status: {status}."
    - If multiple exist, list them by topic and date, most recent first, and ask which to use
-   - If the session status is `ready`, use the **full session file content** as the working source — skip directly to **Step 4**
+   - If the session status is `ready`, use the **session plan file path** as the source — skip directly to **Step 4**. **Do not read the file and rewrite, summarize, or convert it into a different format.** The eforge daemon handles PRD formatting; the session plan file is the source material it needs.
    - If the session status is `planning`, warn: "This session is still in planning — some dimensions haven't been explored yet." List which dimensions are `false` in frontmatter. Ask the user whether to submit as-is or continue planning (suggest `/eforge:plan --resume`)
-   - If the user confirms a `planning` session, use the full session file content as the working source and proceed to **Step 4**
+   - If the user confirms a `planning` session, use the **session plan file path** as the source and proceed to **Step 4**
 
 2. **Fall back to conversation context** — If no session plans are found (or the user declines to use one):
    - Examine conversation context for intent signals:
