@@ -54,7 +54,7 @@ export interface EforgeEngineOptions {
   cwd?: string;
   /** Config overrides (deep-merged with loaded config) */
   config?: Partial<EforgeConfig>;
-  /** Agent backend (defaults to ClaudeSDKBackend) */
+  /** Agent backend — falls back to ClaudeSDKBackend when config says `backend: claude-sdk` */
   backend?: AgentBackend;
   /** MCP servers to make available to agents (Claude SDK backend only, ignored if backend is provided) */
   mcpServers?: ClaudeSDKBackendOptions['mcpServers'];

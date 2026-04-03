@@ -71,7 +71,7 @@ daemon:
 monitor:
   retentionCount: 20          # Number of recent builds to retain in the monitor DB (oldest pruned)
 
-pi:                            # Pi backend config (experimental/untested)
+pi:                            # Pi backend config
   # apiKey: ...                # Optional API key override (env vars and ~/.pi/agent/auth.json used automatically)
   thinkingLevel: medium        # 'off', 'medium', 'high'
   extensions:
@@ -243,7 +243,7 @@ MCP servers are auto-loaded from `.mcp.json` in the project root (same format Cl
 
 ## Pi Backend
 
-Set `backend: pi` to use the Pi multi-provider backend instead of the Claude SDK. The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which supports API keys, environment variables, and OAuth tokens automatically. Configure model refs (using `{ provider, id }` form) via `agents.models.*` or `agents.model`, and other Pi-specific settings in the `pi` section of `eforge/config.yaml`. Note: the Pi backend is experimental and untested.
+Set `backend: pi` to use the Pi multi-provider backend instead of the Claude SDK. The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which supports API keys, environment variables, and OAuth tokens automatically. Configure model refs (using `{ provider, id }` form) via `agents.models.*` or `agents.model`, and other Pi-specific settings in the `pi` section of `eforge/config.yaml`. The Pi backend supports the same compile/build pipeline as the Claude SDK backend.
 
 ### Authentication
 
