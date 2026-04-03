@@ -43,7 +43,7 @@ export class ClaudeSDKBackend implements AgentBackend {
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     const agentId = crypto.randomUUID();
-    yield { type: 'agent:start', planId, agent, agentId, model: options.model ?? 'auto', backend: 'claude-sdk', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'auto', backend: 'claude-sdk', timestamp: new Date().toISOString() };
 
     let error: string | undefined;
     try {
@@ -52,7 +52,7 @@ export class ClaudeSDKBackend implements AgentBackend {
         options: {
           cwd: options.cwd,
           maxTurns: options.maxTurns,
-          model: options.model,
+          model: options.model?.id,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
           tools: options.tools === 'coding'

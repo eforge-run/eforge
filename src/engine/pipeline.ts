@@ -454,12 +454,12 @@ export const AGENT_MODEL_CLASSES: Record<AgentRole, ModelClass> = {
   'gap-closer': 'max',
 };
 
-/** Per-backend default model strings for each model class. `undefined` means the SDK picks its own model. */
-export const MODEL_CLASS_DEFAULTS: Record<string, Record<ModelClass, string | undefined>> = {
+/** Per-backend default ModelRef objects for each model class. `undefined` means the SDK picks its own model. */
+export const MODEL_CLASS_DEFAULTS: Record<string, Record<ModelClass, import('./config.js').ModelRef | undefined>> = {
   'claude-sdk': {
-    max: 'claude-opus-4-6',
-    balanced: 'claude-sonnet-4-6',
-    fast: 'claude-haiku-4-5',
+    max: { id: 'claude-opus-4-6' },
+    balanced: { id: 'claude-sonnet-4-6' },
+    fast: { id: 'claude-haiku-4-5' },
     auto: undefined,
   },
   pi: {

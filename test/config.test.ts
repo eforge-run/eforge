@@ -318,6 +318,116 @@ describe('parseRawConfig validation warnings', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Backend-conditional model ref validation
+// ---------------------------------------------------------------------------
+
+describe('eforgeConfigSchema backend-conditional model ref validation', () => {
+  it('rejects string model values in agents.model', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      agents: { model: 'claude-opus-4-6' },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects string model values in agents.models.*', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      agents: { models: { max: 'claude-opus-4-6' } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects string model values in agents.roles.*.model', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      agents: { roles: { builder: { model: 'claude-opus-4-6' } } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts claude-sdk config where model refs are { id: "y" }', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      agents: {
+        model: { id: 'claude-opus-4-6' },
+        models: { max: { id: 'claude-opus-4-6' } },
+        roles: { builder: { model: { id: 'claude-opus-4-6' } } },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects claude-sdk config where model ref has provider', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      agents: { model: { provider: 'anthropic', id: 'claude-opus-4-6' } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map(i => i.message).join('\n');
+      expect(messages).toContain('Claude SDK backend does not accept "provider"');
+    }
+  });
+
+  it('accepts pi config where model refs are { provider: "x", id: "y" }', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'pi',
+      agents: {
+        model: { provider: 'openrouter', id: 'gpt-5.4' },
+        models: { max: { provider: 'openrouter', id: 'gpt-5.4' } },
+        roles: { builder: { model: { provider: 'openrouter', id: 'gpt-5.4' } } },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects pi config where model ref is { id: "x" } (missing provider)', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'pi',
+      agents: { model: { id: 'gpt-5.4' } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map(i => i.message).join('\n');
+      expect(messages).toContain('Pi backend requires "provider"');
+    }
+  });
+
+  it('rejects pi config where agents.models.* model ref is missing provider', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'pi',
+      agents: { models: { max: { id: 'gpt-5.4' } } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects pi config where agents.roles.*.model is missing provider', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'pi',
+      agents: { roles: { builder: { model: { id: 'gpt-5.4' } } } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects claude-sdk config where agents.models.* has provider', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      agents: { models: { max: { provider: 'anthropic', id: 'claude-opus-4-6' } } },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects claude-sdk config where agents.roles.*.model has provider', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      agents: { roles: { builder: { model: { provider: 'anthropic', id: 'claude-opus-4-6' } } } },
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // findConfigFile
 // ---------------------------------------------------------------------------
 
@@ -459,13 +569,13 @@ describe('roles schema in eforgeConfigSchema', () => {
       agents: {
         roles: {
           builder: { effort: 'high' },
-          formatter: { model: 'claude-sonnet', maxTurns: 10 },
+          formatter: { model: { id: 'claude-sonnet' }, maxTurns: 10 },
         },
       },
     };
     const resolved = resolveConfig(config, {});
     expect(resolved.agents.roles?.builder).toEqual({ effort: 'high' });
-    expect(resolved.agents.roles?.formatter).toEqual({ model: 'claude-sonnet', maxTurns: 10 });
+    expect(resolved.agents.roles?.formatter).toEqual({ model: { id: 'claude-sonnet' }, maxTurns: 10 });
   });
 
   it('rejects invalid role names via schema', async () => {
@@ -490,7 +600,7 @@ describe('mergePartialConfigs roles deep-merge', () => {
     const global: PartialEforgeConfig = {
       agents: {
         roles: {
-          builder: { model: 'global-model', effort: 'high' },
+          builder: { model: { id: 'global-model' }, effort: 'high' },
           reviewer: { effort: 'low' },
         },
       },
@@ -504,7 +614,7 @@ describe('mergePartialConfigs roles deep-merge', () => {
     };
     const merged = mergePartialConfigs(global, project);
     // builder: project effort overrides global, global model survives
-    expect(merged.agents?.roles?.builder).toEqual({ model: 'global-model', effort: 'low' });
+    expect(merged.agents?.roles?.builder).toEqual({ model: { id: 'global-model' }, effort: 'low' });
     // reviewer: only in global, survives
     expect(merged.agents?.roles?.reviewer).toEqual({ effort: 'low' });
   });
@@ -534,12 +644,12 @@ describe('resolveConfig with global SDK fields', () => {
   it('passes through global model, thinking, effort', () => {
     const config = resolveConfig({
       agents: {
-        model: 'claude-opus',
+        model: { id: 'claude-opus' },
         thinking: { type: 'adaptive' },
         effort: 'high',
       },
     }, {});
-    expect(config.agents.model).toBe('claude-opus');
+    expect(config.agents.model).toEqual({ id: 'claude-opus' });
     expect(config.agents.thinking).toEqual({ type: 'adaptive' });
     expect(config.agents.effort).toBe('high');
   });
@@ -570,8 +680,8 @@ describe('resolveConfig with global SDK fields', () => {
 
 describe('pickSdkOptions', () => {
   it('strips undefined values from config', () => {
-    const result = pickSdkOptions({ model: 'x', thinking: undefined, effort: 'low' });
-    expect(result).toEqual({ model: 'x', effort: 'low' });
+    const result = pickSdkOptions({ model: { id: 'x' }, thinking: undefined, effort: 'low' });
+    expect(result).toEqual({ model: { id: 'x' }, effort: 'low' });
     expect('thinking' in result).toBe(false);
   });
 
@@ -582,7 +692,7 @@ describe('pickSdkOptions', () => {
 
   it('passes through all defined fields', () => {
     const result = pickSdkOptions({
-      model: 'claude-opus',
+      model: { id: 'claude-opus' },
       thinking: { type: 'enabled', budgetTokens: 5000 },
       effort: 'high',
       maxBudgetUsd: 10,
@@ -591,7 +701,7 @@ describe('pickSdkOptions', () => {
       disallowedTools: ['bash'],
     });
     expect(result).toEqual({
-      model: 'claude-opus',
+      model: { id: 'claude-opus' },
       thinking: { type: 'enabled', budgetTokens: 5000 },
       effort: 'high',
       maxBudgetUsd: 10,
@@ -609,7 +719,7 @@ describe('pickSdkOptions', () => {
 describe('sdkPassthroughConfigSchema', () => {
   it('accepts valid config with all fields', () => {
     const result = sdkPassthroughConfigSchema.safeParse({
-      model: 'claude-opus',
+      model: { id: 'claude-opus' },
       thinking: { type: 'enabled', budgetTokens: 5000 },
       effort: 'high',
     });
@@ -678,9 +788,7 @@ describe('eforgeConfigSchema backend and pi validation', () => {
 describe('piConfigSchema', () => {
   it('accepts full pi config', () => {
     const result = piConfigSchema.safeParse({
-      provider: 'openrouter',
       apiKey: 'sk-test',
-      model: 'anthropic/claude-sonnet-4',
       thinkingLevel: 'high',
       extensions: { autoDiscover: true, include: ['ext1'], exclude: ['ext2'] },
       compaction: { enabled: true, threshold: 50_000 },
@@ -719,14 +827,12 @@ describe('resolveConfig backend and pi', () => {
       {
         backend: 'pi',
         pi: {
-          provider: 'openrouter',
           apiKey: 'sk-test',
         },
       },
       {},
     );
     expect(config.backend).toBe('pi');
-    expect(config.pi.provider).toBe('openrouter');
     expect(config.pi.apiKey).toBe('sk-test');
   });
 
@@ -734,12 +840,12 @@ describe('resolveConfig backend and pi', () => {
     const config = resolveConfig(
       {
         backend: 'pi',
-        pi: { provider: 'anthropic' },
+        pi: { apiKey: 'sk-test' },
       },
       {},
     );
     // Explicitly set values preserved
-    expect(config.pi.provider).toBe('anthropic');
+    expect(config.pi.apiKey).toBe('sk-test');
     // Defaults fill in unset values
     expect(config.pi.thinkingLevel).toBe('medium');
     expect(config.pi.extensions.autoDiscover).toBe(true);
@@ -820,7 +926,7 @@ describe('agents.models schema validation', () => {
   it('accepts valid models map with known class names', () => {
     const result = eforgeConfigSchema.safeParse({
       backend: 'claude-sdk',
-      agents: { models: { max: 'some-model' } },
+      agents: { models: { max: { id: 'some-model' } } },
     });
     expect(result.success).toBe(true);
   });
@@ -828,7 +934,7 @@ describe('agents.models schema validation', () => {
   it('accepts models map with multiple classes', () => {
     const result = eforgeConfigSchema.safeParse({
       backend: 'claude-sdk',
-      agents: { models: { max: 'model-a', balanced: 'model-b', fast: 'model-c' } },
+      agents: { models: { max: { id: 'model-a' }, balanced: { id: 'model-b' }, fast: { id: 'model-c' } } },
     });
     expect(result.success).toBe(true);
   });

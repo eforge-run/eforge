@@ -65,7 +65,7 @@ export class StubBackend implements AgentBackend {
     this.calls.push(options);
 
     const agentId = crypto.randomUUID();
-    yield { type: 'agent:start', planId, agent, agentId, model: options.model ?? 'stub-model', backend: 'stub', timestamp: new Date().toISOString() };
+    yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'stub-model', backend: 'stub', timestamp: new Date().toISOString() };
 
     let error: string | undefined;
     try {

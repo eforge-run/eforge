@@ -22,20 +22,26 @@ agents:
   settingSources:             # Which Claude Code settings to load
     - project                 # Loads CLAUDE.md and project settings
   bare: false                 # Pass --bare to Claude Code subprocess (auto-true when ANTHROPIC_API_KEY set)
-  # model: claude-sonnet-4-6          # Global model override for all agents (bypasses class system)
+  # model:                             # Global model override for all agents (bypasses class system)
+  #   id: claude-sonnet-4-6            #   Claude SDK: { id: "model-name" }
+  #                                    #   Pi: { provider: "provider-name", id: "model-name" }
   # thinking:                 # Global thinking config
   #   type: adaptive          # 'adaptive', 'enabled' (with optional budgetTokens), or 'disabled'
   # effort: high              # Global effort level: 'low', 'medium', 'high', 'max'
-  # models:                    # Map model classes to model strings (override backend defaults)
-  #   max: claude-opus-4-6    # Used by all roles by default
-  #   balanced: claude-sonnet-4-6  # Available via per-role modelClass override
-  #   fast: claude-haiku-4-5  # Available via per-role modelClass override
+  # models:                    # Map model classes to model refs (override backend defaults)
+  #   max:                     # Used by all roles by default
+  #     id: claude-opus-4-6
+  #   balanced:                # Available via per-role modelClass override
+  #     id: claude-sonnet-4-6
+  #   fast:                    # Available via per-role modelClass override
+  #     id: claude-haiku-4-5
   #   auto: null              # Let the SDK choose the model
   # roles:                    # Per-agent role overrides (override global settings)
   #   formatter:              # Per-role options: model, modelClass, thinking, effort, maxBudgetUsd,
   #     effort: low           #   fallbackModel, allowedTools, disallowedTools, maxTurns
   #   builder:                # Available roles: planner, module-planner, builder, reviewer,
-  #     model: claude-sonnet-4-6     #   evaluator, plan-reviewer, plan-evaluator,
+  #     model:                #   evaluator, plan-reviewer, plan-evaluator,
+  #       id: claude-sonnet-4-6
   #     maxTurns: 50          #   architecture-reviewer, architecture-evaluator,
   #   staleness-assessor:     #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
   #     modelClass: fast      #   review-fixer, merge-conflict-resolver, staleness-assessor,
@@ -67,7 +73,6 @@ monitor:
   retentionCount: 20          # Number of recent builds to retain in the monitor DB (oldest pruned)
 
 pi:                            # Pi backend config (experimental/untested)
-  provider: openrouter         # REQUIRED for pi backend - LLM provider (e.g. 'openrouter', 'anthropic', 'openai-codex')
   # apiKey: ...                # Optional API key override (env vars and ~/.pi/agent/auth.json used automatically)
   thinkingLevel: medium        # 'off', 'medium', 'high'
   extensions:
@@ -80,43 +85,72 @@ pi:                            # Pi backend config (experimental/untested)
     backoffMs: 1000            # Backoff between retries (ms)
 ```
 
+## Model References
+
+Model references are **objects**, not plain strings. The shape depends on your backend:
+
+- **Claude SDK**: `{ id: "model-name" }` - e.g. `{ id: claude-sonnet-4-6 }`
+- **Pi**: `{ provider: "provider-name", id: "model-name" }` - e.g. `{ provider: openrouter, id: anthropic/claude-opus-4-6 }`
+
+> **Migration note:** String model refs (e.g. `model: claude-sonnet-4-6`) are no longer valid. Use the object form instead. The `pi.provider` config field has been removed - provider selection now lives in each model ref.
+
 ## Model Classes
 
 eforge assigns each agent role a **model class** that determines which model it uses by default. All roles default to `max`. Four classes exist:
 
-| Class | Default model (claude-sdk) | Notes |
-|-------|---------------------------|-------|
-| `max` | `claude-opus-4-6` | All roles default to this class |
-| `balanced` | `claude-sonnet-4-6` | Available via per-role `modelClass` override for cost optimization |
-| `fast` | `claude-haiku-4-5` | Available via per-role `modelClass` override for lightweight tasks |
+| Class | Default model ref (claude-sdk) | Notes |
+|-------|-------------------------------|-------|
+| `max` | `{ id: claude-opus-4-6 }` | All roles default to this class |
+| `balanced` | `{ id: claude-sonnet-4-6 }` | Available via per-role `modelClass` override for cost optimization |
+| `fast` | `{ id: claude-haiku-4-5 }` | Available via per-role `modelClass` override for lightweight tasks |
 | `auto` | (SDK default) | Lets the backend choose the model |
 
-The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles). The engine throws a descriptive error if no model resolves for a non-claude-sdk backend.
+The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles) using `{ provider, id }` model refs. The engine throws a descriptive error if no model resolves for a non-claude-sdk backend.
 
 ### Model Resolution Order
 
 Model selection follows this priority chain (highest to lowest):
 
-1. **Per-role `model`** - `agents.roles.<role>.model` - explicit model string for a specific role
-2. **Global `model`** - `agents.model` - explicit model string for all roles
-3. **User class override** - `agents.models.<class>` - custom model for the role's effective class
-4. **Backend class default** - built-in model for the class (see table above)
+1. **Per-role `model`** - `agents.roles.<role>.model` - explicit model ref for a specific role
+2. **Global `model`** - `agents.model` - explicit model ref for all roles
+3. **User class override** - `agents.models.<class>` - custom model ref for the role's effective class
+4. **Backend class default** - built-in model ref for the class (see table above)
 
 The "effective class" for a role is determined by: per-role `modelClass` override > built-in class assignment.
 
 ```yaml
-# Example: downgrade some roles to cheaper models
+# Example: downgrade some roles to cheaper models (claude-sdk backend)
 agents:
   models:
-    balanced: claude-sonnet-4-6    # Define what 'balanced' class maps to
-    fast: claude-haiku-4-5         # Define what 'fast' class maps to
+    balanced:                          # Define what 'balanced' class maps to
+      id: claude-sonnet-4-6
+    fast:                              # Define what 'fast' class maps to
+      id: claude-haiku-4-5
   roles:
     builder:
-      modelClass: balanced         # Move builder from 'max' to 'balanced' class
+      modelClass: balanced             # Move builder from 'max' to 'balanced' class
     formatter:
-      modelClass: fast             # Move formatter to 'fast' class
+      modelClass: fast                 # Move formatter to 'fast' class
     staleness-assessor:
-      model: claude-haiku-4-5     # Explicit model - bypasses the class system entirely
+      model:                           # Explicit model ref - bypasses the class system entirely
+        id: claude-haiku-4-5
+```
+
+```yaml
+# Example: Pi backend with per-provider model refs
+agents:
+  models:
+    max:
+      provider: openrouter
+      id: anthropic/claude-opus-4-6
+    balanced:
+      provider: openrouter
+      id: anthropic/claude-sonnet-4-6
+  roles:
+    staleness-assessor:
+      model:
+        provider: openrouter
+        id: google/gemini-flash
 ```
 
 ## Profiles
@@ -141,7 +175,7 @@ MCP servers are auto-loaded from `.mcp.json` in the project root (same format Cl
 
 ## Pi Backend
 
-Set `backend: pi` to use the Pi multi-provider backend instead of the Claude SDK. The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which supports API keys, environment variables, and OAuth tokens automatically. Configure provider, model, and other Pi-specific settings in the `pi` section of `eforge/config.yaml`. Note: the Pi backend is experimental and untested.
+Set `backend: pi` to use the Pi multi-provider backend instead of the Claude SDK. The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which supports API keys, environment variables, and OAuth tokens automatically. Configure model refs (using `{ provider, id }` form) via `agents.models.*` or `agents.model`, and other Pi-specific settings in the `pi` section of `eforge/config.yaml`. Note: the Pi backend is experimental and untested.
 
 ### Authentication
 
@@ -158,7 +192,7 @@ The `pi.apiKey` config option is optional. Most users should rely on environment
 Providers like `openai-codex` and `github-copilot` use OAuth for authentication. To set up an OAuth provider:
 
 1. Run `pi auth login <provider>` to authenticate (this writes tokens to `~/.pi/agent/auth.json`)
-2. Set `pi.provider` to the OAuth provider name in `eforge/config.yaml`
+2. Use the provider name in your model refs - e.g. `{ provider: openai-codex, id: codex-mini }`
 3. No `pi.apiKey` or environment variable is needed - tokens are read from the auth file automatically
 
 ## Plugins

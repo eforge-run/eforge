@@ -415,8 +415,8 @@ describe('agent config threading', () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG, 'claude-sdk');
     expect(result.maxTurns).toBe(50);
-    // builder defaults to 'max' class, so claude-sdk default is 'claude-opus-4-6'
-    expect(result.model).toBe('claude-opus-4-6');
+    // builder defaults to 'max' class, so claude-sdk default is { id: 'claude-opus-4-6' }
+    expect(result.model).toEqual({ id: 'claude-opus-4-6' });
     expect(result.thinking).toBeUndefined();
     expect(result.effort).toBeUndefined();
     expect(result.maxBudgetUsd).toBeUndefined();
@@ -481,10 +481,10 @@ describe('agent config threading', () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
     const config = {
       ...DEFAULT_CONFIG,
-      agents: { ...DEFAULT_CONFIG.agents, model: 'claude-sonnet' },
+      agents: { ...DEFAULT_CONFIG.agents, model: { id: 'claude-sonnet' } },
     };
     const result = resolveAgentConfig('reviewer', config);
-    expect(result.model).toBe('claude-sonnet');
+    expect(result.model).toEqual({ id: 'claude-sonnet' });
   });
 
   it('resolveAgentConfig: user per-role thinking overrides user global thinking', async () => {
@@ -644,7 +644,7 @@ describe('model class resolution', () => {
     for (const role of Object.keys(AGENT_MODEL_CLASSES) as Array<keyof typeof AGENT_MODEL_CLASSES>) {
       expect(AGENT_MODEL_CLASSES[role]).toBe('max');
       const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
-      expect(result.model).toBe('claude-opus-4-6');
+      expect(result.model).toEqual({ id: 'claude-opus-4-6' });
     }
   });
 
@@ -660,7 +660,7 @@ describe('model class resolution', () => {
       },
     };
     const result = resolveAgentConfig('builder', config, 'claude-sdk');
-    expect(result.model).toBe('claude-sonnet-4-6');
+    expect(result.model).toEqual({ id: 'claude-sonnet-4-6' });
   });
 
   it('per-role model overrides class-based resolution', async () => {
@@ -670,22 +670,22 @@ describe('model class resolution', () => {
       agents: {
         ...DEFAULT_CONFIG.agents,
         roles: {
-          planner: { model: 'custom-model' },
+          planner: { model: { id: 'custom-model' } },
         },
       },
     };
     const result = resolveAgentConfig('planner', config);
-    expect(result.model).toBe('custom-model');
+    expect(result.model).toEqual({ id: 'custom-model' });
   });
 
   it('global model overrides class-based resolution', async () => {
     const { resolveAgentConfig } = await import('../src/engine/pipeline.js');
     const config = {
       ...DEFAULT_CONFIG,
-      agents: { ...DEFAULT_CONFIG.agents, model: 'global-override' },
+      agents: { ...DEFAULT_CONFIG.agents, model: { id: 'global-override' } },
     };
     const result = resolveAgentConfig('planner', config);
-    expect(result.model).toBe('global-override');
+    expect(result.model).toEqual({ id: 'global-override' });
   });
 
   it('auto class on claude-sdk returns undefined model', async () => {
@@ -732,11 +732,11 @@ describe('model class resolution', () => {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: 'openrouter/auto' } as Record<string, string>,
+        models: { max: { provider: 'openrouter', id: 'auto' } } as Record<string, import('../src/engine/config.js').ModelRef>,
       },
     };
     const result = resolveAgentConfig('builder', config, 'pi');
-    expect(result.model).toBe('openrouter/auto');
+    expect(result.model).toEqual({ provider: 'openrouter', id: 'auto' });
   });
 
   it('user agents.models override applies to class resolution', async () => {
@@ -745,11 +745,11 @@ describe('model class resolution', () => {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: 'my-custom-max-model' } as Record<string, string>,
+        models: { max: { id: 'my-custom-max-model' } } as Record<string, import('../src/engine/config.js').ModelRef>,
       },
     };
     const result = resolveAgentConfig('planner', config);
-    expect(result.model).toBe('my-custom-max-model');
+    expect(result.model).toEqual({ id: 'my-custom-max-model' });
   });
 });
 

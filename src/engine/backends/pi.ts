@@ -86,42 +86,6 @@ function resolveThinkingLevel(options: AgentRunOptions, piConfig?: PiConfig): Th
 }
 
 // ---------------------------------------------------------------------------
-// Model resolution
-// ---------------------------------------------------------------------------
-
-/**
- * Resolve a Pi Model from an eforge model string.
- * Provider comes from piConfig.provider - never parsed from the model string.
- * Uses pi-ai's getModel for known provider/model combos.
- * Falls back to constructing a minimal model object for unknown combos.
- */
-function resolveModel(modelStr: string, piConfig?: PiConfig): Model<Api> {
-  const provider = piConfig?.provider;
-  if (!provider) {
-    throw new Error('No provider configured for Pi backend. Set pi.provider in eforge/config.yaml.');
-  }
-
-  const knownModel = getModel(provider as never, modelStr as never) as Model<Api> | undefined;
-  if (knownModel) {
-    return knownModel;
-  }
-
-  // Unknown model — construct a minimal model object for provider-style routing
-  return {
-    id: modelStr,
-    name: modelStr,
-    api: 'openai-completions' as Api,
-    provider,
-    baseUrl: `https://api.${provider}.com`,
-    reasoning: true,
-    input: ['text', 'image'],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 200000,
-    maxTokens: 16384,
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Tool filtering
 // ---------------------------------------------------------------------------
 
@@ -275,24 +239,22 @@ export class PiBackend implements AgentBackend {
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     const agentId = crypto.randomUUID();
 
-    // Resolve model and thinking level before agent:start so we can include model info
-    let model: Model<Api>;
-    let thinkingLevel: ThinkingLevel;
-    try {
-      if (!options.model) {
-        yield { type: 'agent:start', planId, agent, agentId, model: 'unknown', backend: 'pi', timestamp: new Date().toISOString() };
-        yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set agents.models.max (or the appropriate model class) in eforge/config.yaml.', timestamp: new Date().toISOString() };
-        return;
-      }
-      model = resolveModel(options.model, this.piConfig);
-      thinkingLevel = resolveThinkingLevel(options, this.piConfig);
-    } catch (err) {
-      yield { type: 'agent:start', planId, agent, agentId, model: options.model ?? 'unknown', backend: 'pi', timestamp: new Date().toISOString() };
-      yield { type: 'agent:stop', planId, agent, agentId, error: err instanceof Error ? err.message : String(err), timestamp: new Date().toISOString() };
+    // Validate model ref before proceeding
+    if (!options.model) {
+      yield { type: 'agent:start', planId, agent, agentId, model: 'unknown', backend: 'pi', timestamp: new Date().toISOString() };
+      yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set agents.models.max (or the appropriate model class) in eforge/config.yaml.', timestamp: new Date().toISOString() };
       return;
     }
 
-    yield { type: 'agent:start', planId, agent, agentId, model: model.id, backend: 'pi', timestamp: new Date().toISOString() };
+    if (!options.model.provider) {
+      yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', timestamp: new Date().toISOString() };
+      yield { type: 'agent:stop', planId, agent, agentId, error: `No provider in model ref for Pi backend. Model refs must include "provider" (e.g. { provider: "openrouter", id: "${options.model.id}" }).`, timestamp: new Date().toISOString() };
+      return;
+    }
+
+    const thinkingLevel = resolveThinkingLevel(options, this.piConfig);
+
+    yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', timestamp: new Date().toISOString() };
 
     let error: string | undefined;
     const startTime = Date.now();
@@ -302,6 +264,33 @@ export class PiBackend implements AgentBackend {
     try {
       // Build file-backed auth storage (reads ~/.pi/agent/auth.json, env vars, and OAuth tokens)
       const authStorage = AuthStorage.create();
+
+      // Resolve model via ModelRegistry (async) with fallback to getModel then synthetic
+      const modelRegistry = new ModelRegistry(authStorage);
+      let model: Model<Api>;
+      const registryModel = await modelRegistry.find(options.model.provider!, options.model.id) as Model<Api> | undefined;
+      if (registryModel) {
+        model = registryModel;
+      } else {
+        const knownModel = getModel(options.model.provider as never, options.model.id as never) as Model<Api> | undefined;
+        if (knownModel) {
+          model = knownModel;
+        } else {
+          // Unknown model - construct a minimal model object for provider-style routing
+          model = {
+            id: options.model.id,
+            name: options.model.id,
+            api: 'openai-completions' as Api,
+            provider: options.model.provider!,
+            baseUrl: `https://api.${options.model.provider!}.com`,
+            reasoning: true,
+            input: ['text', 'image'],
+            cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            contextWindow: 200000,
+            maxTokens: 16384,
+          };
+        }
+      }
 
       // Apply explicit API key override from piConfig if set
       if (this.piConfig?.apiKey) {
@@ -331,9 +320,6 @@ export class PiBackend implements AgentBackend {
       // built-in/custom distinction when creating the session.
       const filteredBaseTools = filterTools(baseTools, options.allowedTools, options.disallowedTools);
       const filteredMcpTools = filterTools(mcpTools, options.allowedTools, options.disallowedTools);
-
-      // Create model registry
-      const modelRegistry = new ModelRegistry(authStorage);
 
       // Create session manager (in-memory, no persistence needed for one-shot agents)
       const sessionManager = SessionManager.inMemory();
@@ -515,8 +501,9 @@ export class PiBackend implements AgentBackend {
 
       // Attempt fallback model if configured and this looks like a model error
       if (options.fallbackModel && isModelError(error)) {
-        // Re-run with fallback model
-        const fallbackOptions = { ...options, model: options.fallbackModel, fallbackModel: undefined };
+        // Re-run with fallback model — wrap string in ModelRef, preserving original provider
+        const fallbackModelRef = { id: options.fallbackModel, provider: options.model?.provider };
+        const fallbackOptions = { ...options, model: fallbackModelRef, fallbackModel: undefined };
         yield* this.run(fallbackOptions, agent, planId);
         return;
       }

@@ -31,6 +31,21 @@ export const modelClassSchema = z.enum(MODEL_CLASSES).describe('Model class for 
 const toolPresetConfigSchema = z.enum(['coding', 'none']);
 
 // ---------------------------------------------------------------------------
+// ModelRef — backend-aware model references
+// ---------------------------------------------------------------------------
+
+/** A model reference: id is always required, provider is required for Pi backend. */
+export interface ModelRef {
+  id: string;
+  provider?: string;
+}
+
+export const modelRefSchema = z.object({
+  id: z.string().describe('Model identifier (e.g. "claude-opus-4-6", "gpt-5.4")'),
+  provider: z.string().optional().describe('Provider name (required for Pi backend, forbidden for Claude SDK)'),
+}).describe('Model reference with optional provider');
+
+// ---------------------------------------------------------------------------
 // SDK Passthrough Config Schemas
 // ---------------------------------------------------------------------------
 
@@ -43,31 +58,13 @@ export const thinkingConfigSchema = z.union([
 export const effortLevelSchema = z.enum(['low', 'medium', 'high', 'max']).describe('Effort level for controlling thinking depth');
 
 export const sdkPassthroughConfigSchema = z.object({
-  model: z.string().optional().describe('Model override'),
+  model: modelRefSchema.optional().describe('Model override'),
   thinking: thinkingConfigSchema.optional().describe('Thinking/reasoning behavior'),
   effort: effortLevelSchema.optional().describe('Effort level'),
   maxBudgetUsd: z.number().positive().optional().describe('Maximum budget in USD'),
   fallbackModel: z.string().optional().describe('Fallback model if primary is unavailable'),
   allowedTools: z.array(z.string()).optional().describe('Whitelist of allowed tool names'),
   disallowedTools: z.array(z.string()).optional().describe('Blacklist of disallowed tool names'),
-});
-
-const agentProfileConfigSchema = z.object({
-  maxTurns: z.number().int().positive().optional().describe('Maximum conversation turns for this agent'),
-  prompt: z.string().optional().describe('Custom prompt override for this agent'),
-  tools: toolPresetConfigSchema.optional().describe('Tool preset: "coding" for full tools or "none" for read-only'),
-  model: z.string().optional().describe('Model override for this agent'),
-  thinking: thinkingConfigSchema.optional().describe('Thinking/reasoning behavior'),
-  effort: effortLevelSchema.optional().describe('Effort level'),
-  maxBudgetUsd: z.number().positive().optional().describe('Maximum budget in USD'),
-  fallbackModel: z.string().optional().describe('Fallback model if primary is unavailable'),
-  allowedTools: z.array(z.string()).optional().describe('Whitelist of allowed tool names'),
-  disallowedTools: z.array(z.string()).optional().describe('Blacklist of disallowed tool names'),
-  modelClass: modelClassSchema.optional().describe('Override the model class for this agent profile'),
-  roles: z.record(agentRoleSchema, sdkPassthroughConfigSchema.extend({
-    maxTurns: z.number().int().positive().optional(),
-    modelClass: modelClassSchema.optional().describe('Override the model class for this role'),
-  })).optional().describe('Per-agent role overrides for SDK passthrough fields'),
 });
 
 const STRATEGIES = ['auto', 'single', 'parallel'] as const;
@@ -108,7 +105,6 @@ export const backendSchema = z.enum(['claude-sdk', 'pi']).describe('Backend prov
 export const piThinkingLevelSchema = z.enum(['off', 'medium', 'high']).describe('Pi-native thinking level');
 
 export const piConfigSchema = z.object({
-  provider: z.string().optional().describe('Pi AI provider (e.g. "openrouter", "anthropic")'),
   apiKey: z.string().optional().describe('API key for the Pi provider'),
   thinkingLevel: piThinkingLevelSchema.optional().describe('Thinking level for Pi agents'),
   extensions: z.object({
@@ -127,7 +123,8 @@ export const piConfigSchema = z.object({
   }).optional().describe('Retry configuration for Pi API calls'),
 }).describe('Configuration for the Pi coding agent backend');
 
-export const eforgeConfigSchema = z.object({
+/** Base object schema without refinements — .partial() is derived from this. */
+const eforgeConfigBaseSchema = z.object({
   backend: backendSchema,
   maxConcurrentBuilds: z.number().int().positive().optional(),
   langfuse: z.object({
@@ -142,10 +139,10 @@ export const eforgeConfigSchema = z.object({
     permissionMode: z.enum(['bypass', 'default']).optional(),
     settingSources: z.array(z.enum(SETTING_SOURCES)).nonempty().optional(),
     bare: z.boolean().optional(),
-    model: z.string().optional().describe('Global model override for all agents'),
+    model: modelRefSchema.optional().describe('Global model override for all agents'),
     thinking: thinkingConfigSchema.optional().describe('Global thinking config for all agents'),
     effort: effortLevelSchema.optional().describe('Global effort level for all agents'),
-    models: z.record(modelClassSchema, z.string().optional()).optional().describe('Map model class names to model strings'),
+    models: z.record(modelClassSchema, modelRefSchema.optional()).optional().describe('Map model class names to model refs'),
     roles: z.record(agentRoleSchema, sdkPassthroughConfigSchema.extend({
       maxTurns: z.number().int().positive().optional(),
       modelClass: modelClassSchema.optional().describe('Override the model class for this role'),
@@ -176,12 +173,53 @@ export const eforgeConfigSchema = z.object({
   hooks: z.array(hookConfigSchema).optional(),
 });
 
+/** Exported schema with backend-conditional model ref validation. */
+export const eforgeConfigSchema = eforgeConfigBaseSchema.superRefine((data, ctx) => {
+  const backend = data.backend;
+  if (!backend) return;
+
+  /** Validate a single ModelRef against the backend. */
+  function checkModelRef(ref: { id: string; provider?: string } | undefined, path: string) {
+    if (!ref) return;
+    if (backend === 'pi' && !ref.provider) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Pi backend requires "provider" in model ref at ${path}. Got { id: "${ref.id}" }.`,
+        path: path.split('.'),
+      });
+    }
+    if (backend === 'claude-sdk' && ref.provider) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `Claude SDK backend does not accept "provider" in model ref at ${path}. Got { provider: "${ref.provider}", id: "${ref.id}" }.`,
+        path: path.split('.'),
+      });
+    }
+  }
+
+  // Check agents.model
+  checkModelRef(data.agents?.model, 'agents.model');
+
+  // Check agents.models.*
+  if (data.agents?.models) {
+    for (const [cls, ref] of Object.entries(data.agents.models)) {
+      if (ref) checkModelRef(ref, `agents.models.${cls}`);
+    }
+  }
+
+  // Check agents.roles.*.model
+  if (data.agents?.roles) {
+    for (const [role, roleConfig] of Object.entries(data.agents.roles)) {
+      if (roleConfig?.model) checkModelRef(roleConfig.model, `agents.roles.${role}.model`);
+    }
+  }
+});
+
 // ---------------------------------------------------------------------------
 // Derived TypeScript types — from schemas, not hand-written
 // ---------------------------------------------------------------------------
 
 export type ToolPresetConfig = z.output<typeof toolPresetConfigSchema>;
-export type AgentProfileConfig = z.output<typeof agentProfileConfigSchema>;
 export type ReviewProfileConfig = z.output<typeof reviewProfileConfigSchema>;
 /** A single build stage name or an array of names to run in parallel. */
 export type BuildStageSpec = string | string[];
@@ -191,7 +229,7 @@ export type PluginConfig = z.output<typeof pluginConfigSchema>;
 /** Resolved agent config for a specific role, combining SDK passthrough fields with maxTurns. */
 export interface ResolvedAgentConfig {
   maxTurns?: number;
-  model?: string;
+  model?: ModelRef;
   modelClass?: ModelClass;
   thinking?: import('./backend.js').ThinkingConfig;
   effort?: import('./backend.js').EffortLevel;
@@ -202,7 +240,6 @@ export interface ResolvedAgentConfig {
 }
 
 export interface PiConfig {
-  provider?: string;
   /** Optional explicit API key override. When set, takes highest priority via setRuntimeApiKey. When omitted, Pi's file-backed AuthStorage handles auth automatically (env vars, ~/.pi/agent/auth.json, OAuth tokens). */
   apiKey?: string;
   thinkingLevel: 'off' | 'medium' | 'high';
@@ -221,10 +258,10 @@ export interface EforgeConfig {
     permissionMode: 'bypass' | 'default';
     settingSources?: string[];
     bare: boolean;
-    model?: string;
+    model?: ModelRef;
     thinking?: import('./backend.js').ThinkingConfig;
     effort?: import('./backend.js').EffortLevel;
-    models?: Partial<Record<ModelClass, string>>;
+    models?: Partial<Record<ModelClass, ModelRef>>;
     roles?: Record<string, Partial<ResolvedAgentConfig>>;
   };
   build: { worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
@@ -238,7 +275,7 @@ export interface EforgeConfig {
 }
 
 /** Deep-partial version of EforgeConfig used for parsing and merging — derived from the zod schema. */
-const partialEforgeConfigSchema = eforgeConfigSchema.partial();
+const partialEforgeConfigSchema = eforgeConfigBaseSchema.partial();
 export type PartialEforgeConfig = z.output<typeof partialEforgeConfigSchema>;
 
 export const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
@@ -369,7 +406,6 @@ export function resolveConfig(
       retentionCount: fileConfig.monitor?.retentionCount ?? DEFAULT_CONFIG.monitor.retentionCount,
     }),
     pi: Object.freeze({
-      provider: fileConfig.pi?.provider,
       apiKey: fileConfig.pi?.apiKey,
       thinkingLevel: fileConfig.pi?.thinkingLevel ?? DEFAULT_CONFIG.pi.thinkingLevel,
       extensions: Object.freeze({

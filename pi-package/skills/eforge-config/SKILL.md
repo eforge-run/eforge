@@ -41,7 +41,7 @@ Walk the user through configuration sections, asking about each one. Only includ
 
 1. **Backend selection** (required) - Which LLM backend: `claude-sdk` (uses Claude Code's built-in SDK) or `pi` (multi-provider via Pi SDK supporting OpenRouter, Anthropic, OpenAI, Google, etc.).
 2. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`
-3. **Model & thinking tuning** (opt-in - "Would you like to customize model or thinking settings? Most users keep defaults.") - Model class overrides via `agents.models` (map class names `max`/`balanced`/`fast`/`auto` to model strings), global `agents.model` override (bypasses class system), `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`max`). Model resolution order: per-role model > global model > user class override > backend class default. For `pi`, users should set at least `agents.models.max` (or `agents.model`) because Pi has no built-in model class defaults.
+3. **Model & thinking tuning** (opt-in - "Would you like to customize model or thinking settings? Most users keep defaults.") - Model references are objects: `{ id: "model-name" }` for Claude SDK, `{ provider: "provider-name", id: "model-name" }` for Pi. Model class overrides via `agents.models` (map class names `max`/`balanced`/`fast`/`auto` to model ref objects), global `agents.model` override (bypasses class system), `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`max`). Model resolution order: per-role model > global model > user class override > backend class default. For `pi`, users should set at least `agents.models.max` (or `agents.model`) with `{ provider, id }` refs because Pi has no built-in model class defaults.
 4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false)
 5. **Per-role agent overrides** (opt-in - "Would you like to tune specific agent roles differently? Most users skip this.") - Override settings per agent role. Available roles grouped: planning (`planner`, `module-planner`), building (`builder`), review/eval (`reviewer`, `evaluator`, `plan-reviewer`, `plan-evaluator`, `architecture-reviewer`, `architecture-evaluator`, `cohesion-reviewer`, `cohesion-evaluator`), fixers (`validation-fixer`, `review-fixer`, `merge-conflict-resolver`), utilities (`formatter`, `doc-updater`, `test-writer`, `tester`, `staleness-assessor`). Per-role options: `model`, `modelClass` (override which class the role belongs to: `max`/`balanced`/`fast`/`auto`), `thinking`, `effort`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`, `maxTurns`.
 6. **Profiles** - Custom workflow profiles or overrides of built-in profiles (`errand`, `excursion`, `expedition`). A profile defines compile stages only - build stages and review config are per-plan in orchestration.yaml. A profile can `extends` a built-in and override compile stages or agent settings.
@@ -50,7 +50,7 @@ Walk the user through configuration sections, asking about each one. Only includ
 9. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
 10. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue)
 11. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
-12. **Pi backend** (conditional - only if user chose `backend: pi` in step 1) - `provider` (for example `openrouter`, `anthropic`, or OAuth-backed providers like `openai-codex`), `thinkingLevel` (`off`/`medium`/`high`), `extensions` (auto-discover from `.pi/extensions/`), `compaction` (context compaction threshold), and `retry` config. Authentication usually comes from env vars or `~/.pi/agent/auth.json`; model selection still uses `agents.model` or `agents.models.*`, not `pi.model`.
+12. **Pi backend** (conditional - only if user chose `backend: pi` in step 1) - `thinkingLevel` (`off`/`medium`/`high`), `extensions` (auto-discover from `.pi/extensions/`), `compaction` (context compaction threshold), and `retry` config. Authentication usually comes from env vars or `~/.pi/agent/auth.json`. Model selection uses `agents.model` or `agents.models.*` with `{ provider, id }` refs (provider is part of each model ref, not a separate config field).
 
 For each section, explain what it controls and suggest values based on the project context gathered in Step 2. Skip sections the user isn't interested in.
 
@@ -130,18 +130,23 @@ agents:
     - project
   bare: false                          # Bare mode
   # --- Model class system ---
-  # models:                            # Map model classes to model strings
-  #   max: claude-opus-4-6
-  #   balanced: claude-sonnet-4-6
-  #   fast: claude-haiku-4-5
-  # model: claude-sonnet-4-6           # Global model override (bypasses class system)
+  # models:                            # Map model classes to model refs
+  #   max:
+  #     id: claude-opus-4-6            # Claude SDK: { id: "model-name" }
+  #   balanced:
+  #     id: claude-sonnet-4-6
+  #   fast:
+  #     id: claude-haiku-4-5
+  # model:                             # Global model override (bypasses class system)
+  #   id: claude-sonnet-4-6            # Pi: { provider: "provider-name", id: "model-name" }
   # thinking:                          # Thinking config
   #   type: adaptive                   # 'adaptive', 'enabled' (+ budgetTokens), or 'disabled'
   # effort: high                       # 'low', 'medium', 'high', 'max'
   # --- Per-role overrides ---
   # roles:
   #   builder:
-  #     model: claude-sonnet-4-6
+  #     model:
+  #       id: claude-sonnet-4-6
   #     maxTurns: 50
   #     maxBudgetUsd: 10.0
   #   formatter:
@@ -192,7 +197,6 @@ profiles:
 
 # Pi backend (only used when backend: pi)
 # pi:
-#   provider: openrouter               # LLM provider
 #   thinkingLevel: medium              # 'off', 'medium', 'high'
 #   extensions:
 #     autoDiscover: true
@@ -203,11 +207,12 @@ profiles:
 #     maxRetries: 3
 #     backoffMs: 1000
 #
-# For Pi, configure the model under agents.model or agents.models.*
-# Example:
+# For Pi, configure models under agents.model or agents.models.* with { provider, id } refs:
 # agents:
 #   models:
-#     max: gpt-5.4
+#     max:
+#       provider: openrouter
+#       id: anthropic/claude-opus-4-6
 ```
 
 ## Error Handling

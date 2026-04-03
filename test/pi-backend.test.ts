@@ -33,6 +33,7 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
   },
   ModelRegistry: class {
     constructor(_authStorage: unknown) {}
+    async find(_provider: string, _id: string) { return undefined; }
   },
   AuthStorage: {
     create: vi.fn(() => ({
@@ -54,7 +55,6 @@ async function collectEvents<T>(iterable: AsyncIterable<T>): Promise<T[]> {
 }
 
 const PI_CONFIG: PiConfig = {
-  provider: 'openai-codex',
   thinkingLevel: 'medium',
   extensions: { autoDiscover: true },
   compaction: { enabled: true, threshold: 100_000 },
@@ -130,7 +130,7 @@ describe('PiBackend MCP tool wiring', () => {
           cwd: process.cwd(),
           maxTurns: 1,
           tools: 'coding',
-          model: 'gpt-5.4',
+          model: { provider: 'openai-codex', id: 'gpt-5.4' },
         },
         'builder',
       ),
@@ -157,7 +157,7 @@ describe('PiBackend MCP tool wiring', () => {
           cwd: process.cwd(),
           maxTurns: 1,
           tools: 'coding',
-          model: 'gpt-5.4',
+          model: { provider: 'openai-codex', id: 'gpt-5.4' },
           allowedTools: ['mcp_eforge_status'],
         },
         'builder',
@@ -185,7 +185,7 @@ describe('PiBackend MCP tool wiring', () => {
           cwd: process.cwd(),
           maxTurns: 1,
           tools: 'coding',
-          model: 'gpt-5.4',
+          model: { provider: 'openai-codex', id: 'gpt-5.4' },
           disallowedTools: ['mcp_eforge_build'],
         },
         'builder',
@@ -218,7 +218,7 @@ describe('PiBackend MCP tool wiring', () => {
           cwd: process.cwd(),
           maxTurns: 1,
           tools: 'coding',
-          model: 'gpt-5.4',
+          model: { provider: 'openai-codex', id: 'gpt-5.4' },
           disallowedTools: ['edit', 'mcp_eforge_build'],
         },
         'builder',
@@ -298,7 +298,7 @@ describe('PiBackend MCP tool wiring', () => {
           cwd: process.cwd(),
           maxTurns: 1,
           tools: 'coding',
-          model: 'gpt-5.4',
+          model: { provider: 'openai-codex', id: 'gpt-5.4' },
         },
         'builder',
       ),

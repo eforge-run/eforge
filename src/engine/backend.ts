@@ -1,4 +1,5 @@
 import type { EforgeEvent, AgentRole } from './events.js';
+import type { ModelRef } from './config.js';
 
 export type ToolPreset = 'coding' | 'none';
 
@@ -20,7 +21,7 @@ export type EffortLevel = 'low' | 'medium' | 'high' | 'max';
  * All fields are optional — when `undefined`, the SDK uses its own defaults.
  */
 export interface SdkPassthroughConfig {
-  model?: string;
+  model?: ModelRef;
   thinking?: ThinkingConfig;
   effort?: EffortLevel;
   maxBudgetUsd?: number;
@@ -53,7 +54,7 @@ export interface AgentRunOptions {
   cwd: string;
   maxTurns: number;
   tools: ToolPreset;
-  model?: string;
+  model?: ModelRef;
   thinking?: ThinkingConfig;
   effort?: EffortLevel;
   maxBudgetUsd?: number;
