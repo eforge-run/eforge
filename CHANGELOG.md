@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.3.5] - 2026-04-03
+
+### Features
+
+- Redesign eforge model configuration so model references are backend-aware objects instead of plain strings
+- Right-size default model classes per agent role with ascending-then-descending fallback chain
+
+### Bug Fixes
+
+- Guard plan artifact commits against empty staging area
+- Fix crash when orchestration.yaml is missing in plannerStage
+- Fix pi eforge build skill to do the right thing
+
+### Maintenance
+
+- Ignore tmp directory
+
 ## [0.3.4] - 2026-04-03
 
 ### Features
