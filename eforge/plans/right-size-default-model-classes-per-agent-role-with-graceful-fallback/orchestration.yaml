@@ -1,0 +1,73 @@
+name: right-size-default-model-classes-per-agent-role-with-graceful-fallback
+description: Remove auto model class, right-size 3 agent roles to balanced tier,
+  add ascending-then-descending fallback chain to model resolution
+created: 2026-04-03
+compiled: 2026-04-03
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-engine
+    name: Right-size model classes and add fallback chain in engine
+    depends_on: []
+    branch: right-size-default-model-classes-per-agent-role-with-graceful-fallback/engine
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-docs
+    name: Update docs and consumer packages for model class changes
+    depends_on:
+      - plan-01-engine
+    branch: right-size-default-model-classes-per-agent-role-with-graceful-fallback/docs
+    build:
+      - - implement
+        - doc-update
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: lenient
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - doc-update
+      - test-write
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - correctness
+      - maintainability
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: This is an excursion-scope refactor touching config types, resolution
+    logic, backend code, tests, and docs across ~12 files - substantial but not
+    expedition-scale since it's one coherent change, not 4+ independent
+    subsystems. Plan review is included because the fallback chain logic has
+    subtle ordering semantics (ascending-then-descending) that benefit from a
+    quality gate before building. doc-update and test-write run in parallel
+    after implement since the PRD explicitly requires updated docs (config.md,
+    roadmap.md, plugin/Pi skill docs) and updated/new tests (fallback chain
+    scenarios, auto removal). review-cycle catches correctness issues in the
+    fallback logic and auto removal. test-cycle validates the new fallback tests
+    pass and catches regressions from removing auto. Standard strictness is
+    appropriate - this is internal infrastructure, not security-sensitive, but
+    the fallback logic needs to be correct.
