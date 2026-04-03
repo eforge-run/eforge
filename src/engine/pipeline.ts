@@ -808,23 +808,28 @@ registerCompileStage({
 
         // Track final plans for review phase and inject pipeline into orchestration.yaml
         if (event.type === 'plan:complete') {
-          // Inject the pipeline composition (and correct baseBranch) into the planner-written orchestration.yaml.
-          // The planner sees the merge worktree's feature branch as HEAD, so base_branch needs overriding.
           const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
-          await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch);
 
-          // Backfill dependsOn from orchestration.yaml into plan:complete events.
-          // The planner writes depends_on to orchestration.yaml but not to individual
-          // plan file frontmatter, so parsePlanFile() returns empty dependsOn arrays.
-          // Cross-reference orchestration.yaml to enrich the event.
+          // Both injectPipelineIntoOrchestrationYaml() and parseOrchestrationConfig() read
+          // orchestration.yaml from disk. If the planner failed to write it, the file won't
+          // exist and either call would throw ENOENT. Wrap both in the same try/catch so we
+          // fall through to yield the original unenriched plans on any failure.
           try {
+            // Inject the pipeline composition (and correct baseBranch) into the planner-written orchestration.yaml.
+            // The planner sees the merge worktree's feature branch as HEAD, so base_branch needs overriding.
+            await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch);
+
+            // Backfill dependsOn from orchestration.yaml into plan:complete events.
+            // The planner writes depends_on to orchestration.yaml but not to individual
+            // plan file frontmatter, so parsePlanFile() returns empty dependsOn arrays.
+            // Cross-reference orchestration.yaml to enrich the event.
             const orchConfig = await parseOrchestrationConfig(orchYamlPath);
             const enrichedPlans = backfillDependsOn(event.plans, orchConfig);
             ctx.plans = enrichedPlans;
             yield { ...event, plans: enrichedPlans };
             continue;
           } catch {
-            // Graceful fallback — yield the original event unchanged
+            // Graceful fallback - yield the original event unchanged
             ctx.plans = event.plans;
           }
         }
