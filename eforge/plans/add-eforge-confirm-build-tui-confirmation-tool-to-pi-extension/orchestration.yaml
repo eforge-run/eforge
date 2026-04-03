@@ -1,0 +1,46 @@
+name: add-eforge-confirm-build-tui-confirmation-tool-to-pi-extension
+description: Add eforge_confirm_build TUI confirmation tool to Pi extension,
+  replacing plain-text Step 4 confirmation in eforge-build skill
+created: 2026-04-03
+compiled: 2026-04-03
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-confirm-build-tool
+    name: Add eforge_confirm_build TUI tool to Pi extension
+    depends_on: []
+    branch: add-eforge-confirm-build-tui-confirmation-tool-to-pi-extension/confirm-build-tool
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: This is a well-scoped feature touching two files with clear patterns
+    to follow from existing examples (question.ts, preset.ts). Excursion scope
+    fits since it involves adding a new tool with TUI components and updating a
+    skill document. A planner stage decomposes the work, then implement +
+    review-cycle ensures the tool registration, component structure, and skill
+    markdown updates are correct. Single correctness perspective with 2 rounds
+    is sufficient - the risk is low (UI tool, no data/security concerns) and the
+    PRD provides detailed implementation guidance.
