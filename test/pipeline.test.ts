@@ -753,6 +753,60 @@ describe('model class resolution', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// plannerStage graceful fallback when orchestration.yaml is missing
+// ---------------------------------------------------------------------------
+
+describe('plannerStage missing orchestration.yaml', () => {
+  it('emits plan:complete with unenriched plans when orchestration.yaml does not exist', async () => {
+    const { mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    // Create a temp dir with no orchestration.yaml
+    const tempDir = await mkdtemp(join(tmpdir(), 'eforge-test-'));
+
+    const testPlans: PlanFile[] = [
+      {
+        id: 'plan-01',
+        name: 'Test Plan',
+        dependsOn: [],
+        branch: 'test/plan-01',
+        body: '# Plan body',
+        filePath: join(tempDir, 'plans', 'test-plan', 'plan-01.md'),
+      },
+    ];
+
+    // Register a custom planner stage that emits plan:complete
+    registerCompileStage(
+      testDescriptor('test-missing-orch-planner', 'compile'),
+      async function* () {
+        yield {
+          type: 'plan:complete' as const,
+          plans: testPlans,
+        };
+      },
+    );
+
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
+      compile: ['test-missing-orch-planner'],
+    };
+
+    const ctx = makePipelineCtx({ pipeline, cwd: tempDir, planSetName: 'test-plan' });
+    const events = await collect(runCompilePipeline(ctx));
+
+    // Should emit the plan:complete event without throwing
+    const planComplete = events.find((e) => e.type === 'plan:complete');
+    expect(planComplete).toBeDefined();
+    // Plans should be the original unenriched plans (no dependsOn backfill)
+    expect((planComplete as any).plans).toEqual(testPlans);
+
+    // Clean up temp directory
+    await rm(tempDir, { recursive: true });
+  });
+});
+
 describe('index.ts re-exports', () => {
   it('PipelineContext type is re-exported', async () => {
     const mod = await import('../src/engine/index.js');
