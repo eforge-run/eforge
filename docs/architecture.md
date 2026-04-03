@@ -1,6 +1,6 @@
 # Architecture
 
-eforge is **library-first**. The engine is a pure TypeScript library that communicates through typed `EforgeEvent`s via `AsyncGenerator` - it never writes to stdout. CLI, web monitor, and Claude Code plugin are thin consumers of the same event stream.
+eforge is **library-first**. The engine is a pure TypeScript library that communicates through typed `EforgeEvent`s via `AsyncGenerator` - it never writes to stdout. CLI, web monitor, Claude Code plugin, and Pi package are thin consumers of the same event stream.
 
 ## System Layers
 
@@ -10,6 +10,7 @@ graph TD
         CLI["CLI<br/><code>src/cli/</code>"]
         Monitor["Monitor<br/><code>src/monitor/</code>"]
         Plugin["Plugin<br/><code>eforge-plugin/</code>"]
+        PiPkg["Pi Package<br/><code>pi-package/</code>"]
     end
 
     subgraph Engine ["Engine - src/engine/"]
@@ -27,6 +28,7 @@ graph TD
     CLI -->|"iterates events"| EforgeEngine
     Monitor -->|"records events"| EforgeEngine
     Plugin -->|"MCP tools"| EforgeEngine
+    PiPkg -->|"native Pi tools"| EforgeEngine
     EforgeEngine --> Pipeline
     EforgeEngine --> Orchestrator
     Pipeline --> Agents
@@ -49,6 +51,10 @@ graph TD
 ### Plugin
 
 `eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for init, build, queue, status, config, and daemon operations. The `eforge_init` tool uses MCP elicitation to present an interactive form for project onboarding and operates locally (no daemon needed) for file creation.
+
+### Pi Package
+
+`pi-package/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, and daemon management. Skill-based slash commands (`/eforge:build`, `/eforge:config`, `/eforge:init`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity.
 
 ## Event System
 
