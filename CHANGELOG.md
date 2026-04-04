@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.3.7] - 2026-04-04
+
+### Bug Fixes
+
+- Planner guard and compile loop reset
+- Dirty working tree detection, recovery, and merge hardening
+
+### Features
+
+- Buffer verbose agent streaming output
+
+### Other
+
+- Upgrade deps
+
 ## [0.3.6] - 2026-04-03
 
 ### Features
