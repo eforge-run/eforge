@@ -792,6 +792,13 @@ registerCompileStage({
     yield event;
   }
 
+  // Guard: if the composer replaced the compile pipeline with stages that no
+  // longer include 'planner', return early so the new stages can execute.
+  if (!ctx.pipeline.compile.includes('planner')) {
+    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Pipeline composer selected [${ctx.pipeline.compile.join(', ')}] — delegating to new compile stages.` };
+    return;
+  }
+
   const agentConfig = resolveAgentConfig('planner', ctx.config, ctx.config.backend);
   const maxContinuations = AGENT_MAX_CONTINUATIONS_DEFAULTS['planner'] ?? 0;
 
@@ -1992,6 +1999,8 @@ export async function* runCompilePipeline(
   // stage switches from excursion to expedition), so re-read ctx.pipeline.compile
   // on each iteration instead of capturing it once via for...of.
   let i = 0;
+  let restarts = 0;
+  const MAX_RESTARTS = 5;
   while (i < ctx.pipeline.compile.length) {
     const stageName = ctx.pipeline.compile[i];
     if (stageName === 'plan-review-cycle' || stageName === 'architecture-review-cycle') {
@@ -2002,10 +2011,22 @@ export async function* runCompilePipeline(
         await commitPlanArtifacts(commitCwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir);
       }
     }
+    // Snapshot the compile list before running the stage. If the stage mutates
+    // ctx.pipeline.compile (e.g., planner delegates to prd-passthrough), we
+    // restart the loop from the beginning of the new list.
+    const compileBefore = ctx.pipeline.compile;
     const stage = getCompileStage(stageName);
     yield* stage(ctx);
     if (ctx.skipped) break;
-    i++;
+    if (ctx.pipeline.compile !== compileBefore) {
+      // Stage replaced the compile list — restart from the beginning
+      if (++restarts > MAX_RESTARTS) {
+        throw new Error('Compile pipeline restarted too many times — possible infinite loop');
+      }
+      i = 0;
+    } else {
+      i++;
+    }
   }
 }
 

@@ -266,6 +266,66 @@ describe('runCompilePipeline', () => {
     expect(stagesRun).toEqual(['planner']);
     expect(events).toHaveLength(1);
   });
+
+  it('restarts loop when a stage replaces ctx.pipeline.compile', async () => {
+    const stagesRun: string[] = [];
+
+    // Stage that mutates the compile list to ['stage-x']
+    registerCompileStage(testDescriptor('test-mutator', 'compile'), async function* (ctx) {
+      stagesRun.push('mutator');
+      ctx.pipeline = { ...ctx.pipeline, compile: ['test-stage-x'] };
+      yield { type: 'plan:progress', message: 'mutated' };
+    });
+
+    registerCompileStage(testDescriptor('test-stage-x', 'compile'), async function* () {
+      stagesRun.push('stage-x');
+      yield { type: 'plan:progress', message: 'stage-x ran' };
+    });
+
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
+      compile: ['test-mutator'],
+    };
+
+    const ctx = makePipelineCtx({ pipeline });
+    const events = await collect(runCompilePipeline(ctx));
+
+    expect(stagesRun).toEqual(['mutator', 'stage-x']);
+    expect(events.map((e) => (e as any).message)).toEqual(['mutated', 'stage-x ran']);
+  });
+
+  it('does not run old remaining stages after compile list replacement', async () => {
+    const stagesRun: string[] = [];
+
+    // First stage replaces compile list, removing 'test-old-next'
+    registerCompileStage(testDescriptor('test-replacer', 'compile'), async function* (ctx) {
+      stagesRun.push('replacer');
+      ctx.pipeline = { ...ctx.pipeline, compile: ['test-new-stage'] };
+      yield { type: 'plan:progress', message: 'replaced' };
+    });
+
+    registerCompileStage(testDescriptor('test-old-next', 'compile'), async function* () {
+      stagesRun.push('old-next');
+      yield { type: 'plan:progress', message: 'should not run' };
+    });
+
+    registerCompileStage(testDescriptor('test-new-stage', 'compile'), async function* () {
+      stagesRun.push('new-stage');
+      yield { type: 'plan:progress', message: 'new stage ran' };
+    });
+
+    const pipeline: PipelineComposition = {
+      ...TEST_PIPELINE,
+      compile: ['test-replacer', 'test-old-next'],
+    };
+
+    const ctx = makePipelineCtx({ pipeline });
+    const events = await collect(runCompilePipeline(ctx));
+
+    // 'test-old-next' should NOT have run; only replacer + new-stage
+    expect(stagesRun).toEqual(['replacer', 'new-stage']);
+    expect(events.map((e) => (e as any).message)).toEqual(['replaced', 'new stage ran']);
+  });
 });
 
 // ---------------------------------------------------------------------------
