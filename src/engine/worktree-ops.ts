@@ -259,6 +259,17 @@ export async function mergeFeatureBranchToBase(
     );
   }
 
+  // Guard: reject dirty working tree — caller must ensure a clean tree before merge
+  const { stdout: statusOut } = await exec('git', ['status', '--porcelain'], { cwd: repoRoot });
+  const dirtyFiles = statusOut.trim().split('\n').filter(Boolean);
+  if (dirtyFiles.length > 0) {
+    const preview = dirtyFiles.slice(0, 10).join('\n');
+    const suffix = dirtyFiles.length > 10 ? `\n... and ${dirtyFiles.length - 10} more files` : '';
+    throw new Error(
+      `Cannot merge ${featureBranch}: repoRoot has ${dirtyFiles.length} dirty files:\n${preview}${suffix}`,
+    );
+  }
+
   try {
     await exec('git', ['merge', '--no-ff', featureBranch, '-m', commitMessage], { cwd: repoRoot });
     const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
@@ -291,8 +302,10 @@ export async function mergeFeatureBranchToBase(
 
     try {
       await exec('git', ['reset', '--merge'], { cwd: repoRoot });
-    } catch {
-      // Best-effort reset
+    } catch (resetErr) {
+      // Augment the original error with reset failure details and recovery instructions
+      const origErr = err as Error;
+      origErr.message += `\nAdditionally, git reset --merge failed: ${(resetErr as Error).message}\nManual recovery: run 'git merge --abort' in ${repoRoot}`;
     }
     throw err;
   }

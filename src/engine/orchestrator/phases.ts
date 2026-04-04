@@ -546,6 +546,31 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     yield { timestamp: new Date().toISOString(), type: 'merge:finalize:start', featureBranch, baseBranch: config.baseBranch };
 
     try {
+      // Pre-merge dirty tree detection and auto-recovery on repoRoot
+      {
+        const { stdout: statusOut } = await exec('git', ['status', '--porcelain'], { cwd: ctx.repoRoot });
+        const dirtyFiles = statusOut.trim().split('\n').filter(Boolean);
+        if (dirtyFiles.length > 0) {
+          const preview = dirtyFiles.slice(0, 10).join('\n');
+          const suffix = dirtyFiles.length > 10 ? `\n... and ${dirtyFiles.length - 10} more` : '';
+          yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Dirty working tree detected in repoRoot (${dirtyFiles.length} files). Attempting auto-recovery.\n${preview}${suffix}` };
+
+          // Auto-recover: discard modifications and remove untracked files
+          await exec('git', ['checkout', '--', '.'], { cwd: ctx.repoRoot });
+          await exec('git', ['clean', '-fd'], { cwd: ctx.repoRoot });
+
+          // Verify recovery succeeded
+          const { stdout: statusAfter } = await exec('git', ['status', '--porcelain'], { cwd: ctx.repoRoot });
+          const remainingFiles = statusAfter.trim().split('\n').filter(Boolean);
+          if (remainingFiles.length > 0) {
+            const remainingPreview = remainingFiles.slice(0, 10).join('\n');
+            throw new Error(`Failed to clean dirty working tree in repoRoot. Remaining files (${remainingFiles.length}):\n${remainingPreview}`);
+          }
+
+          yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Dirty working tree auto-recovery succeeded.' };
+        }
+      }
+
       // Run cleanup on the feature branch before the final merge
       if (ctx.shouldCleanup && ctx.cleanupPlanSet && ctx.cleanupOutputDir) {
         try {
@@ -553,11 +578,8 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
           for await (const event of cleanupPlanFiles(ctx.mergeWorktreePath, ctx.cleanupPlanSet, ctx.cleanupOutputDir, ctx.cleanupPrdFilePath)) {
             yield event;
           }
-          await exec('git', ['checkout', config.baseBranch], { cwd: ctx.mergeWorktreePath });
         } catch (cleanupErr) {
           yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Feature branch cleanup failed (non-fatal): ${(cleanupErr as Error).message}` };
-          // Attempt to restore baseBranch checkout so merge can proceed
-          try { await exec('git', ['checkout', config.baseBranch], { cwd: ctx.mergeWorktreePath }); } catch {}
         }
       }
 
