@@ -9,6 +9,45 @@ const spinners = new Map<string, Ora>();
 let verbose = false;
 let startTime = Date.now();
 
+/** Per-agent buffer for streaming text - avoids one-token-per-line noise. */
+const agentTextBuffers = new Map<string, string>();
+
+function agentBufferKey(agent: string, planId?: string): string {
+  return planId ? `${agent}:${planId}` : agent;
+}
+
+function flushAgentBuffer(agent: string, planId?: string): void {
+  const key = agentBufferKey(agent, planId);
+  const buf = agentTextBuffers.get(key);
+  if (!buf) return;
+  agentTextBuffers.delete(key);
+  const prefix = chalk.dim(`  [${planId ? `${agent}:${planId}` : agent}] `);
+  // Print each buffered line with the agent prefix
+  for (const line of buf.split('\n')) {
+    console.log(prefix + chalk.dim(line));
+  }
+}
+
+function appendAgentBuffer(agent: string, planId: string | undefined, content: string): void {
+  const key = agentBufferKey(agent, planId);
+  const existing = agentTextBuffers.get(key) ?? '';
+  const combined = existing + content;
+
+  // If the content contains newlines, flush complete lines and keep the remainder
+  const lastNewline = combined.lastIndexOf('\n');
+  if (lastNewline !== -1) {
+    const toFlush = combined.slice(0, lastNewline);
+    const remainder = combined.slice(lastNewline + 1);
+    const prefix = chalk.dim(`  [${planId ? `${agent}:${planId}` : agent}] `);
+    for (const line of toFlush.split('\n')) {
+      console.log(prefix + chalk.dim(line));
+    }
+    agentTextBuffers.set(key, remainder);
+  } else {
+    agentTextBuffers.set(key, combined);
+  }
+}
+
 export function initDisplay(opts: { verbose?: boolean } = {}): void {
   verbose = opts.verbose ?? false;
   startTime = Date.now();
@@ -530,13 +569,12 @@ export function renderEvent(event: EforgeEvent): void {
     // Agent-level (verbose streaming)
     case 'agent:message':
       if (!verbose) break;
-      console.log(
-        chalk.dim(`  [${event.agent}${event.planId ? `:${event.planId}` : ''}] ${event.content}`),
-      );
+      appendAgentBuffer(event.agent, event.planId, event.content);
       break;
 
     case 'agent:tool_use':
       if (!verbose) break;
+      flushAgentBuffer(event.agent, event.planId);
       console.log(
         chalk.dim(
           `  [${event.agent}${event.planId ? `:${event.planId}` : ''}] \u2192 ${event.tool}`,
@@ -606,7 +644,10 @@ export function renderEvent(event: EforgeEvent): void {
 
     // Agent lifecycle (consumed by hooks, monitor, tracing — no CLI display)
     case 'agent:start':
+      break;
     case 'agent:stop':
+      flushAgentBuffer(event.agent, event.planId);
+      break;
     case 'agent:usage':
       break;
 
