@@ -724,6 +724,9 @@ export function renderEvent(event: EforgeEvent): void {
       startSpinner('gap-close', 'Closing PRD validation gaps...');
       break;
 
+    case 'gap_close:plan_ready':
+      break;
+
     case 'gap_close:complete':
       succeedSpinner('gap-close', 'Gap closing complete');
       break;

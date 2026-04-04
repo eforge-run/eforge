@@ -97,6 +97,9 @@ export async function* runGapCloser(
     return;
   }
 
+  // Emit the generated plan so the monitor UI can display it
+  yield { timestamp: new Date().toISOString(), type: 'gap_close:plan_ready', planBody: planMarkdown, gaps: options.gaps };
+
   // Stage 2: Execute the generated plan via runBuildPipeline
   const { config, pipeline, tracing, planSetName, orchConfig, planFileMap } = options.pipelineContext;
 

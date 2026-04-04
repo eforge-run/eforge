@@ -522,7 +522,25 @@ export async function startServer(
       }
     }
 
-    const allPlans = [...expeditionFiles, ...compiledPlans];
+    // Gap-close plan from gap_close:plan_ready event
+    const gapCloseEvents = db.getEventsByTypeForSession(sessionId, 'gap_close:plan_ready');
+    let gapClosePlans: PlanResponse[] = [];
+    if (gapCloseEvents.length > 0) {
+      try {
+        const data = JSON.parse(gapCloseEvents[gapCloseEvents.length - 1].data);
+        gapClosePlans = [{
+          id: 'gap-close',
+          name: 'PRD Gap Close',
+          body: data.planBody,
+          dependsOn: [],
+          type: 'plan' as const,
+        }];
+      } catch {
+        // ignore parse errors
+      }
+    }
+
+    const allPlans = [...expeditionFiles, ...compiledPlans, ...gapClosePlans];
 
     // Enrich plans with per-plan build/review config from orchestration.yaml
     const buildConfigMap = await readBuildConfigFromOrchestration(sessionId);

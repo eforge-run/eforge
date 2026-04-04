@@ -226,6 +226,10 @@ function AppContent() {
           }
         }
       }
+      if (event.type === 'gap_close:plan_ready' && !seen.has('gap-close')) {
+        seen.add('gap-close');
+        plans.push({ id: 'gap-close', name: 'PRD Gap Close', body: (event as { planBody: string }).planBody });
+      }
     }
     return plans;
   }, [runState.events]);

@@ -92,6 +92,10 @@ function eventSummary(event: EforgeEvent): string {
       const gapCount = 'gapCount' in event ? (event as { gapCount?: number }).gapCount : undefined;
       return gapCount !== undefined ? `Gap closing: ${gapCount} gap(s)` : 'Gap closing started';
     }
+    case 'gap_close:plan_ready': {
+      const gaps = 'gaps' in event ? (event as { gaps?: unknown[] }).gaps : undefined;
+      return `Gap close plan ready: ${gaps?.length || 0} gap(s) addressed`;
+    }
     case 'gap_close:complete': return 'Gap closing complete';
     case 'approval:needed': return `Approval needed: ${event.action}`;
     case 'approval:response': return event.approved ? 'Approved' : 'Rejected';
@@ -187,6 +191,14 @@ function eventDetail(event: EforgeEvent): string | null {
         gapParts.push(`Requirement: ${gap.requirement}${complexitySuffix}\n  Gap: ${gap.explanation}`);
       }
       return gapParts.join('\n\n') || null;
+    }
+    case 'gap_close:plan_ready': {
+      const gaps = 'gaps' in event ? (event as { gaps?: Array<{ requirement: string; explanation: string; complexity?: string }> }).gaps : undefined;
+      if (!gaps?.length) return null;
+      return gaps.map((g) => {
+        const complexitySuffix = g.complexity ? ` [${g.complexity}]` : '';
+        return `Requirement: ${g.requirement}${complexitySuffix}\n  Gap: ${g.explanation}`;
+      }).join('\n\n');
     }
     default:
       return null;
