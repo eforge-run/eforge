@@ -1,0 +1,95 @@
+name: extract-eforge-build-client-package-to-eliminate-mcp-proxy-pi-extension-duplication
+description: Extract @eforge-build/client package with daemon HTTP client,
+  lockfile ops, and response types to eliminate duplication between MCP proxy
+  and Pi extension
+created: 2026-04-07
+compiled: 2026-04-07
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-create-client-package
+    name: Create @eforge-build/client package and migrate callers
+    depends_on: []
+    branch: extract-eforge-build-client-package-to-eliminate-mcp-proxy-pi-extension-duplication/create-client-package
+    build:
+      - - implement
+        - doc-update
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-pi-package-workspace
+    name: Add pi-package to workspace and migrate Pi extension
+    depends_on:
+      - plan-01-create-client-package
+    branch: extract-eforge-build-client-package-to-eliminate-mcp-proxy-pi-extension-duplication/pi-package-workspace
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-03-dead-endpoints-and-docs
+    name: Remove dead endpoints and update documentation
+    depends_on:
+      - plan-01-create-client-package
+    branch: extract-eforge-build-client-package-to-eliminate-mcp-proxy-pi-extension-duplication/dead-endpoints-and-docs
+    build:
+      - - implement
+        - doc-update
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: lenient
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - correctness
+      - maintainability
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "Excursion scope: this is a substantial multi-file refactoring that
+    extracts a new package, migrates callers across ~6 source files plus the Pi
+    extension, updates workspace/build config, modifies the publishing pipeline,
+    removes dead code, and updates 3 documentation files. It decomposes
+    naturally into 3 dependent plans (as the PRD suggests) but all plans serve a
+    single cohesive extraction goal - not 4+ independent subsystems requiring
+    architectural coordination, so expedition is overkill. Plan-review-cycle is
+    included because the work touches build infrastructure (pnpm workspace, tsup
+    bundling, publish staging script) and cross-package import boundaries where
+    subtle errors (wrong external config, workspace:* leakage in published
+    packages, broken vi.mock targets) could break CI or publishing without being
+    caught by type-check alone. Review-cycle with correctness and
+    maintainability perspectives at standard strictness catches import path
+    errors, missed caller migrations, workspace resolution issues, and ensures
+    the extraction is clean without compat shims. Two rounds are sufficient -
+    the changes are mechanical (move code, update imports, add types) rather
+    than algorithmically complex. Doc-update is omitted as a separate stage
+    because documentation changes are explicitly scoped into Plan 3 and will be
+    implemented directly by the builder. Test-write/test-cycle are omitted
+    because no new test logic is needed - existing tests just need import path
+    updates."
