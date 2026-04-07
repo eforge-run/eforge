@@ -50,23 +50,23 @@ export async function ensureDaemon(cwd: string): Promise<number> {
  * Like daemonRequest but only talks to an already-running daemon.
  * Returns null if daemon is not running instead of trying to start it.
  */
-export async function daemonRequestIfRunning(
+export async function daemonRequestIfRunning<T = unknown>(
   cwd: string,
   method: string,
   path: string,
   body?: unknown,
-): Promise<{ data: unknown; port: number } | null> {
+): Promise<{ data: T; port: number } | null> {
   const lock = readLockfile(cwd);
   if (!lock || !(await isServerAlive(lock))) return null;
-  return daemonRequestWithPort(lock.port, method, path, body);
+  return daemonRequestWithPort<T>(lock.port, method, path, body);
 }
 
-async function daemonRequestWithPort(
+async function daemonRequestWithPort<T = unknown>(
   port: number,
   method: string,
   path: string,
   body?: unknown,
-): Promise<{ data: unknown; port: number }> {
+): Promise<{ data: T; port: number }> {
   const url = `http://127.0.0.1:${port}${path}`;
   const options: RequestInit = {
     method,
@@ -83,18 +83,18 @@ async function daemonRequestWithPort(
     throw new Error(`Daemon returned ${res.status}: ${truncated}`);
   }
   try {
-    return { data: JSON.parse(text), port };
+    return { data: JSON.parse(text) as T, port };
   } catch {
-    return { data: text, port };
+    return { data: text as T, port };
   }
 }
 
-export async function daemonRequest(
+export async function daemonRequest<T = unknown>(
   cwd: string,
   method: string,
   path: string,
   body?: unknown,
-): Promise<{ data: unknown; port: number }> {
+): Promise<{ data: T; port: number }> {
   const port = await ensureDaemon(cwd);
-  return daemonRequestWithPort(port, method, path, body);
+  return daemonRequestWithPort<T>(port, method, path, body);
 }

@@ -13,6 +13,7 @@ import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname, join } from 'node:path';
 import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, DAEMON_POLL_INTERVAL_MS, readLockfile } from '@eforge-build/client';
+import type { LatestRunResponse, EnqueueResponse, RunSummary, ConfigValidateResponse } from '@eforge-build/client';
 
 const ALLOWED_FLAGS = new Set([
   '--queue',
@@ -251,14 +252,13 @@ function startSseSubscriber(server: McpServer, cwd: string): SseSubscriberState 
   async function pollForSession() {
     if (state.stopped) return;
     try {
-      const result = await daemonRequestIfRunning(cwd, 'GET', '/api/latest-run');
+      const result = await daemonRequestIfRunning<LatestRunResponse>(cwd, 'GET', '/api/latest-run');
       if (!result) return; // Daemon not running - don't auto-start for polling
       const { data, port } = result;
-      const latestRun = data as { sessionId?: string };
-      if (!latestRun?.sessionId) return;
+      if (!data?.sessionId) return;
 
-      if (latestRun.sessionId !== state.currentSessionId) {
-        connectToSse(port, latestRun.sessionId);
+      if (data.sessionId !== state.currentSessionId) {
+        connectToSse(port, data.sessionId);
       }
     } catch {
       // Daemon not running or unreachable - skip this poll
@@ -326,8 +326,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // --- Resources ---
 
   /** Request from an already-running daemon, or throw if not running. */
-  async function requireDaemon(method: string, path: string, body?: unknown): Promise<{ data: unknown; port: number }> {
-    const result = await daemonRequestIfRunning(cwd, method, path, body);
+  async function requireDaemon<T = unknown>(method: string, path: string, body?: unknown): Promise<{ data: T; port: number }> {
+    const result = await daemonRequestIfRunning<T>(cwd, method, path, body);
     if (!result) throw new Error('Daemon not running');
     return result;
   }
@@ -339,9 +339,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     { description: 'Current eforge build status - latest session summary or idle state' },
     async () => {
       try {
-        const { data: latestRun } = await requireDaemon('GET', '/api/latest-run');
-        const latestRunObj = latestRun as { sessionId?: string };
-        if (!latestRunObj?.sessionId) {
+        const { data: latestRun } = await requireDaemon<LatestRunResponse>('GET', '/api/latest-run');
+        if (!latestRun?.sessionId) {
           return {
             contents: [{
               uri: 'eforge://status',
@@ -350,7 +349,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
             }],
           };
         }
-        const { data: summary } = await requireDaemon('GET', `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`);
+        const { data: summary } = await requireDaemon<RunSummary>('GET', `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`);
         return {
           contents: [{
             uri: 'eforge://status',
@@ -378,7 +377,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     async (uri, variables) => {
       const sessionId = Array.isArray(variables.sessionId) ? variables.sessionId[0] : variables.sessionId;
       try {
-        const { data: summary } = await requireDaemon('GET', `/api/run-summary/${encodeURIComponent(sessionId)}`);
+        const { data: summary } = await requireDaemon<RunSummary>('GET', `/api/run-summary/${encodeURIComponent(sessionId)}`);
         return {
           contents: [{
             uri: uri.href,
@@ -464,9 +463,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         .describe('PRD file path or inline description to enqueue for building'),
     },
     async ({ source }) => {
-      const { data, port } = await daemonRequest(cwd, 'POST', '/api/enqueue', { source });
-      const obj = data != null && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : { data };
-      const response = { ...obj, monitorUrl: `http://localhost:${port}` };
+      const { data, port } = await daemonRequest<EnqueueResponse>(cwd, 'POST', '/api/enqueue', { source });
+      const response = { ...data, monitorUrl: `http://localhost:${port}` };
       return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
     },
   );
@@ -480,9 +478,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       flags: z.array(z.string()).optional().describe('Optional CLI flags'),
     },
     async ({ source, flags }) => {
-      const { data, port } = await daemonRequest(cwd, 'POST', '/api/enqueue', { source, flags: sanitizeFlags(flags) });
-      const obj = data != null && typeof data === 'object' && !Array.isArray(data) ? (data as Record<string, unknown>) : { data };
-      const response = { ...obj, monitorUrl: `http://localhost:${port}` };
+      const { data, port } = await daemonRequest<EnqueueResponse>(cwd, 'POST', '/api/enqueue', { source, flags: sanitizeFlags(flags) });
+      const response = { ...data, monitorUrl: `http://localhost:${port}` };
       return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
     },
   );
@@ -518,12 +515,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     'Get the current run status including plan progress, session state, and event summary.',
     {},
     async () => {
-      const { data: latestRun } = await daemonRequest(cwd, 'GET', '/api/latest-run');
-      const latestRunObj = latestRun as { sessionId?: string };
-      if (!latestRunObj?.sessionId) {
+      const { data: latestRun } = await daemonRequest<LatestRunResponse>(cwd, 'GET', '/api/latest-run');
+      if (!latestRun?.sessionId) {
         return { content: [{ type: 'text', text: JSON.stringify({ status: 'idle', message: 'No active eforge sessions.' }) }] };
       }
-      const { data: summary } = await daemonRequest(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`);
+      const { data: summary } = await daemonRequest<RunSummary>(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`);
       return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
     },
   );
@@ -567,12 +563,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
       async function checkActiveBuilds(): Promise<string | null> {
         try {
-          const { data: latestRun } = await daemonRequest(cwd, 'GET', '/api/latest-run');
-          const latestRunObj = latestRun as { sessionId?: string };
-          if (!latestRunObj?.sessionId) return null;
-          const { data: summary } = await daemonRequest(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`);
-          const summaryObj = summary as { status?: string };
-          if (summaryObj?.status === 'running') {
+          const { data: latestRun } = await daemonRequest<LatestRunResponse>(cwd, 'GET', '/api/latest-run');
+          if (!latestRun?.sessionId) return null;
+          const { data: summary } = await daemonRequest<RunSummary>(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`);
+          if (summary?.status === 'running') {
             return 'An eforge build is currently active. Use force: true to stop anyway.';
           }
           return null;
@@ -754,10 +748,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       await writeFile(configPath, configContent, 'utf-8');
 
       // Validate config via daemon
-      let validation: Record<string, unknown> | null = null;
+      let validation: ConfigValidateResponse | null = null;
       try {
-        const { data } = await daemonRequest(cwd, 'GET', '/api/config/validate');
-        validation = data as Record<string, unknown>;
+        const { data } = await daemonRequest<ConfigValidateResponse>(cwd, 'GET', '/api/config/validate');
+        validation = data;
       } catch {
         // Daemon validation is best-effort
       }

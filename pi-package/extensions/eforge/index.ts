@@ -20,6 +20,7 @@ import {
   daemonRequest,
   sleep,
 } from '@eforge-build/client';
+import type { LatestRunResponse, EnqueueResponse, RunSummary, ConfigValidateResponse, QueueItem, AutoBuildState, ConfigShowResponse } from '@eforge-build/client';
 
 const LOCKFILE_POLL_INTERVAL_MS = 250;
 const LOCKFILE_POLL_TIMEOUT_MS = 5000;
@@ -41,34 +42,28 @@ function jsonResult(data: unknown): { content: { type: "text"; text: string }[] 
 }
 
 function withMonitorUrl(
-  data: unknown,
+  data: Record<string, unknown>,
   port: number,
 ): Record<string, unknown> {
-  const obj =
-    data != null && typeof data === "object" && !Array.isArray(data)
-      ? (data as Record<string, unknown>)
-      : { data };
-  return { ...obj, monitorUrl: `http://localhost:${port}` };
+  return { ...data, monitorUrl: `http://localhost:${port}` };
 }
 
 async function checkActiveBuilds(
   cwd: string,
 ): Promise<string | null> {
   try {
-    const { data: latestRun } = await daemonRequest(
+    const { data: latestRun } = await daemonRequest<LatestRunResponse>(
       cwd,
       "GET",
       "/api/latest-run",
     );
-    const latestRunObj = latestRun as { sessionId?: string };
-    if (!latestRunObj?.sessionId) return null;
-    const { data: summary } = await daemonRequest(
+    if (!latestRun?.sessionId) return null;
+    const { data: summary } = await daemonRequest<RunSummary>(
       cwd,
       "GET",
-      `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`,
+      `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`,
     );
-    const summaryObj = summary as { status?: string };
-    if (summaryObj?.status === "running") {
+    if (summary?.status === "running") {
       return "An eforge build is currently active. Use force: true to stop anyway.";
     }
     return null;
@@ -162,7 +157,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
-      const { data, port } = await daemonRequest(
+      const { data, port } = await daemonRequest<EnqueueResponse>(
         ctx.cwd,
         "POST",
         "/api/enqueue",
@@ -182,22 +177,21 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       "Get the current run status including plan progress, session state, and event summary.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
-      const { data: latestRun } = await daemonRequest(
+      const { data: latestRun } = await daemonRequest<LatestRunResponse>(
         ctx.cwd,
         "GET",
         "/api/latest-run",
       );
-      const latestRunObj = latestRun as { sessionId?: string };
-      if (!latestRunObj?.sessionId) {
+      if (!latestRun?.sessionId) {
         return jsonResult({
           status: "idle",
           message: "No active eforge sessions.",
         });
       }
-      const { data: summary } = await daemonRequest(
+      const { data: summary } = await daemonRequest<RunSummary>(
         ctx.cwd,
         "GET",
-        `/api/run-summary/${encodeURIComponent(latestRunObj.sessionId)}`,
+        `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`,
       );
       return jsonResult(summary);
     },
@@ -305,7 +299,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       "List all PRDs currently in the eforge queue with their metadata.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
-      const { data } = await daemonRequest(ctx.cwd, "GET", "/api/queue");
+      const { data } = await daemonRequest<QueueItem[]>(ctx.cwd, "GET", "/api/queue");
       return jsonResult(data);
     },
   });
@@ -409,7 +403,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       if (params.action === "get") {
-        const { data } = await daemonRequest(
+        const { data } = await daemonRequest<AutoBuildState>(
           ctx.cwd,
           "GET",
           "/api/auto-build",
@@ -419,7 +413,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       if (params.enabled === undefined) {
         throw new Error('"enabled" is required when action is "set"');
       }
-      const { data } = await daemonRequest(
+      const { data } = await daemonRequest<AutoBuildState>(
         ctx.cwd,
         "POST",
         "/api/auto-build",
@@ -518,14 +512,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       writeFileSync(configPath, configContent, "utf-8");
 
       // Validate config via daemon (best-effort)
-      let validation: Record<string, unknown> | null = null;
+      let validation: ConfigValidateResponse | null = null;
       try {
-        const { data } = await daemonRequest(
+        const { data } = await daemonRequest<ConfigValidateResponse>(
           ctx.cwd,
           "GET",
           "/api/config/validate",
         );
-        validation = data as Record<string, unknown>;
+        validation = data;
       } catch {
         // Daemon validation is best-effort
       }
