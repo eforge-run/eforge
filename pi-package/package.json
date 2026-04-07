@@ -36,6 +36,7 @@
   "dependencies": {
     "@eforge-build/client": "workspace:*"
   },
+  "bundledDependencies": ["@eforge-build/client"],
   "author": "Schaake Solutions LLC",
   "license": "Apache-2.0"
 }
