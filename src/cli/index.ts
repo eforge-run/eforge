@@ -19,7 +19,7 @@ import { withSessionId, withRunId, runSession } from '../engine/session.js';
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '../monitor/index.js';
-import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, removeLockfile } from '../monitor/lockfile.js';
+import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, removeLockfile } from '@eforge-build/client';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -255,7 +255,7 @@ export function createProgram(abortController?: AbortController): Command {
         // Default path: delegate to daemon when source is provided and no special flags
         if (source && !options.foreground && !options.queue && !options.dryRun) {
           try {
-            const { ensureDaemon, daemonRequest } = await import('./daemon-client.js');
+            const { ensureDaemon, daemonRequest } = await import('@eforge-build/client');
             const cwd = process.cwd();
             await ensureDaemon(cwd);
             const { data } = await daemonRequest(cwd, 'POST', '/api/enqueue', { source });

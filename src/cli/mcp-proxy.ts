@@ -12,8 +12,7 @@ import http from 'node:http';
 import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname, join } from 'node:path';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, DAEMON_POLL_INTERVAL_MS } from './daemon-client.js';
-import { readLockfile } from '../monitor/lockfile.js';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, DAEMON_POLL_INTERVAL_MS, readLockfile } from '@eforge-build/client';
 
 const ALLOWED_FLAGS = new Set([
   '--queue',

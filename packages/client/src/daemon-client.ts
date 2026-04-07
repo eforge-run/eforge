@@ -5,7 +5,7 @@
  * consumers (e.g. plugin skills) can share daemon lifecycle helpers.
  */
 
-import { readLockfile, isServerAlive } from '../monitor/lockfile.js';
+import { readLockfile, isServerAlive } from './lockfile.js';
 import { spawn } from 'node:child_process';
 
 export const DAEMON_START_TIMEOUT_MS = 15_000;

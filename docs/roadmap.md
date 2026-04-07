@@ -27,7 +27,7 @@
 - **Low-fidelity input handling** — When the user provides a high-level prompt with minimal detail, eforge should perform thorough codebase exploration before compiling plans. May require a new exploration agent (or parallel exploratory agents) that activates for low-fidelity input and is bypassed for detailed PRDs.
 - **Specialty agents** — Identify and implement domain-specific agents for common use cases beyond the current plan-build-review pipeline
 - **Plugin skill coverage** — Add skills for common scenarios, e.g. `/eforge:update-docs` with flags like `--architecture`, `--readme`, `--claude-md` for targeted documentation updates
-- **Monorepo** — Extend pnpm workspaces (currently only monitor UI) so the engine, eforge-plugin, and marketing site each get their own package with isolated deps and build configs
+- **Monorepo** — Extend pnpm workspaces (currently monitor UI and `@eforge-build/client`) so the engine, eforge-plugin, and marketing site each get their own package with isolated deps and build configs
 
 ---
 
