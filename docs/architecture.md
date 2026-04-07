@@ -13,6 +13,12 @@ graph TD
         PiPkg["Pi Package<br/><code>pi-package/</code>"]
     end
 
+    subgraph Client ["@eforge-build/client"]
+        DaemonClient["Daemon HTTP Client"]
+        LockfileOps["Lockfile Ops"]
+        ResponseTypes["Response Types"]
+    end
+
     subgraph Engine ["Engine - src/engine/"]
         EforgeEngine["EforgeEngine"]
         Pipeline["Pipeline"]
@@ -25,6 +31,10 @@ graph TD
         Pi["PiBackend"]
     end
 
+    CLI -->|"daemon client"| Client
+    Monitor -->|"lockfile ops"| Client
+    Plugin -->|"daemon client"| Client
+    PiPkg -->|"daemon client"| Client
     CLI -->|"iterates events"| EforgeEngine
     Monitor -->|"records events"| EforgeEngine
     Plugin -->|"MCP tools"| EforgeEngine
@@ -54,7 +64,7 @@ graph TD
 
 ### Pi Package
 
-`pi-package/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, and daemon management. Skill-based slash commands (`/eforge:build`, `/eforge:config`, `/eforge:init`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity.
+`pi-package/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, and daemon management. Skill-based slash commands (`/eforge:build`, `/eforge:config`, `/eforge:init`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity. The Claude Code MCP proxy uses `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. The Pi extension will migrate to the same shared client.
 
 ## Event System
 

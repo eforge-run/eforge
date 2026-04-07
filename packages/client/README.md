@@ -5,8 +5,7 @@ Zero-dependency HTTP client for the eforge daemon.
 ## Consumers
 
 - Root CLI (`src/cli/index.ts`, `src/cli/mcp-proxy.ts`)
-- Monitor server (`src/monitor/server-main.ts`)
-- Pi extension (`pi-package/extensions/eforge/index.ts`)
+- Monitor (`src/monitor/index.ts`, `src/monitor/server-main.ts`, `src/monitor/registry.ts`)
 
 ## What's included
 
