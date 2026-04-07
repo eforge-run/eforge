@@ -15,7 +15,7 @@
 
 import { openDatabase, type MonitorDB } from './db.js';
 import { startServer, type WorkerTracker, type DaemonState } from './server.js';
-import { writeLockfile, removeLockfile, updateLockfile, isPidAlive, readLockfile, isServerAlive } from './lockfile.js';
+import { writeLockfile, removeLockfile, updateLockfile, isPidAlive, readLockfile, isServerAlive } from '@eforge-build/client';
 import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig } from '../engine/config.js';
 import { spawn, type ChildProcess } from 'node:child_process';

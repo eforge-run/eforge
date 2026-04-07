@@ -750,30 +750,6 @@ export async function startServer(
     }
 
     // --- Control-plane POST routes (daemon mode) ---
-    if (req.method === 'POST' && url === '/api/run') {
-      if (!options?.workerTracker) {
-        sendJsonError(res, 503, 'Daemon mode not active');
-        return;
-      }
-      if (options.config && !options.config.backend) {
-        sendJsonError(res, 422, 'No backend configured. Set backend: claude-sdk or backend: pi in eforge/config.yaml');
-        return;
-      }
-      try {
-        const body = await parseJsonBody(req) as { source?: string; flags?: string[] };
-        if (!body.source || typeof body.source !== 'string') {
-          sendJsonError(res, 400, 'Missing required field: source');
-          return;
-        }
-        const args = [body.source, ...(body.flags ?? [])];
-        const result = options.workerTracker.spawnWorker('run', args);
-        sendJson(res, { sessionId: result.sessionId, pid: result.pid });
-      } catch {
-        sendJsonError(res, 400, 'Invalid JSON body');
-      }
-      return;
-    }
-
     if (req.method === 'POST' && url === '/api/enqueue') {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
@@ -796,22 +772,6 @@ export async function startServer(
           pid: result.pid,
           autoBuild: options.daemonState?.autoBuild ?? false,
         });
-      } catch {
-        sendJsonError(res, 400, 'Invalid JSON body');
-      }
-      return;
-    }
-
-    if (req.method === 'POST' && url === '/api/queue/run') {
-      if (!options?.workerTracker) {
-        sendJsonError(res, 503, 'Daemon mode not active');
-        return;
-      }
-      try {
-        const body = await parseJsonBody(req) as { flags?: string[] };
-        const args = ['--queue', ...(body.flags ?? [])];
-        const result = options.workerTracker.spawnWorker('run', args);
-        sendJson(res, { sessionId: result.sessionId, pid: result.pid });
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }

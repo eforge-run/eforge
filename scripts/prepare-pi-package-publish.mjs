@@ -2,6 +2,7 @@ import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 
 const rootPackagePath = new URL("../package.json", import.meta.url);
 const piPackagePath = new URL("../pi-package/package.json", import.meta.url);
+const clientPackagePath = new URL("../packages/client/package.json", import.meta.url);
 const rootLicensePath = new URL("../LICENSE", import.meta.url);
 const piPackageReadmePath = new URL("../pi-package/README.md", import.meta.url);
 const piPackageExtensionsPath = new URL("../pi-package/extensions", import.meta.url);
@@ -16,11 +17,30 @@ const stagedSkillsPath = new URL("skills", stageDirPath);
 const rootPackage = JSON.parse(readFileSync(rootPackagePath, "utf8"));
 const piPackage = JSON.parse(readFileSync(piPackagePath, "utf8"));
 
+// Map workspace package names to their actual versions for dependency rewriting
+const workspacePackageVersions = {
+  "@eforge-build/client": JSON.parse(readFileSync(clientPackagePath, "utf8")).version,
+};
+
 piPackage.version = rootPackage.version;
 piPackage.homepage = rootPackage.homepage;
 piPackage.repository = rootPackage.repository;
 piPackage.publishConfig = { access: "public" };
 piPackage.files = ["extensions/", "skills/", "README.md", "LICENSE"];
+
+// Rewrite workspace:* dependencies to concrete versions
+if (piPackage.dependencies) {
+  for (const [dep, ver] of Object.entries(piPackage.dependencies)) {
+    if (typeof ver === 'string' && ver.startsWith('workspace:')) {
+      const resolvedVersion = workspacePackageVersions[dep];
+      if (!resolvedVersion) {
+        throw new Error(`No version mapping for workspace dependency "${dep}". Add it to workspacePackageVersions.`);
+      }
+      piPackage.dependencies[dep] = resolvedVersion;
+    }
+  }
+}
+
 piPackage.peerDependencies = {
   ...piPackage.peerDependencies,
   "@mariozechner/pi-tui": "*",

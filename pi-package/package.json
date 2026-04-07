@@ -33,6 +33,9 @@
     "@mariozechner/pi-tui": { "optional": false },
     "@sinclair/typebox": { "optional": false }
   },
+  "dependencies": {
+    "@eforge-build/client": "workspace:*"
+  },
   "author": "Schaake Solutions LLC",
   "license": "Apache-2.0"
 }

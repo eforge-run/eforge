@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { EforgeEvent } from '../engine/events.js';
 import { openDatabase, type MonitorDB } from './db.js';
 import { withRecording } from './recorder.js';
-import { readLockfile, isServerAlive, killPidIfAlive, removeLockfile } from './lockfile.js';
+import { readLockfile, isServerAlive, killPidIfAlive, removeLockfile } from '@eforge-build/client';
 import { allocatePort } from './registry.js';
 
 export type { MonitorDB } from './db.js';

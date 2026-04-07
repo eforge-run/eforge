@@ -9,13 +9,13 @@ import {
   killPidIfAlive,
   lockfilePath,
   type LockfileData,
-} from '../src/monitor/lockfile.js';
+} from '@eforge-build/client';
 
 // We need to mock lockfile, isServerAlive, and openDatabase
 // to test signalMonitorShutdown without real servers
 
-vi.mock('../src/monitor/lockfile.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../src/monitor/lockfile.js')>();
+vi.mock('@eforge-build/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@eforge-build/client')>();
   return {
     ...actual,
     readLockfile: vi.fn(),
@@ -28,7 +28,7 @@ vi.mock('../src/monitor/db.js', () => ({
 }));
 
 import { signalMonitorShutdown } from '../src/monitor/index.js';
-import { readLockfile, isServerAlive } from '../src/monitor/lockfile.js';
+import { readLockfile, isServerAlive } from '@eforge-build/client';
 import { openDatabase } from '../src/monitor/db.js';
 
 const mockReadLockfile = vi.mocked(readLockfile);

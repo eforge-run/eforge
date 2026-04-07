@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync, renameSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
-import { isPidAlive } from './lockfile.js';
+import { isPidAlive } from '@eforge-build/client';
 
 export interface RegistryEntry {
   port: number;

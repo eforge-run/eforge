@@ -9,9 +9,9 @@
     "outDir": "dist",
     "rootDir": "src",
     "declaration": true,
-    "resolveJsonModule": true,
-    "forceConsistentCasingInFileNames": true,
+    "declarationDir": "dist",
+    "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "src/monitor/ui"]
+  "exclude": ["node_modules", "dist"]
 }
