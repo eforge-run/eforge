@@ -40,6 +40,11 @@ export default defineConfig([
       "@mariozechner/pi-ai",
       "@sinclair/typebox",
     ],
+    // Force-bundle workspace packages so the CLI executable is self-contained.
+    // tsup's default treats `dependencies` as external for Node targets; this
+    // override ensures @eforge-build/* workspace packages are inlined into
+    // dist/cli.js rather than left as runtime imports.
+    noExternal: [/^@eforge-build\//],
     define: { EFORGE_VERSION: JSON.stringify(version) },
     banner: {
       js: "#!/usr/bin/env -S node --disable-warning=ExperimentalWarning",
@@ -77,5 +82,7 @@ export default defineConfig([
     clean: false,
     dts: false,
     outDir: "dist",
+    // Same self-contained-executable rationale as the CLI entry above.
+    noExternal: [/^@eforge-build\//],
   },
 ]);
