@@ -41,7 +41,7 @@
     "dev:monitor": "pnpm --filter monitor-ui dev",
     "test": "vitest run",
     "test:watch": "vitest",
-    "type-check": "tsc --noEmit"
+    "type-check": "pnpm --filter @eforge-build/client build && tsc --noEmit"
   },
   "keywords": [
     "ai",
