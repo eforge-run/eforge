@@ -24,11 +24,9 @@
 
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
 
-- **Pi backend with Codex auth** — Test PiBackend using OpenAI Codex subscription for authentication (analogous to ClaudeSDKBackend with Claude Max subscription auth, which is well-tested and works)
 - **Low-fidelity input handling** — When the user provides a high-level prompt with minimal detail, eforge should perform thorough codebase exploration before compiling plans. May require a new exploration agent (or parallel exploratory agents) that activates for low-fidelity input and is bypassed for detailed PRDs.
 - **Specialty agents** — Identify and implement domain-specific agents for common use cases beyond the current plan-build-review pipeline
 - **Plugin skill coverage** — Add skills for common scenarios, e.g. `/eforge:update-docs` with flags like `--architecture`, `--readme`, `--claude-md` for targeted documentation updates
-- **Model class tuning** — Evaluate whether `evaluator`, `formatter`, `doc-updater`, and `test-writer` roles should default to `balanced` or `fast` instead of `max`, based on usage data and quality metrics
 - **Monorepo** — Extend pnpm workspaces (currently only monitor UI) so the engine, eforge-plugin, and marketing site each get their own package with isolated deps and build configs
 
 ---
