@@ -1,0 +1,100 @@
+name: monorepo-restructuring-and-npm-scope-migration-to-eforge-build
+description: Extract monolithic eforge package into 6 pnpm workspace packages
+  under packages/, migrate published npm packages to @eforge-build/* scope,
+  establish clean per-package build/type/export contracts with zero user-facing
+  behavior changes
+created: 2026-04-08
+compiled: 2026-04-08
+mode: excursion
+base_branch: main
+validate:
+  - pnpm install
+  - pnpm build
+  - pnpm -r type-check
+  - pnpm test
+  - node scripts/prepare-eforge-publish.mjs
+  - node scripts/prepare-eforge-pi-publish.mjs
+plans:
+  - id: plan-01-workspace-scaffold-and-file-moves
+    name: Workspace Scaffold and File Moves
+    depends_on: []
+    branch: monorepo-restructuring-and-npm-scope-migration-to-eforge-build/workspace-scaffold-and-file-moves
+    build:
+      - implement
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-import-rewrites-build-pipeline-and-publish-scripts
+    name: Import Rewrites, Build Pipeline, and Publish Scripts
+    depends_on:
+      - plan-01-workspace-scaffold-and-file-moves
+    branch: monorepo-restructuring-and-npm-scope-migration-to-eforge-build/import-rewrites-build-pipeline-and-publish-scripts
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-03-docs-plugin-and-skill-updates
+    name: Documentation, Plugin, and Skill Updates
+    depends_on:
+      - plan-02-import-rewrites-build-pipeline-and-publish-scripts
+    branch: monorepo-restructuring-and-npm-scope-migration-to-eforge-build/docs-plugin-and-skill-updates
+    build:
+      - - implement
+        - doc-update
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild:
+    - implement
+    - - review-cycle
+      - doc-update
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - correctness
+      - architecture
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "Expedition scope: 6 workspace packages with interlocking contracts
+    (package.json exports, tsconfig paths, vitest aliases, tsup configs, runtime
+    createRequire resolution, bundledDependencies publishing), 162 file moves,
+    155 test import rewrites across 66 files, and 12 preservation contracts that
+    must hold simultaneously. The full expedition compile pipeline is warranted
+    - architecture-review-cycle validates the package boundary design and
+    dual-resolution contract before module planning begins, module-planning
+    decomposes the work into plannable units (even though they share an
+    integration branch due to the atomicity constraint), and
+    cohesion-review-cycle is critical to ensure modules interlock correctly
+    since no prefix of the work produces a buildable repo. For build stages,
+    review-cycle and doc-update run in parallel after implement - review-cycle
+    with parallel correctness and architecture perspectives catches both
+    mechanical errors (broken imports, missing exports entries, wrong paths) and
+    structural issues (dependency direction violations, missing
+    bundledDependencies entries, tsup external/noExternal mismatches).
+    Doc-update covers the 13 files / ~58 substitutions called out in the PRD.
+    Two review rounds at standard strictness balances thoroughness against the
+    largely mechanical nature of the changes - the risk is not in logic
+    complexity but in the sheer number of interlocking file contracts that must
+    all be consistent."
