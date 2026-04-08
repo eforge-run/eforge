@@ -1,4 +1,2 @@
 packages:
-  - "src/monitor/ui"
   - "packages/*"
-  - "pi-package"

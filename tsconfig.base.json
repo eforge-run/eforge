@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "resolveJsonModule": true,
+    "forceConsistentCasingInFileNames": true,
+    "paths": {
+      "@eforge-build/engine/*": ["./packages/engine/src/*"],
+      "@eforge-build/monitor/*": ["./packages/monitor/src/*"],
+      "@eforge-build/monitor-ui/*": ["./packages/monitor-ui/src/*"],
+      "@eforge-build/eforge/*": ["./packages/eforge/src/*"],
+      "@eforge-build/client/*": ["./packages/client/src/*"]
+    }
+  }
+}

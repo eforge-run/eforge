@@ -1,0 +1,38 @@
+{
+  "name": "@eforge-build/monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./server-main": {
+      "types": "./dist/server-main.d.ts",
+      "import": "./dist/server-main.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "import": "./dist/*.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eforge-build/client": "workspace:*",
+    "@eforge-build/engine": "workspace:*"
+  },
+  "devDependencies": {
+    "@eforge-build/monitor-ui": "workspace:*",
+    "@types/node": "^25.5.2",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
