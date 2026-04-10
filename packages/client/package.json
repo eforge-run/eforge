@@ -1,5 +1,6 @@
 {
   "name": "@eforge-build/client",
+  "private": true,
   "version": "0.1.0",
   "description": "Zero-dependency HTTP client for the eforge daemon",
   "license": "Apache-2.0",

@@ -31,12 +31,6 @@ jobs:
 
       - run: pnpm test
 
-      - run: pnpm publish --no-git-checks
+      - run: pnpm publish-all
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-
-      - run: pnpm prepare:pi-package-publish
-
-      - run: npm publish ./tmp/pi-package-publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_ACCESS_TOKEN }}
