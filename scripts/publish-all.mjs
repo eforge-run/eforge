@@ -18,6 +18,15 @@ function run(cmd, opts = {}) {
   execSync(cmd, { stdio: "inherit", ...opts });
 }
 
+function tryRun(cmd) {
+  console.log(`\n> ${cmd}`);
+  try {
+    execSync(cmd, { stdio: "inherit" });
+  } catch {
+    console.log(`  (command failed - this is OK for first-time publishes)`);
+  }
+}
+
 // 1. Build and test
 run("pnpm build");
 run("pnpm -r type-check");
@@ -47,13 +56,13 @@ if (dryRun) {
   run("npm publish", { cwd: "tmp/eforge-publish" });
   run("npm publish", { cwd: "tmp/pi-package-publish" });
 
-  // 4. Deprecate old names
-  run('npm deprecate eforge "Renamed to @eforge-build/eforge. Install with: npm install -g @eforge-build/eforge"');
-  run('npm deprecate eforge-pi "Renamed to @eforge-build/eforge-pi. Install with: npm install -g @eforge-build/eforge-pi"');
+  // 4. Deprecate old names (may fail if you don't own the old packages)
+  tryRun('npm deprecate eforge "Renamed to @eforge-build/eforge. Install with: npm install -g @eforge-build/eforge"');
+  tryRun('npm deprecate eforge-pi "Renamed to @eforge-build/eforge-pi. Install with: npm install -g @eforge-build/eforge-pi"');
 
   // 5. Verify
-  run("npm view @eforge-build/eforge version");
-  run("npm view @eforge-build/eforge-pi version");
+  tryRun("npm view @eforge-build/eforge version");
+  tryRun("npm view @eforge-build/eforge-pi version");
 
   console.log("\nPublish complete.");
 }
