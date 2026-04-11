@@ -615,14 +615,15 @@ export function createProgram(abortController?: AbortController): Command {
       }
 
       // Spawn detached server-main with --persistent flag
-      const { createRequire } = await import('node:module');
       const { fork } = await import('node:child_process');
+      const { fileURLToPath } = await import('node:url');
 
-      // Resolve server-main entry point via Node module resolution
-      const require = createRequire(import.meta.url);
+      // Resolve via ESM import.meta.resolve: the monitor package's
+      // ./server-main export only declares an "import" condition, so CJS
+      // require.resolve (including createRequire) cannot match it.
       let serverMainPath: string;
       try {
-        serverMainPath = require.resolve('@eforge-build/monitor/server-main');
+        serverMainPath = fileURLToPath(import.meta.resolve('@eforge-build/monitor/server-main'));
       } catch {
         console.error(chalk.red('Monitor server-main entry not found. Did you run `pnpm build`?'));
         process.exit(1);
