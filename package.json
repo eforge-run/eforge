@@ -30,12 +30,12 @@
     "@eforge-build/engine": "workspace:*",
     "@eforge-build/monitor": "workspace:*",
     "@eforge-build/monitor-ui": "workspace:*",
-    "@mariozechner/pi-agent-core": "^0.63.2",
-    "@mariozechner/pi-ai": "^0.63.2",
-    "@mariozechner/pi-coding-agent": "^0.63.2",
-    "@types/node": "^25.5.2",
+    "@mariozechner/pi-agent-core": "^0.66.1",
+    "@mariozechner/pi-ai": "^0.66.1",
+    "@mariozechner/pi-coding-agent": "^0.66.1",
+    "@types/node": "^25.6.0",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.2",
+    "vitest": "^4.1.4",
     "yaml": "^2.8.3"
   }
 }

@@ -276,18 +276,26 @@ export class PiBackend implements AgentBackend {
         if (knownModel) {
           model = knownModel;
         } else {
-          // Unknown model - construct a minimal model object for provider-style routing
+          // Unknown model id for this provider — crib transport metadata (baseUrl,
+          // api, compat) from any sibling model already registered under the same
+          // provider. This is essential for aggregator providers like OpenRouter,
+          // where any model id is valid as long as the endpoint is right, so new
+          // ids work the day they ship without waiting for pi-ai's static list
+          // to catch up.
+          const sibling = (modelRegistry.getAll() as Model<Api>[]).find(
+            (m) => m.provider === options.model!.provider,
+          );
+          if (!sibling) {
+            throw new Error(
+              `Unknown model "${options.model.id}" and no models registered for provider "${options.model.provider}". ` +
+              `Register the provider in ~/.pi/agent/models.json or choose a known model.`,
+            );
+          }
           model = {
+            ...sibling,
             id: options.model.id,
             name: options.model.id,
-            api: 'openai-completions' as Api,
-            provider: options.model.provider!,
-            baseUrl: `https://api.${options.model.provider!}.com`,
-            reasoning: true,
-            input: ['text', 'image'],
             cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-            contextWindow: 200000,
-            maxTokens: 16384,
           };
         }
       }
