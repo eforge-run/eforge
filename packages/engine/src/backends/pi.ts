@@ -24,6 +24,7 @@ import type { PiConfig } from '../config.js';
 import { AsyncEventQueue } from '../concurrency.js';
 import { PiMcpBridge } from './pi-mcp-bridge.js';
 import { discoverPiExtensions, type PiExtensionConfig } from './pi-extensions.js';
+import { normalizeUsage, toModelUsageEntry } from './usage.js';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -393,13 +394,12 @@ export class PiBackend implements AgentBackend {
             planId,
             agentId,
             agent,
-            usage: {
-              input: totalInputTokens,
+            usage: normalizeUsage({
+              uncachedInput: totalInputTokens,
               output: totalOutputTokens,
-              total: totalInputTokens + totalOutputTokens,
               cacheRead: totalCacheRead,
               cacheCreation: totalCacheWrite,
-            },
+            }),
             costUsd: totalCost,
             numTurns,
           });
@@ -478,21 +478,22 @@ export class PiBackend implements AgentBackend {
         durationApiMs: durationMs, // Pi doesn't separate API time
         numTurns,
         totalCostUsd: totalCost,
-        usage: {
-          input: totalInputTokens,
+        usage: normalizeUsage({
+          uncachedInput: totalInputTokens,
           output: totalOutputTokens,
-          total: totalInputTokens + totalOutputTokens,
           cacheRead: totalCacheRead,
           cacheCreation: totalCacheWrite,
-        },
+        }),
         modelUsage: {
-          [model.id]: {
-            inputTokens: totalInputTokens,
-            outputTokens: totalOutputTokens,
-            cacheReadInputTokens: totalCacheRead,
-            cacheCreationInputTokens: totalCacheWrite,
-            costUSD: totalCost,
-          },
+          [model.id]: toModelUsageEntry(
+            {
+              uncachedInput: totalInputTokens,
+              output: totalOutputTokens,
+              cacheRead: totalCacheRead,
+              cacheCreation: totalCacheWrite,
+            },
+            totalCost,
+          ),
         },
         resultText: resultText || undefined,
       };

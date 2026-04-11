@@ -236,6 +236,60 @@ describe('PiBackend MCP tool wiring', () => {
     ]);
   });
 
+  it('normalizes usage so input includes cacheRead and cacheWrite', async () => {
+    createAgentSession.mockImplementationOnce(async () => {
+      const listeners = new Set<(event: { type: string; messages?: unknown[] }) => void>();
+      const session = {
+        subscribe(listener: (event: { type: string; messages?: unknown[] }) => void) {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+        getSessionStats() {
+          return {
+            tokens: { input: 1000, cacheRead: 5000, cacheWrite: 200, output: 500 },
+            cost: 0.5,
+          };
+        },
+        async prompt(_prompt: string) {
+          for (const listener of listeners) {
+            listener({ type: 'turn_end' });
+            listener({ type: 'agent_end', messages: [] });
+          }
+        },
+        abort() {},
+        async bindExtensions(_options: unknown) {},
+      };
+      return { session };
+    });
+
+    const backend = makeBackend();
+    setMcpTools(backend, []);
+
+    const events = await collectEvents(
+      backend.run(
+        {
+          prompt: 'Check status',
+          cwd: process.cwd(),
+          maxTurns: 1,
+          tools: 'coding',
+          model: { provider: 'openai-codex', id: 'gpt-5.4' },
+        },
+        'builder',
+      ),
+    );
+
+    const resultEvent = events.find(
+      (e): e is Extract<typeof e, { type: 'agent:result' }> =>
+        (e as { type: string }).type === 'agent:result',
+    );
+    expect(resultEvent).toBeDefined();
+    const usage = (resultEvent as { result: { usage: { input: number; output: number; total: number; cacheRead: number; cacheCreation: number } } }).result.usage;
+    expect(usage.input).toBe(6200);
+    expect(usage.cacheRead).toBe(5000);
+    expect(usage.cacheCreation).toBe(200);
+    expect(usage.total).toBe(6700);
+  });
+
   it('translates bridged MCP tool execution events into Eforge tool events', async () => {
     createAgentSession.mockImplementationOnce(async () => {
       const listeners = new Set<(event: {

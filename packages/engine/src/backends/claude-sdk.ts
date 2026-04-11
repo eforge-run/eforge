@@ -16,6 +16,7 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
 import type { AgentBackend, AgentRunOptions } from '../backend.js';
+import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
 
 export interface ClaudeSDKBackendOptions {
   /** MCP servers to make available to all agent runs. */
@@ -290,33 +291,38 @@ function extractToolResultContent(
  */
 function extractResultData(result: SDKResultMessage, resultText?: string): AgentResultData {
   const modelUsage: AgentResultData['modelUsage'] = {};
-  let inputTokens = 0;
-  let outputTokens = 0;
-  let cacheReadTokens = 0;
-  let cacheCreationTokens = 0;
+  const aggregate: RawUsage = {
+    uncachedInput: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheCreation: 0,
+  };
 
   if (result.modelUsage) {
     for (const [model, usage] of Object.entries(result.modelUsage)) {
-      const cacheRead = usage.cacheReadInputTokens ?? 0;
-      const cacheCreation = usage.cacheCreationInputTokens ?? 0;
-      modelUsage[model] = {
-        inputTokens: usage.inputTokens + cacheRead + cacheCreation,
-        outputTokens: usage.outputTokens,
-        cacheReadInputTokens: cacheRead,
-        cacheCreationInputTokens: cacheCreation,
-        costUSD: usage.costUSD,
+      const raw: RawUsage = {
+        uncachedInput: usage.inputTokens,
+        output: usage.outputTokens,
+        cacheRead: usage.cacheReadInputTokens ?? 0,
+        cacheCreation: usage.cacheCreationInputTokens ?? 0,
       };
-      inputTokens += usage.inputTokens + cacheRead + cacheCreation;
-      outputTokens += usage.outputTokens;
-      cacheReadTokens += cacheRead;
-      cacheCreationTokens += cacheCreation;
+      modelUsage[model] = toModelUsageEntry(raw, usage.costUSD);
+      aggregate.uncachedInput += raw.uncachedInput;
+      aggregate.output += raw.output;
+      aggregate.cacheRead += raw.cacheRead;
+      aggregate.cacheCreation += raw.cacheCreation;
     }
   }
 
-  // Fall back to SDK aggregate if modelUsage was empty
-  if (inputTokens === 0 && outputTokens === 0) {
-    inputTokens = result.usage?.input_tokens ?? 0;
-    outputTokens = result.usage?.output_tokens ?? 0;
+  // Fall back to SDK aggregate if modelUsage produced zero totals
+  if (
+    aggregate.uncachedInput === 0 &&
+    aggregate.output === 0 &&
+    aggregate.cacheRead === 0 &&
+    aggregate.cacheCreation === 0
+  ) {
+    aggregate.uncachedInput = result.usage?.input_tokens ?? 0;
+    aggregate.output = result.usage?.output_tokens ?? 0;
   }
 
   return {
@@ -324,13 +330,7 @@ function extractResultData(result: SDKResultMessage, resultText?: string): Agent
     durationApiMs: result.duration_api_ms ?? 0,
     numTurns: result.num_turns ?? 0,
     totalCostUsd: result.total_cost_usd ?? 0,
-    usage: {
-      input: inputTokens,
-      output: outputTokens,
-      total: inputTokens + outputTokens,
-      cacheRead: cacheReadTokens,
-      cacheCreation: cacheCreationTokens,
-    },
+    usage: normalizeUsage(aggregate),
     modelUsage,
     resultText,
   };
