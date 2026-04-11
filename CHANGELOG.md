@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.4.2] - 2026-04-11
+
+### Bug Fixes
+
+- engine: use ModelRegistry.create factory in PiBackend
+
+### Maintenance
+
+- deps: bump pi-ai, monitor-ui, and dev tooling
+
 ## [0.4.1] - 2026-04-10
 
 ### Features
