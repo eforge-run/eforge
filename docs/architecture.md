@@ -99,7 +99,7 @@ The engine uses a two-phase pipeline. Each phase is a sequence of named stages -
 graph LR
     subgraph Compile ["Compile Phase (per-profile)"]
         direction LR
-        E["<b>Errand</b><br/>prd-passthrough"]
+        E["<b>Errand</b><br/>planner"]
         X["<b>Excursion</b><br/>planner → plan-review-cycle"]
         XP["<b>Expedition</b><br/>planner → architecture-review-cycle<br/>→ module-planning<br/>→ cohesion-review-cycle<br/>→ compile-expedition"]
     end
@@ -118,7 +118,6 @@ graph LR
 
 | Stage | Description |
 |-------|-------------|
-| `prd-passthrough` | Passes PRD directly as a single plan - no agent planning |
 | `planner` | Agent explores codebase, selects profile, writes plan files and `orchestration.yaml` |
 | `plan-review-cycle` | Blind review of plans against PRD, with fix and evaluate loop |
 | `architecture-review-cycle` | Reviews architecture doc for module boundary soundness and integration contracts |
@@ -143,7 +142,7 @@ Build stages support parallel groups - arrays in the stage list run concurrently
 
 Profiles control which compile stages run. The planner assesses input complexity and selects a profile, or the user can specify one explicitly.
 
-**Errand** - Small, self-contained changes. Compile: `[prd-passthrough]`. Skips planning entirely - the PRD becomes the plan.
+**Errand** - Small, self-contained changes. Compile: `[planner]`. The planner generates a single simple plan or skips if nothing to do.
 
 **Excursion** - Multi-file feature work. Compile: `[planner, plan-review-cycle]`. Single planning pass covers all files and dependencies.
 
