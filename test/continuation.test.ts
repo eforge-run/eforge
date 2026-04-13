@@ -149,7 +149,7 @@ base_branch: main
 pipeline:
   scope: errand
   compile:
-    - prd-passthrough
+    - planner
   defaultBuild:
     - implement
     - review-cycle
@@ -194,7 +194,7 @@ base_branch: main
 pipeline:
   scope: errand
   compile:
-    - prd-passthrough
+    - planner
   defaultBuild:
     - implement
     - review-cycle

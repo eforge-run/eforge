@@ -151,7 +151,7 @@ describe('stage registry', () => {
   });
 
   it('all built-in compile stages are registered', () => {
-    const builtinCompileStages = ['prd-passthrough', 'planner', 'plan-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
+    const builtinCompileStages = ['planner', 'plan-review-cycle', 'module-planning', 'cohesion-review-cycle', 'compile-expedition'];
     for (const name of builtinCompileStages) {
       expect(() => getCompileStage(name)).not.toThrow();
       expect(typeof getCompileStage(name)).toBe('function');
@@ -722,11 +722,6 @@ describe('default pipeline compile stages', () => {
     const names = getCompileStageNames();
     expect(names.has('planner')).toBe(true);
     expect(names.has('plan-review-cycle')).toBe(true);
-  });
-
-  it('getCompileStageNames includes prd-passthrough', () => {
-    const names = getCompileStageNames();
-    expect(names.has('prd-passthrough')).toBe(true);
   });
 
   it('getCompileStageNames includes module-planning, compile-expedition, cohesion-review-cycle', () => {

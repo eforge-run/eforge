@@ -578,11 +578,6 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
       }
     }
 
-    // prd-passthrough has no agent — mark completed once any other stage is active/completed
-    if (profileInfo && profileInfo.config.compile[0] === 'prd-passthrough' && (active.size > 0 || completed.size > 0)) {
-      completed.add('prd-passthrough');
-    }
-
     return { activeStages: active, completedStages: completed };
   }, [agentThreads, profileInfo]);
 
