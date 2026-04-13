@@ -202,5 +202,11 @@ ${existingPlans}`;
     }
   }
 
+  // If no plans were generated (without an explicit skip), treat as implicit skip
+  if (plans.length === 0) {
+    yield { timestamp: new Date().toISOString(), type: 'plan:skip', reason: 'No plans generated' };
+    return;
+  }
+
   yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
 }

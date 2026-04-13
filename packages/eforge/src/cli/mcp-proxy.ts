@@ -70,6 +70,7 @@ const INFO_EVENTS = new Set([
   'phase:end',
   'build:complete',
   'plan:complete',
+  'plan:skip',
 ]);
 
 /** Events that trigger error-level logging notifications */

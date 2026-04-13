@@ -6,7 +6,7 @@
 
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { watch as fsWatch, type FSWatcher } from 'node:fs';
+import { existsSync, watch as fsWatch, type FSWatcher } from 'node:fs';
 import { readFile, readdir, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { relative, resolve } from 'node:path';
@@ -486,6 +486,11 @@ export class EforgeEngine {
       // Fall back to repoRoot for backwards compatibility with pre-worktree builds.
       const planBaseCwd = mergeWorktreePath ?? cwd;
       const configPath = resolve(planBaseCwd, this.config.plan.outputDir, planSet, 'orchestration.yaml');
+      if (!existsSync(configPath)) {
+        status = 'failed';
+        summary = `orchestration.yaml not found at ${configPath}. The planner may have generated 0 plans without emitting a skip signal.`;
+        return;
+      }
       const validation = await validatePlanSet(configPath);
       if (!validation.valid) {
         status = 'failed';

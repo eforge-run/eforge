@@ -12,6 +12,16 @@ The user wants you to plan the following:
 
 {{continuation_context}}
 
+## Critical Rule: Skip When Fully Implemented
+
+If the source is already fully implemented in the codebase (zero gaps between requirements and current state), you MUST emit a `<skip>` block and produce NO plan files. This is the single most important rule - do not generate plans for work that is already done.
+
+```xml
+<skip>All requirements from the source are already implemented — no gaps remain.</skip>
+```
+
+After emitting `<skip>`, stop immediately. Do not write any plan files, orchestration.yaml, or other artifacts.
+
 ## Plan Set
 
 - **Name**: `{{planSetName}}`
@@ -44,11 +54,7 @@ Your planning is **strictly bounded by the source document**. The source is your
 - **DO NOT**: Plan work that isn't described in the source document
 - **DO NOT**: Substitute the source with alternative tasks you discover during exploration
 
-If the source is fully implemented (zero gaps), emit a `<skip>` block explaining why and do NOT write any plan files:
-
-```xml
-<skip>All requirements from the source are already implemented — no gaps remain.</skip>
-```
+If the source is fully implemented (zero gaps), follow the "Critical Rule: Skip When Fully Implemented" section above - emit a `<skip>` block and stop.
 
 ### Profile Selection
 
@@ -464,5 +470,7 @@ The following words are **banned** in verification criteria and acceptance crite
 **Rule**: If you find yourself writing any of these words in a verification criterion, stop and rewrite it with a specific, observable outcome.
 
 ## Output
+
+**Important**: If the source is fully implemented, your entire output must be a `<skip>` block - nothing else. See "Critical Rule: Skip When Fully Implemented" above.
 
 After generating all artifacts, provide a summary of what was created.
