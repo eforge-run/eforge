@@ -744,9 +744,9 @@ describe('runPrdValidator wiring', () => {
 // --- Stage Descriptor Metadata ---
 
 describe('stage descriptor metadata', () => {
-  it('all 7 compile stage descriptors have non-empty description, whenToUse, and costHint', () => {
+  it('all 6 compile stage descriptors have non-empty description, whenToUse, and costHint', () => {
     const descriptors = getCompileStageDescriptors();
-    expect(descriptors.length).toBe(7);
+    expect(descriptors.length).toBe(6);
     for (const d of descriptors) {
       expect(d.description.length).toBeGreaterThan(0);
       expect(d.whenToUse.length).toBeGreaterThan(0);
@@ -798,12 +798,6 @@ describe('validatePipeline', () => {
     expect(result.errors.some((e) => e.includes('predecessor') && e.includes('planner'))).toBe(true);
   });
 
-  it('returns error for conflicting stages', () => {
-    const result = validatePipeline(['planner', 'prd-passthrough'], ['implement']);
-    expect(result.valid).toBe(false);
-    expect(result.errors.some((e) => e.includes('conflicts'))).toBe(true);
-  });
-
   it('returns warning for non-parallelizable stage in parallel group', () => {
     const result = validatePipeline(['planner'], [['implement', 'review-cycle']]);
     expect(result.warnings.some((w) => w.includes('not parallelizable'))).toBe(true);
@@ -823,7 +817,7 @@ describe('formatStageRegistry', () => {
   it('contains all registered stage names', () => {
     const output = formatStageRegistry();
     const allNames = [...getCompileStageNames(), ...getBuildStageNames()];
-    expect(allNames.length).toBe(17);
+    expect(allNames.length).toBe(16);
     for (const name of allNames) {
       expect(output).toContain(name);
     }

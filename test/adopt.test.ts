@@ -11,7 +11,7 @@ const DEFAULT_BUILD = ['implement', 'review-cycle'];
 
 const ERRAND_PIPELINE: PipelineComposition = {
   scope: 'errand',
-  compile: ['prd-passthrough'],
+  compile: ['planner'],
   defaultBuild: DEFAULT_BUILD,
   defaultReview: DEFAULT_REVIEW,
   rationale: 'test errand pipeline',

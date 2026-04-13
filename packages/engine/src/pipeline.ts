@@ -705,68 +705,12 @@ function humanizeName(name: string): string {
 // ---------------------------------------------------------------------------
 
 registerCompileStage({
-  name: 'prd-passthrough',
-  phase: 'compile',
-  description: 'Converts a PRD directly into plan artifacts without LLM planning.',
-  whenToUse: 'For small, well-defined tasks where the PRD itself serves as the implementation plan.',
-  costHint: 'low',
-  conflictsWith: ['planner'],
-  parallelizable: false,
-}, async function* prdPassthroughStage(ctx) {
-  yield { timestamp: new Date().toISOString(), type: 'plan:start', source: ctx.sourceContent, label: 'prd-passthrough' };
-
-  // Extract title and body from PRD
-  const { title, body } = extractPrdMetadata(ctx.sourceContent, ctx.planSetName);
-
-  yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Writing plan artifacts from PRD content' };
-
-  // Get base branch — prefer ctx.baseBranch (resolved from repoRoot before worktree creation)
-  // to avoid picking up the feature branch when cwd is a merge worktree
-  const baseBranch = ctx.baseBranch
-    ?? (await exec('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd: ctx.cwd })).stdout.trim();
-
-  // Detect validation commands from project
-  const validate = await detectValidationCommands(ctx.cwd);
-
-  // Write plan artifacts using the shared helper
-  const planFile = await writePlanArtifacts({
-    cwd: ctx.cwd,
-    planSetName: ctx.planSetName,
-    sourceContent: body,
-    planName: title,
-    baseBranch,
-    pipeline: ctx.pipeline,
-    validate: validate.length > 0 ? validate : undefined,
-    mode: 'errand',
-    build: ctx.pipeline.defaultBuild as BuildStageSpec[],
-    review: ctx.pipeline.defaultReview as ReviewProfileConfig,
-    outputDir: ctx.config.plan.outputDir,
-  });
-
-  ctx.plans = [planFile];
-
-  // Commit plan artifacts (prd-passthrough replaces both planner + review,
-  // so it must commit its own artifacts for the build phase to create worktrees)
-  const commitCwd = ctx.planCommitCwd ?? ctx.cwd;
-  const planDir = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName);
-  await exec('git', ['add', planDir], { cwd: commitCwd });
-  // Guard: only commit if there are staged changes (prevents "nothing to commit" errors
-  // when artifacts were already committed by a previous run/retry)
-  const { stdout: passthroughStaged } = await exec('git', ['diff', '--cached', '--name-only'], { cwd: commitCwd });
-  if (passthroughStaged.trim().length > 0) {
-    await forgeCommit(commitCwd, `plan(${ctx.planSetName}): PRD passthrough artifacts`);
-  }
-
-  yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans: [planFile] };
-});
-
-registerCompileStage({
   name: 'planner',
   phase: 'compile',
   description: 'Runs the LLM planner agent to decompose a PRD into implementation plans with dependency graphs.',
   whenToUse: 'For any task that needs LLM-driven planning and decomposition. The default compile entry point.',
   costHint: 'high',
-  conflictsWith: ['prd-passthrough'],
+  conflictsWith: [],
   parallelizable: false,
 }, async function* plannerStage(ctx) {
   // Run pipeline composition first (fast LLM call to determine scope and stages)
@@ -2021,8 +1965,8 @@ export async function* runCompilePipeline(
     //
     // If position i now holds a different stage, the current stage was
     // effectively short-circuited (e.g. plannerStage early-returned when the
-    // composer replaced the list with ['prd-passthrough']). Restart from the
-    // top of the new list.
+    // composer replaced the compile list). Restart from the top of the new
+    // list.
     if (ctx.pipeline.compile[i] === stageName) {
       i++;
     } else {

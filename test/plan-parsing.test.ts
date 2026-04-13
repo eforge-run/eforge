@@ -18,7 +18,7 @@ const TEST_PIPELINE: PipelineComposition = {
 
 const ERRAND_PIPELINE: PipelineComposition = {
   scope: 'errand',
-  compile: ['prd-passthrough'],
+  compile: ['planner'],
   defaultBuild: ['implement', 'review-cycle'],
   defaultReview: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
   rationale: 'test errand pipeline',

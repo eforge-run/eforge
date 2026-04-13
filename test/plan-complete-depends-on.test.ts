@@ -5,7 +5,7 @@ import type { ResolvedProfileConfig } from '@eforge-build/engine/config';
 
 const STUB_PROFILE: ResolvedProfileConfig = {
   description: 'stub',
-  compile: ['prd-passthrough'],
+  compile: ['planner'],
   build: ['implement', 'review', 'evaluate'],
   agents: {},
   review: { strategy: 'auto', perspectives: [], maxRounds: 1, evaluatorStrictness: 'standard' },
