@@ -137,7 +137,7 @@ describe('runPlanner wiring', () => {
 
     // Should stop at 5 iterations, not use the 6th response
     expect(backend.prompts).toHaveLength(5);
-    expect(findEvent(events, 'plan:complete')).toBeDefined();
+    expect(findEvent(events, 'plan:skip')).toBeDefined();
   });
 
   it('skips clarification in auto mode', async () => {
@@ -160,7 +160,7 @@ describe('runPlanner wiring', () => {
     expect(callbackCalled).toBe(false);
     // No restart — only one backend call
     expect(backend.prompts).toHaveLength(1);
-    expect(findEvent(events, 'plan:complete')).toBeDefined();
+    expect(findEvent(events, 'plan:skip')).toBeDefined();
   });
 
   it('suppresses agent:message when verbose is false, emits when true', async () => {
