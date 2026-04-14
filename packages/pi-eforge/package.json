@@ -1,5 +1,5 @@
 {
-  "name": "@eforge-build/eforge-pi",
+  "name": "@eforge-build/pi-eforge",
   "version": "0.5.2",
   "description": "eforge integration for Pi - enqueue, run, and monitor builds from within Pi",
   "keywords": [

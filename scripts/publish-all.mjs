@@ -5,7 +5,7 @@
  *
  * Version source of truth: packages/eforge/package.json
  *   - Hand-edit that file's version, then run this script.
- *   - The version is propagated to client, engine, monitor, and eforge-pi.
+ *   - The version is propagated to client, engine, monitor, and pi-eforge.
  *   - pnpm -r publish rewrites workspace:* refs to concrete versions and
  *     skips packages marked "private": true (currently monitor-ui).
  *
@@ -23,7 +23,7 @@ const LOCKSTEP_PACKAGE_PATHS = [
   "packages/client/package.json",
   "packages/engine/package.json",
   "packages/monitor/package.json",
-  "packages/eforge-pi/package.json",
+  "packages/pi-eforge/package.json",
 ];
 const SOURCE_OF_TRUTH = "packages/eforge/package.json";
 
