@@ -43,6 +43,14 @@ export interface BuildPrdDiffOptions {
   perFileBudgetBytes?: number;
   /** Max `added + deleted` before a file is summarized. Default 2_000. */
   maxChangedLinesBeforeSummary?: number;
+  /**
+   * Global cap on the total byte length of `renderedText`. When the sum of
+   * per-file bodies would exceed this cap, the largest non-summarized files
+   * are iteratively demoted to `[summarized: ..., demoted by global cap]`
+   * markers (ties broken by `path` ascending) until the total falls under
+   * the cap. Default `500_000`.
+   */
+  globalBudgetBytes?: number;
 }
 
 export interface BuildPrdDiffResult {
@@ -59,6 +67,12 @@ export interface BuildPrdDiffResult {
   totalBytes: number;
   /** Count of files whose bodies were replaced with a summary marker. */
   summarizedCount: number;
+  /** Effective global byte cap applied to `renderedText`. */
+  globalBudgetBytes: number;
+  /** Files summarized because their per-file body exceeded the per-file budget (or the changed-line threshold, or binary). */
+  summarizedByPerFileBudget: number;
+  /** Files additionally demoted to a summary marker because the total exceeded `globalBudgetBytes`. */
+  summarizedByGlobalCap: number;
 }
 
 /**
@@ -78,6 +92,7 @@ export async function buildPrdValidatorDiff(
     baseRef,
     perFileBudgetBytes = 20_000,
     maxChangedLinesBeforeSummary = 2_000,
+    globalBudgetBytes = 500_000,
   } = opts;
 
   const range = `${baseRef}...HEAD`;
@@ -100,14 +115,32 @@ export async function buildPrdValidatorDiff(
     numstatHuman = nmh.stdout;
   } catch {
     // No changes or git failure — empty result
-    return { summary: '', files: [], renderedText: '', totalBytes: 0, summarizedCount: 0 };
+    return {
+      summary: '',
+      files: [],
+      renderedText: '',
+      totalBytes: 0,
+      summarizedCount: 0,
+      globalBudgetBytes,
+      summarizedByPerFileBudget: 0,
+      summarizedByGlobalCap: 0,
+    };
   }
 
   const statusByPath = parseNameStatusZ(nameStatusRaw);
   const numstatEntries = parseNumstatZ(numstatRaw);
 
   if (numstatEntries.length === 0) {
-    return { summary: '', files: [], renderedText: '', totalBytes: 0, summarizedCount: 0 };
+    return {
+      summary: '',
+      files: [],
+      renderedText: '',
+      totalBytes: 0,
+      summarizedCount: 0,
+      globalBudgetBytes,
+      summarizedByPerFileBudget: 0,
+      summarizedByGlobalCap: 0,
+    };
   }
 
   // --- Build per-file bodies ---
@@ -168,9 +201,35 @@ export async function buildPrdValidatorDiff(
     '',
   ].join('\n');
 
+  const summarizedByPerFileBudget = files.reduce((n, f) => n + (f.summarized ? 1 : 0), 0);
+
+  // --- Global cap pass: demote largest non-summarized files until total <= globalBudgetBytes ---
+  const computeTotalBytes = (): number => {
+    const chunks = files.map((f) => f.body).filter((b) => b.length > 0);
+    return Buffer.byteLength([summary, ...chunks].join('\n\n'), 'utf-8');
+  };
+
+  let summarizedByGlobalCap = 0;
+  while (computeTotalBytes() > globalBudgetBytes) {
+    // Find largest non-summarized, non-binary file (ties: path asc)
+    const candidates = files
+      .filter((f) => !f.summarized)
+      .sort((a, b) => {
+        const db = Buffer.byteLength(b.body, 'utf-8') - Buffer.byteLength(a.body, 'utf-8');
+        if (db !== 0) return db;
+        return a.path < b.path ? -1 : a.path > b.path ? 1 : 0;
+      });
+    if (candidates.length === 0) break;
+    const victim = candidates[0];
+    victim.summarized = true;
+    victim.body = `diff --git a/${victim.path} b/${victim.path}\n[summarized: status=${victim.status} +${victim.added} -${victim.deleted}, demoted by global cap]`;
+    summarizedByGlobalCap++;
+  }
+
+  // --- Compose final rendered text ---
   const bodyChunks = files.map((f) => f.body).filter((b) => b.length > 0);
   const renderedText = [summary, ...bodyChunks].join('\n\n');
-  const summarizedCount = files.reduce((n, f) => n + (f.summarized ? 1 : 0), 0);
+  const summarizedCount = summarizedByPerFileBudget + summarizedByGlobalCap;
 
   return {
     summary,
@@ -178,6 +237,9 @@ export async function buildPrdValidatorDiff(
     renderedText,
     totalBytes: Buffer.byteLength(renderedText, 'utf-8'),
     summarizedCount,
+    globalBudgetBytes,
+    summarizedByPerFileBudget,
+    summarizedByGlobalCap,
   };
 }
 

@@ -156,6 +156,57 @@ describe('buildPrdValidatorDiff', () => {
     expect(huge_!.summarized).toBe(true);
   });
 
+  it('demotes largest non-summarized files when total exceeds globalBudgetBytes', async () => {
+    // Create several files, each well under perFileBudgetBytes but together
+    // exceeding a small globalBudgetBytes. The two largest must be demoted;
+    // the smallest must remain verbatim.
+    const makeBody = (prefix: string, lines: number): string =>
+      Array.from({ length: lines }, (_, i) => `${prefix} line ${i}`).join('\n') + '\n';
+    await writeFile(join(repoDir, 'a-large.ts'), makeBody('alpha', 120));
+    await writeFile(join(repoDir, 'b-medium.ts'), makeBody('beta', 80));
+    await writeFile(join(repoDir, 'c-small.ts'), 'export const tiny = 1;\n');
+    git(repoDir, 'add', '.');
+    git(repoDir, 'commit', '-m', 'three files');
+
+    const result = await buildPrdValidatorDiff({
+      cwd: repoDir,
+      baseRef: 'main',
+      perFileBudgetBytes: 100_000,
+      maxChangedLinesBeforeSummary: 10_000,
+      globalBudgetBytes: 1_000,
+    });
+
+    expect(result.globalBudgetBytes).toBe(1_000);
+    expect(result.totalBytes).toBeLessThanOrEqual(1_000);
+
+    const aLarge = result.files.find((f) => f.path === 'a-large.ts')!;
+    const bMedium = result.files.find((f) => f.path === 'b-medium.ts')!;
+    const cSmall = result.files.find((f) => f.path === 'c-small.ts')!;
+
+    // Largest file demoted first
+    expect(aLarge.summarized).toBe(true);
+    expect(aLarge.body).toContain('demoted by global cap');
+    // Smallest file preserved verbatim
+    expect(cSmall.summarized).toBe(false);
+    expect(cSmall.body).toContain('diff --git');
+    expect(cSmall.body).toContain('tiny');
+    // Medium file should also be demoted here (1KB cap forces both larger ones out)
+    expect(bMedium.summarized).toBe(true);
+    expect(bMedium.body).toContain('demoted by global cap');
+
+    // Counter invariant
+    expect(result.summarizedByPerFileBudget + result.summarizedByGlobalCap).toBe(result.summarizedCount);
+    expect(result.summarizedByGlobalCap).toBeGreaterThanOrEqual(1);
+  });
+
+  it('defaults globalBudgetBytes to 500_000 when omitted', async () => {
+    await writeFile(join(repoDir, 'foo.ts'), 'export const foo = 1;\n');
+    git(repoDir, 'add', '.');
+    git(repoDir, 'commit', '-m', 'tiny');
+    const result = await buildPrdValidatorDiff({ cwd: repoDir, baseRef: 'main' });
+    expect(result.globalBudgetBytes).toBe(500_000);
+  });
+
   it('handles files in subdirectories', async () => {
     await mkdir(join(repoDir, 'src', 'engine'), { recursive: true });
     await writeFile(join(repoDir, 'src', 'engine', 'foo.ts'), 'export const foo = 1;\n');
