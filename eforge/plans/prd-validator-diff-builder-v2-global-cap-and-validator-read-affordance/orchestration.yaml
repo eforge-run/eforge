@@ -1,0 +1,65 @@
+name: prd-validator-diff-builder-v2-global-cap-and-validator-read-affordance
+description: Add a global byte ceiling to the PRD validator diff builder and
+  give the validator prompt permission to Read summarized files on demand.
+created: 2026-04-13
+compiled: 2026-04-13
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-global-cap-and-read-affordance
+    name: Global cap + validator read affordance
+    depends_on: []
+    branch: prd-validator-diff-builder-v2-global-cap-and-validator-read-affordance/global-cap-and-read-affordance
+    build:
+      - - implement
+        - doc-update
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+    - - doc-update
+      - test-write
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - api-design
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This PRD is a focused v2 enhancement touching three files
+    (prd-validator-diff.ts, eforge.ts, prd-validator prompt template) plus one
+    new test case. It's more than a trivial errand because it extends a
+    public-facing type (BuildPrdDiffOptions/Result), adds a new code path
+    (global cap demotion pass) with deterministic ordering semantics, and
+    modifies an agent prompt - all of which need careful review. But it's
+    nowhere near expedition scale (no independent subsystems). Excursion is the
+    right fit. Compile uses planner + plan-review-cycle to ensure the plan
+    correctly captures the v1 dependency, the demotion ordering (largest-first,
+    deterministic tiebreaker), the new result fields with backwards-compatible
+    summarizedCount, and the neutral prompt wording. Build uses implement +
+    review-cycle (2 rounds) to catch issues around the cap logic, type
+    extensions, and tracing field wiring. doc-update and test-write run in
+    parallel after review-cycle: the PRD explicitly requires a new test for the
+    global cap path (acceptance criterion 4), and the prompt template edit plus
+    new result fields are user-visible changes that may warrant doc touchups.
+    Review uses correctness (cap math, ordering, marker strings, summarizedCount
+    invariant) and api-design (BuildPrdDiffOptions/Result extension shape)
+    perspectives with standard strictness - this is engine-internal logic, not
+    security/data-sensitive, so strict is overkill but the type surface and
+    deterministic behavior warrant more than lenient."
