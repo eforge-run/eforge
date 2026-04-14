@@ -36,6 +36,7 @@ import { createTracingContext } from './tracing.js';
 import { runValidationFixer } from './agents/validation-fixer.js';
 import { runMergeConflictResolver } from './agents/merge-conflict-resolver.js';
 import { runPrdValidator } from './agents/prd-validator.js';
+import { buildPrdValidatorDiff } from './prd-validator-diff.js';
 import { runGapCloser } from './agents/gap-closer.js';
 import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser } from './orchestrator.js';
 import type { MergeResolver } from './worktree-ops.js';
@@ -633,19 +634,25 @@ export class EforgeEngine {
           return;
         }
 
-        // Build diff: baseBranch...HEAD truncated at 80K chars
-        let diff: string;
+        // Build diff: per-file budgeted, no global truncation
+        let built: Awaited<ReturnType<typeof buildPrdValidatorDiff>>;
         try {
-          const { stdout } = await exec('git', ['diff', `${orchConfig.baseBranch}...HEAD`], { cwd: validatorCwd, maxBuffer: 100 * 1024 * 1024 });
-          diff = stdout.length > 80_000 ? stdout.slice(0, 80_000) + '\n\n[diff truncated at 80K chars]' : stdout;
+          built = await buildPrdValidatorDiff({ cwd: validatorCwd, baseRef: orchConfig.baseBranch });
         } catch {
           return;
         }
 
-        if (!diff.trim()) return;
+        if (!built.renderedText.trim()) return;
+        const diff = built.renderedText;
 
         const prdSpan = tracing!.createSpan('prd-validator', {});
-        prdSpan.setInput({ prdLength: prdContent.length, diffLength: diff.length });
+        prdSpan.setInput({
+          prdLength: prdContent.length,
+          diffLength: diff.length,
+          totalBytes: built.totalBytes,
+          summarizedCount: built.summarizedCount,
+          fileCount: built.files.length,
+        });
         const prdTracker = createToolTracker(prdSpan);
         try {
           const prdValidatorConfig = resolveAgentConfig('prd-validator', config, config.backend);
