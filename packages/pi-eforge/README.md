@@ -1,17 +1,17 @@
-# @eforge-build/eforge-pi
+# @eforge-build/pi-eforge
 
 Pi package for [eforge](https://eforge.build).
 
 Install in Pi:
 
 ```bash
-pi install npm:@eforge-build/eforge-pi
+pi install npm:@eforge-build/pi-eforge
 ```
 
 Or install for the current project only:
 
 ```bash
-pi install -l npm:@eforge-build/eforge-pi
+pi install -l npm:@eforge-build/pi-eforge
 ```
 
 Then, in your project:
@@ -34,7 +34,7 @@ Then, in your project:
 
 ## Relationship to the `@eforge-build/eforge` npm package
 
-`@eforge-build/eforge-pi` is the Pi integration package.
+`@eforge-build/pi-eforge` is the Pi integration package.
 
 The main [`@eforge-build/eforge`](https://www.npmjs.com/package/@eforge-build/eforge) npm package is the standalone CLI and daemon runtime that this Pi package invokes via `npx -y @eforge-build/eforge`.
 
