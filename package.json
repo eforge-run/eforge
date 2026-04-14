@@ -17,6 +17,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "type-check": "pnpm -r type-check",
+    "release": "node scripts/bump-version.mjs",
     "publish-all": "node scripts/publish-all.mjs"
   },
   "packageManager": "pnpm@10.26.0",

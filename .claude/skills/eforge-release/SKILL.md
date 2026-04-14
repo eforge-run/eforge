@@ -92,11 +92,11 @@ Store the generated markdown for use in Steps 5 and 7.
 
 ### Step 5: Update CHANGELOG.md
 
-**Compute the new version** before bumping by reading the current version and incrementing the appropriate component:
+**Compute the new version** before bumping by reading the source-of-truth version from `packages/eforge/package.json` and incrementing the appropriate component:
 
 ```bash
 node -e "
-const v = require('./package.json').version.split('.');
+const v = require('./packages/eforge/package.json').version.split('.');
 const bump = '$BUMP_TYPE';
 if (bump === 'major') { v[0]++; v[1]=0; v[2]=0; }
 else if (bump === 'minor') { v[1]++; v[2]=0; }
@@ -106,6 +106,8 @@ console.log(v.join('.'));
 ```
 
 (Where `$BUMP_TYPE` is the resolved bump type from Step 1.)
+
+Note: the root `package.json` has no `version` field - this is a pnpm workspace and `packages/eforge/package.json` is the lockstep source of truth.
 
 **Create or update CHANGELOG.md:**
 
@@ -137,11 +139,13 @@ git commit -m "docs: update CHANGELOG.md for vX.Y.Z"
 Run these commands sequentially:
 
 ```bash
-pnpm version <bump-type>
-git push origin --follow-tags
+pnpm release <bump-type>
+git push origin HEAD --follow-tags
 ```
 
 (Where `<bump-type>` is the resolved bump type from Step 1.)
+
+`pnpm release` (scripts/bump-version.mjs) bumps `packages/eforge/package.json` (source of truth), propagates the version to the other lockstep packages (`client`, `engine`, `monitor`, `pi-eforge`), commits all five package.jsons with message `X.Y.Z`, and creates an annotated tag `vX.Y.Z`. The push then ships the changelog commit, the version commit, and the tag.
 
 ### Step 7: Create GitHub Release and Summary
 
