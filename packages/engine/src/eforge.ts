@@ -651,6 +651,9 @@ export class EforgeEngine {
           diffLength: diff.length,
           totalBytes: built.totalBytes,
           summarizedCount: built.summarizedCount,
+          summarizedByPerFileBudget: built.summarizedByPerFileBudget,
+          summarizedByGlobalCap: built.summarizedByGlobalCap,
+          globalBudgetBytes: built.globalBudgetBytes,
           fileCount: built.files.length,
         });
         const prdTracker = createToolTracker(prdSpan);

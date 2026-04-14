@@ -10,6 +10,8 @@ You are validating that a completed implementation satisfies the original PRD (P
 
 {{diff}}
 
+Some files appear with a marker of the form `[summarized: ...]` instead of a full diff, either because the individual file exceeded the per-file budget or because the total diff exceeded the global cap. The files are present in your working directory. If understanding a specific summarized file is necessary to assess PRD coverage, you may open and read it directly from the working directory; otherwise prefer the summary.
+
 ## Instructions
 
 1. Read the PRD carefully and identify each distinct requirement
