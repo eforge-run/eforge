@@ -3,13 +3,19 @@
 [![npm version](https://img.shields.io/npm/v/@eforge-build/eforge)](https://www.npmjs.com/package/@eforge-build/eforge)
 [![npm pi package](https://img.shields.io/npm/v/@eforge-build/pi-eforge)](https://www.npmjs.com/package/@eforge-build/pi-eforge)
 
-An open source agentic build system for developers who want to stay close to the work. Describe what you want built - a prompt, a markdown file, a full PRD - and hand it off. eforge plans the implementation, builds in isolated worktrees, reviews the code blind, and validates the result. The build runs in the background. Your careful planning gets executed faithfully.
+An open source agentic build system for engineers who want to stay close to the code without writing or reviewing it. You're the detail planner - specs, architecture, decisions. eforge handles implementation, blind review, and validation in the background. Backends are swappable (Claude Agent SDK, or Pi for 15+ providers), so your workflow is portable across a volatile model landscape.
 
 The name: **E** from the [Expedition-Excursion-Errand methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) + **forge** - shaping code from plans.
 
 <img src="docs/images/monitor-full-pipeline.png" alt="eforge dashboard - full pipeline" width="800">
 
 > **Status:** This is a young project moving fast. Used daily to build real features (including itself), but expect rough edges - bugs are likely, change is expected, and YMMV. Source is public so you can read, learn from, and fork it. Not accepting issues or PRs at this time.
+
+## Why eforge
+
+**Stay close, don't write.** You plan every detail - reading specs, making architecture decisions, understanding every choice before handoff. eforge implements faithfully and reviews its own output blind; you stay in control without being in the code.
+
+**Don't get locked in.** Model quality, availability, and pricing shift constantly. eforge's backend is swappable - Claude Agent SDK or Pi (OpenAI, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, local models, and more). Your workflow survives the next model shakeup.
 
 ## What is an Agentic Build System?
 
