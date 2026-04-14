@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.2] - 2026-04-13
+
+### Features
+
+- Global cap + validator read affordance
+- Per-file budgeted PRD validator diff
+
 ## [0.5.1] - 2026-04-13
 
 ### Features
