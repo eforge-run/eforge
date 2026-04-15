@@ -706,5 +706,15 @@ export async function injectPipelineIntoOrchestrationYaml(
   if (baseBranch) {
     data.base_branch = baseBranch;
   }
+  // Backfill per-plan build/review from pipeline defaults. The planner's
+  // submission schema omits these (composer decisions), so writePlanSet
+  // emits orchestration.yaml without them; parseOrchestrationConfig requires them.
+  if (Array.isArray(data.plans)) {
+    data.plans = (data.plans as Array<Record<string, unknown>>).map((p) => ({
+      ...p,
+      build: p.build ?? pipeline.defaultBuild,
+      review: p.review ?? pipeline.defaultReview,
+    }));
+  }
   await writeFile(absPath, stringifyYaml(data), 'utf-8');
 }

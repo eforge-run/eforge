@@ -25,6 +25,7 @@ import { AsyncEventQueue } from '../concurrency.js';
 import { PiMcpBridge } from './pi-mcp-bridge.js';
 import { discoverPiExtensions, type PiExtensionConfig } from './pi-extensions.js';
 import { normalizeUsage, toModelUsageEntry } from './usage.js';
+import { z } from 'zod/v4';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -329,7 +330,8 @@ export class PiBackend implements AgentBackend {
       if (options.customTools && options.customTools.length > 0) {
         const { jsonSchemaToTypeBox } = await import('./pi-mcp-bridge.js');
         for (const ct of options.customTools) {
-          const parameters = jsonSchemaToTypeBox(ct.inputSchema);
+          const jsonSchema = z.toJSONSchema(ct.inputSchema) as Record<string, unknown>;
+          const parameters = jsonSchemaToTypeBox(jsonSchema);
           mcpTools.push({
             name: ct.name,
             label: ct.name,

@@ -2,7 +2,7 @@
  * Claude Agent SDK backend — the sole file that imports @anthropic-ai/claude-agent-sdk.
  * All other engine code uses the AgentBackend interface.
  */
-import { query as sdkQuery } from '@anthropic-ai/claude-agent-sdk';
+import { query as sdkQuery, createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
 import type {
   SDKMessage,
   SDKAssistantMessage,
@@ -49,29 +49,32 @@ export class ClaudeSDKBackend implements AgentBackend {
 
     let error: string | undefined;
     try {
-      // Build tools configuration: start with the base preset or empty array,
-      // then append custom tools when provided.
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      let toolsConfig: any = options.tools === 'coding'
-        ? { type: 'preset', preset: 'claude_code' }
-        : [];
-
+      // Register custom tools as an in-process SDK MCP server per the official docs:
+      // https://code.claude.com/docs/en/agent-sdk/custom-tools
+      // Tools registered this way are exposed with the name mcp__<serverName>__<toolName>.
+      const customMcpServers: Record<string, McpServerConfig> = {};
       if (options.customTools && options.customTools.length > 0) {
-        // Convert to array form so we can include both the preset and custom tools
-        const toolsArray = options.tools === 'coding'
-          ? [{ type: 'preset' as const, preset: 'claude_code' as const }]
-          : [];
-        for (const ct of options.customTools) {
-          toolsArray.push({
-            type: 'custom' as const,
-            name: ct.name,
-            description: ct.description,
-            input_schema: ct.inputSchema,
-            handler: ct.handler,
-          } as never);
-        }
-        toolsConfig = toolsArray;
+        customMcpServers.eforge = createSdkMcpServer({
+          name: 'eforge',
+          version: '1.0.0',
+          tools: options.customTools.map((ct) =>
+            tool(
+              ct.name.replace(/^mcp__eforge__/, ''),
+              ct.description,
+              ct.inputSchema.shape,
+              async (args: unknown) => {
+                const text = await ct.handler(args);
+                return { content: [{ type: 'text' as const, text }] };
+              },
+            ),
+          ),
+        });
       }
+
+      const mergedMcpServers: Record<string, McpServerConfig> | undefined =
+        this.mcpServers || Object.keys(customMcpServers).length > 0
+          ? { ...(this.mcpServers ?? {}), ...customMcpServers }
+          : undefined;
 
       const q = sdkQuery({
         prompt: options.prompt,
@@ -81,9 +84,11 @@ export class ClaudeSDKBackend implements AgentBackend {
           model: options.model?.id,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
-          tools: toolsConfig,
+          tools: options.tools === 'coding'
+            ? { type: 'preset', preset: 'claude_code' }
+            : [],
           ...(options.tools === 'coding' ? {
-            mcpServers: this.mcpServers,
+            mcpServers: mergedMcpServers,
             plugins: this.plugins,
             settingSources: this.settingSources,
           } : {}),

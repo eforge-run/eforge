@@ -109,7 +109,7 @@ Determine how many plans the work requires based on your codebase exploration:
 
 #### Errand / Excursion
 
-Prepare 1 or more plans and call `submit_plan_set` once with the full payload.
+Prepare 1 or more plans and call `mcp__eforge__submit_plan_set` once with the full payload.
 
 **Single plan** when all work is in one area and has no natural phasing.
 
@@ -120,13 +120,13 @@ Prepare 1 or more plans and call `submit_plan_set` once with the full payload.
 - **Do NOT create separate test-only plans.** Tests belong in the same plan as the code they verify. Use `test-cycle` or `test-write` build stages to handle testing within a plan - never split tests into a standalone plan.
 - **Critical rule**: never split a type change from the updates to its consumers. If you make a field required or remove a type field, all files that construct that type must be updated in the same plan. Otherwise post-merge validation will fail on files that weren't updated.
 
-Do NOT write plan files to disk using the Write tool. Instead, call `submit_plan_set` with all plans and orchestration config in a single tool call (see format below).
+Do NOT write plan files to disk using the Write tool. Instead, call `mcp__eforge__submit_plan_set` with all plans and orchestration config in a single tool call (see format below).
 
 #### Expedition
 
 For expeditions, you are performing the **architecture phase**. Do NOT generate plan files — those will be created later from your module definitions.
 
-Prepare the architecture document and module list, then call `submit_architecture` once with the full payload.
+Prepare the architecture document and module list, then call `mcp__eforge__submit_architecture` once with the full payload.
 
 The architecture document should contain:
    - Vision and goals
@@ -172,7 +172,7 @@ Rules for shared file identification:
 - Each region must be non-overlapping - no two modules may claim the same section of a file
 - Prefer append-style regions (each module appends its section) over interleaved regions
 
-Do NOT write architecture files to disk using the Write tool. Call `submit_architecture` with the architecture document content and module definitions in a single tool call.
+Do NOT write architecture files to disk using the Write tool. Call `mcp__eforge__submit_architecture` with the architecture document content and module definitions in a single tool call.
 
 ### Module Schema
 
@@ -471,6 +471,6 @@ The following words are **banned** in verification criteria and acceptance crite
 
 **Important**: If the source is fully implemented, your entire output must be a `<skip>` block - nothing else. See "Critical Rule: Skip When Fully Implemented" above.
 
-Your only way to complete this turn is to call `submit_plan_set` (or `submit_architecture` for expeditions). Rendering plans as chat output does not count - the files are written from your tool call. Do not use the Write tool to create plan files, orchestration.yaml, architecture.md, or index.yaml directly.
+Your only way to complete this turn is to call `mcp__eforge__submit_plan_set` (or `mcp__eforge__submit_architecture` for expeditions). Rendering plans as chat output does not count - the files are written from your tool call. Do not use the Write tool to create plan files, orchestration.yaml, architecture.md, or index.yaml directly.
 
 After calling the submission tool, provide a brief summary of what was submitted.

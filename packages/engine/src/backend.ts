@@ -1,5 +1,6 @@
 import type { EforgeEvent, AgentRole } from './events.js';
 import type { ModelRef } from './config.js';
+import type { z } from 'zod/v4';
 
 export type ToolPreset = 'coding' | 'none';
 
@@ -65,7 +66,7 @@ export function pickSdkOptions(config: SdkPassthroughConfig): Partial<SdkPassthr
 export interface CustomTool {
   name: string;
   description: string;
-  inputSchema: Record<string, unknown>;
+  inputSchema: z.ZodObject<z.ZodRawShape>;
   handler: (input: unknown) => Promise<string>;
 }
 

@@ -241,6 +241,28 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
     expect(config.baseBranch).toBe('develop');
   });
 
+  it('backfills per-plan build/review from pipeline defaults when absent', async () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+
+    // Write orchestration.yaml exactly as writePlanSet emits it: no per-plan build/review.
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'backfill-test',
+      description: 'Test backfill',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      plans: [{ id: 'p1', name: 'Plan 1', depends_on: [], branch: 'b1' }],
+    }));
+
+    await injectPipelineIntoOrchestrationYaml(yamlPath, ERRAND_PIPELINE);
+
+    // Before the fix, parseOrchestrationConfig would throw: "Plan 'p1' has invalid or missing 'build' field".
+    const config = await parseOrchestrationConfig(yamlPath);
+    expect(config.plans[0].build).toEqual(ERRAND_PIPELINE.defaultBuild);
+    expect(config.plans[0].review).toEqual(ERRAND_PIPELINE.defaultReview);
+  });
+
   it('preserves base_branch when baseBranch arg is omitted', async () => {
     const dir = makeTempDir();
     const yamlPath = join(dir, 'orchestration.yaml');

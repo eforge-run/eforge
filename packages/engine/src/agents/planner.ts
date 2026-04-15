@@ -6,7 +6,6 @@ import { isAlwaysYieldedAgentEvent, type EforgeEvent, type CompileOptions, type 
 import { parseClarificationBlocks, parseSkipBlock } from './common.js';
 import { loadPrompt } from '../prompts.js';
 import { deriveNameFromSource, extractPlanTitle, parsePlanFile, writePlanSet, writeArchitecture } from '../plan.js';
-import { z } from 'zod/v4';
 import {
   getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml,
   planSetSubmissionSchema, architectureSubmissionSchema,
@@ -63,9 +62,9 @@ function createPlanSetSubmissionTool(
   onSubmit: (payload: PlanSetSubmission) => boolean,
 ): CustomTool {
   return {
-    name: 'submit_plan_set',
+    name: 'mcp__eforge__submit_plan_set',
     description: 'Submit a complete plan set with all plan files and orchestration configuration. This is the only way to complete the planning turn for errand/excursion mode.',
-    inputSchema: z.toJSONSchema(planSetSubmissionSchema) as Record<string, unknown>,
+    inputSchema: planSetSubmissionSchema,
     handler: async (input: unknown) => {
       const result = planSetSubmissionSchema.safeParse(input);
       if (!result.success) {
@@ -87,9 +86,9 @@ function createArchitectureSubmissionTool(
   onSubmit: (payload: ArchitectureSubmission) => boolean,
 ): CustomTool {
   return {
-    name: 'submit_architecture',
+    name: 'mcp__eforge__submit_architecture',
     description: 'Submit architecture documentation and module definitions for an expedition. This is the only way to complete the planning turn for expedition mode.',
-    inputSchema: z.toJSONSchema(architectureSubmissionSchema) as Record<string, unknown>,
+    inputSchema: architectureSubmissionSchema,
     handler: async (input: unknown) => {
       const result = architectureSubmissionSchema.safeParse(input);
       if (!result.success) {
@@ -308,10 +307,13 @@ ${existingPlans}`;
     return;
   }
 
-  // Neither submission tool was called and no <skip> was emitted — this is an error
+  // Neither submission tool was called and no <skip> was emitted — this is an error.
+  // Tailor the error to the tools that were actually injected for this scope so the
+  // message matches what the agent had available.
+  const injectedNames = customTools.map(t => t.name).join(' / ');
   yield {
     timestamp: new Date().toISOString(),
     type: 'plan:error',
-    reason: 'Planner agent completed without calling submit_plan_set or emitting <skip>',
+    reason: `Planner agent completed without calling a submission tool (${injectedNames}) or emitting <skip>`,
   };
 }
