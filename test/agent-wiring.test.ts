@@ -1,6 +1,4 @@
 import { describe, it, expect } from 'vitest';
-import { mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
@@ -31,10 +29,10 @@ describe('runPlanner wiring', () => {
     }));
 
     expect(findEvent(events, 'plan:start')).toBeDefined();
-    // When 0 plans are generated, planner emits plan:skip instead of plan:complete
-    const skip = findEvent(events, 'plan:skip');
-    expect(skip).toBeDefined();
-    expect(skip!.reason).toBe('No plans generated');
+    // When neither submission tool nor <skip> fires, planner emits plan:error
+    const error = findEvent(events, 'plan:error');
+    expect(error).toBeDefined();
+    expect(error!.reason).toContain('submit_plan_set');
     expect(findEvent(events, 'plan:complete')).toBeUndefined();
     // agent:result should be yielded (always yielded regardless of verbose)
     expect(findEvent(events, 'agent:result')).toBeDefined();
@@ -137,7 +135,8 @@ describe('runPlanner wiring', () => {
 
     // Should stop at 5 iterations, not use the 6th response
     expect(backend.prompts).toHaveLength(5);
-    expect(findEvent(events, 'plan:skip')).toBeDefined();
+    // After max iterations without submission or skip, planner emits plan:error
+    expect(findEvent(events, 'plan:error')).toBeDefined();
   });
 
   it('skips clarification in auto mode', async () => {
@@ -160,7 +159,8 @@ describe('runPlanner wiring', () => {
     expect(callbackCalled).toBe(false);
     // No restart — only one backend call
     expect(backend.prompts).toHaveLength(1);
-    expect(findEvent(events, 'plan:skip')).toBeDefined();
+    // After auto mode skips clarification without submission, planner emits plan:error
+    expect(findEvent(events, 'plan:error')).toBeDefined();
   });
 
   it('suppresses agent:message when verbose is false, emits when true', async () => {
@@ -177,29 +177,45 @@ describe('runPlanner wiring', () => {
     expect(filterEvents(verboseEvents, 'agent:message').length).toBeGreaterThan(0);
   });
 
-  it('scans plan directory for generated plan files', async () => {
+  it('writes plans via submission tool and yields plan:complete', async () => {
     const cwd = makeTempDir();
-    const planDir = join(cwd, 'eforge', 'plans', 'my-plan');
-    mkdirSync(planDir, { recursive: true });
 
-    // Write a valid plan file with YAML frontmatter
-    writeFileSync(join(planDir, 'feature.md'), `---
-id: feature
-name: Add feature
-dependsOn: []
-branch: feature/add-feature
----
-
-# Implementation
-
-Do the thing.
-`, 'utf-8');
-
-    const backend = new StubBackend([{ text: 'Done planning.' }]);
+    const backend = new StubBackend([{
+      toolCalls: [{
+        tool: 'submit_plan_set',
+        toolUseId: 'tu-1',
+        input: {
+          name: 'my-plan',
+          description: 'A test plan',
+          mode: 'excursion',
+          baseBranch: 'main',
+          plans: [{
+            frontmatter: {
+              id: 'feature',
+              name: 'Add feature',
+              dependsOn: [],
+              branch: 'feature/add-feature',
+            },
+            body: '# Implementation\n\nDo the thing.',
+          }],
+          orchestration: {
+            plans: [{
+              id: 'feature',
+              name: 'Add feature',
+              dependsOn: [],
+              branch: 'feature/add-feature',
+            }],
+          },
+        },
+        output: '',
+      }],
+      text: 'Done planning.',
+    }]);
     const events = await collectEvents(runPlanner('my-plan', {
       backend,
       cwd,
       name: 'my-plan',
+      scope: 'excursion',
     }));
 
     const complete = findEvent(events, 'plan:complete');
