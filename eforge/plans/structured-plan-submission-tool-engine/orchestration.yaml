@@ -1,0 +1,76 @@
+name: structured-plan-submission-tool-engine
+description: Replace N-Write-calls planner pattern with structured submission
+  tools that validate and persist plan payloads engine-side
+created: 2026-04-15
+compiled: 2026-04-15
+mode: excursion
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-foundation
+    name: Submission Tool Foundation
+    depends_on: []
+    branch: structured-plan-submission-tool-engine/foundation
+    build:
+      - - implement
+        - doc-update
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-planner-refactor
+    name: Planner Agent Submission Tool Integration
+    depends_on:
+      - plan-01-foundation
+    branch: structured-plan-submission-tool-engine/planner-refactor
+    build:
+      - - implement
+        - doc-update
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - review-cycle
+      - test-write
+    - test-cycle
+  defaultReview:
+    strategy: auto
+    perspectives:
+      - correctness
+      - architecture
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "Excursion scope: this is a significant cross-cutting engine change
+    touching the AgentBackend interface, both backend implementations, schemas,
+    planner agent logic, file writers, events, and prompts - but all within one
+    tightly coupled subsystem (the planning pipeline), not 4+ independent
+    modules. Plan-review-cycle is warranted because the PRD has precise
+    schema-scope principles, byte-identical output requirements, and subtle
+    error-handling semantics that benefit from a quality gate before build.
+    Build runs review-cycle and test-write in parallel after implement since
+    they are independent; test-cycle follows to execute the written tests. The
+    PRD explicitly requires unit tests for schema validation (duplicate IDs,
+    dangling deps, cycles, orchestration mismatch) and StubBackend integration
+    tests, making test-write and test-cycle essential. Architecture perspective
+    is included alongside correctness because this changes the AgentBackend
+    interface contract consumed by two backends. Standard strictness fits - this
+    is core engine plumbing where correctness matters but there is no security
+    or data-integrity risk surface."
