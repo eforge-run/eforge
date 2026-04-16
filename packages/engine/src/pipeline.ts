@@ -458,7 +458,7 @@ export const AGENT_MODEL_CLASSES: Record<AgentRole, ModelClass> = {
 /** Per-backend default ModelRef objects for each model class. `undefined` means the SDK picks its own model. */
 export const MODEL_CLASS_DEFAULTS: Record<string, Record<ModelClass, import('./config.js').ModelRef | undefined>> = {
   'claude-sdk': {
-    max: { id: 'claude-opus-4-6' },
+    max: { id: 'claude-opus-4-7' },
     balanced: { id: 'claude-sonnet-4-6' },
     fast: { id: 'claude-haiku-4-5' },
   },

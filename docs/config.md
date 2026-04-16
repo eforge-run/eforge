@@ -30,7 +30,7 @@ agents:
   # effort: high              # Global effort level: 'low', 'medium', 'high', 'max'
   # models:                    # Map model classes to model refs (override backend defaults)
   #   max:                     # Used by most roles by default
-  #     id: claude-opus-4-6
+  #     id: claude-opus-4-7
   #   balanced:                # Default for staleness-assessor, prd-validator, dependency-detector
   #     id: claude-sonnet-4-6
   #   fast:                    # Available via per-role modelClass override
@@ -103,7 +103,7 @@ eforge uses a three-tier model class system to assign models to agent roles. Eac
 
 | Class | Default model ref (claude-sdk) | Notes |
 |-------|-------------------------------|-------|
-| `max` | `{ id: claude-opus-4-6 }` | Most capable - used by 20 of 23 roles |
+| `max` | `{ id: claude-opus-4-7 }` | Most capable - used by 20 of 23 roles |
 | `balanced` | `{ id: claude-sonnet-4-6 }` | Mid-tier - used by roles that don't need max capability |
 | `fast` | `{ id: claude-haiku-4-5 }` | Lightweight - available via per-role `modelClass` override |
 

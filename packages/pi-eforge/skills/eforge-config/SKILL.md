@@ -133,7 +133,7 @@ agents:
   # --- Model class system ---
   # models:                            # Map model classes to model refs
   #   max:
-  #     id: claude-opus-4-6            # Claude SDK: { id: "model-name" }
+  #     id: claude-opus-4-7            # Claude SDK: { id: "model-name" }
   #   balanced:
   #     id: claude-sonnet-4-6
   #   fast:

@@ -41,7 +41,7 @@ export interface ModelRef {
 }
 
 export const modelRefSchema = z.object({
-  id: z.string().describe('Model identifier (e.g. "claude-opus-4-6", "gpt-5.4")'),
+  id: z.string().describe('Model identifier (e.g. "claude-opus-4-7", "gpt-5.4")'),
   provider: z.string().optional().describe('Provider name (required for Pi backend, forbidden for Claude SDK)'),
 }).describe('Model reference with optional provider');
 

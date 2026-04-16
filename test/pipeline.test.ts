@@ -533,8 +533,8 @@ describe('agent config threading', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const result = resolveAgentConfig('builder', DEFAULT_CONFIG, 'claude-sdk');
     expect(result.maxTurns).toBe(50);
-    // builder defaults to 'max' class, so claude-sdk default is { id: 'claude-opus-4-6' }
-    expect(result.model).toEqual({ id: 'claude-opus-4-6' });
+    // builder defaults to 'max' class, so claude-sdk default is { id: 'claude-opus-4-7' }
+    expect(result.model).toEqual({ id: 'claude-opus-4-7' });
     expect(result.thinking).toBeUndefined();
     expect(result.effort).toBeUndefined();
     expect(result.maxBudgetUsd).toBeUndefined();
@@ -763,7 +763,7 @@ describe('model class resolution', () => {
       } else {
         expect(AGENT_MODEL_CLASSES[role]).toBe('max');
         const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
-        expect(result.model).toEqual({ id: 'claude-opus-4-6' });
+        expect(result.model).toEqual({ id: 'claude-opus-4-7' });
       }
     }
   });
