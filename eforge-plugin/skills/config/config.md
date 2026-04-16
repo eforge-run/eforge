@@ -230,3 +230,13 @@ profiles:
 | User provides invalid profile stage name | Warn and suggest valid stage names |
 | YAML syntax error in existing file | Report the error, offer to recreate |
 | MCP tool connection failure | The MCP proxy auto-starts the daemon; if it still fails, suggest running `eforge daemon start` manually |
+
+## Related Skills
+
+| Skill | Command | When to suggest |
+|-------|---------|----------------|
+| Init | `/eforge:init` | No eforge config found in the project |
+| Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
+| Status | `/eforge:status` | User wants to check build progress or queue state |
+| Restart | `/eforge:restart` | User wants to restart the eforge daemon |
+| Update | `/eforge:update` | User wants to check for or install eforge updates |

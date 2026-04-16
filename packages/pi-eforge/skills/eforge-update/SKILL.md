@@ -90,3 +90,14 @@ Report the update results:
 | `npm install -g` fails | Show error output; suggest checking permissions or using `sudo` |
 | Daemon stop/start fails | Show error output; suggest running `npx -y @eforge-build/eforge daemon start` manually |
 | Active build detected (`status: 'running'`) | Abort the update; tell the user to wait until all builds complete before retrying |
+
+## Related Skills
+
+| Skill | Command | When to suggest |
+|-------|---------|----------------|
+| Init | `eforge_init` | No eforge config found in the project |
+| Build | `eforge_build` | User wants to enqueue work for the daemon to build |
+| Config | `eforge_config` | User wants to view, edit, or validate the eforge config |
+| Plan | `eforge_plan` | User wants to plan changes before building |
+| Status | `eforge_status` | User wants to check build progress or queue state |
+| Restart | `eforge_restart` | User wants to restart the eforge daemon |

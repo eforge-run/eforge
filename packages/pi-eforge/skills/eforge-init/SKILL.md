@@ -35,3 +35,14 @@ Call the `eforge_init` tool with:
 Once the tool completes successfully, inform the user:
 
 > eforge initialized. You can customize further with `/eforge:config --edit`.
+
+## Related Skills
+
+| Skill | Command | When to suggest |
+|-------|---------|----------------|
+| Build | `eforge_build` | User wants to enqueue work for the daemon to build |
+| Config | `eforge_config` | User wants to view, edit, or validate the eforge config |
+| Plan | `eforge_plan` | User wants to plan changes before building |
+| Status | `eforge_status` | User wants to check build progress or queue state |
+| Restart | `eforge_restart` | User wants to restart the eforge daemon |
+| Update | `eforge_update` | User wants to check for or install eforge updates |

@@ -34,3 +34,13 @@ Call `mcp__eforge__eforge_init` with:
 Once the tool completes successfully, inform the user:
 
 > eforge initialized. You can customize further with `/eforge:config --edit`.
+
+## Related Skills
+
+| Skill | Command | When to suggest |
+|-------|---------|----------------|
+| Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
+| Config | `/eforge:config` | User wants to view, edit, or validate the eforge config |
+| Status | `/eforge:status` | User wants to check build progress or queue state |
+| Restart | `/eforge:restart` | User wants to restart the eforge daemon |
+| Update | `/eforge:update` | User wants to check for or install eforge updates |
