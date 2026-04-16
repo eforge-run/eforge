@@ -101,6 +101,11 @@ The tool returns a JSON object with a `choice` field. Handle each value:
 
 First, validate the project config by calling the `eforge_config` tool with `{ action: "validate" }`.
 
+- If `configFound` is `false`, stop and tell the user:
+  > **No eforge config found.** Run `/eforge:init` to initialize eforge in this project.
+
+  **Do not proceed to enqueue.**
+
 - If `valid` is `false`, display the errors and stop:
   > **Config validation failed:**
   >
@@ -139,4 +144,14 @@ If the monitor is running, also include the monitor URL.
 | User cancels at confirmation | Acknowledge and stop |
 | Tool returns error | Show the error message from the daemon response |
 | Config validation fails | Show errors, suggest fixing config, do not enqueue |
+| No config found | Tell the user to run `/eforge:init` to initialize eforge |
 | Daemon connection failure | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
+
+## Related Skills
+
+| Skill | When to suggest |
+|-------|----------------|
+| `/eforge:init` | No eforge config found in the project |
+| `/eforge:build` | User wants to enqueue work for the daemon |
+| `/eforge:config` | Config validation fails or user wants to view/edit config |
+| `/eforge:status` | After enqueue, to check build progress |

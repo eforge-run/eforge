@@ -654,31 +654,31 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
  */
 export async function validateConfigFile(
   cwd?: string,
-): Promise<{ valid: boolean; errors: string[] }> {
+): Promise<{ configFound: boolean; valid: boolean; errors: string[] }> {
   const errors: string[] = [];
 
   const startDir = cwd ?? process.cwd();
   const configPath = await findConfigFile(startDir);
   if (!configPath) {
-    return { valid: true, errors: [] }; // No config file is valid (defaults apply)
+    return { configFound: false, valid: true, errors: [] }; // No config file is valid (defaults apply)
   }
 
   let raw: string;
   try {
     raw = await readFile(configPath, 'utf-8');
   } catch (err) {
-    return { valid: false, errors: [`Failed to read config file: ${(err as Error).message}`] };
+    return { configFound: true, valid: false, errors: [`Failed to read config file: ${(err as Error).message}`] };
   }
 
   let data: unknown;
   try {
     data = parseYaml(raw);
   } catch (err) {
-    return { valid: false, errors: [`Invalid YAML: ${(err as Error).message}`] };
+    return { configFound: true, valid: false, errors: [`Invalid YAML: ${(err as Error).message}`] };
   }
 
   if (!data || typeof data !== 'object') {
-    return { valid: true, errors: [] }; // Empty file is valid
+    return { configFound: true, valid: true, errors: [] }; // Empty file is valid
   }
 
   // Schema validation
@@ -690,5 +690,5 @@ export async function validateConfigFile(
     }
   }
 
-  return { valid: errors.length === 0, errors };
+  return { configFound: true, valid: errors.length === 0, errors };
 }

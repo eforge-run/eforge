@@ -25,6 +25,7 @@ export type ConfigShowResponse = unknown;
 
 // GET /api/config/validate
 export interface ConfigValidateResponse {
+  configFound: boolean;
   valid: boolean;
   errors?: string[];
   config?: unknown;

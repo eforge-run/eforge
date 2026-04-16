@@ -9,6 +9,13 @@ Quick inline status check — queries the eforge daemon via MCP tools for curren
 
 ## Workflow
 
+### Step 0: Validate Config
+
+Call `mcp__eforge__eforge_config` with `{ action: "validate" }`.
+
+- If `configFound` is `false`, stop and tell the user: "No eforge config found. Run `/eforge:init` to initialize eforge in this project."
+- Otherwise, continue.
+
 ### Step 1: Get Run Status
 
 Call the `mcp__eforge__eforge_status` tool (no parameters needed).
@@ -62,4 +69,14 @@ If the status is `completed` or `failed`:
 |-----------|--------|
 | MCP tool returns error | Show the error, suggest running `eforge daemon start` manually |
 | Daemon not running | The MCP proxy auto-starts the daemon; if it still fails, suggest running `eforge daemon start` manually |
+| No config found | Tell the user: "No eforge config found. Run `/eforge:init` to initialize eforge in this project." |
 | Response is malformed | Report parse error, suggest running `eforge status` CLI directly |
+
+## Related Skills
+
+| Skill | When to suggest |
+|-------|----------------|
+| `/eforge:init` | No eforge config found in the project |
+| `/eforge:build` | User wants to enqueue work for the daemon |
+| `/eforge:config` | Config validation fails or user wants to view/edit config |
+| `/eforge:status` | User wants to refresh build status |
