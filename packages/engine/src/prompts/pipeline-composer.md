@@ -21,7 +21,24 @@ Analyze the PRD above and compose a pipeline by:
 1. **Determine scope** - Choose the orchestration scope:
    - `errand` - Trivial tasks: single-file changes, config tweaks, typo fixes. One plan, no review needed.
    - `excursion` - Most work: features, bug fixes, refactors that touch multiple files. One or more plans with review cycles.
-   - `expedition` - Large efforts requiring 4+ independent subsystems with cross-module coordination. Multiple modules planned independently then merged.
+   - `expedition` - Large efforts with multiple subsystems where delegated module planning is genuinely required. Multiple modules planned independently then merged.
+
+   **Excursion is the default.** When in doubt between excursion and expedition, choose excursion.
+
+   **Excursion vs expedition - planning complexity is the deciding factor.** Ask: could a single planner session enumerate all plans, list all file changes, and resolve cross-plan dependencies with quality? If yes, use excursion. Only if the total scope would exhaust a planner's turn budget and force deferred detailed planning does expedition pay off.
+
+   **Positive expedition signals** (use expedition when multiple apply):
+   - 4+ subsystems each requiring dedicated codebase exploration to plan properly
+   - Genuinely independent subsystems (e.g. auth + billing + notifications), each self-contained
+   - Shared files that need coordinated region-based edits across many modules
+
+   **Negative signals - use excursion instead:**
+   - Sequential dependency chains (A -> B -> C) - those are ordered excursion plans, not parallel modules
+   - Type/interface refactors where changing a definition breaks all consumers
+   - Rename-and-update-all-callers refactors
+   - A foundation layer that defines shared contracts (types, hook registries, router wiring) consumed by the other pieces - usually excursion with a leading foundation plan, not expedition
+
+   **Foundation module heuristic:** A pattern of one foundation module plus independent verticals CAN be expedition if the total planning scope genuinely demands delegated module planning, but is typically excursion when you can plan all pieces (including the foundation) in one session. Don't force an expedition split just because a shared layer exists.
 
 2. **Compose compile stages** - Select and order compile-phase stages from the catalog. These run once to produce plan files. Respect predecessor constraints from the catalog.
 
