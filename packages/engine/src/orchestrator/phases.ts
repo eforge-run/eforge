@@ -529,8 +529,16 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
       }
     }
   } catch (err) {
-    // Agent errors are non-fatal — PRD validation crashing should not block the build
     if (err instanceof Error && err.name === 'AbortError') throw err;
+    // Non-abort errors from the validator now fail the build. A crashed
+    // validator can no longer silently certify a build as passing; mirror the
+    // viability-gate failure path so the build is marked failed and the
+    // progress log makes the reason visible.
+    const message = err instanceof Error ? err.message : String(err);
+    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `PRD validation failed: ${message}` };
+    state.status = 'failed';
+    state.completedAt = new Date().toISOString();
+    saveState(stateDir, state);
   }
 }
 

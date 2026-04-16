@@ -409,6 +409,18 @@ export class PiBackend implements AgentBackend {
 
         // Track turns and check budget per-turn
         if (event.type === 'turn_end') {
+          // Detect SDK-level backend errors reported via the assistant message's
+          // stopReason. pi-ai does not throw on unreachable backends; it returns
+          // an AssistantMessage with stopReason='error' and errorMessage set.
+          const turnMsg = (event as { message?: { stopReason?: string; errorMessage?: string } }).message;
+          if (turnMsg && turnMsg.stopReason === 'error') {
+            const backendMsg = turnMsg.errorMessage && turnMsg.errorMessage.length > 0
+              ? `Backend error: ${turnMsg.errorMessage}`
+              : 'Backend returned an error response with no message';
+            error = backendMsg;
+            try { session.abort(); } catch { /* ignore */ }
+            return;
+          }
           numTurns++;
           // Update cumulative cost from session stats after each turn
           const stats = session.getSessionStats();
@@ -486,7 +498,9 @@ export class PiBackend implements AgentBackend {
         totalCacheWrite = stats.tokens.cacheWrite;
         totalCost = stats.cost;
       }).catch((err: unknown) => {
-        error = err instanceof Error ? err.message : String(err);
+        if (!error) {
+          error = err instanceof Error ? err.message : String(err);
+        }
       }).finally(() => {
         unsubscribe();
         eventQueue.removeProducer();
@@ -501,6 +515,14 @@ export class PiBackend implements AgentBackend {
 
       // Wait for prompt to finish
       await promptDone;
+
+      // Zero-token backstop: if the session completed turns but reported no
+      // token usage at all, the backend likely failed silently (e.g. provider
+      // swallowed the error without setting stopReason='error'). Legitimate
+      // turns always consume at least the prompt's input tokens.
+      if (!error && numTurns > 0 && totalInputTokens === 0 && totalOutputTokens === 0) {
+        error = `Agent completed ${numTurns} turn(s) with zero token usage — backend may be unreachable or misconfigured`;
+      }
 
       // Emit agent:result
       const durationMs = Date.now() - startTime;

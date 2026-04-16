@@ -91,15 +91,24 @@ describe('parseGaps', () => {
     expect(result.completionPercent).toBe(60);
   });
 
-  it('returns empty gaps and undefined completionPercent for no JSON match', () => {
-    const result = parseGaps('no json here');
+  it('returns empty gaps and undefined completionPercent for empty input', () => {
+    const result = parseGaps('');
     expect(result).toEqual({ gaps: [], completionPercent: undefined });
   });
 
-  it('returns empty gaps and undefined completionPercent for invalid JSON', () => {
+  it('returns a single synthetic gap when non-empty input has no JSON block', () => {
+    const result = parseGaps('no json here');
+    expect(result.gaps).toHaveLength(1);
+    expect(result.gaps[0].requirement).toBe('PRD validator output unparseable');
+    expect(result.completionPercent).toBeUndefined();
+  });
+
+  it('returns a single synthetic gap for invalid JSON (fail closed)', () => {
     const input = '```json\n{invalid json}\n```';
     const result = parseGaps(input);
-    expect(result).toEqual({ gaps: [], completionPercent: undefined });
+    expect(result.gaps).toHaveLength(1);
+    expect(result.gaps[0].requirement).toBe('PRD validator output unparseable');
+    expect(result.completionPercent).toBeUndefined();
   });
 
   it('handles raw JSON without fences', () => {

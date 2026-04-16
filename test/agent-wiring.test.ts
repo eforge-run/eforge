@@ -720,26 +720,20 @@ describe('runPrdValidator wiring', () => {
     expect(complete!.gaps[1].explanation).toContain('Error handling');
   });
 
-  it('handles agent errors gracefully (non-fatal)', async () => {
+  it('re-throws non-abort agent errors (fail-closed)', async () => {
     const backend = new StubBackend([{ error: new Error('Agent crashed') }]);
 
-    const events: EforgeEvent[] = [];
-    // Should NOT throw — agent errors are non-fatal
-    for await (const event of runPrdValidator({
-      backend,
-      cwd: '/tmp',
-      prdContent: 'PRD content',
-      diff: 'some diff',
-    })) {
-      events.push(event);
-    }
-
-    expect(findEvent(events, 'prd_validation:start')).toBeDefined();
-    const complete = findEvent(events, 'prd_validation:complete');
-    expect(complete).toBeDefined();
-    // Errors treated as no gaps (pass)
-    expect(complete!.passed).toBe(true);
-    expect(complete!.gaps).toEqual([]);
+    // Fail-closed: a crashed validator must not silently certify a build.
+    await expect(async () => {
+      for await (const _event of runPrdValidator({
+        backend,
+        cwd: '/tmp',
+        prdContent: 'PRD content',
+        diff: 'some diff',
+      })) {
+        // drain
+      }
+    }).rejects.toThrow('Agent crashed');
   });
 
   it('yields agent:result event (always yielded)', async () => {

@@ -53,6 +53,13 @@ export async function* runPrdValidator(
       }
     }
 
+    // Fail closed on empty output — an agent that produced nothing cannot
+    // certify the implementation. This typically means the backend returned
+    // no content (e.g. unreachable model).
+    if (accumulatedText.trim() === '') {
+      throw new Error('PRD validator produced no output — backend may be unreachable');
+    }
+
     // Parse structured JSON output from accumulated text
     const parsed = parseGaps(accumulatedText);
     gaps = parsed.gaps;
@@ -60,7 +67,9 @@ export async function* runPrdValidator(
   } catch (err) {
     // Re-throw abort errors so the orchestrator can respect cancellation
     if (err instanceof Error && err.name === 'AbortError') throw err;
-    // Agent errors are non-fatal — the build continues
+    // Re-throw all other errors — fail closed so a broken validator does not
+    // silently certify a build as passing.
+    throw err;
   }
 
   const passed = gaps.length === 0;
@@ -74,9 +83,18 @@ const VALID_COMPLEXITIES = new Set(['trivial', 'moderate', 'significant']);
  * Looks for a JSON block containing { "gaps": [...] } and optional completionPercent.
  */
 export function parseGaps(text: string): { gaps: PrdValidationGap[]; completionPercent: number | undefined } {
+  const unparseableGap: PrdValidationGap = {
+    requirement: 'PRD validator output unparseable',
+    explanation: 'Agent output did not contain a parsable JSON gap-analysis block.',
+  };
+
   // Try to find a JSON block (fenced or raw)
   const jsonMatch = text.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/) ?? text.match(/(\{[\s\S]*"gaps"[\s\S]*\})/);
-  if (!jsonMatch) return { gaps: [], completionPercent: undefined };
+  if (!jsonMatch) {
+    // Non-empty input with no JSON block: fail closed with a synthetic gap.
+    if (text.trim() === '') return { gaps: [], completionPercent: undefined };
+    return { gaps: [unparseableGap], completionPercent: undefined };
+  }
 
   try {
     const parsed = JSON.parse(jsonMatch[1]);
@@ -102,10 +120,10 @@ export function parseGaps(text: string): { gaps: PrdValidationGap[]; completionP
       return { gaps, completionPercent };
     }
 
-    return { gaps: [], completionPercent };
+    return { gaps: [unparseableGap], completionPercent };
   } catch {
-    // JSON parse failure — treat as no gaps
+    // JSON parse failure — fail closed with a synthetic gap
   }
 
-  return { gaps: [], completionPercent: undefined };
+  return { gaps: [unparseableGap], completionPercent: undefined };
 }
