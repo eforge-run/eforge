@@ -23,7 +23,7 @@ Call the `mcp__eforge__eforge_backend` tool with `{ action: "show" }`.
 Parse the response (shape: `{ active, source, resolved: { backend, profile } }`) and report:
 
 - **Active profile**: `{active}` (or "(none - using team default)" when `active` is null)
-- **Source**: `{source}` (`marker` when set by `eforge/.active-backend`, `config` when inherited from `eforge/config.yaml`, `none` when no profile is configured)
+- **Source**: `{source}` (`local` when the active profile is picked via the `eforge/.active-backend` marker, `team` when no marker is present and the resolution falls back to the `backend:` field in `eforge/config.yaml`, `missing` when the marker points at a profile file that does not exist (stale marker), `none` when no profile is configured at all)
 - **Resolved backend**: `{resolved.backend}` (e.g. `claude-sdk` or `pi`)
 
 Then, optionally, call `mcp__eforge__eforge_backend` with `{ action: "list" }` to show the user what other profiles are available, rendering a short table of profile names and marking the active one with `●`.
