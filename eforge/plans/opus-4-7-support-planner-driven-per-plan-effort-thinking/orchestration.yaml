@@ -1,0 +1,83 @@
+name: opus-4-7-support-planner-driven-per-plan-effort-thinking
+description: Widen effort schema to include xhigh for Opus 4.7, fix Pi backend
+  mappings to cover full range, add data-driven model-capability map with
+  clamping, enable planner to emit per-plan effort/thinking overrides in plan
+  frontmatter, integrate overrides into resolveAgentConfig with precedence and
+  clamping, enrich agent:start events with resolved effort/thinking/source, and
+  surface all runtime decisions in the monitor UI tooltip.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-schema-capabilities
+    name: Schema Widening + Backend Mappings + Model Capability Map
+    depends_on: []
+    branch: opus-4-7-support-planner-driven-per-plan-effort-thinking/schema-capabilities
+    build: &a1
+      - implement
+      - review-cycle
+      - test-cycle
+    review: &a2
+      strategy: auto
+      perspectives:
+        - correctness
+        - consistency
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-runtime-override-events
+    name: Runtime Per-Plan Override + Clamping + Event Enrichment + Planner Prompt
+    depends_on:
+      - plan-01-schema-capabilities
+    branch: opus-4-7-support-planner-driven-per-plan-effort-thinking/runtime-override-events
+    build: *a1
+    review: *a2
+  - id: plan-03-monitor-ui
+    name: Monitor UI - Surface Effort/Thinking in Stage Hover
+    depends_on:
+      - plan-02-runtime-override-events
+    branch: opus-4-7-support-planner-driven-per-plan-effort-thinking/monitor-ui
+    build: *a1
+    review: *a2
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: >-
+    Excursion scope: the work is a single cohesive feature (effort/thinking
+    level widening + planner-driven overrides + clamping + UI surfacing) layered
+    across multiple packages. Although it touches many files, the changes form a
+    sequential dependency chain (schema -> capability map -> planner output ->
+    pipeline resolution -> events -> UI), not 4+ independent subsystems. A
+    single planner session can enumerate all plans and resolve cross-plan
+    dependencies.
+
+
+    Plan-review-cycle included because the PRD has an unusually detailed
+    call-site census (18 non-test resolveAgentConfig sites split into three
+    groups) and precise precedence semantics - plan review catches scope drift
+    or missed sites before build.
+
+
+    Review-cycle with 'correctness' and 'consistency' perspectives: correctness
+    catches mapping errors in the capability table, schema misalignment between
+    effortLevelSchema and backend types, and wrong clamp behavior; consistency
+    ensures all 18 call sites follow the same pattern (Group A gets planEntry,
+    Groups B/C pass undefined) and that event enrichment is uniform. Two rounds
+    are sufficient - the changes are mechanical once the pattern is established.
+
+
+    Test-cycle follows review-cycle sequentially so that review fixes are
+    included in test execution. The PRD specifies three test files
+    (agent-wiring, plan, model-capabilities) as acceptance criteria, and
+    test-cycle verifies they pass against the reviewed code.
+
+
+    Standard strictness: the work is infrastructure-level but not security or
+    data-integrity critical - effort/thinking levels are performance tuning
+    knobs, not authorization boundaries.
