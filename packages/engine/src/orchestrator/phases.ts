@@ -251,12 +251,25 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         saveState(stateDir, state);
 
         // Delegate to injected plan runner
+        let buildFailedError: string | undefined;
         for await (const event of planRunner(planId, worktreePath, plan)) {
+          if (event.type === 'build:failed' && event.planId === planId) {
+            buildFailedError = event.error;
+          }
           eventQueue.push(event);
         }
 
-        transitionPlan(state, planId, 'completed');
-        saveState(stateDir, state);
+        if (buildFailedError !== undefined) {
+          transitionPlan(state, planId, 'failed', { error: buildFailedError });
+          saveState(stateDir, state);
+
+          const failureEvents = propagateFailure(state, planId, config.plans);
+          saveState(stateDir, state);
+          for (const e of failureEvents) eventQueue.push(e);
+        } else {
+          transitionPlan(state, planId, 'completed');
+          saveState(stateDir, state);
+        }
       } catch (err) {
         // Handle all failures (worktree creation, plan runner, etc.)
         if (state.plans[planId].status !== 'failed') {

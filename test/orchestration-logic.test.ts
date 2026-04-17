@@ -1,9 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { propagateFailure, shouldSkipMerge, computeMaxConcurrency } from '@eforge-build/engine/orchestrator/phases';
+import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans, finalize } from '@eforge-build/engine/orchestrator/phases';
+import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
+import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import { resumeState } from '@eforge-build/engine/orchestrator/plan-lifecycle';
 import { initializeState } from '@eforge-build/engine/orchestrator';
+import type { PlanRunner } from '@eforge-build/engine/orchestrator';
 import { saveState } from '@eforge-build/engine/state';
-import type { EforgeState, OrchestrationConfig, PlanState } from '@eforge-build/engine/events';
+import type { EforgeState, EforgeEvent, OrchestrationConfig, PlanState } from '@eforge-build/engine/events';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -370,6 +373,78 @@ describe('computeMaxConcurrency', () => {
       { id: 'e', dependsOn: ['b'] },
     ]);
     expect(computeMaxConcurrency(plans)).toBe(3);
+  });
+});
+
+describe('executePlans - build:failed handling', () => {
+  const makeTempDir = useTempDir();
+
+  it('marks plan as failed and blocks dependents when build:failed is yielded', async () => {
+    const stateDir = makeTempDir();
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+        { id: 'plan-b', name: 'Plan B', dependsOn: ['plan-a'], branch: 'feature/plan-b', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+
+    const state = initializeState(stateDir, config, '/tmp/repo').state;
+
+    // Stub PlanRunner: plan-a yields build:failed, plan-b yields nothing
+    const planRunner: PlanRunner = async function* (planId) {
+      if (planId === 'plan-a') {
+        yield { type: 'build:failed', planId: 'plan-a', error: 'JSON parse error', timestamp: new Date().toISOString() } as EforgeEvent;
+      }
+    };
+
+    // Stub WorktreeManager
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      mergePlan: async () => 'abc123',
+      reconcile: async () => ({ valid: [], recovered: [], orphaned: [] }),
+    } as unknown as WorktreeManager;
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      stateDir,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      featureBranchMerged: false,
+      resumed: false,
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of executePlans(ctx)) {
+      events.push(event);
+    }
+    for await (const event of finalize(ctx)) {
+      events.push(event);
+    }
+
+    // plan-a should be failed
+    expect(state.plans['plan-a'].status).toBe('failed');
+    // plan-b should be blocked (transitive dependent of failed plan-a)
+    expect(state.plans['plan-b'].status).toBe('blocked');
+    // No merge events should have been emitted
+    expect(events.some((e) => e.type === 'merge:start')).toBe(false);
+    expect(events.some((e) => e.type === 'merge:complete')).toBe(false);
+    // A build:failed event for plan-a should be present
+    expect(events.some((e) => e.type === 'build:failed' && e.planId === 'plan-a')).toBe(true);
+    // Overall build status should be failed
+    expect(state.status).toBe('failed');
   });
 });
 
