@@ -1,0 +1,10 @@
+backend: claude-sdk
+agents:
+  effort: high
+  models:
+    max:
+      id: claude-opus-4-7
+    balanced:
+      id: claude-sonnet-4-6
+    fast:
+      id: claude-haiku-4-5
