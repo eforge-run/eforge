@@ -1,0 +1,15 @@
+backend: pi
+agents:
+  effort: high
+  models:
+    max:
+      id: claude-opus-4-7
+      provider: anthropic
+    balanced:
+      id: claude-sonnet-4-6
+      provider: anthropic
+    fast:
+      id: claude-haiku-4-5
+      provider: anthropic
+pi:
+  thinkingLevel: high

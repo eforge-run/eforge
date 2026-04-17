@@ -35,17 +35,29 @@ Parse the `{ providers: string[] }` response and show the list. Use a smart defa
 
 Skip this step for `claude-sdk` (provider is always Anthropic / implicit).
 
-### Step 4: Pick a model
+### Step 4: Pick a model per class
+
+Eforge routes agent roles through three model classes:
+
+- **max** — heavy reasoning (planners, reviewers, architecture/cohesion agents). Most roles default here.
+- **balanced** — mid-range general-purpose work.
+- **fast** — lightweight or throwaway calls.
+
+A profile sets one model per class via `agents.models.{max,balanced,fast}`, so each agent role picks up the right tier.
 
 Call `mcp__eforge__eforge_models` with:
 - `{ action: "list", backend: "claude-sdk" }` for claude-sdk, or
 - `{ action: "list", backend: "pi", provider: "<chosen>" }` for pi.
 
-Parse the `{ models: ModelInfo[] }` response. The list is already sorted newest-first.
+Parse the `{ models: ModelInfo[] }` response (already sorted newest-first). Show the top 10 (id + `releasedAt` when available); add a "see all" affordance if the list is longer.
 
-Present the user with the top 10 models (show `id` and `releasedAt` when available). Default to the first entry (newest). If the list has more than 10 entries, add a "see all" affordance and show the rest only if the user asks.
+Then walk the user through each class in order:
 
-Confirm the chosen model id with the user.
+1. **max** — default to the newest model. Confirm the pick.
+2. **balanced** — default to **same as `max`**. Offer the list if the user wants a different model (e.g., a cheaper mid-tier).
+3. **fast** — default to **same as `balanced`**. Offer the list if the user wants a cheaper/faster model.
+
+A user who just accepts defaults gets the same model for all three classes — fine as a starting point. Users who want a ladder (e.g., `opus` / `sonnet` / `haiku`) can set each class explicitly.
 
 ### Step 5: Optional tuning
 
@@ -67,7 +79,11 @@ Build the profile object that will go to the tool:
   // For pi:
   pi: { thinkingLevel: "<level>" }?,           // only if user set
   agents: {
-    model: { id: "<model-id>", provider: "<provider>"? },  // provider only for pi
+    models: {
+      max:      { id: "<id>", provider: "<provider>"? },   // provider only for pi
+      balanced: { id: "<id>", provider: "<provider>"? },
+      fast:     { id: "<id>", provider: "<provider>"? },
+    },
     effort: "<effort>"?,                       // only if user set
   },
 }
@@ -80,9 +96,16 @@ backend: pi
 pi:
   thinkingLevel: medium
 agents:
-  model:
-    provider: anthropic
-    id: claude-sonnet-4-6
+  models:
+    max:
+      provider: anthropic
+      id: claude-opus-4-7
+    balanced:
+      provider: anthropic
+      id: claude-sonnet-4-6
+    fast:
+      provider: anthropic
+      id: claude-haiku-4-5
   effort: high
 ```
 
