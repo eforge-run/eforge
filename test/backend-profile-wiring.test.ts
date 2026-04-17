@@ -46,10 +46,6 @@ describe('eforge-plugin/.claude-plugin/plugin.json', () => {
     commands: string[];
   };
 
-  it('has the plan-02 version bump (0.5.26)', () => {
-    expect(manifest.version).toBe('0.5.26');
-  });
-
   it('registers the /eforge:backend skill in commands', () => {
     expect(manifest.commands).toContain('./skills/backend/backend.md');
   });
