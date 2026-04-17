@@ -15,7 +15,7 @@ export type ThinkingConfig =
   | { type: 'disabled' };
 
 /** Effort level for controlling how much thinking/reasoning Claude applies. */
-export type EffortLevel = 'low' | 'medium' | 'high' | 'max';
+export type EffortLevel = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 /**
  * SDK passthrough fields that can be configured per-agent.

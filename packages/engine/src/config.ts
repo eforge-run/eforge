@@ -56,7 +56,7 @@ export const thinkingConfigSchema = z.union([
   z.object({ type: z.literal('disabled') }),
 ]).describe('Controls Claude\'s thinking/reasoning behavior');
 
-export const effortLevelSchema = z.enum(['low', 'medium', 'high', 'max']).describe('Effort level for controlling thinking depth');
+export const effortLevelSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max']).describe('Effort level for controlling thinking depth');
 
 export const sdkPassthroughConfigSchema = z.object({
   model: modelRefSchema.optional().describe('Model override'),
@@ -103,7 +103,7 @@ const SETTING_SOURCES = ['user', 'project', 'local'] as const;
 
 export const backendSchema = z.enum(['claude-sdk', 'pi']).describe('Backend provider for agent execution');
 
-export const piThinkingLevelSchema = z.enum(['off', 'medium', 'high']).describe('Pi-native thinking level');
+export const piThinkingLevelSchema = z.enum(['off', 'low', 'medium', 'high', 'xhigh']).describe('Pi-native thinking level');
 
 export const piConfigSchema = z.object({
   apiKey: z.string().optional().describe('API key for the Pi provider'),
@@ -249,7 +249,7 @@ export interface ResolvedAgentConfig {
 export interface PiConfig {
   /** Optional explicit API key override. When set, takes highest priority via setRuntimeApiKey. When omitted, Pi's file-backed AuthStorage handles auth automatically (env vars, ~/.pi/agent/auth.json, OAuth tokens). */
   apiKey?: string;
-  thinkingLevel: 'off' | 'medium' | 'high';
+  thinkingLevel: 'off' | 'low' | 'medium' | 'high' | 'xhigh';
   extensions: { autoDiscover: boolean; include?: string[]; exclude?: string[]; paths?: string[] };
   compaction: { enabled: boolean; threshold: number };
   retry: { maxRetries: number; backoffMs: number };

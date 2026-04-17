@@ -62,19 +62,25 @@ function mapThinkingConfig(thinking: ThinkingConfig): ThinkingLevel {
 }
 
 /**
- * Map eforge EffortLevel to Pi ThinkingLevel as fallback.
+ * Map eforge EffortLevel to Pi ThinkingLevel.
  *
- * - low -> 'off'
+ * pi-ai's ThinkingLevel range is 'off' | 'low' | 'medium' | 'high' | 'xhigh'.
+ * pi-ai has no 'max' level; its 'xhigh' is adaptive-max for Opus 4.6+,
+ * which semantically matches eforge's 'max'.
+ *
+ * - low -> 'low'
  * - medium -> 'medium'
  * - high -> 'high'
- * - max -> 'high'
+ * - xhigh -> 'xhigh'
+ * - max -> 'xhigh'
  */
 function mapEffortLevel(effort: EffortLevel): ThinkingLevel {
   switch (effort) {
-    case 'low': return 'off';
+    case 'low': return 'low';
     case 'medium': return 'medium';
     case 'high': return 'high';
-    case 'max': return 'high';
+    case 'xhigh': return 'xhigh';
+    case 'max': return 'xhigh';
   }
 }
 
