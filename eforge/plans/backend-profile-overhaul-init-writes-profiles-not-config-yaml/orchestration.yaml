@@ -1,0 +1,49 @@
+name: backend-profile-overhaul-init-writes-profiles-not-config-yaml
+description: "Remove backend: field from config.yaml schema, rewrite eforge_init
+  to create named backend profiles, add --migrate mode, simplify
+  resolveActiveProfileName, add Pi footer status, and update all downstream
+  consumers."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-schema-handlers-tests
+    name: Schema, resolver, init handlers, Pi footer, docs, and tests
+    depends_on: []
+    branch: backend-profile-overhaul-init-writes-profiles-not-config-yaml/schema-handlers-tests
+    build: &a1
+      - implement
+      - - review-cycle
+        - doc-update
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "Excursion scope: this is a coordinated refactor across ~7 files in a
+    sequential dependency chain (schema changes → handler rewrites → skill docs
+    → tests). A single planner can enumerate all changes and resolve cross-file
+    dependencies; the work doesn't decompose into 4+ independent subsystems
+    requiring delegated module planning. Plan-review-cycle is included because
+    the changes touch core config infrastructure (schema, profile resolution,
+    init flow) where plan quality directly affects implementation correctness.
+    Build uses review-cycle with doc-update in parallel: the schema and resolver
+    changes are load-bearing infrastructure that benefits from iterative review,
+    while doc-update can independently catch any skill/README updates the
+    implementation missed. Test requirements are explicit in the PRD (section 6)
+    and will be part of implementation plans rather than a separate test-write
+    stage. Single correctness perspective with standard strictness and 2 rounds
+    is appropriate - this is internal tooling infrastructure where functional
+    correctness matters but the risk profile doesn't warrant strict/security
+    review. Auto-accept suggestions to keep the cycle focused on real issues."
