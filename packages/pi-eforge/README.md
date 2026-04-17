@@ -23,7 +23,7 @@ Then, in your project:
 ## What this package provides
 
 - Native Pi tools for eforge daemon operations
-- Slash commands including `/eforge:build`, `/eforge:init`, `/eforge:status`, `/eforge:config`, `/eforge:restart`, and `/eforge:update`
+- Slash commands including `/eforge:build`, `/eforge:init`, `/eforge:status`, `/eforge:config`, `/eforge:backend`, `/eforge:backend:new`, `/eforge:restart`, and `/eforge:update`
 - The `/eforge:plan` skill for structured handoff planning before build execution
 
 ## Requirements

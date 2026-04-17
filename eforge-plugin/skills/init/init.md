@@ -37,7 +37,7 @@ The `eforge/.active-backend` file is a per-developer marker that tracks which na
 
 Once the tool completes successfully, inform the user:
 
-> eforge initialized. You can customize further with `/eforge:config --edit`, or create a personal backend profile with `/eforge:backend:new`.
+> eforge initialized. You can customize further with `/eforge:config --edit`, or create a personal backend profile with `/eforge:backend:new`. Profiles can also be created at user scope (`~/.config/eforge/backends/`) for reuse across projects - `/eforge:backend:new` prompts for scope.
 
 ## Related Skills
 

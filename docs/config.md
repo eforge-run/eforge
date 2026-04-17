@@ -267,6 +267,37 @@ Providers like `openai-codex` and `github-copilot` use OAuth for authentication.
 2. Use the provider name in your model refs - e.g. `{ provider: openai-codex, id: codex-mini }`
 3. No `pi.apiKey` or environment variable is needed - tokens are read from the auth file automatically
 
+## Backend Profiles
+
+Backend profiles are named YAML files that bundle backend kind, provider, model selections, and tuning into a reusable unit. Profiles can be defined at project scope or user scope.
+
+### User-Scoped Profiles
+
+User-scoped profiles live at `~/.config/eforge/backends/<name>.yaml` (respects `$XDG_CONFIG_HOME`). They are not committed to the project repository and are reusable across all projects on the machine.
+
+The user-scope active-backend marker lives at `~/.config/eforge/.active-backend`.
+
+### Active Profile Precedence
+
+The active backend profile is resolved using a 5-step precedence chain (highest to lowest):
+
+1. **Project marker** - `eforge/.active-backend` file in the project
+2. **Project config** - `backend:` field in `eforge/config.yaml`
+3. **User marker** - `~/.config/eforge/.active-backend` file
+4. **User config** - `backend:` field in `~/.config/eforge/config.yaml`
+5. **None** - no profile configured
+
+When a profile name is resolved, the profile file is looked up project-first, then user-fallback. A user-scope marker can resolve to a project-scope profile file if one exists with that name. Conversely, a project profile with the same name as a user profile shadows the user profile.
+
+### Scope Parameter
+
+The `scope` parameter is available on `create`, `use`, and `delete` operations:
+
+- `scope: "project"` (default) - operates on `eforge/backends/` and `eforge/.active-backend`
+- `scope: "user"` - operates on `~/.config/eforge/backends/` and `~/.config/eforge/.active-backend`
+
+When listing profiles, both scopes are shown. User entries shadowed by a project profile of the same name are annotated with `shadowedBy: project`.
+
 ## Plugins
 
 Plugins are auto-discovered from `~/.claude/plugins/installed_plugins.json`. Both user-scoped and project-scoped plugins matching the working directory are loaded. Use `plugins.include`/`plugins.exclude` in `eforge/config.yaml` to filter, or `--no-plugins` to disable entirely.

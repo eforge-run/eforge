@@ -39,7 +39,7 @@ Walk the user through configuration sections, asking about each one. Only includ
 
 **Sections to cover:**
 
-1. **Backend selection** (required) - Which LLM backend: `claude-sdk` (uses Claude Code's built-in SDK) or `pi` (experimental, multi-provider via Pi SDK supporting OpenRouter, Anthropic, OpenAI, Google, etc.).
+1. **Backend selection** (required) - Which LLM backend: `claude-sdk` (uses Claude Code's built-in SDK) or `pi` (experimental, multi-provider via Pi SDK supporting OpenRouter, Anthropic, OpenAI, Google, etc.). Note: for richer backend management (named profiles with bundled model/tuning config, project or user scope), see `/eforge:backend:new`. The `backend:` field here acts as the project config fallback in the 5-step active profile precedence.
 2. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`
 3. **Model & thinking tuning** (opt-in - "Would you like to customize model or thinking settings? Most users keep defaults.") - Model references are objects: `{ id: "model-name" }` for Claude SDK, `{ provider: "provider-name", id: "model-name" }` for Pi. Model class overrides via `agents.models` (map class names `max`/`balanced`/`fast` to model ref objects), global `agents.model` override (bypasses class system), `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`max`). Model resolution order: per-role model > global model > user class override > backend class default > fallback chain. Three roles (`staleness-assessor`, `prd-validator`, `dependency-detector`) default to `balanced`; all others default to `max`. If a role's model class has no configured model, eforge walks up to more capable tiers, then down, before erroring. For `pi`, users should set at least `agents.models.max` (or `agents.model`) with `{ provider, id }` refs because Pi has no built-in model class defaults.
 4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false, auto-enabled when `ANTHROPIC_API_KEY` env var is set - passes `--bare` to Claude Code subprocess)
@@ -236,6 +236,8 @@ profiles:
 | Skill | Command | When to suggest |
 |-------|---------|----------------|
 | Init | `/eforge:init` | No eforge config found in the project |
+| Backend | `/eforge:backend` | User wants to list, inspect, or switch backend profiles |
+| Backend (new) | `/eforge:backend:new` | User wants to create a new backend profile (project or user scope) |
 | Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
 | Status | `/eforge:status` | User wants to check build progress or queue state |
 | Restart | `/eforge:restart` | User wants to restart the eforge daemon |

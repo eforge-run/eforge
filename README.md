@@ -104,7 +104,7 @@ For standalone use, create `eforge/config.yaml` with at minimum `backend: claude
 
 ## Configuration
 
-Configured via `eforge/config.yaml` (searched upward from cwd), environment variables, and auto-discovered files. Custom workflow profiles, hooks, MCP servers, and plugins are all configurable. See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
+Configured via `eforge/config.yaml` (searched upward from cwd), a global config at `~/.config/eforge/config.yaml`, environment variables, and auto-discovered files. Backend profiles, custom workflow profiles, hooks, MCP servers, and plugins are all configurable. Backend profiles can be scoped to a project (`eforge/backends/`) or to the user (`~/.config/eforge/backends/`) for reuse across projects. See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
 
 ## Development
 

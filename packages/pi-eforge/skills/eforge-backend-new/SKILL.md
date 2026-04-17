@@ -6,16 +6,25 @@ disable-model-invocation: true
 
 # /eforge:backend:new
 
-Interactively create a new named backend profile (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`) in `eforge/backends/<name>.yaml`. The profile selects a backend kind, provider, model, and optional tuning, then optionally activates itself by writing `eforge/.active-backend`.
+Interactively create a new named backend profile (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`). The profile can live at project scope (`eforge/backends/<name>.yaml`) or user scope (`~/.config/eforge/backends/<name>.yaml`). It selects a backend kind, provider, model, and optional tuning, then optionally activates itself.
 
 ## Workflow
+
+### Step 0: Ask scope
+
+Ask: "Where should this profile live? **Project scope** (`eforge/backends/`) or **user scope** (`~/.config/eforge/backends/`)?"
+
+- **Project scope** (default) - profile is committed with the project, shared with the team.
+- **User scope** - profile lives in `~/.config/eforge/backends/`, reusable across all projects on this machine.
+
+If the user does not specify, default to project scope. Remember the chosen scope for Step 7 (pass it as `scope` to the `create` action) and Step 8 (pass it to `use` if activating).
 
 ### Step 1: Determine the profile name
 
 - If `$ARGUMENTS` is non-empty, treat the first token as the profile name.
 - Otherwise ask the user: "What should this profile be called? (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`)"
 
-The name will be used as the filename (`eforge/backends/<name>.yaml`).
+The name will be used as the filename (project: `eforge/backends/<name>.yaml`, user: `~/.config/eforge/backends/<name>.yaml`).
 
 ### Step 2: Pick the backend kind
 
@@ -90,7 +99,7 @@ Build the profile object that will go to the tool:
 }
 ```
 
-Show the user a rendered preview of the YAML that will land in `eforge/backends/<name>.yaml`:
+Show the user a rendered preview of the YAML that will land in the chosen scope directory (project: `eforge/backends/<name>.yaml`, user: `~/.config/eforge/backends/<name>.yaml`):
 
 ```yaml
 backend: pi
@@ -120,6 +129,7 @@ Call `eforge_backend` with:
 {
   action: "create",
   name: "<name>",
+  scope: "<project|user>",   // from Step 0
   backend: "<claude-sdk|pi>",
   pi: { ... }?,       // omit if empty
   agents: { ... }?,   // omit if empty
@@ -133,7 +143,7 @@ If the tool reports the profile already exists, ask the user whether to retry wi
 
 Ask: "Make `{name}` the active profile for this project?"
 
-If yes, call `eforge_backend` with `{ action: "use", name: "<name>" }`. This writes `eforge/.active-backend`. Confirm success and let the user know the next eforge build will use the new profile.
+If yes, call `eforge_backend` with `{ action: "use", name: "<name>", scope: "<project|user>" }` (using the scope from Step 0). This writes the active-backend marker at the chosen scope. Confirm success and let the user know the next eforge build will use the new profile.
 
 If no, remind the user they can switch later with `/eforge:backend <name>`.
 
