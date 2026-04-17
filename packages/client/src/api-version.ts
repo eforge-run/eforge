@@ -1,1 +1,1 @@
-export const DAEMON_API_VERSION = 1;
+export const DAEMON_API_VERSION = 2;

@@ -1,6 +1,7 @@
-import { readFile, access } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
+import { readFile, readdir, rename, rm, unlink, writeFile, mkdir, access } from 'node:fs/promises';
+import { resolve, dirname, basename, extname } from 'node:path';
 import { homedir } from 'node:os';
+import { randomBytes } from 'node:crypto';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
@@ -620,6 +621,10 @@ async function loadUserConfig(
  * Load eforge.yaml config from the given directory (searching upward),
  * merged with user-level global config (~/.config/eforge/config.yaml).
  * Returns DEFAULT_CONFIG when no config files exist.
+ *
+ * When an active backend profile is found (via `eforge/.active-backend`
+ * marker or `config.yaml`'s `backend:` field with a matching profile file),
+ * the profile is merged on top of the project config before env-var resolution.
  */
 export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
   const globalConfig = await loadUserConfig();
@@ -640,8 +645,413 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
     }
   }
 
-  const merged = mergePartialConfigs(globalConfig, projectConfig);
+  // Resolve and merge active backend profile, if present
+  let profileConfig: PartialEforgeConfig | null = null;
+  if (configPath) {
+    const configDir = dirname(configPath);
+    try {
+      const { name } = await resolveActiveProfileName(configDir, projectConfig);
+      if (name) {
+        profileConfig = await loadBackendProfile(configDir, name);
+      }
+    } catch {
+      // best-effort: profile resolution should not break config loading
+    }
+  }
+
+  const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
+  const merged = profileConfig ? mergePartialConfigs(baseMerged, profileConfig) : baseMerged;
   return resolveConfig(merged);
+}
+
+// ---------------------------------------------------------------------------
+// Backend Profile Loader
+// ---------------------------------------------------------------------------
+
+/**
+ * Source of the active backend profile resolution.
+ *
+ * - `local`: marker file `eforge/.active-backend` selected the profile (dev-local override)
+ * - `team`: no marker; `config.yaml` `backend:` matched a profile file (team default)
+ * - `missing`: marker present, but the referenced profile file is missing
+ *   (a one-shot stderr warning is logged; if a team fallback applies it is used,
+ *   but the source remains `missing` only when no name could be resolved)
+ * - `none`: no profile applied (no marker and no team match)
+ */
+export type ActiveProfileSource = 'local' | 'team' | 'missing' | 'none';
+
+/** Marker filename inside the eforge config directory. */
+const ACTIVE_BACKEND_MARKER = '.active-backend';
+
+/** Profile subdirectory inside the eforge config directory. */
+const BACKENDS_SUBDIR = 'backends';
+
+/** Track marker warnings already emitted to keep them one-shot per process. */
+const _staleMarkerWarnings = new Set<string>();
+
+function profilePath(configDir: string, name: string): string {
+  return resolve(configDir, BACKENDS_SUBDIR, `${name}.yaml`);
+}
+
+function backendsDir(configDir: string): string {
+  return resolve(configDir, BACKENDS_SUBDIR);
+}
+
+function markerPath(configDir: string): string {
+  return resolve(configDir, ACTIVE_BACKEND_MARKER);
+}
+
+async function fileExists(path: string): Promise<boolean> {
+  try {
+    await access(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Return the directory containing `eforge/config.yaml` from the given start
+ * directory, or null when no config file is found.
+ */
+export async function getConfigDir(cwd?: string): Promise<string | null> {
+  const startDir = cwd ?? process.cwd();
+  const configPath = await findConfigFile(startDir);
+  return configPath ? dirname(configPath) : null;
+}
+
+/**
+ * Resolve the active backend profile name and how it was selected.
+ *
+ * Resolution precedence:
+ * 1. `eforge/.active-backend` marker (dev-local) — wins when present and the
+ *    referenced profile file exists.
+ * 2. `config.yaml`'s `backend:` field — used when a `backends/<that>.yaml` exists.
+ * 3. Otherwise no profile is applied.
+ */
+export async function resolveActiveProfileName(
+  configDir: string,
+  projectConfig: PartialEforgeConfig,
+): Promise<{ name: string | null; source: ActiveProfileSource }> {
+  // Try marker first
+  let markerName: string | null = null;
+  try {
+    const raw = await readFile(markerPath(configDir), 'utf-8');
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) {
+      markerName = trimmed;
+    }
+  } catch {
+    // marker absent — fall through
+  }
+
+  if (markerName !== null) {
+    const path = profilePath(configDir, markerName);
+    if (await fileExists(path)) {
+      return { name: markerName, source: 'local' };
+    }
+    // Marker is stale — log one-shot warning, then attempt team fallback
+    const key = `${configDir}:${markerName}`;
+    if (!_staleMarkerWarnings.has(key)) {
+      _staleMarkerWarnings.add(key);
+      console.error(
+        `[eforge] Active backend marker ${markerPath(configDir)} points at ` +
+        `"${markerName}" but ${path} does not exist. ` +
+        `Falling back to team default if available.`,
+      );
+    }
+    // Try team fallback after stale marker — but keep source='missing' to signal
+    // that the marker is stale.
+    const teamName = projectConfig.backend;
+    if (teamName) {
+      const teamPath = profilePath(configDir, teamName);
+      if (await fileExists(teamPath)) {
+        return { name: teamName, source: 'missing' };
+      }
+    }
+    return { name: null, source: 'missing' };
+  }
+
+  // No marker — check team default
+  const teamName = projectConfig.backend;
+  if (teamName) {
+    const teamPath = profilePath(configDir, teamName);
+    if (await fileExists(teamPath)) {
+      return { name: teamName, source: 'team' };
+    }
+  }
+
+  return { name: null, source: 'none' };
+}
+
+/**
+ * Load and parse a backend profile file. Returns null when the profile
+ * file does not exist. Profile files use the same partial-config schema
+ * as `config.yaml`.
+ */
+export async function loadBackendProfile(
+  configDir: string,
+  name: string,
+): Promise<PartialEforgeConfig | null> {
+  const path = profilePath(configDir, name);
+  let raw: string;
+  try {
+    raw = await readFile(path, 'utf-8');
+  } catch {
+    return null;
+  }
+  let data: unknown;
+  try {
+    data = parseYaml(raw);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') {
+    return {};
+  }
+  return parseRawConfig(data as Record<string, unknown>);
+}
+
+/**
+ * List all backend profile files under `eforge/backends/`. Each entry includes
+ * the profile name (filename without `.yaml`), its declared `backend` (when
+ * parseable), and the absolute file path. Unreadable or non-YAML files are
+ * skipped silently.
+ */
+export async function listBackendProfiles(
+  configDir: string,
+): Promise<Array<{ name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string }>> {
+  const dir = backendsDir(configDir);
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return [];
+  }
+
+  const out: Array<{ name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string }> = [];
+  for (const entry of entries.sort()) {
+    if (extname(entry) !== '.yaml') continue;
+    const name = basename(entry, '.yaml');
+    const path = resolve(dir, entry);
+    let backend: 'claude-sdk' | 'pi' | undefined;
+    try {
+      const raw = await readFile(path, 'utf-8');
+      const data = parseYaml(raw);
+      if (data && typeof data === 'object') {
+        const parsed = backendSchema.safeParse((data as Record<string, unknown>).backend);
+        if (parsed.success) {
+          backend = parsed.data;
+        }
+      }
+    } catch {
+      // unreadable — still include the entry with backend=undefined
+    }
+    out.push({ name, backend, path });
+  }
+  return out;
+}
+
+/**
+ * Set the active backend profile by writing the marker file atomically.
+ * Validates that the profile file exists and that the merged result
+ * (global + project + profile) passes `eforgeConfigSchema`.
+ */
+export async function setActiveBackend(configDir: string, name: string): Promise<void> {
+  name = name.trim();
+  if (name.length === 0) {
+    throw new Error('Backend profile name must be a non-empty string');
+  }
+  const path = profilePath(configDir, name);
+  if (!(await fileExists(path))) {
+    throw new Error(`Backend profile "${name}" not found at ${path}`);
+  }
+
+  // Load project config and global config to validate the merged result
+  const globalConfig = await loadUserConfig();
+  let projectConfig: PartialEforgeConfig = {};
+  const cfgPath = resolve(configDir, 'config.yaml');
+  try {
+    const raw = await readFile(cfgPath, 'utf-8');
+    const data = parseYaml(raw);
+    if (data && typeof data === 'object') {
+      projectConfig = parseRawConfig(data as Record<string, unknown>);
+    }
+  } catch {
+    // no project config
+  }
+
+  const profile = await loadBackendProfile(configDir, name);
+  if (!profile) {
+    throw new Error(`Backend profile "${name}" could not be parsed at ${path}`);
+  }
+
+  const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
+  const merged = mergePartialConfigs(baseMerged, profile);
+
+  const result = eforgeConfigSchema.safeParse(merged);
+  if (!result.success) {
+    throw new Error(
+      `Backend profile "${name}" produces an invalid merged config: ` +
+      z.prettifyError(result.error),
+    );
+  }
+
+  // Atomic write: tmp file + rename
+  const target = markerPath(configDir);
+  await mkdir(dirname(target), { recursive: true });
+  const tmp = `${target}.${randomBytes(6).toString('hex')}.tmp`;
+  await writeFile(tmp, `${name}\n`, 'utf-8');
+  await rename(tmp, target);
+}
+
+/**
+ * Create a backend profile file. Validates the partial-config shape and
+ * the merged result (global + project + profile) before writing. Refuses
+ * to overwrite an existing profile unless `overwrite: true` is supplied.
+ */
+export async function createBackendProfile(
+  configDir: string,
+  input: {
+    name: string;
+    backend: 'claude-sdk' | 'pi';
+    pi?: PartialEforgeConfig['pi'];
+    agents?: PartialEforgeConfig['agents'];
+    overwrite?: boolean;
+  },
+): Promise<{ path: string }> {
+  const { name, backend, pi, agents, overwrite } = input;
+  if (!name || typeof name !== 'string' || !/^[A-Za-z0-9._-]+$/.test(name)) {
+    throw new Error(
+      `Invalid profile name "${name}": must contain only letters, digits, dot, underscore, or dash.`,
+    );
+  }
+
+  const path = profilePath(configDir, name);
+  if (await fileExists(path)) {
+    if (!overwrite) {
+      throw new Error(`Backend profile "${name}" already exists at ${path}. Pass overwrite: true to replace it.`);
+    }
+  }
+
+  // Build the partial config
+  const partial: PartialEforgeConfig = { backend };
+  if (pi !== undefined) (partial as Record<string, unknown>).pi = pi;
+  if (agents !== undefined) (partial as Record<string, unknown>).agents = agents;
+
+  // Validate against the partial schema first
+  const partialResult = partialEforgeConfigSchema.safeParse(partial);
+  if (!partialResult.success) {
+    throw new Error(
+      `Backend profile "${name}" failed partial-config validation: ` +
+      z.prettifyError(partialResult.error),
+    );
+  }
+
+  // Validate against the merged schema (global + project + profile)
+  const globalConfig = await loadUserConfig();
+  let projectConfig: PartialEforgeConfig = {};
+  const cfgPath = resolve(configDir, 'config.yaml');
+  try {
+    const raw = await readFile(cfgPath, 'utf-8');
+    const data = parseYaml(raw);
+    if (data && typeof data === 'object') {
+      projectConfig = parseRawConfig(data as Record<string, unknown>);
+    }
+  } catch {
+    // no project config
+  }
+
+  const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
+  const merged = mergePartialConfigs(baseMerged, partialResult.data);
+  const mergedResult = eforgeConfigSchema.safeParse(merged);
+  if (!mergedResult.success) {
+    throw new Error(
+      `Backend profile "${name}" produces an invalid merged config: ` +
+      z.prettifyError(mergedResult.error),
+    );
+  }
+
+  // Serialize via yaml.stringify, omitting undefined sections
+  const yamlOut = stringifyYaml(stripUndefinedSections(partialResult.data));
+
+  await mkdir(backendsDir(configDir), { recursive: true });
+  // Atomic write: tmp file + rename
+  const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
+  await writeFile(tmp, yamlOut, 'utf-8');
+  await rename(tmp, path);
+
+  // Round-trip verify: parse the written file and re-validate
+  try {
+    const verifyRaw = await readFile(path, 'utf-8');
+    const verifyData = parseYaml(verifyRaw);
+    if (verifyData && typeof verifyData === 'object') {
+      const verifyResult = partialEforgeConfigSchema.safeParse(verifyData);
+      if (!verifyResult.success) {
+        throw new Error(
+          `Backend profile "${name}" failed round-trip validation after write: ` +
+          z.prettifyError(verifyResult.error),
+        );
+      }
+    }
+  } catch (err) {
+    if (err instanceof Error && err.message.startsWith(`Backend profile "${name}"`)) {
+      throw err;
+    }
+    // ignore verify-read errors
+  }
+
+  return { path };
+}
+
+/**
+ * Delete a backend profile file. Refuses to delete the currently active
+ * profile unless `force: true` is supplied; in that case, the marker file
+ * is also removed when it pointed at the deleted profile.
+ */
+export async function deleteBackendProfile(
+  configDir: string,
+  name: string,
+  force?: boolean,
+): Promise<void> {
+  name = name.trim();
+  if (name.length === 0) {
+    throw new Error('Backend profile name must be a non-empty string');
+  }
+  const path = profilePath(configDir, name);
+  if (!(await fileExists(path))) {
+    throw new Error(`Backend profile "${name}" not found at ${path}`);
+  }
+
+  // Determine if this profile is currently active (marker file)
+  let markerName: string | null = null;
+  try {
+    const raw = await readFile(markerPath(configDir), 'utf-8');
+    const trimmed = raw.trim();
+    if (trimmed.length > 0) {
+      markerName = trimmed;
+    }
+  } catch {
+    // no marker
+  }
+
+  if (markerName === name && !force) {
+    throw new Error(
+      `Backend profile "${name}" is currently active (via ${markerPath(configDir)}). ` +
+      `Pass force: true to delete it.`,
+    );
+  }
+
+  await rm(path);
+
+  // If we forced and the marker pointed at this profile, clear the marker too
+  if (markerName === name && force) {
+    try {
+      await unlink(markerPath(configDir));
+    } catch {
+      // marker already gone
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

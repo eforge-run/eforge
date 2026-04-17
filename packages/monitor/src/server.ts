@@ -13,7 +13,7 @@ import { parse as parseYaml } from 'yaml';
 
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
-import type { EforgeConfig } from '@eforge-build/engine/config';
+import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
@@ -713,6 +713,26 @@ export async function startServer(
     res.end(JSON.stringify(data));
   }
 
+  /**
+   * Read and parse the project's `config.yaml` at the given config dir into
+   * a partial config object. Returns {} on any failure (missing file, bad
+   * YAML, etc.). Used by backend-profile endpoints to compute the team
+   * default fallback for `resolveActiveProfileName`.
+   */
+  async function loadProjectPartialConfig(configDir: string): Promise<Record<string, unknown>> {
+    try {
+      const cfgPath = resolve(configDir, 'config.yaml');
+      const raw = await readFile(cfgPath, 'utf-8');
+      const data = parseYaml(raw);
+      if (data && typeof data === 'object') {
+        return data as Record<string, unknown>;
+      }
+    } catch {
+      // missing or malformed — empty partial
+    }
+    return {};
+  }
+
   let keepAliveCallback: (() => void) | null = null;
 
   function broadcast(eventName: string, data: string): void {
@@ -857,6 +877,214 @@ export async function startServer(
         });
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
+      }
+      return;
+    }
+
+    // --- Backend profile management (DAEMON_API_VERSION 2) ---
+    if (req.method === 'GET' && url === '/api/backend/list') {
+      try {
+        const { getConfigDir, listBackendProfiles, resolveActiveProfileName } =
+          await import('@eforge-build/engine/config');
+        const configDir = await getConfigDir(options?.cwd);
+        if (!configDir) {
+          sendJson(res, { profiles: [], active: null, source: 'none' });
+          return;
+        }
+        const profiles = await listBackendProfiles(configDir);
+        const projectConfig = await loadProjectPartialConfig(configDir);
+        const { name, source } = await resolveActiveProfileName(
+          configDir,
+          projectConfig as Parameters<typeof resolveActiveProfileName>[1],
+        );
+        sendJson(res, { profiles, active: name, source });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list backend profiles');
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && url === '/api/backend/show') {
+      try {
+        const { getConfigDir, loadBackendProfile, resolveActiveProfileName } =
+          await import('@eforge-build/engine/config');
+        const configDir = await getConfigDir(options?.cwd);
+        if (!configDir) {
+          sendJson(res, { active: null, source: 'none', resolved: { backend: undefined, profile: null } });
+          return;
+        }
+        const projectConfig = await loadProjectPartialConfig(configDir);
+        const { name, source } = await resolveActiveProfileName(
+          configDir,
+          projectConfig as Parameters<typeof resolveActiveProfileName>[1],
+        );
+        let profile: unknown = null;
+        let backend: 'claude-sdk' | 'pi' | undefined;
+        if (name) {
+          profile = await loadBackendProfile(configDir, name);
+          if (profile && typeof profile === 'object' && 'backend' in profile) {
+            const b = (profile as { backend?: unknown }).backend;
+            if (b === 'claude-sdk' || b === 'pi') backend = b;
+          }
+        }
+        sendJson(res, { active: name, source, resolved: { backend, profile } });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to show backend profile');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === '/api/backend/use') {
+      try {
+        const body = await parseJsonBody(req) as { name?: unknown };
+        if (!body.name || typeof body.name !== 'string') {
+          sendJsonError(res, 400, 'Missing required field: name (string)');
+          return;
+        }
+        const { getConfigDir, setActiveBackend } =
+          await import('@eforge-build/engine/config');
+        const configDir = await getConfigDir(options?.cwd);
+        if (!configDir) {
+          sendJsonError(res, 404, 'No eforge config directory found');
+          return;
+        }
+        try {
+          await setActiveBackend(configDir, body.name);
+          sendJson(res, { active: body.name });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Failed to set active backend';
+          if (/not found/i.test(msg)) {
+            sendJsonError(res, 404, msg);
+          } else {
+            sendJsonError(res, 400, msg);
+          }
+        }
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === '/api/backend/create') {
+      try {
+        const body = await parseJsonBody(req) as {
+          name?: unknown;
+          backend?: unknown;
+          pi?: unknown;
+          agents?: unknown;
+          overwrite?: unknown;
+        };
+        if (!body.name || typeof body.name !== 'string') {
+          sendJsonError(res, 400, 'Missing required field: name (string)');
+          return;
+        }
+        if (body.backend !== 'claude-sdk' && body.backend !== 'pi') {
+          sendJsonError(res, 400, 'Invalid field: backend (must be "claude-sdk" or "pi")');
+          return;
+        }
+        const { getConfigDir, createBackendProfile } =
+          await import('@eforge-build/engine/config');
+        const configDir = await getConfigDir(options?.cwd);
+        if (!configDir) {
+          sendJsonError(res, 404, 'No eforge config directory found');
+          return;
+        }
+        try {
+          const result = await createBackendProfile(configDir, {
+            name: body.name,
+            backend: body.backend,
+            pi: body.pi as PartialEforgeConfig['pi'],
+            agents: body.agents as PartialEforgeConfig['agents'],
+            overwrite: body.overwrite === true,
+          });
+          sendJson(res, { path: result.path });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Failed to create backend profile';
+          if (/already exists/i.test(msg)) {
+            sendJsonError(res, 409, msg);
+          } else {
+            sendJsonError(res, 400, msg);
+          }
+        }
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+      }
+      return;
+    }
+
+    if (req.method === 'DELETE' && url.startsWith('/api/backend/')) {
+      const name = url.slice('/api/backend/'.length);
+      if (!name || !/^[A-Za-z0-9._-]+$/.test(name)) {
+        sendJsonError(res, 400, 'Invalid backend profile name');
+        return;
+      }
+      try {
+        let force = false;
+        try {
+          const body = await parseJsonBody(req) as { force?: unknown };
+          force = body.force === true;
+        } catch {
+          // empty body — force defaults to false
+        }
+        const { getConfigDir, deleteBackendProfile } =
+          await import('@eforge-build/engine/config');
+        const configDir = await getConfigDir(options?.cwd);
+        if (!configDir) {
+          sendJsonError(res, 404, 'No eforge config directory found');
+          return;
+        }
+        try {
+          await deleteBackendProfile(configDir, name, force);
+          sendJson(res, { deleted: name });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Failed to delete backend profile';
+          if (/currently active/i.test(msg)) {
+            sendJsonError(res, 409, msg);
+          } else if (/not found/i.test(msg)) {
+            sendJsonError(res, 404, msg);
+          } else {
+            sendJsonError(res, 400, msg);
+          }
+        }
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to delete backend profile');
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && url.startsWith('/api/models/providers')) {
+      const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+      const params = new URLSearchParams(queryString);
+      const backend = params.get('backend');
+      if (backend !== 'pi' && backend !== 'claude-sdk') {
+        sendJsonError(res, 400, 'Missing or invalid query param: backend (must be "pi" or "claude-sdk")');
+        return;
+      }
+      try {
+        const { listProviders } = await import('@eforge-build/engine/models');
+        const providers = await listProviders(backend);
+        sendJson(res, { providers });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list providers');
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && url.startsWith('/api/models/list')) {
+      const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+      const params = new URLSearchParams(queryString);
+      const backend = params.get('backend');
+      const provider = params.get('provider') ?? undefined;
+      if (backend !== 'pi' && backend !== 'claude-sdk') {
+        sendJsonError(res, 400, 'Missing or invalid query param: backend (must be "pi" or "claude-sdk")');
+        return;
+      }
+      try {
+        const { listModels } = await import('@eforge-build/engine/models');
+        const models = await listModels(backend, provider);
+        sendJson(res, { models });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list models');
       }
       return;
     }

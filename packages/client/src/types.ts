@@ -187,3 +187,91 @@ export interface StopDaemonResponse {
 export interface KeepAliveResponse {
   status: 'ok';
 }
+
+// ---------------------------------------------------------------------------
+// Backend profile management (DAEMON_API_VERSION 2)
+// ---------------------------------------------------------------------------
+
+/** A single backend profile entry returned by the list endpoint. */
+export interface BackendProfileInfo {
+  name: string;
+  backend: 'claude-sdk' | 'pi' | undefined;
+  path: string;
+}
+
+/** Source of the active backend profile resolution. */
+export type BackendProfileSource = 'local' | 'team' | 'missing' | 'none';
+
+// GET /api/backend/list
+export interface BackendListResponse {
+  profiles: BackendProfileInfo[];
+  active: string | null;
+  source: BackendProfileSource;
+}
+
+// GET /api/backend/show
+export interface BackendShowResponse {
+  active: string | null;
+  source: BackendProfileSource;
+  resolved: {
+    backend: 'claude-sdk' | 'pi' | undefined;
+    /** The parsed profile partial config. Opaque to the client. */
+    profile: unknown | null;
+  };
+}
+
+// POST /api/backend/use
+export interface BackendUseRequest {
+  name: string;
+}
+
+export interface BackendUseResponse {
+  active: string;
+}
+
+// POST /api/backend/create
+export interface BackendCreateRequest {
+  name: string;
+  backend: 'claude-sdk' | 'pi';
+  /** Optional pi config block — opaque to the client. */
+  pi?: unknown;
+  /** Optional agents config block — opaque to the client. */
+  agents?: unknown;
+  overwrite?: boolean;
+}
+
+export interface BackendCreateResponse {
+  path: string;
+}
+
+// DELETE /api/backend/:name
+export interface BackendDeleteRequest {
+  force?: boolean;
+}
+
+export interface BackendDeleteResponse {
+  deleted: string;
+}
+
+// ---------------------------------------------------------------------------
+// Model listing (DAEMON_API_VERSION 2)
+// ---------------------------------------------------------------------------
+
+// GET /api/models/providers?backend=pi|claude-sdk
+export interface ModelProvidersResponse {
+  providers: string[];
+}
+
+/** A single model entry returned by the model-listing endpoints. */
+export interface ModelInfo {
+  id: string;
+  provider?: string;
+  contextWindow?: number;
+  releasedAt?: string;
+  deprecated?: boolean;
+}
+
+// GET /api/models/list?backend=pi|claude-sdk&provider=<optional>
+export interface ModelListResponse {
+  models: ModelInfo[];
+}
