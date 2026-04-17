@@ -921,7 +921,7 @@ describe('user-scope: loadConfig integration', () => {
   let origXdg: string | undefined;
 
   beforeEach(async () => {
-    ({ projectDir, configDir } = await makeProject({ configYaml: 'backend: claude-sdk\n' }));
+    ({ projectDir, configDir } = await makeProject({ configYaml: 'agents:\n  maxTurns: 10\n' }));
     ({ userHomeDir, userEforgeDir } = await makeUserHome());
     origXdg = process.env.XDG_CONFIG_HOME;
     process.env.XDG_CONFIG_HOME = userHomeDir;
@@ -946,14 +946,9 @@ describe('user-scope: loadConfig integration', () => {
     );
     await writeFile(join(userEforgeDir, '.active-backend'), 'user-override\n', 'utf-8');
 
-    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const cfg = await loadConfig(projectDir);
-      expect(cfg.backend).toBe('pi');
-      expect(cfg.agents.maxTurns).toBe(55);
-    } finally {
-      stderrSpy.mockRestore();
-    }
+    const cfg = await loadConfig(projectDir);
+    expect(cfg.backend).toBe('pi');
+    expect(cfg.agents.maxTurns).toBe(55);
   });
 });
 

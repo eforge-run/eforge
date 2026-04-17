@@ -20,6 +20,8 @@ import {
   ensureDaemon,
   daemonRequest,
   sleep,
+  sanitizeProfileName,
+  parseRawConfigLegacy,
 } from '@eforge-build/client';
 import type { LatestRunResponse, EnqueueResponse, RunSummary, ConfigValidateResponse, QueueItem, AutoBuildState, ConfigShowResponse } from '@eforge-build/client';
 
@@ -136,56 +138,6 @@ function ensureGitignoreEntries(cwd: string, entries: string[]): void {
     missing.join("\n") +
     "\n";
   writeFileSync(gitignorePath, content + suffix, "utf-8");
-}
-
-// ---------------------------------------------------------------------------
-// Profile name sanitizer (inlined from engine — pi-eforge doesn't depend on engine)
-// ---------------------------------------------------------------------------
-
-function sanitizeProfileName(backend: string, provider: string | undefined, modelId: string): string {
-  let sanitized = modelId.toLowerCase().replace(/\./g, '-');
-  sanitized = sanitized.replace(/^claude-/, '');
-  const parts = [backend];
-  if (provider) parts.push(provider);
-  parts.push(sanitized);
-  return parts.join('-').replace(/-{2,}/g, '-');
-}
-
-/**
- * Parse a pre-overhaul config.yaml that has `backend:` at the top level.
- * Extracts backend-related fields into a `profile` object and puts everything
- * else into `remaining`. Used by the `--migrate` flow.
- */
-function parseRawConfigLegacy(data: Record<string, unknown>): {
-  profile: { backend?: string; pi?: unknown; agents?: unknown };
-  remaining: Record<string, unknown>;
-} {
-  const profile: Record<string, unknown> = {};
-  const remaining: Record<string, unknown> = {};
-  if (data.backend !== undefined) profile.backend = data.backend;
-  if (data.pi !== undefined) profile.pi = data.pi;
-  if (data.agents !== undefined) {
-    const agents = data.agents as Record<string, unknown>;
-    const profileAgents: Record<string, unknown> = {};
-    for (const key of ['models', 'model', 'effort', 'thinking']) {
-      if (agents[key] !== undefined) profileAgents[key] = agents[key];
-    }
-    if (Object.keys(profileAgents).length > 0) profile.agents = profileAgents;
-  }
-  for (const [key, value] of Object.entries(data)) {
-    if (key === 'backend' || key === 'pi') continue;
-    if (key === 'agents') {
-      const agents = value as Record<string, unknown>;
-      const remainingAgents: Record<string, unknown> = {};
-      for (const [ak, av] of Object.entries(agents)) {
-        if (!['models', 'model', 'effort', 'thinking'].includes(ak)) remainingAgents[ak] = av;
-      }
-      if (Object.keys(remainingAgents).length > 0) remaining.agents = remainingAgents;
-      continue;
-    }
-    remaining[key] = value;
-  }
-  return { profile: profile as { backend?: string; pi?: unknown; agents?: unknown }, remaining };
 }
 
 // ---------------------------------------------------------------------------

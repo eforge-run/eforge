@@ -5,6 +5,7 @@ import { randomBytes } from 'node:crypto';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
+import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
 
 // ---------------------------------------------------------------------------
@@ -458,6 +459,17 @@ export function resolveConfig(
 }
 
 /**
+ * Error thrown when config.yaml contains `backend:` which must be migrated
+ * to a named profile under eforge/backends/.
+ */
+export class ConfigMigrationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigMigrationError';
+  }
+}
+
+/**
  * Parse and validate a raw YAML object into a partial EforgeConfig.
  * Uses zod schema for validation — invalid fields are dropped and
  * a warning is logged to stderr so users get feedback on typos.
@@ -466,15 +478,13 @@ export function resolveConfig(
  *                 `'profile'` for profile file parsing — keeps `backend:`.
  */
 function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
-  // Config.yaml context: reject and strip backend: field (hard break)
+  // Config.yaml context: reject backend: field (hard break — must migrate)
   if (context === 'config' && data.backend !== undefined) {
-    console.error(
-      '[eforge] "backend:" is no longer valid in config.yaml. ' +
+    throw new ConfigMigrationError(
+      '"backend:" is no longer valid in config.yaml. ' +
       'Backend configuration now lives in named profiles under eforge/backends/. ' +
       'Run eforge init --migrate to extract it.',
     );
-    const { backend: _, ...rest } = data;
-    data = rest;
   }
 
   const result = partialEforgeConfigSchema.safeParse(data);
@@ -646,7 +656,9 @@ export async function loadUserConfig(
       return {};
     }
     return parseRawConfig(data as Record<string, unknown>);
-  } catch {
+  } catch (err) {
+    // Re-throw migration errors so callers surface a hard error
+    if (err instanceof ConfigMigrationError) throw err;
     return {};
   }
 }
@@ -657,8 +669,8 @@ export async function loadUserConfig(
  * Returns DEFAULT_CONFIG when no config files exist.
  *
  * When an active backend profile is found (via `eforge/.active-backend`
- * marker or `config.yaml`'s `backend:` field with a matching profile file),
- * the profile is merged on top of the project config before env-var resolution.
+ * marker), the profile is merged on top of the project config before
+ * env-var resolution.
  */
 export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
   const globalConfig = await loadUserConfig();
@@ -674,7 +686,9 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
       if (data && typeof data === 'object') {
         projectConfig = parseRawConfig(data as Record<string, unknown>);
       }
-    } catch {
+    } catch (err) {
+      // Re-throw migration errors so callers surface a hard error
+      if (err instanceof ConfigMigrationError) throw err;
       // malformed YAML — treat as empty
     }
   }
@@ -1110,75 +1124,8 @@ export async function createBackendProfile(
   return { path };
 }
 
-/**
- * Compute a deterministic profile name from backend, provider, and model ID.
- *
- * Sanitization: lowercase, `.` → `-`, strip `claude-` prefix from model ID,
- * collapse repeated dashes. Format: `[backend[-provider]]-[sanitized-model-id]`.
- *
- * Examples:
- * - `('claude-sdk', undefined, 'claude-opus-4.7')` → `'claude-sdk-opus-4-7'`
- * - `('pi', 'anthropic', 'claude-opus-4.7')` → `'pi-anthropic-opus-4-7'`
- * - `('pi', 'zai', 'glm-4.6')` → `'pi-zai-glm-4-6'`
- */
-export function sanitizeProfileName(backend: string, provider: string | undefined, modelId: string): string {
-  let sanitized = modelId.toLowerCase().replace(/\./g, '-');
-  sanitized = sanitized.replace(/^claude-/, '');
-  const parts = [backend];
-  if (provider) parts.push(provider);
-  parts.push(sanitized);
-  return parts.join('-').replace(/-{2,}/g, '-');
-}
-
-/**
- * Parse a pre-overhaul config.yaml that has `backend:` at the top level.
- * Extracts backend-related fields into a `profile` object and puts everything
- * else into `remaining`. Used by the `--migrate` flow.
- */
-export function parseRawConfigLegacy(data: Record<string, unknown>): {
-  profile: { backend?: string; pi?: unknown; agents?: unknown };
-  remaining: Record<string, unknown>;
-} {
-  const profile: Record<string, unknown> = {};
-  const remaining: Record<string, unknown> = {};
-
-  // Extract backend-related fields into profile
-  if (data.backend !== undefined) profile.backend = data.backend;
-  if (data.pi !== undefined) profile.pi = data.pi;
-
-  // Extract agent fields that belong in the profile (model configuration)
-  if (data.agents !== undefined) {
-    const agents = data.agents as Record<string, unknown>;
-    const profileAgents: Record<string, unknown> = {};
-    for (const key of ['models', 'model', 'effort', 'thinking']) {
-      if (agents[key] !== undefined) profileAgents[key] = agents[key];
-    }
-    if (Object.keys(profileAgents).length > 0) {
-      profile.agents = profileAgents;
-    }
-  }
-
-  // Put everything else in remaining
-  for (const [key, value] of Object.entries(data)) {
-    if (key === 'backend' || key === 'pi') continue;
-    if (key === 'agents') {
-      const agents = value as Record<string, unknown>;
-      const remainingAgents: Record<string, unknown> = {};
-      for (const [ak, av] of Object.entries(agents)) {
-        if (!['models', 'model', 'effort', 'thinking'].includes(ak)) {
-          remainingAgents[ak] = av;
-        }
-      }
-      if (Object.keys(remainingAgents).length > 0) {
-        remaining.agents = remainingAgents;
-      }
-      continue;
-    }
-    remaining[key] = value;
-  }
-
-  return { profile: profile as { backend?: string; pi?: unknown; agents?: unknown }, remaining };
-}
+// Re-export profile utilities from the shared client package
+export { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client';
 
 /**
  * Delete a backend profile file. Refuses to delete the currently active
@@ -1296,8 +1243,8 @@ export async function validateConfigFile(
     return { configFound: true, valid: true, errors: [] }; // Empty file is valid
   }
 
-  // Schema validation
-  const result = eforgeConfigSchema.safeParse(data);
+  // Schema validation — use configYamlSchema which rejects `backend:`
+  const result = configYamlSchema.safeParse(data);
   if (!result.success) {
     for (const issue of result.error.issues) {
       const path = issue.path.map(String).join('.');

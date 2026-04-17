@@ -22,6 +22,8 @@ export {
 
 export { DAEMON_API_VERSION } from './api-version.js';
 
+export { sanitizeProfileName, parseRawConfigLegacy } from './profile-utils.js';
+
 export type {
   HealthResponse,
   AutoBuildState,
