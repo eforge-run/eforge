@@ -12,7 +12,7 @@ import { runArchitectureEvaluate } from '@eforge-build/engine/agents/plan-evalua
 import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runArchitectureReview } from '@eforge-build/engine/agents/architecture-reviewer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
-import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig } from '@eforge-build/engine/pipeline';
+import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig, AGENT_ROLE_DEFAULTS } from '@eforge-build/engine/pipeline';
 import { DEFAULT_CONFIG, resolveConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 
@@ -912,6 +912,7 @@ describe('resolveAgentConfig per-plan override', () => {
 
   it('planEntry thinking override wins over per-role config', () => {
     const config = makeConfig({
+      model: { id: 'claude-opus-4-6' },
       roles: {
         builder: { thinking: { type: 'disabled' } },
       },
@@ -938,8 +939,8 @@ describe('resolveAgentConfig per-plan override', () => {
   it('effortSource and thinkingSource are default when no effort/thinking is configured', () => {
     const config = makeConfig({});
     const result = resolveAgentConfig('builder', config, 'claude-sdk');
-    // No effort set, but source is always stamped
-    expect(result.effort).toBeUndefined();
+    // Builder now has a per-role effort default of 'high'
+    expect(result.effort).toBe('high');
     expect(result.effortSource).toBe('default');
     expect(result.thinking).toBeUndefined();
     expect(result.thinkingSource).toBe('default');
@@ -947,6 +948,7 @@ describe('resolveAgentConfig per-plan override', () => {
 
   it('thinkingSource tracks planner provenance', () => {
     const config = makeConfig({
+      model: { id: 'claude-opus-4-6' },
       roles: {
         builder: { thinking: { type: 'disabled' } },
       },
@@ -962,6 +964,7 @@ describe('resolveAgentConfig per-plan override', () => {
 
   it('thinkingSource tracks role-config provenance', () => {
     const config = makeConfig({
+      model: { id: 'claude-opus-4-6' },
       roles: {
         builder: { thinking: { type: 'enabled', budgetTokens: 3000 } },
       },
@@ -975,6 +978,7 @@ describe('resolveAgentConfig per-plan override', () => {
 
   it('thinkingSource tracks global-config provenance', () => {
     const config = makeConfig({
+      model: { id: 'claude-opus-4-6' },
       thinking: { type: 'enabled', budgetTokens: 8000 },
     });
 
@@ -994,5 +998,200 @@ describe('resolveAgentConfig per-plan override', () => {
     expect(result.effort).toBe('medium');
     expect(result.effortSource).toBe('global-config');
     expect(result.thinkingSource).toBe('default');
+  });
+});
+
+// --- Per-role effort defaults ---
+
+describe('resolveAgentConfig per-role effort defaults', () => {
+  function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
+    return resolveConfig({
+      agents: {
+        ...overrides,
+      },
+    });
+  }
+
+  const effortTable: Array<{ role: string; expectedEffort: string }> = [
+    { role: 'planner', expectedEffort: 'high' },
+    { role: 'builder', expectedEffort: 'high' },
+    { role: 'module-planner', expectedEffort: 'high' },
+    { role: 'architecture-reviewer', expectedEffort: 'high' },
+    { role: 'architecture-evaluator', expectedEffort: 'high' },
+    { role: 'cohesion-reviewer', expectedEffort: 'high' },
+    { role: 'cohesion-evaluator', expectedEffort: 'high' },
+    { role: 'plan-reviewer', expectedEffort: 'high' },
+    { role: 'plan-evaluator', expectedEffort: 'high' },
+    { role: 'reviewer', expectedEffort: 'high' },
+    { role: 'evaluator', expectedEffort: 'high' },
+    { role: 'review-fixer', expectedEffort: 'medium' },
+    { role: 'validation-fixer', expectedEffort: 'medium' },
+    { role: 'merge-conflict-resolver', expectedEffort: 'medium' },
+    { role: 'doc-updater', expectedEffort: 'medium' },
+    { role: 'test-writer', expectedEffort: 'medium' },
+    { role: 'tester', expectedEffort: 'medium' },
+    { role: 'gap-closer', expectedEffort: 'medium' },
+  ];
+
+  for (const { role, expectedEffort } of effortTable) {
+    it(`${role} defaults to effort '${expectedEffort}' with effortSource 'default'`, () => {
+      const config = makeConfig({});
+      const result = resolveAgentConfig(role as import('@eforge-build/engine/events').AgentRole, config, 'claude-sdk');
+      expect(result.effort).toBe(expectedEffort);
+      expect(result.effortSource).toBe('default');
+    });
+  }
+
+  it('user per-role effort overrides built-in default', () => {
+    const config = makeConfig({
+      roles: {
+        builder: { effort: 'xhigh' },
+      },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    expect(result.effort).toBe('xhigh');
+    expect(result.effortSource).toBe('role-config');
+  });
+
+  it('plan override effort overrides both user config and built-in default', () => {
+    const config = makeConfig({
+      roles: {
+        builder: { effort: 'xhigh' },
+      },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk', {
+      agents: { builder: { effort: 'max' } },
+    });
+    expect(result.effort).toBe('max');
+    expect(result.effortSource).toBe('planner');
+  });
+});
+
+// --- Thinking coercion ---
+
+describe('resolveAgentConfig thinking coercion', () => {
+  function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
+    return resolveConfig({
+      agents: {
+        ...overrides,
+      },
+    });
+  }
+
+  it('coerces enabled thinking to adaptive on Opus 4.7', () => {
+    const config = makeConfig({
+      model: { id: 'claude-opus-4-7' },
+      thinking: { type: 'enabled', budgetTokens: 10000 },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    expect(result.thinking).toEqual({ type: 'adaptive' });
+    expect(result.thinkingCoerced).toBe(true);
+    expect(result.thinkingOriginal).toEqual({ type: 'enabled', budgetTokens: 10000 });
+  });
+
+  it('does not coerce enabled thinking on Opus 4.6', () => {
+    const config = makeConfig({
+      model: { id: 'claude-opus-4-6' },
+      thinking: { type: 'enabled' },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    expect(result.thinking).toEqual({ type: 'enabled' });
+    expect(result.thinkingCoerced).toBeUndefined();
+  });
+
+  it('does not coerce adaptive thinking on Opus 4.7 (already the target)', () => {
+    const config = makeConfig({
+      model: { id: 'claude-opus-4-7' },
+      thinking: { type: 'adaptive' },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    expect(result.thinking).toEqual({ type: 'adaptive' });
+    expect(result.thinkingCoerced).toBeUndefined();
+  });
+
+  it('does not coerce when thinking is undefined regardless of model', () => {
+    const config = makeConfig({
+      model: { id: 'claude-opus-4-7' },
+    });
+
+    const result = resolveAgentConfig('builder', config, 'claude-sdk');
+    expect(result.thinking).toBeUndefined();
+    expect(result.thinkingCoerced).toBeUndefined();
+  });
+});
+
+// --- Thinking coercion warning event ---
+
+describe('agent:warning event for thinking coercion', () => {
+  it('emits agent:warning with code thinking-coerced when thinkingCoerced is true', async () => {
+    const backend = new StubBackend([{ text: 'Done.' }]);
+
+    const events = await collectEvents(backend.run(
+      {
+        prompt: 'test',
+        cwd: '/tmp',
+        maxTurns: 1,
+        tools: 'none',
+        model: { id: 'claude-opus-4-7' },
+        thinking: { type: 'adaptive' },
+        thinkingCoerced: true,
+        thinkingOriginal: { type: 'enabled', budgetTokens: 10000 },
+      },
+      'builder',
+      'plan-1',
+    ));
+
+    const warning = findEvent(events, 'agent:warning');
+    expect(warning).toBeDefined();
+    expect(warning!.code).toBe('thinking-coerced');
+    expect(warning!.message).toContain('claude-opus-4-7');
+    expect(warning!.message).toContain('adaptive');
+    expect(warning!.agentId).toBeDefined();
+    expect(warning!.agent).toBe('builder');
+    expect(warning!.planId).toBe('plan-1');
+  });
+
+  it('does not emit agent:warning when thinkingCoerced is absent', async () => {
+    const backend = new StubBackend([{ text: 'Done.' }]);
+
+    const events = await collectEvents(backend.run(
+      {
+        prompt: 'test',
+        cwd: '/tmp',
+        maxTurns: 1,
+        tools: 'none',
+        model: { id: 'claude-opus-4-6' },
+        thinking: { type: 'enabled', budgetTokens: 10000 },
+      },
+      'builder',
+      'plan-1',
+    ));
+
+    const warning = findEvent(events, 'agent:warning');
+    expect(warning).toBeUndefined();
+  });
+
+  it('does not emit agent:warning when thinkingCoerced is false', async () => {
+    const backend = new StubBackend([{ text: 'Done.' }]);
+
+    const events = await collectEvents(backend.run(
+      {
+        prompt: 'test',
+        cwd: '/tmp',
+        maxTurns: 1,
+        tools: 'none',
+        model: { id: 'claude-opus-4-6' },
+        thinkingCoerced: false,
+      },
+      'builder',
+    ));
+
+    const warning = findEvent(events, 'agent:warning');
+    expect(warning).toBeUndefined();
   });
 });

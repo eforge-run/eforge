@@ -358,6 +358,7 @@ Guidelines:
 - Only include the `agents` block when a plan's complexity significantly deviates from typical
 - Include a `rationale` for each tuned role to explain why
 - The `thinking` field is optional and controls the agent's reasoning behavior
+- Use `xhigh` sparingly - only for plans with significant ambiguity, novel API design, complex multi-system refactors, or genuinely hard decomposition problems. The engine sets sensible per-role defaults; most plans should not override effort.
 - When in doubt, omit the block and let the engine use its defaults
 
 ## Orchestration.yaml Format

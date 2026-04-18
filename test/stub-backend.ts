@@ -76,6 +76,10 @@ export class StubBackend implements AgentBackend {
     const agentId = crypto.randomUUID();
     yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'stub-model', backend: 'stub', timestamp: new Date().toISOString() };
 
+    if (options.thinkingCoerced) {
+      yield { type: 'agent:warning', planId, agentId, agent, code: 'thinking-coerced', message: `Thinking coerced from 'enabled' to 'adaptive': model ${options.model?.id ?? 'unknown'} only supports adaptive thinking`, timestamp: new Date().toISOString() };
+    }
+
     let error: string | undefined;
     try {
       const response = this.responses[this.callIndex++];

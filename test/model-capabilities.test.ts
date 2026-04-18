@@ -23,6 +23,37 @@ describe('lookupCapabilities', () => {
     expect(caps!.supportedEffort).toContain('xhigh');
   });
 
+  it('returns separate entries for Opus 4.6 and 4.7 with distinct labels', () => {
+    const caps46 = lookupCapabilities('claude-opus-4-6');
+    const caps47 = lookupCapabilities('claude-opus-4-7');
+    expect(caps46).toBeDefined();
+    expect(caps47).toBeDefined();
+    expect(caps46!.label).toBe('Opus 4.6');
+    expect(caps47!.label).toBe('Opus 4.7');
+    expect(caps46!.label).not.toBe(caps47!.label);
+  });
+
+  it('Opus 4.7 has thinkingMode adaptive-only', () => {
+    const caps = lookupCapabilities('claude-opus-4-7');
+    expect(caps).toBeDefined();
+    expect(caps!.thinkingMode).toBe('adaptive-only');
+  });
+
+  it('Opus 4.6 does NOT have thinkingMode adaptive-only', () => {
+    const caps = lookupCapabilities('claude-opus-4-6');
+    expect(caps).toBeDefined();
+    expect(caps!.thinkingMode).toBeUndefined();
+  });
+
+  it('both Opus 4.6 and 4.7 support xhigh and max effort', () => {
+    const caps46 = lookupCapabilities('claude-opus-4-6');
+    const caps47 = lookupCapabilities('claude-opus-4-7');
+    expect(caps46!.supportedEffort).toContain('xhigh');
+    expect(caps46!.supportedEffort).toContain('max');
+    expect(caps47!.supportedEffort).toContain('xhigh');
+    expect(caps47!.supportedEffort).toContain('max');
+  });
+
   it('returns capabilities for Sonnet 4', () => {
     const caps = lookupCapabilities('claude-sonnet-4-5');
     expect(caps).toBeDefined();

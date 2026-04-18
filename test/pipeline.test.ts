@@ -536,7 +536,8 @@ describe('agent config threading', () => {
     // builder defaults to 'max' class, so claude-sdk default is { id: 'claude-opus-4-7' }
     expect(result.model).toEqual({ id: 'claude-opus-4-7' });
     expect(result.thinking).toBeUndefined();
-    expect(result.effort).toBeUndefined();
+    expect(result.effort).toBe('high'); // builder per-role default
+    expect(result.effortSource).toBe('default');
     expect(result.maxBudgetUsd).toBeUndefined();
     expect(result.fallbackModel).toBeUndefined();
     expect(result.allowedTools).toBeUndefined();

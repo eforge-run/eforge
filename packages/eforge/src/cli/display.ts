@@ -645,6 +645,8 @@ export function renderEvent(event: EforgeEvent): void {
     // Agent lifecycle (consumed by hooks, monitor, tracing — no CLI display)
     case 'agent:start':
       break;
+    case 'agent:warning':
+      break;
     case 'agent:stop':
       flushAgentBuffer(event.agent, event.planId);
       break;

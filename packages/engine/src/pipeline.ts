@@ -29,7 +29,7 @@ import { DEFAULT_REVIEW, MODEL_CLASSES } from './config.js';
 import type { PipelineComposition } from './schemas.js';
 import type { AgentBackend, AgentTerminalSubtype, EffortLevel, ThinkingConfig } from './backend.js';
 import { AgentTerminalError, isMaxTurnsError } from './backend.js';
-import { clampEffort } from './model-capabilities.js';
+import { clampEffort, lookupCapabilities } from './model-capabilities.js';
 import type { TracingContext, SpanHandle, ToolCallHandle } from './tracing.js';
 import { runPlanner } from './agents/planner.js';
 import { runModulePlanner } from './agents/module-planner.js';
@@ -410,12 +410,24 @@ export async function hasUnstagedChanges(cwd: string): Promise<boolean> {
 
 /** Per-role built-in defaults. Agents that need different settings than the global default declare them here. */
 export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, Partial<import('./config.js').ResolvedAgentConfig>>> = {
-  builder: { maxTurns: 50 },
-  'module-planner': { maxTurns: 20 },
-  'doc-updater': { maxTurns: 20 },
-  'test-writer': { maxTurns: 30 },
-  'tester': { maxTurns: 40 },
-  'gap-closer': { maxTurns: 20 },
+  planner: { effort: 'high' },
+  builder: { maxTurns: 50, effort: 'high' },
+  'module-planner': { maxTurns: 20, effort: 'high' },
+  'architecture-reviewer': { effort: 'high' },
+  'architecture-evaluator': { effort: 'high' },
+  'cohesion-reviewer': { effort: 'high' },
+  'cohesion-evaluator': { effort: 'high' },
+  'plan-reviewer': { effort: 'high' },
+  'plan-evaluator': { effort: 'high' },
+  reviewer: { effort: 'high' },
+  evaluator: { effort: 'high' },
+  'review-fixer': { effort: 'medium' },
+  'validation-fixer': { effort: 'medium' },
+  'merge-conflict-resolver': { effort: 'medium' },
+  'doc-updater': { maxTurns: 20, effort: 'medium' },
+  'test-writer': { maxTurns: 30, effort: 'medium' },
+  'tester': { maxTurns: 40, effort: 'medium' },
+  'gap-closer': { maxTurns: 20, effort: 'medium' },
 };
 
 /** Per-role default maxContinuations for agents that support continuation loops. */
@@ -652,6 +664,17 @@ export function resolveAgentConfig(
         result.effort = clamped.value;
       }
       result.effortClamped = clamped.clamped;
+    }
+  }
+
+  // Apply thinking coercion after full resolution (model + thinking are both resolved)
+  if (result.thinking?.type === 'enabled') {
+    const modelId = result.model?.id ?? '';
+    const caps = lookupCapabilities(modelId);
+    if (caps?.thinkingMode === 'adaptive-only') {
+      result.thinkingOriginal = result.thinking;
+      result.thinking = { type: 'adaptive' };
+      result.thinkingCoerced = true;
     }
   }
 

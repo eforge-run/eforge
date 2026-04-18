@@ -26,6 +26,8 @@ export interface ModelCapabilities {
   defaultEffort?: EffortLevel;
   /** Maximum thinking level supported. */
   maxThinking?: ThinkingLevel;
+  /** Thinking mode supported by this model: 'budgeted' supports fixed-budget thinking, 'adaptive-only' only supports adaptive. */
+  thinkingMode?: 'budgeted' | 'adaptive-only';
 }
 
 /** Internal entry pairing a regex pattern to its capabilities. */
@@ -51,9 +53,18 @@ const EFFORT_ORDER: readonly EffortLevel[] = ['low', 'medium', 'high', 'xhigh', 
  */
 const MODEL_CAPABILITIES: readonly CapabilityEntry[] = [
   {
-    match: /^claude-opus-4-[67]/,
+    match: /^claude-opus-4-7/,
     capabilities: {
-      label: 'Opus 4.6/4.7',
+      label: 'Opus 4.7',
+      supportedEffort: ['low', 'medium', 'high', 'xhigh', 'max'],
+      defaultEffort: 'high',
+      thinkingMode: 'adaptive-only',
+    },
+  },
+  {
+    match: /^claude-opus-4-6/,
+    capabilities: {
+      label: 'Opus 4.6',
       supportedEffort: ['low', 'medium', 'high', 'xhigh', 'max'],
       defaultEffort: 'high',
     },

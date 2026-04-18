@@ -253,6 +253,10 @@ export interface ResolvedAgentConfig {
   effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
   /** Provenance of the resolved thinking value. */
   thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default';
+  /** True when thinking was coerced from 'enabled' to 'adaptive' for models that only support adaptive thinking. */
+  thinkingCoerced?: boolean;
+  /** The original thinking config before coercion was applied. */
+  thinkingOriginal?: import('./backend.js').ThinkingConfig;
 }
 
 export interface PiConfig {

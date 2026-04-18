@@ -36,7 +36,7 @@ export interface SdkPassthroughConfig {
 }
 
 /** Keys that are part of SdkPassthroughConfig but should NOT be forwarded to the backend SDK. */
-const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource']);
+const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource', 'thinkingCoerced', 'thinkingOriginal']);
 
 /**
  * Strip `undefined` values from an SdkPassthroughConfig so the SDK
@@ -99,6 +99,10 @@ export interface AgentRunOptions {
   effortSource?: 'planner' | 'role-config' | 'global-config' | 'default';
   /** Provenance of the resolved thinking value. */
   thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default';
+  /** True when thinking was coerced from 'enabled' to 'adaptive' for models that only support adaptive thinking. */
+  thinkingCoerced?: boolean;
+  /** The original thinking config before coercion was applied. */
+  thinkingOriginal?: ThinkingConfig;
 }
 
 /**

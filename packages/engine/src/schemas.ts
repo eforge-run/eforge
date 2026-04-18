@@ -155,7 +155,7 @@ export const expeditionModuleSchema = z.object({
 
 // Effort and thinking schemas duplicated from config.ts to keep schemas.ts leaf-level
 const effortLevelForTuningSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max'])
-  .describe('Effort level for controlling thinking depth');
+  .describe('Effort level for thinking depth. Set xhigh only for modules with significant ambiguity, novel API design, or large refactors. Omit to use the role default.');
 
 const thinkingForTuningSchema = z.union([
   z.object({ type: z.literal('adaptive') }),
