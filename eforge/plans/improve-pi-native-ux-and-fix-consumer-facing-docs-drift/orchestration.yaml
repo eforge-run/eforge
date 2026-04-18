@@ -1,0 +1,86 @@
+name: improve-pi-native-ux-and-fix-consumer-facing-docs-drift
+description: Fix consumer-facing docs drift around Pi thinking levels and effort
+  levels, then implement native Pi command UX for backend, backend:new, and
+  config flows with module extraction, ambient status, and architecture docs
+  updates.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm build
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-docs-drift-fix
+    name: Fix consumer-facing docs and skills enum drift
+    depends_on: []
+    branch: improve-pi-native-ux-and-fix-consumer-facing-docs-drift/docs-drift-fix
+    build: &a1
+      - implement
+      - - doc-update
+        - test-write
+      - review-cycle
+    review: &a2
+      strategy: auto
+      perspectives:
+        - correctness
+        - maintainability
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+  - id: plan-02-native-pi-ux
+    name: Native Pi command UX, module extraction, and ambient status
+    depends_on:
+      - plan-01-docs-drift-fix
+    branch: improve-pi-native-ux-and-fix-consumer-facing-docs-drift/native-pi-ux
+    agents:
+      builder:
+        effort: xhigh
+        rationale: Complex multi-module TUI overlay implementation with Pi SDK
+          primitives requiring careful coordination across 10 files
+      reviewer:
+        effort: high
+        rationale: Native Pi command code needs thorough review for UX quality, error
+          handling, and module boundaries
+    build: *a1
+    review: *a2
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: >-
+    Excursion scope is appropriate: the work centers on one primary subsystem
+    (packages/pi-eforge) with cross-cutting docs/skills drift fixes and test
+    updates. A single planner session can enumerate all plans and resolve
+    dependencies - there are no 4+ independent subsystems requiring delegated
+    module planning. The dependency chain is largely sequential (modularize
+    extension helpers, then build native commands on top, then fix drift across
+    docs/skills), which maps naturally to ordered excursion plans rather than
+    parallel expedition modules.
+
+
+    Plan-review-cycle is included at compile time because the PRD has
+    significant UX design decisions (overlay vs widget vs status, what goes in
+    /eforge:config vs /eforge:backend, skill repositioning strategy) and
+    cross-cutting scope (Pi extension + Claude plugin + docs + tests) where
+    catching plan-level issues early avoids costly rework.
+
+
+    The build pipeline runs implement first, then doc-update and test-write in
+    parallel (both depend only on implement and don't conflict with each other -
+    docs updates touch .md files while test-write touches test files), followed
+    by review-cycle to review all changes holistically. doc-update is explicitly
+    warranted because the PRD names 6+ documentation files requiring substantive
+    updates (architecture.md, config.md, READMEs, skill files). test-write is
+    included because the PRD explicitly requires updating test assertions in
+    backend-profile-wiring and skills-docs-wiring test files.
+
+
+    Review uses correctness and maintainability perspectives: correctness
+    catches drift re-introduction (the core problem being solved) and ensures Pi
+    UI component usage is valid, while maintainability validates the
+    modularization goal (extracting helpers from index.ts). Standard strictness
+    and 2 rounds are appropriate for a polish/maturity effort that doesn't touch
+    security-critical paths or data handling.
