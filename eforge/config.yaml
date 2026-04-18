@@ -1,19 +1,15 @@
-backend: claude-sdk
-
 maxConcurrentBuilds: 2
-
 build:
   postMergeCommands:
     - pnpm install
     - pnpm build
     - pnpm type-check
     - pnpm test
-
 profiles:
   docs:
     extends: errand
-    description: >-
-      Documentation-only changes. Plans and implements but skips code review
-      since review categories (bugs, security, types, etc.) don't apply to prose.
+    description: Documentation-only changes. Plans and implements but skips code
+      review since review categories (bugs, security, types, etc.) don't apply
+      to prose.
     build:
       - implement
