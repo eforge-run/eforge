@@ -18,6 +18,8 @@ export {
   ensureDaemon,
   daemonRequest,
   daemonRequestIfRunning,
+  isAgentWorktreeCwd,
+  DaemonInWorktreeError,
 } from './daemon-client.js';
 
 export { DAEMON_API_VERSION } from './api-version.js';

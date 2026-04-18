@@ -7,6 +7,7 @@
 
 import { readLockfile, isServerAlive } from './lockfile.js';
 import { spawn } from 'node:child_process';
+import { basename, resolve } from 'node:path';
 
 export const DAEMON_START_TIMEOUT_MS = 15_000;
 export const DAEMON_POLL_INTERVAL_MS = 500;
@@ -15,10 +16,39 @@ export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/**
+ * True when `cwd` looks like an eforge agent worktree: the merge worktree
+ * (`.../<project>-<setName>-worktrees/__merge__`) or a per-module worktree
+ * (`.../<project>-<setName>-worktrees/<moduleId>`). Spawning a daemon there
+ * causes a recursive auto-build of the still-committed PRD in
+ * `eforge/queue/`. See the bug report in `eforge/queue/`.
+ */
+export function isAgentWorktreeCwd(cwd: string): boolean {
+  if (basename(cwd) === '__merge__') return true;
+  return /-worktrees$/.test(basename(resolve(cwd, '..')));
+}
+
+export class DaemonInWorktreeError extends Error {
+  readonly cwd: string;
+  constructor(cwd: string) {
+    super(
+      `Refusing to spawn eforge daemon from agent worktree: ${cwd}. ` +
+      `An auto-discovered eforge plugin or extension reached an agent subprocess. ` +
+      `Run eforge from the project root, not from inside a worktree.`,
+    );
+    this.name = 'DaemonInWorktreeError';
+    this.cwd = cwd;
+  }
+}
+
 export async function ensureDaemon(cwd: string): Promise<number> {
   const existing = readLockfile(cwd);
   if (existing && (await isServerAlive(existing))) {
     return existing.port;
+  }
+
+  if (isAgentWorktreeCwd(cwd)) {
+    throw new DaemonInWorktreeError(cwd);
   }
 
   // Auto-start daemon

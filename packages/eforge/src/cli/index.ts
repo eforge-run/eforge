@@ -19,7 +19,7 @@ import { withSessionId, withRunId, runSession } from '@eforge-build/engine/sessi
 import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '@eforge-build/monitor';
-import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, removeLockfile } from '@eforge-build/client';
+import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, removeLockfile, isAgentWorktreeCwd } from '@eforge-build/client';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -585,6 +585,13 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--port <port>', 'Preferred port', parseInt)
     .action(async (options: { port?: number }) => {
       const cwd = process.cwd();
+      if (isAgentWorktreeCwd(cwd)) {
+        console.error(chalk.red(
+          `Refusing to start eforge daemon from agent worktree: ${cwd}. ` +
+          `Run eforge from the project root, not from inside a worktree.`,
+        ));
+        process.exit(2);
+      }
       const dbPath = resolve(cwd, '.eforge', 'monitor.db');
       const preferredPort = options.port ?? 4567;
 

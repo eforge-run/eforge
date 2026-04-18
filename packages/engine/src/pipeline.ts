@@ -2074,6 +2074,10 @@ export async function* runBuildPipeline(
  */
 async function commitPlanArtifacts(commitCwd: string, planSetName: string, planFilesCwd?: string, outputDir?: string): Promise<void> {
   const planDir = resolve(planFilesCwd ?? commitCwd, outputDir ?? 'eforge/plans', planSetName);
+  // Skip silently if no plan files exist yet — happens when the planner exhausted
+  // its turn budget before submitting. The original (max_turns) error must
+  // propagate from the caller; we must not mask it with a "git add" pathspec error.
+  if (!existsSync(planDir)) return;
   await exec('git', ['add', planDir], { cwd: commitCwd });
   // Guard: only commit if there are staged changes (prevents "nothing to commit" errors
   // when artifacts were already committed by a previous continuation checkpoint)
