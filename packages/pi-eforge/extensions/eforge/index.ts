@@ -24,6 +24,9 @@ import {
   parseRawConfigLegacy,
 } from '@eforge-build/client';
 import type { LatestRunResponse, EnqueueResponse, RunSummary, ConfigValidateResponse, QueueItem, AutoBuildState, ConfigShowResponse } from '@eforge-build/client';
+import { handleBackendCommand, handleBackendNewCommand } from './backend-commands';
+import { handleConfigCommand } from './config-command';
+import type { UIContext } from './ui-helpers';
 
 const LOCKFILE_POLL_INTERVAL_MS = 250;
 const LOCKFILE_POLL_TIMEOUT_MS = 5000;
@@ -146,7 +149,7 @@ function ensureGitignoreEntries(cwd: string, entries: string[]): void {
 
 export default function eforgeExtension(pi: ExtensionAPI) {
   // Module-scope context for refreshing status after backend changes
-  let _latestCtx: { cwd: string; ui: { setStatus(key: string, text: string | undefined): void } } | null = null;
+  let _latestCtx: UIContext | null = null;
 
   /** Refresh the Pi footer status with the active backend profile. Best-effort. */
   async function refreshStatus(ctx: { cwd: string; ui: { setStatus(key: string, text: string | undefined): void } }): Promise<void> {
@@ -164,11 +167,45 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     } catch {
       ctx.ui.setStatus('eforge', undefined);
     }
+
+    // Queue status
+    try {
+      const { data: queueItems } = await daemonRequest<QueueItem[]>(ctx.cwd, 'GET', '/api/queue');
+      if (queueItems.length > 0) {
+        ctx.ui.setStatus('eforge-queue', `queue: ${queueItems.length}`);
+      } else {
+        ctx.ui.setStatus('eforge-queue', undefined);
+      }
+    } catch {
+      ctx.ui.setStatus('eforge-queue', undefined);
+    }
+
+    // Build status
+    try {
+      const { data: latestRun } = await daemonRequest<LatestRunResponse>(ctx.cwd, 'GET', '/api/latest-run');
+      if (latestRun?.sessionId) {
+        const { data: summary } = await daemonRequest<RunSummary>(
+          ctx.cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`
+        );
+        if (summary?.status === 'running') {
+          const parts: string[] = ['build: running'];
+          if (summary.currentPhase) parts.push(summary.currentPhase);
+          if (summary.currentAgent) parts.push(summary.currentAgent);
+          ctx.ui.setStatus('eforge-build', parts.join(' - '));
+        } else {
+          ctx.ui.setStatus('eforge-build', undefined);
+        }
+      } else {
+        ctx.ui.setStatus('eforge-build', undefined);
+      }
+    } catch {
+      ctx.ui.setStatus('eforge-build', undefined);
+    }
   }
 
   // Register session_start listener for Pi footer status
   pi.on('session_start', async (_ev: unknown, ctx: unknown) => {
-    const typedCtx = ctx as { cwd: string; ui: { setStatus(key: string, text: string | undefined): void } };
+    const typedCtx = ctx as UIContext;
     _latestCtx = typedCtx;
     await refreshStatus(typedCtx);
   });
@@ -1077,11 +1114,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       skill: "eforge-status",
     },
     {
-      name: "eforge:config",
-      description: "Initialize or edit eforge configuration",
-      skill: "eforge-config",
-    },
-    {
       name: "eforge:init",
       description: "Initialize eforge in the current project",
       skill: "eforge-init",
@@ -1101,16 +1133,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       description: "Check for eforge updates and guide through updating",
       skill: "eforge-update",
     },
-    {
-      name: "eforge:backend",
-      description: "List, inspect, and switch backend profiles",
-      skill: "eforge-backend",
-    },
-    {
-      name: "eforge:backend:new",
-      description: "Create a new backend profile in eforge/backends/",
-      skill: "eforge-backend-new",
-    },
   ];
 
   for (const cmd of skillCommands) {
@@ -1122,4 +1144,33 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       },
     });
   }
+
+  // ------------------------------------------------------------------
+  // Native commands - /eforge:backend, /eforge:backend:new, /eforge:config
+  // ------------------------------------------------------------------
+
+  pi.registerCommand("eforge:backend", {
+    description: "List, inspect, and switch backend profiles",
+    handler: async (args) => {
+      await handleBackendCommand(pi, _latestCtx, args, async () => {
+        if (_latestCtx) await refreshStatus(_latestCtx);
+      });
+    },
+  });
+
+  pi.registerCommand("eforge:backend:new", {
+    description: "Create a new backend profile in eforge/backends/",
+    handler: async (args) => {
+      await handleBackendNewCommand(pi, _latestCtx, args, async () => {
+        if (_latestCtx) await refreshStatus(_latestCtx);
+      });
+    },
+  });
+
+  pi.registerCommand("eforge:config", {
+    description: "Initialize or edit eforge configuration",
+    handler: async (args) => {
+      await handleConfigCommand(pi, _latestCtx, args);
+    },
+  });
 }

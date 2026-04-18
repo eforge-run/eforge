@@ -72,8 +72,8 @@ A user who just accepts defaults gets the same model for all three classes — f
 
 Ask the user whether they want to customize tuning. Most users skip this. Defaults:
 
-- **Pi only** - `pi.thinkingLevel`: `off` | `medium` | `high`. Default: `medium`.
-- **All backends** - `agents.effort`: `low` | `medium` | `high` | `max`. Default: `high`.
+- **Pi only** - `pi.thinkingLevel`: `off` | `low` | `medium` | `high` | `xhigh`. Default: `medium`.
+- **All backends** - `agents.effort`: `low` | `medium` | `high` | `xhigh` | `max`. Default: `high`.
 
 Collect only the values the user explicitly sets.
 

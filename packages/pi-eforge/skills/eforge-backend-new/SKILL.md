@@ -4,6 +4,8 @@ description: Create a new backend profile in eforge/backends/
 disable-model-invocation: true
 ---
 
+> **Note:** In Pi, the native `/eforge:backend:new` command provides a richer interactive experience with a guided overlay-based creation wizard. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
+
 # /eforge:backend:new
 
 Interactively create a new named backend profile (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`). The profile can live at project scope (`eforge/backends/<name>.yaml`) or user scope (`~/.config/eforge/backends/<name>.yaml`). It selects a backend kind, provider, model, and optional tuning, then optionally activates itself.
@@ -73,8 +75,8 @@ A user who just accepts defaults gets the same model for all three classes — f
 
 Ask the user whether they want to customize tuning. Most users skip this. Defaults:
 
-- **Pi only** - `pi.thinkingLevel`: `off` | `medium` | `high`. Default: `medium`.
-- **All backends** - `agents.effort`: `low` | `medium` | `high` | `max`. Default: `high`.
+- **Pi only** - `pi.thinkingLevel`: `off` | `low` | `medium` | `high` | `xhigh`. Default: `medium`.
+- **All backends** - `agents.effort`: `low` | `medium` | `high` | `xhigh` | `max`. Default: `high`.
 
 Collect only the values the user explicitly sets.
 

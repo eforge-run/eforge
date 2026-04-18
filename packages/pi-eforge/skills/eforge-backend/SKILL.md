@@ -4,6 +4,8 @@ description: List, inspect, and switch backend profiles
 disable-model-invocation: true
 ---
 
+> **Note:** In Pi, the native `/eforge:backend` command provides a richer interactive experience with overlay-based profile browsing and switching. This skill serves as a fallback for non-interactive contexts and as model-readable documentation.
+
 # /eforge:backend
 
 List, inspect, and switch named backend profiles stored in `eforge/backends/` (project scope) or `~/.config/eforge/backends/` (user scope). The active profile is tracked by a marker file at either level; resolution follows a 5-step precedence chain (see below).

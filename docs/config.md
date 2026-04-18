@@ -27,7 +27,7 @@ agents:
   #                                    #   Pi: { provider: "provider-name", id: "model-name" }
   # thinking:                 # Global thinking config
   #   type: adaptive          # 'adaptive', 'enabled' (with optional budgetTokens), or 'disabled'
-  # effort: high              # Global effort level: 'low', 'medium', 'high', 'max'
+  # effort: high              # Global effort level: 'low', 'medium', 'high', 'xhigh', 'max'
   # models:                    # Map model classes to model refs (override backend defaults)
   #   max:                     # Used by most roles by default
   #     id: claude-opus-4-7
@@ -77,7 +77,7 @@ monitor:
 
 pi:                            # Pi backend config
   # apiKey: ...                # Optional API key override (env vars and ~/.pi/agent/auth.json used automatically)
-  thinkingLevel: medium        # 'off', 'medium', 'high'
+  thinkingLevel: medium        # 'off', 'low', 'medium', 'high', 'xhigh'
   extensions:
     autoDiscover: true         # Auto-discover extensions from .pi/extensions/
   compaction:

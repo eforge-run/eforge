@@ -27,8 +27,8 @@ describe('plugin version bump', () => {
     version: string;
   };
 
-  it('version is 0.5.29', () => {
-    expect(manifest.version).toBe('0.5.29');
+  it('version is 0.5.30', () => {
+    expect(manifest.version).toBe('0.5.30');
   });
 });
 
@@ -333,5 +333,98 @@ describe('plugin <-> Pi skill parity for user-scope updates', () => {
     for (const raw of [pluginInit, piInit]) {
       expect(raw).toContain('~/.config/eforge/backends/');
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Enum drift: piThinkingLevel and effortLevel values in consumer-facing docs
+// ---------------------------------------------------------------------------
+
+describe('enum drift - piThinkingLevel and effortLevel values', () => {
+  const piBackendNew = readRepoFile('packages/pi-eforge/skills/eforge-backend-new/SKILL.md');
+  const pluginBackendNew = readRepoFile('eforge-plugin/skills/backend-new/backend-new.md');
+  const piConfig = readRepoFile('packages/pi-eforge/skills/eforge-config/SKILL.md');
+  const pluginConfig = readRepoFile('eforge-plugin/skills/config/config.md');
+  const docsConfig = readRepoFile('docs/config.md');
+
+  it('Pi backend-new skill contains xhigh for both thinkingLevel and effort', () => {
+    // thinkingLevel line should contain xhigh
+    expect(piBackendNew).toMatch(/thinkingLevel.*xhigh/i);
+    // effort line should contain xhigh
+    expect(piBackendNew).toMatch(/effort.*xhigh/i);
+  });
+
+  it('Plugin backend-new skill contains xhigh for both thinkingLevel and effort', () => {
+    expect(pluginBackendNew).toMatch(/thinkingLevel.*xhigh/i);
+    expect(pluginBackendNew).toMatch(/effort.*xhigh/i);
+  });
+
+  it('Pi config skill contains xhigh for both effort and thinkingLevel', () => {
+    expect(piConfig).toMatch(/effort.*xhigh/i);
+    expect(piConfig).toMatch(/thinkingLevel.*xhigh/i);
+  });
+
+  it('Plugin config skill contains xhigh for both effort and thinkingLevel', () => {
+    expect(pluginConfig).toMatch(/effort.*xhigh/i);
+    expect(pluginConfig).toMatch(/thinkingLevel.*xhigh/i);
+  });
+
+  it('docs/config.md contains xhigh for both thinkingLevel and effort', () => {
+    expect(docsConfig).toMatch(/effort.*xhigh/i);
+    expect(docsConfig).toMatch(/thinkingLevel.*xhigh/i);
+  });
+
+  it('Pi and plugin backend-new skills contain low as a thinkingLevel option', () => {
+    // Both should list 'low' in the thinkingLevel line
+    expect(piBackendNew).toMatch(/thinkingLevel.*`low`/);
+    expect(pluginBackendNew).toMatch(/thinkingLevel.*`low`/);
+  });
+
+  // --- Occurrence count assertions (catch partial fixes) ---
+
+  it('Pi config skill contains xhigh at least 3 times (body + YAML comments for effort and thinkingLevel)', () => {
+    const matches = piConfig.match(/xhigh/g);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('Plugin config skill contains xhigh at least 3 times (body + YAML comments for effort and thinkingLevel)', () => {
+    const matches = pluginConfig.match(/xhigh/g);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBeGreaterThanOrEqual(3);
+  });
+
+  it('docs/config.md contains xhigh at least 2 times (effort + thinkingLevel)', () => {
+    const matches = docsConfig.match(/xhigh/g);
+    expect(matches).not.toBeNull();
+    expect(matches!.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('Pi and plugin config skills contain low as a thinkingLevel option', () => {
+    // thinkingLevel line in body text and/or YAML comment should include 'low'
+    expect(piConfig).toMatch(/thinkingLevel.*low/);
+    expect(pluginConfig).toMatch(/thinkingLevel.*low/);
+  });
+
+  it('docs/config.md contains low as a thinkingLevel option', () => {
+    expect(docsConfig).toMatch(/thinkingLevel.*low/);
+  });
+
+  // --- Complete enum sequence validation (backend-new skills) ---
+
+  it('Pi backend-new skill lists the full thinkingLevel enum: off | low | medium | high | xhigh', () => {
+    expect(piBackendNew).toMatch(/off.*low.*medium.*high.*xhigh/);
+  });
+
+  it('Pi backend-new skill lists the full effort enum: low | medium | high | xhigh | max', () => {
+    expect(piBackendNew).toMatch(/low.*medium.*high.*xhigh.*max/);
+  });
+
+  it('Plugin backend-new skill lists the full thinkingLevel enum: off | low | medium | high | xhigh', () => {
+    expect(pluginBackendNew).toMatch(/off.*low.*medium.*high.*xhigh/);
+  });
+
+  it('Plugin backend-new skill lists the full effort enum: low | medium | high | xhigh | max', () => {
+    expect(pluginBackendNew).toMatch(/low.*medium.*high.*xhigh.*max/);
   });
 });

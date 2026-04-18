@@ -283,14 +283,14 @@ describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index
     expect(source).toMatch(/name:\s*["']eforge_models["']/);
   });
 
-  it('registers the /eforge:backend skill alias', () => {
-    expect(source).toMatch(/name:\s*["']eforge:backend["']/);
-    expect(source).toMatch(/skill:\s*["']eforge-backend["']/);
+  it('registers the /eforge:backend command natively (not as skill alias)', () => {
+    expect(source).toContain('"eforge:backend"');
+    expect(source).toMatch(/from\s+['"]\.\/backend-commands['"]/);
   });
 
-  it('registers the /eforge:backend:new skill alias', () => {
-    expect(source).toMatch(/name:\s*["']eforge:backend:new["']/);
-    expect(source).toMatch(/skill:\s*["']eforge-backend-new["']/);
+  it('registers the /eforge:backend:new command natively (not as skill alias)', () => {
+    expect(source).toContain('"eforge:backend:new"');
+    expect(source).toMatch(/from\s+['"]\.\/backend-commands['"]/);
   });
 
   it('dispatches eforge_backend to the daemon via daemonRequest', () => {
@@ -372,5 +372,315 @@ describe('eforge_backend scope field parity', () => {
     const scopeAssignments = block.match(/body\.scope\s*=\s*scope/g);
     expect(scopeAssignments).not.toBeNull();
     expect(scopeAssignments!.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pi extension native command modules (plan-02-native-pi-ux)
+// ---------------------------------------------------------------------------
+
+describe('Pi extension native command modules (plan-02-native-pi-ux)', () => {
+  it('backend-commands.ts exists', () => {
+    const path = resolve(REPO_ROOT, 'packages/pi-eforge/extensions/eforge/backend-commands.ts');
+    expect(existsSync(path)).toBe(true);
+    expect(statSync(path).isFile()).toBe(true);
+  });
+
+  it('config-command.ts exists', () => {
+    const path = resolve(REPO_ROOT, 'packages/pi-eforge/extensions/eforge/config-command.ts');
+    expect(existsSync(path)).toBe(true);
+    expect(statSync(path).isFile()).toBe(true);
+  });
+
+  it('ui-helpers.ts exists', () => {
+    const path = resolve(REPO_ROOT, 'packages/pi-eforge/extensions/eforge/ui-helpers.ts');
+    expect(existsSync(path)).toBe(true);
+    expect(statSync(path).isFile()).toBe(true);
+  });
+
+  it('index.ts imports from ./backend-commands and ./config-command', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+    expect(source).toMatch(/from\s+['"]\.\/backend-commands['"]/);
+    expect(source).toMatch(/from\s+['"]\.\/config-command['"]/);
+  });
+
+  it('index.ts imports from ./ui-helpers (UIContext type)', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+    expect(source).toMatch(/from\s+['"]\.\/ui-helpers['"]/);
+  });
+
+  it('Pi skill files contain fallback notes for native commands', () => {
+    const backendSkill = readRepoFile('packages/pi-eforge/skills/eforge-backend/SKILL.md');
+    expect(backendSkill.toLowerCase()).toContain('fallback');
+    expect(backendSkill).toContain('/eforge:backend');
+
+    const backendNewSkill = readRepoFile('packages/pi-eforge/skills/eforge-backend-new/SKILL.md');
+    expect(backendNewSkill.toLowerCase()).toContain('fallback');
+    expect(backendNewSkill).toContain('/eforge:backend:new');
+
+    const configSkill = readRepoFile('packages/pi-eforge/skills/eforge-config/SKILL.md');
+    expect(configSkill.toLowerCase()).toContain('fallback');
+    expect(configSkill).toContain('/eforge:config');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Module exports verification (plan-02-native-pi-ux)
+// ---------------------------------------------------------------------------
+
+describe('Native command module exports (plan-02-native-pi-ux)', () => {
+  it('ui-helpers.ts exports showSelectOverlay', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/ui-helpers.ts');
+    expect(source).toMatch(/export\s+(async\s+)?function\s+showSelectOverlay/);
+  });
+
+  it('ui-helpers.ts exports showInfoOverlay', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/ui-helpers.ts');
+    expect(source).toMatch(/export\s+(async\s+)?function\s+showInfoOverlay/);
+  });
+
+  it('ui-helpers.ts exports withLoader', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/ui-helpers.ts');
+    expect(source).toMatch(/export\s+(async\s+)?function\s+withLoader/);
+  });
+
+  it('ui-helpers.ts exports UIContext type', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/ui-helpers.ts');
+    expect(source).toMatch(/export\s+interface\s+UIContext/);
+  });
+
+  it('backend-commands.ts exports handleBackendCommand', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/backend-commands.ts');
+    expect(source).toMatch(/export\s+async\s+function\s+handleBackendCommand/);
+  });
+
+  it('backend-commands.ts exports handleBackendNewCommand', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/backend-commands.ts');
+    expect(source).toMatch(/export\s+async\s+function\s+handleBackendNewCommand/);
+  });
+
+  it('config-command.ts exports handleConfigCommand', () => {
+    const source = readRepoFile('packages/pi-eforge/extensions/eforge/config-command.ts');
+    expect(source).toMatch(/export\s+async\s+function\s+handleConfigCommand/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Skill-forwarding removal for native commands (plan-02-native-pi-ux)
+// ---------------------------------------------------------------------------
+
+describe('Skill-forwarding removed for 3 native commands (plan-02-native-pi-ux)', () => {
+  const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+
+  it('eforge:backend is NOT in the skillCommands array', () => {
+    // The skillCommands array should not contain eforge:backend
+    const skillCommandsStart = source.indexOf('const skillCommands');
+    expect(skillCommandsStart).toBeGreaterThan(-1);
+    const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
+    const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
+    expect(skillCommandsBlock).not.toContain('"eforge:backend"');
+    expect(skillCommandsBlock).not.toContain("'eforge:backend'");
+  });
+
+  it('eforge:backend:new is NOT in the skillCommands array', () => {
+    const skillCommandsStart = source.indexOf('const skillCommands');
+    const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
+    const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
+    expect(skillCommandsBlock).not.toContain('"eforge:backend:new"');
+    expect(skillCommandsBlock).not.toContain("'eforge:backend:new'");
+  });
+
+  it('eforge:config is NOT in the skillCommands array', () => {
+    const skillCommandsStart = source.indexOf('const skillCommands');
+    const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
+    const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
+    expect(skillCommandsBlock).not.toContain('"eforge:config"');
+    expect(skillCommandsBlock).not.toContain("'eforge:config'");
+  });
+
+  it('eforge:backend is registered natively via pi.registerCommand', () => {
+    // Should appear as a native command registration, not in skillCommands
+    expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:backend["']/);
+  });
+
+  it('eforge:backend:new is registered natively via pi.registerCommand', () => {
+    expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:backend:new["']/);
+  });
+
+  it('eforge:config is registered natively via pi.registerCommand', () => {
+    expect(source).toMatch(/pi\.registerCommand\(\s*["']eforge:config["']/);
+  });
+
+  it('native eforge:backend handler calls handleBackendCommand (not skill forwarding)', () => {
+    // Find the native eforge:backend registration block
+    const idx = source.indexOf('pi.registerCommand("eforge:backend"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = source.slice(idx, idx + 300);
+    expect(block).toContain('handleBackendCommand');
+    expect(block).not.toContain('sendUserMessage');
+  });
+
+  it('native eforge:backend:new handler calls handleBackendNewCommand (not skill forwarding)', () => {
+    const idx = source.indexOf('pi.registerCommand("eforge:backend:new"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = source.slice(idx, idx + 300);
+    expect(block).toContain('handleBackendNewCommand');
+    expect(block).not.toContain('sendUserMessage');
+  });
+
+  it('native eforge:config handler calls handleConfigCommand (not skill forwarding)', () => {
+    const idx = source.indexOf('pi.registerCommand("eforge:config"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = source.slice(idx, idx + 300);
+    expect(block).toContain('handleConfigCommand');
+    expect(block).not.toContain('sendUserMessage');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Remaining 6 commands still use skill forwarding (plan-02-native-pi-ux)
+// ---------------------------------------------------------------------------
+
+describe('Remaining 6 commands still forward to skills (plan-02-native-pi-ux)', () => {
+  const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+  const skillCommandsStart = source.indexOf('const skillCommands');
+  const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
+  const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
+
+  for (const cmd of ['eforge:build', 'eforge:status', 'eforge:init', 'eforge:plan', 'eforge:restart', 'eforge:update']) {
+    it(`${cmd} remains in the skillCommands array`, () => {
+      expect(skillCommandsBlock).toContain(`"${cmd}"`);
+    });
+  }
+
+  it('skillCommands loop uses sendUserMessage for skill forwarding', () => {
+    // After the skillCommands array, the for loop should use sendUserMessage
+    const loopStart = source.indexOf('for (const cmd of skillCommands)');
+    expect(loopStart).toBeGreaterThan(-1);
+    const loopBlock = source.slice(loopStart, loopStart + 300);
+    expect(loopBlock).toContain('sendUserMessage');
+    expect(loopBlock).toContain('/skill:');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ambient status: eforge-queue and eforge-build keys (plan-02-native-pi-ux)
+// ---------------------------------------------------------------------------
+
+describe('Ambient status keys (plan-02-native-pi-ux)', () => {
+  const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+
+  it('sets eforge-queue status key via ctx.ui.setStatus', () => {
+    expect(source).toContain("setStatus('eforge-queue'");
+  });
+
+  it('sets eforge-build status key via ctx.ui.setStatus', () => {
+    expect(source).toContain("setStatus('eforge-build'");
+  });
+
+  it('fetches queue count from /api/queue for ambient status', () => {
+    // The refreshStatus function should call /api/queue
+    const refreshStart = source.indexOf('async function refreshStatus');
+    expect(refreshStart).toBeGreaterThan(-1);
+    const refreshEnd = source.indexOf('pi.on(', refreshStart);
+    const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
+    expect(refreshBlock).toContain("'/api/queue'");
+  });
+
+  it('fetches latest run status from /api/latest-run for ambient status', () => {
+    const refreshStart = source.indexOf('async function refreshStatus');
+    expect(refreshStart).toBeGreaterThan(-1);
+    const refreshEnd = source.indexOf('pi.on(', refreshStart);
+    const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
+    expect(refreshBlock).toContain("'/api/latest-run'");
+  });
+
+  it('fetches run summary for build phase/agent display', () => {
+    const refreshStart = source.indexOf('async function refreshStatus');
+    expect(refreshStart).toBeGreaterThan(-1);
+    const refreshEnd = source.indexOf('pi.on(', refreshStart);
+    const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
+    expect(refreshBlock).toMatch(/\/api\/run-summary\//);
+  });
+
+  it('hides eforge-queue when queue is empty (sets undefined)', () => {
+    // Should set eforge-queue to undefined when queue has 0 items
+    const queueStatusCalls = source.match(/setStatus\('eforge-queue',\s*undefined\)/g);
+    expect(queueStatusCalls).not.toBeNull();
+    expect(queueStatusCalls!.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('hides eforge-build when idle or no run (sets undefined)', () => {
+    const buildStatusCalls = source.match(/setStatus\('eforge-build',\s*undefined\)/g);
+    expect(buildStatusCalls).not.toBeNull();
+    expect(buildStatusCalls!.length).toBeGreaterThanOrEqual(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Architecture docs and README updates (plan-02-native-pi-ux)
+// ---------------------------------------------------------------------------
+
+describe('docs/architecture.md - native command mentions (plan-02-native-pi-ux)', () => {
+  const raw = readRepoFile('docs/architecture.md');
+
+  it('Pi Package section mentions "native" in the context of commands', () => {
+    // Find the Pi Package section
+    const piStart = raw.indexOf('### Pi Package');
+    expect(piStart).toBeGreaterThan(-1);
+    const nextSection = raw.indexOf('\n## ', piStart);
+    const piSection = raw.slice(piStart, nextSection > -1 ? nextSection : undefined);
+    expect(piSection.toLowerCase()).toContain('native');
+  });
+
+  it('Pi Package section mentions overlay commands for backend management', () => {
+    const piStart = raw.indexOf('### Pi Package');
+    const nextSection = raw.indexOf('\n## ', piStart);
+    const piSection = raw.slice(piStart, nextSection > -1 ? nextSection : undefined);
+    expect(piSection).toContain('/eforge:backend');
+    expect(piSection).toContain('/eforge:backend:new');
+  });
+
+  it('Pi Package section mentions overlay commands for config', () => {
+    const piStart = raw.indexOf('### Pi Package');
+    const nextSection = raw.indexOf('\n## ', piStart);
+    const piSection = raw.slice(piStart, nextSection > -1 ? nextSection : undefined);
+    expect(piSection).toContain('/eforge:config');
+  });
+
+  it('Pi Package section is not described as purely "skill-based"', () => {
+    const piStart = raw.indexOf('### Pi Package');
+    const nextSection = raw.indexOf('\n## ', piStart);
+    const piSection = raw.slice(piStart, nextSection > -1 ? nextSection : undefined);
+    // The section should not say ALL commands are skill-based
+    expect(piSection).not.toMatch(/Skill-based slash commands.*\/eforge:config/);
+    expect(piSection).not.toMatch(/Skill-based slash commands.*\/eforge:backend/);
+  });
+});
+
+describe('packages/pi-eforge/README.md - native command UX (plan-02-native-pi-ux)', () => {
+  const raw = readRepoFile('packages/pi-eforge/README.md');
+
+  it('mentions native commands for backend management', () => {
+    expect(raw).toContain('/eforge:backend');
+    expect(raw).toContain('/eforge:backend:new');
+  });
+
+  it('mentions native config command', () => {
+    expect(raw).toContain('/eforge:config');
+  });
+
+  it('describes interactive overlay UX', () => {
+    expect(raw.toLowerCase()).toContain('overlay');
+  });
+
+  it('mentions ambient status display', () => {
+    expect(raw.toLowerCase()).toContain('ambient status');
+  });
+
+  it('distinguishes native commands from skill-based slash commands', () => {
+    // Should have separate mentions of native commands vs slash commands
+    expect(raw).toMatch(/Native Pi commands/i);
+    expect(raw).toMatch(/Slash commands for/i);
   });
 });
