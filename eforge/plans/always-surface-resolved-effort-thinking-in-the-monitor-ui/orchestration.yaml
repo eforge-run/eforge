@@ -1,0 +1,44 @@
+name: always-surface-resolved-effort-thinking-in-the-monitor-ui
+description: Add thinkingSource provenance tracking to match effortSource,
+  always stamp source fields even when values are unset, and update the monitor
+  UI tooltip to always render labeled effort/thinking rows with visual override
+  indicators.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-effort-thinking-provenance
+    name: Effort and Thinking Provenance Tracking
+    depends_on: []
+    branch: always-surface-resolved-effort-thinking-in-the-monitor-ui/effort-thinking-provenance
+    build: &a1
+      - implement
+      - review-cycle
+    review: &a2
+      strategy: auto
+      perspectives:
+        - correctness
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "Excursion scope - the work touches ~9 files across two packages
+    (engine + monitor-ui) but follows a clear existing pattern: effortSource
+    tracking already exists and thinkingSource mirrors it exactly. A single
+    planner session can enumerate all changes and their dependency order (types
+    → events → backends → reducer → UI). No expedition signals: the changes are
+    a sequential dependency chain, not independent subsystems. Not an errand
+    because it spans multiple packages with type plumbing and UI changes.
+    Standard review-cycle with correctness perspective catches plumbing
+    mismatches (missed yield sites, wrong field names, type misalignment between
+    engine events and UI reducer). Two rounds suffice since most changes are
+    mechanical pattern-following. No doc-update needed (no public API changes).
+    No test-write stage since the PRD calls for updating existing tests, not
+    generating new test suites."
