@@ -28,6 +28,34 @@ export interface ClaudeSDKBackendOptions {
   settingSources?: SettingSource[];
   /** Pass --bare to Claude Code subprocess to suppress auto-loading of default settings/tools. */
   bare?: boolean;
+  /**
+   * When true, the backend appends the `Task` tool to every agent run's
+   * `disallowedTools` list so agents cannot spawn subagents. Claude SDK-only —
+   * Pi has no Task tool / subagent concept.
+   */
+  disableSubagents?: boolean;
+}
+
+/** The tool name Claude Code exposes for subagent spawning. */
+export const SUBAGENT_TOOL_NAME = 'Task';
+
+/**
+ * Combine a role's `disallowedTools` with the backend-level `disableSubagents`
+ * flag. When `disableSubagents` is true, `'Task'` is appended (de-duplicated)
+ * to whatever the role already disallows. Returns `undefined` when neither
+ * source contributes anything, so the SDK receives no `disallowedTools` key.
+ *
+ * Exported for testing.
+ */
+export function resolveDisallowedTools(
+  roleDisallowed: readonly string[] | undefined,
+  disableSubagents: boolean,
+): string[] | undefined {
+  if (!disableSubagents) {
+    return roleDisallowed ? [...roleDisallowed] : undefined;
+  }
+  const base = roleDisallowed ?? [];
+  return base.includes(SUBAGENT_TOOL_NAME) ? [...base] : [...base, SUBAGENT_TOOL_NAME];
 }
 
 export class ClaudeSDKBackend implements AgentBackend {
@@ -35,12 +63,14 @@ export class ClaudeSDKBackend implements AgentBackend {
   private readonly plugins?: SdkPluginConfig[];
   private readonly settingSources?: SettingSource[];
   private readonly bare: boolean;
+  private readonly disableSubagents: boolean;
 
   constructor(options?: ClaudeSDKBackendOptions) {
     this.mcpServers = options?.mcpServers;
     this.plugins = options?.plugins;
     this.settingSources = options?.settingSources;
     this.bare = options?.bare ?? false;
+    this.disableSubagents = options?.disableSubagents ?? false;
   }
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
@@ -106,7 +136,10 @@ export class ClaudeSDKBackend implements AgentBackend {
           ...(options.maxBudgetUsd !== undefined ? { maxBudgetUsd: options.maxBudgetUsd } : {}),
           ...(options.fallbackModel !== undefined ? { fallbackModel: options.fallbackModel } : {}),
           ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
-          ...(options.disallowedTools !== undefined ? { disallowedTools: options.disallowedTools } : {}),
+          ...(() => {
+            const disallowed = resolveDisallowedTools(options.disallowedTools, this.disableSubagents);
+            return disallowed !== undefined ? { disallowedTools: disallowed } : {};
+          })(),
         },
       });
 

@@ -129,6 +129,7 @@ export class EforgeEngine {
       plugins: options.plugins,
       settingSources: options.settingSources ?? config.agents.settingSources as SettingSource[] | undefined,
       bare: config.agents.bare,
+      disableSubagents: config.claudeSdk.disableSubagents,
     });
     this.onClarification = options.onClarification;
     this.onApproval = options.onApproval;
@@ -1554,6 +1555,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     daemon: overrides.daemon ? { ...base.daemon, ...overrides.daemon } : base.daemon,
     monitor: overrides.monitor ? { ...base.monitor, ...overrides.monitor } : base.monitor,
     pi: overrides.pi ? { ...base.pi, ...overrides.pi } : base.pi,
+    claudeSdk: overrides.claudeSdk ? { ...base.claudeSdk, ...overrides.claudeSdk } : base.claudeSdk,
     hooks: overrides.hooks ?? base.hooks,
   };
 }

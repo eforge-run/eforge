@@ -86,6 +86,10 @@ pi:                            # Pi backend config
   retry:
     maxRetries: 3              # Max retry attempts
     backoffMs: 1000            # Backoff between retries (ms)
+
+claudeSdk:                     # Claude SDK backend config (ignored under backend: pi)
+  disableSubagents: false      # When true, the `Task` tool is disallowed on every agent run
+                               #   so agents cannot spawn subagents.
 ```
 
 ## Model References
@@ -244,6 +248,20 @@ Build stages and review config are per-plan, determined by the planner during co
 ## MCP Servers
 
 MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). All `eforge` agents receive the same MCP servers.
+
+## Claude SDK Backend
+
+The `claudeSdk:` block holds options that are only meaningful when `backend: claude-sdk`. When a Pi profile is active the block is ignored.
+
+- **`disableSubagents: true`** appends `'Task'` to every agent run's `disallowedTools`, preventing agents from spawning Claude Code subagents. Useful when you want a single-agent trace (e.g. for debugging, cost control, or determinism) instead of letting a role fan out into Task-spawned helpers. Per-role `agents.roles.<role>.disallowedTools` values are preserved; `'Task'` is appended to them (de-duplicated).
+
+The Pi backend has no `Task` tool or subagent concept, so this flag has no Pi equivalent.
+
+```yaml
+backend: claude-sdk
+claudeSdk:
+  disableSubagents: true
+```
 
 ## Pi Backend
 

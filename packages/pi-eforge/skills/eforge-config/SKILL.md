@@ -222,6 +222,11 @@ profiles:
 #     max:
 #       provider: openrouter
 #       id: anthropic/claude-opus-4-6
+
+# Claude SDK backend (ignored when backend: pi)
+# claudeSdk:
+#   disableSubagents: false            # When true, the `Task` tool is disallowed on every
+#                                      # agent run so agents cannot spawn subagents.
 ```
 
 ## Error Handling

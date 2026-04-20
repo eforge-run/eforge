@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mapSDKMessages } from '@eforge-build/engine/backends/claude-sdk';
+import { mapSDKMessages, resolveDisallowedTools, SUBAGENT_TOOL_NAME } from '@eforge-build/engine/backends/claude-sdk';
 import { AgentTerminalError } from '@eforge-build/engine/backend';
 
 async function* iter<T>(items: T[]): AsyncGenerator<T> {
@@ -73,5 +73,38 @@ describe('mapSDKMessages error formatting', () => {
 
     expect(caught).toBeInstanceOf(AgentTerminalError);
     expect((caught as AgentTerminalError).subtype).toBe('error_max_turns');
+  });
+});
+
+describe('resolveDisallowedTools (claudeSdk.disableSubagents)', () => {
+  it('returns undefined when nothing is disallowed and subagents are allowed', () => {
+    expect(resolveDisallowedTools(undefined, false)).toBeUndefined();
+    expect(resolveDisallowedTools([], false)).toEqual([]);
+  });
+
+  it('returns the role list unchanged when subagents are allowed', () => {
+    expect(resolveDisallowedTools(['Bash', 'Write'], false)).toEqual(['Bash', 'Write']);
+  });
+
+  it('returns a copy so the caller cannot mutate role config', () => {
+    const roleList = ['Bash'];
+    const resolved = resolveDisallowedTools(roleList, false);
+    expect(resolved).not.toBe(roleList);
+  });
+
+  it('appends Task when disableSubagents is true and role has no disallowedTools', () => {
+    expect(resolveDisallowedTools(undefined, true)).toEqual([SUBAGENT_TOOL_NAME]);
+  });
+
+  it('appends Task to an existing role disallowedTools list', () => {
+    expect(resolveDisallowedTools(['Bash', 'Write'], true)).toEqual(['Bash', 'Write', SUBAGENT_TOOL_NAME]);
+  });
+
+  it('does not duplicate Task when the role already disallows it', () => {
+    expect(resolveDisallowedTools(['Task', 'Bash'], true)).toEqual(['Task', 'Bash']);
+  });
+
+  it('exposes Task as the subagent tool name', () => {
+    expect(SUBAGENT_TOOL_NAME).toBe('Task');
   });
 });

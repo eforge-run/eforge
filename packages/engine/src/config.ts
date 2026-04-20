@@ -106,6 +106,10 @@ export const backendSchema = z.enum(['claude-sdk', 'pi']).describe('Backend prov
 
 export const piThinkingLevelSchema = z.enum(['off', 'low', 'medium', 'high', 'xhigh']).describe('Pi-native thinking level');
 
+export const claudeSdkConfigSchema = z.object({
+  disableSubagents: z.boolean().optional().describe('Disable the Task tool so agents cannot spawn subagents. Claude SDK backend only.'),
+}).describe('Configuration specific to the Claude SDK backend');
+
 export const piConfigSchema = z.object({
   apiKey: z.string().optional().describe('API key for the Pi provider'),
   thinkingLevel: piThinkingLevelSchema.optional().describe('Thinking level for Pi agents'),
@@ -174,6 +178,7 @@ const eforgeConfigBaseSchema = z.object({
     retentionCount: z.number().int().positive().optional(),
   }).optional(),
   pi: piConfigSchema.optional(),
+  claudeSdk: claudeSdkConfigSchema.optional(),
   hooks: z.array(hookConfigSchema).optional(),
 });
 
@@ -268,6 +273,12 @@ export interface PiConfig {
   retry: { maxRetries: number; backoffMs: number };
 }
 
+/** Resolved Claude SDK backend config. Only applied when `backend: claude-sdk`. */
+export interface ClaudeSdkConfig {
+  /** When true, the backend appends `'Task'` to `disallowedTools` on every agent run so subagents cannot be spawned. */
+  disableSubagents: boolean;
+}
+
 export interface EforgeConfig {
   backend?: 'claude-sdk' | 'pi';
   maxConcurrentBuilds: number;
@@ -293,6 +304,7 @@ export interface EforgeConfig {
   daemon: { idleShutdownMs: number };
   monitor: { retentionCount: number };
   pi: PiConfig;
+  claudeSdk: ClaudeSdkConfig;
   hooks: readonly HookConfig[];
 }
 
@@ -337,6 +349,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     compaction: Object.freeze({ enabled: true, threshold: 100_000 }),
     retry: Object.freeze({ maxRetries: 3, backoffMs: 1000 }),
   }),
+  claudeSdk: Object.freeze({ disableSubagents: false }),
   hooks: Object.freeze([]),
 });
 
@@ -460,6 +473,9 @@ export function resolveConfig(
         backoffMs: fileConfig.pi?.retry?.backoffMs ?? DEFAULT_CONFIG.pi.retry.backoffMs,
       }),
     }),
+    claudeSdk: Object.freeze({
+      disableSubagents: fileConfig.claudeSdk?.disableSubagents ?? DEFAULT_CONFIG.claudeSdk.disableSubagents,
+    }),
     hooks: Object.freeze(fileConfig.hooks ?? DEFAULT_CONFIG.hooks) as HookConfig[],
   });
 }
@@ -524,7 +540,7 @@ function parseRawConfigFallback(data: Record<string, unknown>, context: 'config'
       (result as Record<string, unknown>).maxConcurrentBuilds = mcbResult.data;
     }
   }
-  const sections = ['langfuse', 'agents', 'build', 'plan', 'plugins', 'prdQueue', 'daemon', 'pi', 'hooks'] as const;
+  const sections = ['langfuse', 'agents', 'build', 'plan', 'plugins', 'prdQueue', 'daemon', 'pi', 'claudeSdk', 'hooks'] as const;
   for (const key of sections) {
     if (data[key] === undefined) continue;
     const sectionSchema = eforgeConfigSchema.shape[key];
@@ -553,6 +569,7 @@ function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfi
   if (config.prdQueue !== undefined) out.prdQueue = config.prdQueue;
   if (config.daemon !== undefined) out.daemon = config.daemon;
   if (config.pi !== undefined) out.pi = config.pi;
+  if (config.claudeSdk !== undefined) out.claudeSdk = config.claudeSdk;
   if (config.hooks !== undefined) out.hooks = config.hooks;
   return out;
 }
@@ -637,6 +654,9 @@ export function mergePartialConfigs(
   }
   if (global.pi || project.pi) {
     result.pi = { ...global.pi, ...project.pi };
+  }
+  if (global.claudeSdk || project.claudeSdk) {
+    result.claudeSdk = { ...global.claudeSdk, ...project.claudeSdk };
   }
 
   // hooks: concatenate (global first, then project)

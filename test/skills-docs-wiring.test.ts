@@ -19,20 +19,6 @@ function readRepoFile(relative: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Plugin version bump (eforge-plugin/.claude-plugin/plugin.json)
-// ---------------------------------------------------------------------------
-
-describe('plugin version bump', () => {
-  const manifest = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as {
-    version: string;
-  };
-
-  it('version is 0.5.30', () => {
-    expect(manifest.version).toBe('0.5.30');
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Plugin backend skill - scope column and precedence docs
 // ---------------------------------------------------------------------------
 

@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, piThinkingLevelSchema, modelClassSchema, MODEL_CLASSES, configYamlSchema, sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, piThinkingLevelSchema, claudeSdkConfigSchema, modelClassSchema, MODEL_CLASSES, configYamlSchema, sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
 import { pickSdkOptions } from '@eforge-build/engine/backend';
 import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
 
@@ -157,6 +157,21 @@ describe('resolveConfig', () => {
       {},
     );
     expect(config.agents.bare).toBe(true);
+  });
+
+  it('claudeSdk.disableSubagents defaults to false', () => {
+    const config = resolveConfig({}, {});
+    expect(config.claudeSdk.disableSubagents).toBe(false);
+  });
+
+  it('claudeSdk.disableSubagents propagates from file config', () => {
+    const config = resolveConfig({ claudeSdk: { disableSubagents: true } }, {});
+    expect(config.claudeSdk.disableSubagents).toBe(true);
+  });
+
+  it('claudeSdk section is frozen in resolved config', () => {
+    const config = resolveConfig({}, {});
+    expect(Object.isFrozen(config.claudeSdk)).toBe(true);
   });
 });
 
@@ -823,6 +838,54 @@ describe('eforgeConfigSchema backend and pi validation', () => {
   it('rejects { backend: "invalid" }', () => {
     const result = eforgeConfigSchema.safeParse({ backend: 'invalid' });
     expect(result.success).toBe(false);
+  });
+});
+
+describe('claudeSdkConfigSchema', () => {
+  it('accepts { disableSubagents: true }', () => {
+    const result = claudeSdkConfigSchema.safeParse({ disableSubagents: true });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts empty object (all fields optional)', () => {
+    const result = claudeSdkConfigSchema.safeParse({});
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects non-boolean disableSubagents', () => {
+    const result = claudeSdkConfigSchema.safeParse({ disableSubagents: 'yes' });
+    expect(result.success).toBe(false);
+  });
+
+  it('eforgeConfigSchema accepts claudeSdk block alongside backend: claude-sdk', () => {
+    const result = eforgeConfigSchema.safeParse({
+      backend: 'claude-sdk',
+      claudeSdk: { disableSubagents: true },
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
+describe('mergePartialConfigs claudeSdk', () => {
+  it('project claudeSdk wins over global', () => {
+    const merged = mergePartialConfigs(
+      { claudeSdk: { disableSubagents: false } },
+      { claudeSdk: { disableSubagents: true } },
+    );
+    expect(merged.claudeSdk?.disableSubagents).toBe(true);
+  });
+
+  it('preserves global claudeSdk when project does not set it', () => {
+    const merged = mergePartialConfigs(
+      { claudeSdk: { disableSubagents: true } },
+      {},
+    );
+    expect(merged.claudeSdk?.disableSubagents).toBe(true);
+  });
+
+  it('omits claudeSdk when neither side sets it', () => {
+    const merged = mergePartialConfigs({}, {});
+    expect(merged.claudeSdk).toBeUndefined();
   });
 });
 
