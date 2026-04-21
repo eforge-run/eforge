@@ -95,6 +95,17 @@ export class ClaudeSDKBackend implements AgentBackend {
     this.onDebugPayload = options?.onDebugPayload;
   }
 
+  /**
+   * Claude Agent SDK exposes custom tools registered via `createSdkMcpServer`
+   * under the prefix `mcp__<serverName>__<toolName>`. The engine's in-process
+   * MCP server is named `eforge_engine`, so a bare `CustomTool.name` like
+   * `submit_plan_set` becomes `mcp__eforge_engine__submit_plan_set` from the
+   * model's perspective.
+   */
+  effectiveCustomToolName(name: string): string {
+    return `mcp__eforge_engine__${name}`;
+  }
+
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     const agentId = crypto.randomUUID();
     yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'default', backend: 'claude-sdk', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), ...(options.effort !== undefined ? { effort: options.effort } : {}), ...(options.thinking !== undefined ? { thinking: options.thinking } : {}), ...(options.effortClamped !== undefined ? { effortClamped: options.effortClamped } : {}), ...(options.effortOriginal !== undefined ? { effortOriginal: options.effortOriginal } : {}), ...(options.effortSource !== undefined ? { effortSource: options.effortSource } : {}), ...(options.thinkingSource !== undefined ? { thinkingSource: options.thinkingSource } : {}), ...(options.thinkingCoerced !== undefined ? { thinkingCoerced: options.thinkingCoerced } : {}), ...(options.thinkingOriginal !== undefined ? { thinkingOriginal: options.thinkingOriginal } : {}), timestamp: new Date().toISOString() };
@@ -121,7 +132,7 @@ export class ClaudeSDKBackend implements AgentBackend {
           version: '1.0.0',
           tools: options.customTools.map((ct) =>
             tool(
-              ct.name.replace(/^mcp__eforge_engine__/, ''),
+              ct.name,
               ct.description,
               ct.inputSchema.shape,
               async (args: unknown) => {

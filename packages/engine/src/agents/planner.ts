@@ -62,7 +62,7 @@ function createPlanSetSubmissionTool(
   onSubmit: (payload: PlanSetSubmission) => boolean,
 ): CustomTool {
   return {
-    name: 'mcp__eforge_engine__submit_plan_set',
+    name: 'submit_plan_set',
     description: 'Submit a complete plan set with all plan files and orchestration configuration. This is the only way to complete the planning turn for errand/excursion mode.',
     inputSchema: planSetSubmissionSchema,
     handler: async (input: unknown) => {
@@ -86,7 +86,7 @@ function createArchitectureSubmissionTool(
   onSubmit: (payload: ArchitectureSubmission) => boolean,
 ): CustomTool {
   return {
-    name: 'mcp__eforge_engine__submit_architecture',
+    name: 'submit_architecture',
     description: 'Submit architecture documentation and module definitions for an expedition. This is the only way to complete the planning turn for expedition mode.',
     inputSchema: architectureSubmissionSchema,
     handler: async (input: unknown) => {
@@ -159,6 +159,16 @@ This is continuation attempt ${attempt} of ${maxContinuations}. The planner hit 
 ${existingPlans}`;
     }
 
+    // Resolve the backend-visible name for the submission tool(s) currently
+    // injected into this planner run. The planner prompt uses `{{submitTool}}`
+    // placeholders; each backend maps the bare `CustomTool.name` to the name
+    // the model will actually see (e.g. the Claude SDK prepends its
+    // in-process MCP-server prefix, Pi uses the bare name). When both tools
+    // are injected (unknown scope), list both names joined by " or " so the
+    // prompt still names the exact per-backend identifiers.
+    const effectiveNames = customTools.map(t => backend.effectiveCustomToolName(t.name));
+    const submitTool = effectiveNames.join(' or ');
+
     return loadPrompt('planner', {
       source: sourceContent,
       planSetName,
@@ -171,6 +181,7 @@ ${existingPlans}`;
       clarification_schema: getClarificationSchemaYaml(),
       module_schema: getModuleSchemaYaml(),
       plan_frontmatter_schema: getPlanFrontmatterSchemaYaml(),
+      submitTool,
     }, options.promptAppend);
   }
 
@@ -309,8 +320,10 @@ ${existingPlans}`;
 
   // Neither submission tool was called and no <skip> was emitted — this is an error.
   // Tailor the error to the tools that were actually injected for this scope so the
-  // message matches what the agent had available.
-  const injectedNames = customTools.map(t => t.name).join(' / ');
+  // message matches what the agent had available. Report the backend-visible names
+  // (each backend translates the bare name via effectiveCustomToolName) so the
+  // message reflects what the agent was actually told to call.
+  const injectedNames = customTools.map(t => backend.effectiveCustomToolName(t.name)).join(' / ');
   yield {
     timestamp: new Date().toISOString(),
     type: 'plan:error',

@@ -184,7 +184,7 @@ describe('runPlanner wiring', () => {
 
     const backend = new StubBackend([{
       toolCalls: [{
-        tool: 'mcp__eforge_engine__submit_plan_set',
+        tool: 'submit_plan_set',
         toolUseId: 'tu-1',
         input: {
           name: 'my-plan',
@@ -226,6 +226,77 @@ describe('runPlanner wiring', () => {
     expect(complete!.plans).toHaveLength(1);
     expect(complete!.plans[0].id).toBe('feature');
     expect(complete!.plans[0].name).toBe('Add feature');
+  });
+});
+
+// --- Planner submission tool naming ---
+
+describe('runPlanner submission tool naming', () => {
+  const makeTempDir = useTempDir('eforge-planner-submit-name-');
+
+  /**
+   * StubBackend subclass whose `effectiveCustomToolName` returns a
+   * distinguishable prefix so tests can verify that the planner asks the
+   * backend for the per-backend tool name and interpolates it into the
+   * rendered prompt.
+   */
+  class PrefixedStubBackend extends StubBackend {
+    override effectiveCustomToolName(name: string): string {
+      return `stub__${name}`;
+    }
+  }
+
+  it('injects backend-provided effective tool name into the rendered prompt (excursion)', async () => {
+    const backend = new PrefixedStubBackend([{ text: '' }]);
+    const cwd = makeTempDir();
+
+    await collectEvents(runPlanner('Add a thing', {
+      backend,
+      cwd,
+      scope: 'excursion',
+    }));
+
+    expect(backend.prompts).toHaveLength(1);
+    const prompt = backend.prompts[0];
+    expect(prompt).toContain('stub__submit_plan_set');
+    expect(prompt).not.toContain('mcp__eforge_engine__');
+    // The bare name must not appear standalone (surrounded by non-identifier
+    // chars). It is allowed as a substring of `stub__submit_plan_set`, so
+    // strip that compound token before asserting the bare name is absent.
+    const withoutPrefixed = prompt.split('stub__submit_plan_set').join('');
+    expect(withoutPrefixed).not.toMatch(/\bsubmit_plan_set\b/);
+  });
+
+  it('injects backend-provided effective tool name into the rendered prompt (expedition)', async () => {
+    const backend = new PrefixedStubBackend([{ text: '' }]);
+    const cwd = makeTempDir();
+
+    await collectEvents(runPlanner('Design a system', {
+      backend,
+      cwd,
+      scope: 'expedition',
+    }));
+
+    expect(backend.prompts).toHaveLength(1);
+    const prompt = backend.prompts[0];
+    expect(prompt).toContain('stub__submit_architecture');
+    expect(prompt).not.toContain('mcp__eforge_engine__');
+  });
+
+  it('reports backend-visible names in plan:error when no submission tool was called', async () => {
+    const backend = new PrefixedStubBackend([{ text: 'Nothing to do.' }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runPlanner('Hmm', {
+      backend,
+      cwd,
+      scope: 'excursion',
+    }));
+
+    const error = findEvent(events, 'plan:error');
+    expect(error).toBeDefined();
+    expect(error!.reason).toContain('stub__submit_plan_set');
+    expect(error!.reason).not.toContain('mcp__eforge_engine__');
   });
 });
 

@@ -64,6 +64,18 @@ export class StubBackend implements AgentBackend {
     this.responses = responses;
   }
 
+  /**
+   * Default identity mapping: the stub treats a bare `CustomTool.name` as the
+   * name the "model" calls directly, mirroring the Pi backend's convention.
+   * Tests that need to verify backend-specific prompt rendering (e.g. that
+   * the planner injects the per-backend effective name into the prompt) can
+   * subclass `StubBackend` and override this method to return a
+   * distinguishable prefix.
+   */
+  effectiveCustomToolName(name: string): string {
+    return name;
+  }
+
   async *run(
     options: AgentRunOptions,
     agent: AgentRole,

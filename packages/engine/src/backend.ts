@@ -112,6 +112,18 @@ export interface AgentRunOptions {
 export interface AgentBackend {
   /** Run an agent with the given prompt and yield EforgeEvents. */
   run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent>;
+  /**
+   * Translate a bare `CustomTool.name` into the name the model will actually
+   * see when the backend registers the tool. Agent runners (e.g. the planner)
+   * use this to inject the correct backend-visible identifier into prompts so
+   * the model calls the tool by its real name.
+   *
+   * - Claude SDK wraps custom tools in an in-process MCP server, so it
+   *   prepends the SDK's MCP-server prefix to the bare name.
+   * - Pi registers custom tools directly by their bare name, so it returns
+   *   `name` unchanged.
+   */
+  effectiveCustomToolName(name: string): string;
 }
 
 // ---------------------------------------------------------------------------

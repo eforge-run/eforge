@@ -111,12 +111,16 @@ function resolveThinkingLevel(options: AgentRunOptions, piConfig?: PiConfig): Th
 /**
  * Filter tools based on allowedTools / disallowedTools lists.
  * Pi doesn't have built-in tool filtering, so we do it before passing to the session.
+ *
+ * Generic over any object with a `name` field so that the same filter logic
+ * applies to both Pi built-in/bridged `AgentTool`s and `ToolDefinition`s
+ * without commingling them into a single array.
  */
-function filterTools(
-  tools: AgentTool[],
+function filterTools<T extends { name: string }>(
+  tools: T[],
   allowedTools?: string[],
   disallowedTools?: string[],
-): AgentTool[] {
+): T[] {
   let filtered = tools;
 
   if (allowedTools && allowedTools.length > 0) {
@@ -257,6 +261,15 @@ export class PiBackend implements AgentBackend {
     this.onDebugPayload = options?.onDebugPayload;
   }
 
+  /**
+   * Pi registers custom tools directly by their bare name — there is no
+   * MCP-wrapper convention like the Claude SDK's `mcp__<server>__<tool>`
+   * prefix. The model calls the tool by exactly `CustomTool.name`.
+   */
+  effectiveCustomToolName(name: string): string {
+    return name;
+  }
+
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     const agentId = crypto.randomUUID();
 
@@ -334,13 +347,16 @@ export class PiBackend implements AgentBackend {
       const isCoding = options.tools === 'coding';
       const baseTools = isCoding ? createCodingTools(options.cwd) : createReadOnlyTools(options.cwd);
 
-      // Collect MCP tools (only for coding agents)
-      let mcpTools: AgentTool[] = [];
+      // Collect bridged MCP tools (only for coding agents). These come from
+      // `PiMcpBridge` and are kept strictly separate from planner-supplied
+      // `customTools` so each tool source can be filtered independently and
+      // no cast is needed when handing them to the Pi session.
+      let bridgedMcpTools: AgentTool[] = [];
       if (isCoding && this.mcpServers && Object.keys(this.mcpServers).length > 0) {
         if (!this.mcpBridge) {
           this.mcpBridge = new PiMcpBridge(this.mcpServers);
         }
-        mcpTools = await this.mcpBridge.getTools();
+        bridgedMcpTools = await this.mcpBridge.getTools();
       }
 
       // Collect extension tools (only for coding agents, skip in bare mode)
@@ -349,40 +365,53 @@ export class PiBackend implements AgentBackend {
         extensionPaths = await discoverPiExtensions(options.cwd, this.extensions);
       }
 
-      // Convert eforge CustomTools to Pi AgentTool format and merge with MCP tools
+      // Convert eforge CustomTools to Pi 0.68 ToolDefinition objects. The
+      // execute callback matches Pi's arity-5 signature
+      // `(toolCallId, params, signal, onUpdate, ctx)`; the planner handler
+      // only uses `params`, the rest are accepted and ignored.
+      const eforgeCustomTools: ToolDefinition[] = [];
       if (options.customTools && options.customTools.length > 0) {
         const { jsonSchemaToTypeBox } = await import('./pi-mcp-bridge.js');
         for (const ct of options.customTools) {
           const jsonSchema = z.toJSONSchema(ct.inputSchema) as Record<string, unknown>;
           const parameters = jsonSchemaToTypeBox(jsonSchema);
-          mcpTools.push({
+          const execute: ToolDefinition['execute'] = async (
+            _toolCallId,
+            params,
+            _signal,
+            _onUpdate,
+            _ctx,
+          ) => {
+            try {
+              const result = await ct.handler(params);
+              return {
+                content: [{ type: 'text' as const, text: result }],
+                details: {},
+              };
+            } catch (err) {
+              const message = err instanceof Error ? err.message : String(err);
+              return {
+                content: [{ type: 'text' as const, text: `Error: ${message}` }],
+                details: {},
+              };
+            }
+          };
+          eforgeCustomTools.push({
             name: ct.name,
             label: ct.name,
             description: ct.description,
             parameters,
-            execute: async (_toolCallId: string, params: unknown) => {
-              try {
-                const result = await ct.handler(params);
-                return {
-                  content: [{ type: 'text' as const, text: result }],
-                  details: {},
-                };
-              } catch (err) {
-                const message = err instanceof Error ? err.message : String(err);
-                return {
-                  content: [{ type: 'text' as const, text: `Error: ${message}` }],
-                  details: {},
-                };
-              }
-            },
-          } as AgentTool);
+            execute,
+          });
         }
       }
 
-      // Filter built-in and bridged tools separately so we preserve Pi's
-      // built-in/custom distinction when creating the session.
+      // Filter built-in, bridged, and eforge custom tools independently so
+      // each respects `allowedTools`/`disallowedTools` without interfering
+      // with the others.
       const filteredBaseTools = filterTools(baseTools, options.allowedTools, options.disallowedTools);
-      const filteredMcpTools = filterTools(mcpTools, options.allowedTools, options.disallowedTools);
+      const filteredBridgedMcpTools = filterTools(bridgedMcpTools, options.allowedTools, options.disallowedTools);
+      const filteredEforgeCustomTools = filterTools(eforgeCustomTools, options.allowedTools, options.disallowedTools);
 
       // Create session manager (in-memory, no persistence needed for one-shot agents)
       const sessionManager = SessionManager.inMemory();
@@ -461,7 +490,7 @@ export class PiBackend implements AgentBackend {
         model,
         thinkingLevel,
         tools: filteredBaseTools.map((t) => t.name),
-        customTools: filteredMcpTools as unknown as ToolDefinition[],
+        customTools: [...filteredBridgedMcpTools, ...filteredEforgeCustomTools],
         authStorage,
         modelRegistry,
         sessionManager,
@@ -608,8 +637,8 @@ export class PiBackend implements AgentBackend {
             mcpServerNames: this.mcpServers ? Object.keys(this.mcpServers) : [],
             extensionPathCount: extensionPaths.length,
             baseToolCount: filteredBaseTools.length,
-            mcpToolCount: filteredMcpTools.length,
-            customToolCount: options.customTools?.length ?? 0,
+            bridgedMcpToolCount: filteredBridgedMcpTools.length,
+            customToolCount: filteredEforgeCustomTools.length,
             systemPromptBytes: (sessionState.systemPrompt ?? '').length,
             eforgePackageName: EFORGE_PI_PACKAGE_NAME,
             eforgeExtensionsFiltered,

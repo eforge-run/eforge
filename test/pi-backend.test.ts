@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { z } from 'zod/v4';
 import type { AgentTool } from '@mariozechner/pi-agent-core';
+import type { CustomTool } from '@eforge-build/engine/backend';
 
 const { createAgentSession, createCodingTools, createReadOnlyTools } = vi.hoisted(() => ({
   createAgentSession: vi.fn(),
@@ -381,5 +383,213 @@ describe('PiBackend MCP tool wiring', () => {
         }),
       ]),
     );
+  });
+});
+
+describe('PiBackend custom tool wiring', () => {
+  beforeEach(() => {
+    createAgentSession.mockReset();
+    createCodingTools.mockReset();
+    createReadOnlyTools.mockReset();
+    createCodingTools.mockReturnValue([{ name: 'read' }]);
+    createReadOnlyTools.mockReturnValue([{ name: 'read' }]);
+    createAgentSession.mockImplementation(async () => {
+      const listeners = new Set<(event: { type: string; messages?: unknown[] }) => void>();
+      const session = {
+        subscribe(listener: (event: { type: string; messages?: unknown[] }) => void) {
+          listeners.add(listener);
+          return () => listeners.delete(listener);
+        },
+        getSessionStats() {
+          return {
+            tokens: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+            cost: 0,
+          };
+        },
+        async prompt(_prompt: string) {
+          for (const listener of listeners) {
+            listener({ type: 'agent_end', messages: [] });
+          }
+        },
+        abort() {},
+        async bindExtensions(_options: unknown) {},
+      };
+      return { session };
+    });
+  });
+
+  /**
+   * Minimal valid plan-set payload: schema-compliant so the handler returns
+   * the success text rather than a validation error. Mirrors the shape the
+   * Claude SDK / Pi would submit from the planner.
+   */
+  const validPlanSetInput = {
+    name: 'my-plan',
+    description: 'A test plan',
+    mode: 'excursion' as const,
+    baseBranch: 'main',
+    plans: [{
+      frontmatter: {
+        id: 'feature',
+        name: 'Add feature',
+        dependsOn: [],
+        branch: 'feature/add-feature',
+      },
+      body: '# Implementation\n\nDo the thing.',
+    }],
+    orchestration: {
+      validate: [],
+      plans: [{
+        id: 'feature',
+        name: 'Add feature',
+        dependsOn: [],
+        branch: 'feature/add-feature',
+      }],
+    },
+  };
+
+  function makeBarePlanSetCustomTool(): CustomTool {
+    const inputSchema = z.object({
+      name: z.string(),
+      description: z.string(),
+      mode: z.enum(['errand', 'excursion', 'expedition']),
+      baseBranch: z.string(),
+      plans: z.array(z.object({
+        frontmatter: z.object({
+          id: z.string(),
+          name: z.string(),
+          dependsOn: z.array(z.string()),
+          branch: z.string(),
+        }),
+        body: z.string(),
+      })),
+      orchestration: z.object({
+        validate: z.array(z.string()),
+        plans: z.array(z.object({
+          id: z.string(),
+          name: z.string(),
+          dependsOn: z.array(z.string()),
+          branch: z.string(),
+        })),
+      }),
+    });
+    return {
+      name: 'submit_plan_set',
+      description: 'Submit a plan set.',
+      inputSchema,
+      handler: async () => 'Plan set submitted successfully.',
+    };
+  }
+
+  it('registers bare CustomTool name as a Pi ToolDefinition with arity-5 execute', async () => {
+    const backend = makeBackend();
+    setMcpTools(backend, []);
+    const customTool = makeBarePlanSetCustomTool();
+
+    await collectEvents(
+      backend.run(
+        {
+          prompt: 'Submit a plan',
+          cwd: process.cwd(),
+          maxTurns: 1,
+          tools: 'coding',
+          model: { provider: 'openai-codex', id: 'gpt-5.4' },
+          customTools: [customTool],
+        },
+        'planner',
+      ),
+    );
+
+    expect(createAgentSession).toHaveBeenCalledOnce();
+    const sessionOptions = createAgentSession.mock.calls[0]?.[0];
+    const registered = (sessionOptions.customTools as Array<{ name: string; execute: (...args: unknown[]) => Promise<unknown> }>)
+      .find((t) => t.name === 'submit_plan_set');
+
+    expect(registered).toBeDefined();
+    expect(typeof registered!.execute).toBe('function');
+    expect(registered!.execute.length).toBe(5);
+
+    const result = (await registered!.execute('call-1', validPlanSetInput, undefined, undefined, undefined)) as {
+      content: Array<{ type: string; text: string }>;
+      details: Record<string, unknown>;
+    };
+    expect(result.content[0].type).toBe('text');
+    expect(result.content[0].text).toBe('Plan set submitted successfully.');
+  });
+
+  it('effectiveCustomToolName is identity on PiBackend', () => {
+    const backend = makeBackend();
+    expect(backend.effectiveCustomToolName('submit_plan_set')).toBe('submit_plan_set');
+    expect(backend.effectiveCustomToolName('submit_architecture')).toBe('submit_architecture');
+  });
+
+  it('keeps bridged MCP tools and planner custom tools separate and filters them independently', async () => {
+    const backend = makeBackend();
+    setMcpTools(backend, [
+      makeMcpTool('mcp_eforge_status', 'status'),
+      makeMcpTool('mcp_eforge_build', 'build'),
+    ]);
+    const customTool = makeBarePlanSetCustomTool();
+
+    await collectEvents(
+      backend.run(
+        {
+          prompt: 'Submit a plan',
+          cwd: process.cwd(),
+          maxTurns: 1,
+          tools: 'coding',
+          model: { provider: 'openai-codex', id: 'gpt-5.4' },
+          customTools: [customTool],
+          // Only block one bridged tool; the planner custom tool must survive
+          // because filtering is applied per-source, not across a commingled
+          // array.
+          disallowedTools: ['mcp_eforge_build'],
+        },
+        'planner',
+      ),
+    );
+
+    expect(createAgentSession).toHaveBeenCalledOnce();
+    const sessionOptions = createAgentSession.mock.calls[0]?.[0];
+    const names = (sessionOptions.customTools as Array<{ name: string }>).map((t) => t.name);
+
+    expect(names).toContain('mcp_eforge_status');
+    expect(names).not.toContain('mcp_eforge_build');
+    expect(names).toContain('submit_plan_set');
+
+    // The planner custom tool is a distinct object (not merged into the
+    // bridged-tools array before being passed to the session).
+    const bridged = (sessionOptions.customTools as Array<{ name: string }>).find((t) => t.name === 'mcp_eforge_status');
+    const planner = (sessionOptions.customTools as Array<{ name: string }>).find((t) => t.name === 'submit_plan_set');
+    expect(bridged).not.toBe(planner);
+  });
+
+  it('filters planner custom tools via disallowedTools independently of bridged tools', async () => {
+    const backend = makeBackend();
+    setMcpTools(backend, [makeMcpTool('mcp_eforge_status', 'status')]);
+    const customTool = makeBarePlanSetCustomTool();
+
+    await collectEvents(
+      backend.run(
+        {
+          prompt: 'Submit a plan',
+          cwd: process.cwd(),
+          maxTurns: 1,
+          tools: 'coding',
+          model: { provider: 'openai-codex', id: 'gpt-5.4' },
+          customTools: [customTool],
+          disallowedTools: ['submit_plan_set'],
+        },
+        'planner',
+      ),
+    );
+
+    expect(createAgentSession).toHaveBeenCalledOnce();
+    const sessionOptions = createAgentSession.mock.calls[0]?.[0];
+    const names = (sessionOptions.customTools as Array<{ name: string }>).map((t) => t.name);
+
+    // Planner tool is blocked, bridged tool still passes through.
+    expect(names).not.toContain('submit_plan_set');
+    expect(names).toContain('mcp_eforge_status');
   });
 });

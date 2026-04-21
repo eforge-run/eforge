@@ -1,0 +1,53 @@
+name: fix-planner-submission-tools-on-the-pi-backend
+description: Restore end-to-end Pi-backed planning by making planner custom-tool
+  naming backend-aware and conforming the Pi adapter to the Pi 0.68
+  ToolDefinition API.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-backend-aware-submission-tool-naming
+    name: Backend-aware submission tool naming and Pi 0.68 ToolDefinition conformance
+    depends_on: []
+    branch: fix-planner-submission-tools-on-the-pi-backend/backend-aware-submission-tool-naming
+    build: &a1
+      - implement
+      - review-cycle
+      - - test-write
+        - doc-update
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+        - api-design
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This is a focused bug fix with a small, well-defined design cleanup
+    - not an expedition. The PRD touches roughly 5-7 files across one logical
+    axis (planner + backend interface + two backend adapters + prompt + tests),
+    with sequential dependencies (backend interface change -> adapters ->
+    planner -> prompt -> tests). A single planner session can easily enumerate
+    every file change and order them, so excursion is the right scope. Compile
+    uses planner plus plan-review-cycle because the PRD explicitly scopes out
+    some refactors (no structured-output redesign, keep createSdkMcpServer,
+    don't introduce new templating), and a plan-review pass is cheap insurance
+    that the planner honors those boundaries. Build starts with implement, then
+    review-cycle because this change modifies a cross-backend interface that
+    both Claude SDK and Pi paths depend on - correctness and API shape matter.
+    test-write and doc-update run in parallel after review-cycle: the PRD
+    explicitly calls for a new end-to-end Pi submission test, and the backend
+    interface gains a new method that warrants a brief AGENTS.md/backend doc
+    touch-up. Review uses single strategy with correctness + api-design
+    perspectives (the change is fundamentally about getting a backend-interface
+    contract right), standard strictness (internal engine code, not
+    security/data), and 2 rounds to keep iteration tight on a bug fix."
