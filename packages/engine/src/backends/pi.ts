@@ -11,6 +11,7 @@ import {
   SettingsManager,
   ModelRegistry,
   AuthStorage,
+  DefaultResourceLoader,
   discoverAndLoadExtensions,
   type AgentSessionEvent,
 } from '@mariozechner/pi-coding-agent';
@@ -25,6 +26,7 @@ import { AsyncEventQueue } from '../concurrency.js';
 import { PiMcpBridge } from './pi-mcp-bridge.js';
 import { discoverPiExtensions, type PiExtensionConfig } from './pi-extensions.js';
 import { normalizeUsage, toModelUsageEntry } from './usage.js';
+import { isEforgePiResource, EFORGE_PI_PACKAGE_NAME } from './eforge-resource-filter.js';
 import { z } from 'zod/v4';
 
 // ---------------------------------------------------------------------------
@@ -386,7 +388,71 @@ export class PiBackend implements AgentBackend {
       // Create settings manager
       const settingsManager = SettingsManager.create(options.cwd);
 
-      // Create agent session
+      // Build a resource loader with overrides that strip anything contributed
+      // by the `@eforge-build/pi-eforge` package (extension + skills + prompts
+      // + themes). Without this, Pi's DefaultPackageManager auto-discovers any
+      // user-installed pi-eforge package from ~/.pi/agent/settings.json and
+      // registers its `eforge_*` tools into every agent session — which would
+      // let eforge-run agents recursively invoke eforge itself. User-installed
+      // packages that are NOT pi-eforge are left untouched so users can still
+      // bring their own skills / extensions into eforge agent contexts.
+      let eforgeExtensionsFiltered = 0;
+      let eforgeSkillsFiltered = 0;
+      let eforgePromptsFiltered = 0;
+      let eforgeThemesFiltered = 0;
+      const resourceLoader = new DefaultResourceLoader({
+        cwd: options.cwd,
+        settingsManager,
+        extensionsOverride: (base) => ({
+          ...base,
+          extensions: base.extensions.filter((ext) => {
+            const drop = isEforgePiResource({
+              resolvedPath: ext.resolvedPath,
+              sourceInfoSource: ext.sourceInfo?.source,
+            });
+            if (drop) eforgeExtensionsFiltered += 1;
+            return !drop;
+          }),
+        }),
+        skillsOverride: (base) => ({
+          ...base,
+          skills: base.skills.filter((skill) => {
+            const drop = isEforgePiResource({
+              resolvedPath: skill.filePath,
+              sourceInfoSource: skill.sourceInfo?.source,
+            });
+            if (drop) eforgeSkillsFiltered += 1;
+            return !drop;
+          }),
+        }),
+        promptsOverride: (base) => ({
+          ...base,
+          prompts: base.prompts.filter((prompt) => {
+            const drop = isEforgePiResource({
+              resolvedPath: prompt.filePath,
+              sourceInfoSource: prompt.sourceInfo?.source,
+            });
+            if (drop) eforgePromptsFiltered += 1;
+            return !drop;
+          }),
+        }),
+        themesOverride: (base) => ({
+          ...base,
+          themes: base.themes.filter((theme) => {
+            // Themes carry their sourceInfo at the top level.
+            const resolvedPath = theme.sourceInfo?.path ?? '';
+            const drop = isEforgePiResource({
+              resolvedPath,
+              sourceInfoSource: theme.sourceInfo?.source,
+            });
+            if (drop) eforgeThemesFiltered += 1;
+            return !drop;
+          }),
+        }),
+      });
+      await resourceLoader.reload();
+
+      // Create agent session using the filtered resource loader.
       ({ session } = await createAgentSession({
         cwd: options.cwd,
         model,
@@ -397,6 +463,7 @@ export class PiBackend implements AgentBackend {
         modelRegistry,
         sessionManager,
         settingsManager,
+        resourceLoader,
       }));
 
       // Set up extension tools on the session if we have extensions
@@ -541,7 +608,12 @@ export class PiBackend implements AgentBackend {
             mcpToolCount: filteredMcpTools.length,
             customToolCount: options.customTools?.length ?? 0,
             systemPromptBytes: (sessionState.systemPrompt ?? '').length,
-            note: 'systemPrompt reflects what pi-coding-agent constructed: the coding-assistant preamble + tool snippets + ancestor AGENTS.md/CLAUDE.md + skills + date/cwd.',
+            eforgePackageName: EFORGE_PI_PACKAGE_NAME,
+            eforgeExtensionsFiltered,
+            eforgeSkillsFiltered,
+            eforgePromptsFiltered,
+            eforgeThemesFiltered,
+            note: 'systemPrompt reflects what pi-coding-agent constructed: the coding-assistant preamble + tool snippets + ancestor AGENTS.md/CLAUDE.md + skills + date/cwd. Any resources contributed by @eforge-build/pi-eforge were filtered out via resourceLoader overrides to prevent eforge recursion.',
           },
         };
         await this.onDebugPayload(debugPayload);

@@ -74,7 +74,7 @@ describe('Planner submission tool: plan set', () => {
     const payload = validPlanSetPayload();
     const backend = new StubBackend([{
       toolCalls: [{
-        tool: 'mcp__eforge__submit_plan_set',
+        tool: 'mcp__eforge_engine__submit_plan_set',
         toolUseId: 'tu-1',
         input: payload,
         output: '',
@@ -118,7 +118,7 @@ describe('Planner submission tool: plan set', () => {
     expect(backend.customToolSets).toHaveLength(1);
     const tools = backend.customToolSets[0];
     expect(tools).toBeDefined();
-    expect(tools!.some(t => t.name === 'mcp__eforge__submit_plan_set')).toBe(true);
+    expect(tools!.some(t => t.name === 'mcp__eforge_engine__submit_plan_set')).toBe(true);
   });
 });
 
@@ -139,7 +139,7 @@ describe('Planner submission tool: no submission and no skip', () => {
     const errorEvents = events.filter(e => e.type === 'plan:error');
     expect(errorEvents).toHaveLength(1);
     const error = errorEvents[0] as EforgeEvent & { type: 'plan:error' };
-    expect(error.reason).toContain('mcp__eforge__submit_plan_set');
+    expect(error.reason).toContain('mcp__eforge_engine__submit_plan_set');
 
     // Should NOT yield plan:skip
     const skipEvents = events.filter(e => e.type === 'plan:skip');
@@ -181,7 +181,7 @@ describe('Planner submission tool: architecture', () => {
     const payload = validArchitecturePayload();
     const backend = new StubBackend([{
       toolCalls: [{
-        tool: 'mcp__eforge__submit_architecture',
+        tool: 'mcp__eforge_engine__submit_architecture',
         toolUseId: 'tu-1',
         input: payload,
         output: '',
@@ -227,7 +227,7 @@ describe('Planner submission tool: architecture', () => {
     expect(backend.customToolSets).toHaveLength(1);
     const tools = backend.customToolSets[0];
     expect(tools).toBeDefined();
-    expect(tools!.some(t => t.name === 'mcp__eforge__submit_architecture')).toBe(true);
+    expect(tools!.some(t => t.name === 'mcp__eforge_engine__submit_architecture')).toBe(true);
   });
 });
 
@@ -256,7 +256,7 @@ describe('Planner submission tool: plan:submission event metadata', () => {
 
     const backend = new StubBackend([{
       toolCalls: [{
-        tool: 'mcp__eforge__submit_plan_set',
+        tool: 'mcp__eforge_engine__submit_plan_set',
         toolUseId: 'tu-1',
         input: payload,
         output: '',

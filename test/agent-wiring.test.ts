@@ -184,7 +184,7 @@ describe('runPlanner wiring', () => {
 
     const backend = new StubBackend([{
       toolCalls: [{
-        tool: 'mcp__eforge__submit_plan_set',
+        tool: 'mcp__eforge_engine__submit_plan_set',
         toolUseId: 'tu-1',
         input: {
           name: 'my-plan',

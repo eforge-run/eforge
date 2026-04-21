@@ -118,7 +118,7 @@ graph LR
 
 | Stage | Description |
 |-------|-------------|
-| `planner` | Agent explores codebase, selects profile, submits plan set via `mcp__eforge__submit_plan_set` or `mcp__eforge__submit_architecture` tool - engine writes plan files and `orchestration.yaml` from validated payload |
+| `planner` | Agent explores codebase, selects profile, submits plan set via `mcp__eforge_engine__submit_plan_set` or `mcp__eforge_engine__submit_architecture` tool - engine writes plan files and `orchestration.yaml` from validated payload |
 | `plan-review-cycle` | Blind review of plans against PRD, with fix and evaluate loop |
 | `architecture-review-cycle` | Reviews architecture doc for module boundary soundness and integration contracts |
 | `module-planning` | Writes detailed plans for each module using architecture context |

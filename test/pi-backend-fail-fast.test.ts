@@ -40,6 +40,12 @@ vi.mock('@mariozechner/pi-coding-agent', () => ({
       setRuntimeApiKey: vi.fn(),
     })),
   },
+  // Minimal DefaultResourceLoader stub: the PiBackend constructs one with
+  // filter overrides to scrub pi-eforge resources, then calls reload().
+  DefaultResourceLoader: class {
+    constructor(_options: unknown) {}
+    async reload() {}
+  },
   discoverAndLoadExtensions: vi.fn(async () => ({ extensions: [] })),
 }));
 

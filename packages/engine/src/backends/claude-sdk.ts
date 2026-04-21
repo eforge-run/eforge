@@ -18,6 +18,7 @@ import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
 import type { AgentBackend, AgentRunOptions, AgentTerminalSubtype, BackendDebugCallback, BackendDebugPayload } from '../backend.js';
 import { AgentTerminalError } from '../backend.js';
 import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
+import { EFORGE_DISALLOWED_TOOL_PATTERNS } from './eforge-resource-filter.js';
 
 export interface ClaudeSDKBackendOptions {
   /** MCP servers to make available to all agent runs. */
@@ -46,22 +47,35 @@ export interface ClaudeSDKBackendOptions {
 export const SUBAGENT_TOOL_NAME = 'Task';
 
 /**
- * Combine a role's `disallowedTools` with the backend-level `disableSubagents`
- * flag. When `disableSubagents` is true, `'Task'` is appended (de-duplicated)
- * to whatever the role already disallows. Returns `undefined` when neither
- * source contributes anything, so the SDK receives no `disallowedTools` key.
+ * Compute the effective `disallowedTools` list for a single agent run by
+ * combining three sources:
  *
- * Exported for testing.
+ *  1. Whatever the role explicitly set (`roleDisallowed`).
+ *  2. `Task` when `disableSubagents` is true — blocks subagent spawning,
+ *     Claude SDK-only (Pi has no Task tool).
+ *  3. eforge's own Claude Code plugin tool patterns (`mcp__eforge__*`),
+ *     ALWAYS injected so that if the user brings the eforge Claude Code
+ *     plugin into an agent context via `settingSources` / installed plugins,
+ *     those tools still cannot be invoked recursively by any agent eforge
+ *     runs. Note this targets the *plugin's* MCP server name (`eforge`), not
+ *     the engine's own in-process SDK MCP server (`eforge_engine`) which
+ *     hosts the planner submission tools.
+ *
+ * The result is always a non-empty list (since the eforge patterns are
+ * always added), de-duplicated. Exported for testing.
  */
 export function resolveDisallowedTools(
   roleDisallowed: readonly string[] | undefined,
   disableSubagents: boolean,
-): string[] | undefined {
-  if (!disableSubagents) {
-    return roleDisallowed ? [...roleDisallowed] : undefined;
+): string[] {
+  const acc = new Set<string>(roleDisallowed ?? []);
+  if (disableSubagents) {
+    acc.add(SUBAGENT_TOOL_NAME);
   }
-  const base = roleDisallowed ?? [];
-  return base.includes(SUBAGENT_TOOL_NAME) ? [...base] : [...base, SUBAGENT_TOOL_NAME];
+  for (const pattern of EFORGE_DISALLOWED_TOOL_PATTERNS) {
+    acc.add(pattern);
+  }
+  return Array.from(acc);
 }
 
 export class ClaudeSDKBackend implements AgentBackend {
@@ -94,14 +108,20 @@ export class ClaudeSDKBackend implements AgentBackend {
       // Register custom tools as an in-process SDK MCP server per the official docs:
       // https://code.claude.com/docs/en/agent-sdk/custom-tools
       // Tools registered this way are exposed with the name mcp__<serverName>__<toolName>.
+      // The in-process SDK MCP server is named `eforge_engine` (not `eforge`)
+      // to avoid a namespace collision with the eforge Claude Code plugin's
+      // MCP server, which is also named `eforge`. The plugin's tools are
+      // always blocked via `mcp__eforge__*` in disallowedTools; the engine's
+      // own tools (planner submissions, etc.) live under `mcp__eforge_engine__*`
+      // so they remain callable.
       const customMcpServers: Record<string, McpServerConfig> = {};
       if (options.customTools && options.customTools.length > 0) {
-        customMcpServers.eforge = createSdkMcpServer({
-          name: 'eforge',
+        customMcpServers.eforge_engine = createSdkMcpServer({
+          name: 'eforge_engine',
           version: '1.0.0',
           tools: options.customTools.map((ct) =>
             tool(
-              ct.name.replace(/^mcp__eforge__/, ''),
+              ct.name.replace(/^mcp__eforge_engine__/, ''),
               ct.description,
               ct.inputSchema.shape,
               async (args: unknown) => {
@@ -138,7 +158,7 @@ export class ClaudeSDKBackend implements AgentBackend {
           ...(options.thinking !== undefined ? { thinking: options.thinking } : {}),
           maxTurns: options.maxTurns,
           ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
-          ...(effectiveDisallowed !== undefined ? { disallowedTools: effectiveDisallowed } : {}),
+          disallowedTools: effectiveDisallowed,
           extra: {
             toolsMode: options.tools,
             usesPreset,
@@ -148,7 +168,8 @@ export class ClaudeSDKBackend implements AgentBackend {
             pluginCount: this.plugins?.length ?? 0,
             settingSources: usesPreset ? (this.settingSources ?? null) : null,
             customToolCount: options.customTools?.length ?? 0,
-            note: 'systemPrompt is empty because eforge does not set one; the Claude Code CLI may inject its preset preamble downstream when usesPreset=true.',
+            eforgeDisallowedPatterns: [...EFORGE_DISALLOWED_TOOL_PATTERNS],
+            note: 'systemPrompt is empty because eforge does not set one; the Claude Code CLI may inject its preset preamble downstream when usesPreset=true. disallowedTools always includes mcp__eforge__* to block the eforge Claude Code plugin; the engine hosts its own tools (e.g. planner submissions) under mcp__eforge_engine__* which remain callable.',
           },
         };
         await this.onDebugPayload(debugPayload);
@@ -180,7 +201,7 @@ export class ClaudeSDKBackend implements AgentBackend {
           ...(options.maxBudgetUsd !== undefined ? { maxBudgetUsd: options.maxBudgetUsd } : {}),
           ...(options.fallbackModel !== undefined ? { fallbackModel: options.fallbackModel } : {}),
           ...(options.allowedTools !== undefined ? { allowedTools: options.allowedTools } : {}),
-          ...(effectiveDisallowed !== undefined ? { disallowedTools: effectiveDisallowed } : {}),
+          disallowedTools: effectiveDisallowed,
         },
       });
 

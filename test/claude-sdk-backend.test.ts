@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mapSDKMessages, resolveDisallowedTools, SUBAGENT_TOOL_NAME } from '@eforge-build/engine/backends/claude-sdk';
+import { EFORGE_DISALLOWED_TOOL_PATTERNS } from '@eforge-build/engine/backends/eforge-resource-filter';
 import { AgentTerminalError } from '@eforge-build/engine/backend';
 
 async function* iter<T>(items: T[]): AsyncGenerator<T> {
@@ -76,35 +77,55 @@ describe('mapSDKMessages error formatting', () => {
   });
 });
 
-describe('resolveDisallowedTools (claudeSdk.disableSubagents)', () => {
-  it('returns undefined when nothing is disallowed and subagents are allowed', () => {
-    expect(resolveDisallowedTools(undefined, false)).toBeUndefined();
-    expect(resolveDisallowedTools([], false)).toEqual([]);
+describe('resolveDisallowedTools', () => {
+  // eforge patterns (mcp__eforge__*) are ALWAYS appended so that the eforge
+  // Claude Code plugin cannot be invoked recursively by any agent, even when
+  // the user configures settingSources so that the plugin is loaded. Each of
+  // the following tests verifies both the pass-through of user-supplied
+  // values and the presence of the eforge patterns.
+  const eforgePatterns = [...EFORGE_DISALLOWED_TOOL_PATTERNS];
+
+  it('returns only eforge patterns when nothing is disallowed and subagents are allowed', () => {
+    expect(resolveDisallowedTools(undefined, false)).toEqual(eforgePatterns);
+    expect(resolveDisallowedTools([], false)).toEqual(eforgePatterns);
   });
 
-  it('returns the role list unchanged when subagents are allowed', () => {
-    expect(resolveDisallowedTools(['Bash', 'Write'], false)).toEqual(['Bash', 'Write']);
+  it('returns the role list plus eforge patterns when subagents are allowed', () => {
+    expect(resolveDisallowedTools(['Bash', 'Write'], false)).toEqual(['Bash', 'Write', ...eforgePatterns]);
   });
 
-  it('returns a copy so the caller cannot mutate role config', () => {
+  it('does not mutate the caller-supplied role list', () => {
     const roleList = ['Bash'];
     const resolved = resolveDisallowedTools(roleList, false);
     expect(resolved).not.toBe(roleList);
+    expect(roleList).toEqual(['Bash']);
   });
 
-  it('appends Task when disableSubagents is true and role has no disallowedTools', () => {
-    expect(resolveDisallowedTools(undefined, true)).toEqual([SUBAGENT_TOOL_NAME]);
+  it('appends Task and eforge patterns when disableSubagents is true and role has no disallowedTools', () => {
+    expect(resolveDisallowedTools(undefined, true)).toEqual([SUBAGENT_TOOL_NAME, ...eforgePatterns]);
   });
 
-  it('appends Task to an existing role disallowedTools list', () => {
-    expect(resolveDisallowedTools(['Bash', 'Write'], true)).toEqual(['Bash', 'Write', SUBAGENT_TOOL_NAME]);
+  it('appends Task and eforge patterns to an existing role disallowedTools list', () => {
+    expect(resolveDisallowedTools(['Bash', 'Write'], true)).toEqual(['Bash', 'Write', SUBAGENT_TOOL_NAME, ...eforgePatterns]);
   });
 
   it('does not duplicate Task when the role already disallows it', () => {
-    expect(resolveDisallowedTools(['Task', 'Bash'], true)).toEqual(['Task', 'Bash']);
+    const resolved = resolveDisallowedTools(['Task', 'Bash'], true);
+    expect(resolved.filter((t) => t === 'Task').length).toBe(1);
+    expect(resolved).toEqual(['Task', 'Bash', ...eforgePatterns]);
+  });
+
+  it('does not duplicate eforge patterns when the role already disallows them', () => {
+    const resolved = resolveDisallowedTools(['mcp__eforge__*', 'Bash'], false);
+    expect(resolved.filter((t) => t === 'mcp__eforge__*').length).toBe(1);
+    expect(resolved).toEqual(['mcp__eforge__*', 'Bash']);
   });
 
   it('exposes Task as the subagent tool name', () => {
     expect(SUBAGENT_TOOL_NAME).toBe('Task');
+  });
+
+  it('blocks the eforge MCP server via mcp__eforge__* pattern', () => {
+    expect(EFORGE_DISALLOWED_TOOL_PATTERNS).toContain('mcp__eforge__*');
   });
 });

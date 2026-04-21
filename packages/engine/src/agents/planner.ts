@@ -62,7 +62,7 @@ function createPlanSetSubmissionTool(
   onSubmit: (payload: PlanSetSubmission) => boolean,
 ): CustomTool {
   return {
-    name: 'mcp__eforge__submit_plan_set',
+    name: 'mcp__eforge_engine__submit_plan_set',
     description: 'Submit a complete plan set with all plan files and orchestration configuration. This is the only way to complete the planning turn for errand/excursion mode.',
     inputSchema: planSetSubmissionSchema,
     handler: async (input: unknown) => {
@@ -86,7 +86,7 @@ function createArchitectureSubmissionTool(
   onSubmit: (payload: ArchitectureSubmission) => boolean,
 ): CustomTool {
   return {
-    name: 'mcp__eforge__submit_architecture',
+    name: 'mcp__eforge_engine__submit_architecture',
     description: 'Submit architecture documentation and module definitions for an expedition. This is the only way to complete the planning turn for expedition mode.',
     inputSchema: architectureSubmissionSchema,
     handler: async (input: unknown) => {
