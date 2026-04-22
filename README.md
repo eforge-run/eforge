@@ -99,7 +99,7 @@ The main `@eforge-build/eforge` npm package is the standalone CLI and daemon run
 
 The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. In Claude Code it presents a form to choose your backend (`claude-sdk` or `pi`); in Pi it defaults to `backend: pi`. For further customization, run `/eforge:config --edit`.
 
-The Pi package also provides native interactive commands for backend profile management (`/eforge:backend`, `/eforge:backend:new`) and config viewing (`/eforge:config`) with interactive overlay UX. The Pi package includes an `/eforge:plan` skill for structured planning conversations before handing off to eforge. Claude Code users get equivalent functionality through Claude Code's built-in plan mode, which eforge works with natively — so the Claude Code plugin doesn't need a separate planning skill.
+The Pi package also provides native interactive commands for backend profile management (`/eforge:backend`, `/eforge:backend:new`) and config viewing (`/eforge:config`) with interactive overlay UX. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations — exploring scope, code impact, architecture, design decisions, documentation, and risks — before handing off to `/eforge:build`.
 
 Standalone CLI:
 
