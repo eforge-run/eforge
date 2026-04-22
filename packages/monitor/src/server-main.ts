@@ -132,6 +132,7 @@ export function reconcileOrphanedState(db: MonitorDB, cwd: string): void {
             runId: run.id,
             type: 'phase:end',
             data: JSON.stringify({
+              type: 'phase:end',
               runId: run.id,
               result: { status: 'failed', summary: 'reconciled: process not alive at daemon startup' },
               timestamp: now,
@@ -180,7 +181,7 @@ function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string, reason: str
     db.insertEvent({
       runId: sessionId,
       type: 'daemon:auto-build:paused',
-      data: JSON.stringify({ reason, timestamp: new Date().toISOString() }),
+      data: JSON.stringify({ type: 'daemon:auto-build:paused', reason, timestamp: new Date().toISOString() }),
       timestamp: new Date().toISOString(),
     });
   } catch {
@@ -276,14 +277,14 @@ async function main(): Promise<void> {
             db.insertEvent({
               runId: run.id,
               type: 'phase:end',
-              data: JSON.stringify({ runId: run.id, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
+              data: JSON.stringify({ type: 'phase:end', runId: run.id, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
               timestamp: now,
             });
           }
           db.insertEvent({
             runId: sessionId,
             type: 'session:end',
-            data: JSON.stringify({ sessionId, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
+            data: JSON.stringify({ type: 'session:end', sessionId, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
             timestamp: now,
           });
 
@@ -307,14 +308,14 @@ async function main(): Promise<void> {
             db.insertEvent({
               runId: run.id,
               type: 'phase:end',
-              data: JSON.stringify({ runId: run.id, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
+              data: JSON.stringify({ type: 'phase:end', runId: run.id, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
               timestamp: now,
             });
           }
           db.insertEvent({
             runId: sessionId,
             type: 'session:end',
-            data: JSON.stringify({ sessionId, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
+            data: JSON.stringify({ type: 'session:end', sessionId, result: { status: 'failed', summary: 'Cancelled' }, timestamp: now }),
             timestamp: now,
           });
           return true;

@@ -24,13 +24,23 @@ const UI_DIR = resolve(__dirname, 'monitor-ui');
  * Legacy events stored without a JSON-embedded timestamp get the DB
  * `timestamp` column injected, avoiding a SQLite migration.
  */
-function hydrateTimestamp(eventData: string, dbTimestamp: string): string {
+function hydrateEventData(eventData: string, dbTimestamp: string, dbType: string): string {
   try {
     const parsed = JSON.parse(eventData);
+    let mutated = false;
     if (!parsed.timestamp) {
       parsed.timestamp = dbTimestamp;
-      return JSON.stringify(parsed);
+      mutated = true;
     }
+    // Some historical emission sites stringified the payload without the
+    // `type` field (it was only ever on the DB column). The client reads
+    // `.type` off the parsed payload and crashes if it's missing, so merge
+    // the column value in whenever the payload lacks one.
+    if (!parsed.type && dbType) {
+      parsed.type = dbType;
+      mutated = true;
+    }
+    if (mutated) return JSON.stringify(parsed);
   } catch {
     // unparseable — return as-is
   }
@@ -214,7 +224,7 @@ export async function startServer(
     const historicalEvents = db.getEventsBySession(sessionId, lastEventId);
     let lastSeenId = lastEventId ?? 0;
     for (const event of historicalEvents) {
-      const hydrated = hydrateTimestamp(event.data, event.timestamp);
+      const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
       const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
       res.write(`id: ${event.id}\n${dataLines}\n\n`);
       if (event.id > lastSeenId) {
@@ -246,7 +256,7 @@ export async function startServer(
       try {
         const newEvents = db.getEventsBySession(subscriber.sessionId, subscriber.lastSeenId);
         for (const event of newEvents) {
-          const hydrated = hydrateTimestamp(event.data, event.timestamp);
+          const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
           const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
           subscriber.res.write(`id: ${event.id}\n${dataLines}\n\n`);
           if (event.id > subscriber.lastSeenId) {
@@ -1322,7 +1332,7 @@ export async function startServer(
       });
       const hydratedEvents = events.map((evt) => ({
         ...evt,
-        data: hydrateTimestamp(evt.data, evt.timestamp),
+        data: hydrateEventData(evt.data, evt.timestamp, evt.type),
       }));
       res.end(JSON.stringify({ status, events: hydratedEvents }));
     } else if (url.startsWith('/api/plans/')) {
