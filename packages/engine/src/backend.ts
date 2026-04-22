@@ -56,6 +56,27 @@ export function pickSdkOptions(config: SdkPassthroughConfig): Partial<SdkPassthr
 }
 
 // ---------------------------------------------------------------------------
+// Event-Stream Naming Contracts
+// ---------------------------------------------------------------------------
+
+/**
+ * Tool-call identifier normalization.
+ *
+ * Every `agent:tool_use` and `agent:tool_result` event on the `AgentBackend`
+ * event stream carries a stable identifier under the name `toolUseId`.
+ * Provider SDKs use different names natively:
+ *
+ *  - Claude Agent SDK: `block.id` on `tool_use` content blocks.
+ *  - Pi coding agent: `toolCallId` on `tool_execution_start` / `tool_execution_end` events.
+ *
+ * Backends are responsible for mapping their provider-native name onto
+ * `toolUseId` before emission. The shared helper `normalizeToolUseId` in
+ * `./backends/common.ts` is the single source of truth for that mapping so
+ * downstream consumers (monitor UI, CLI renderer, tracing) only ever see the
+ * unified `toolUseId` name.
+ */
+
+// ---------------------------------------------------------------------------
 // Custom Tools
 // ---------------------------------------------------------------------------
 

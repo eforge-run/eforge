@@ -296,23 +296,50 @@ function processEvent(
   }
 
   if (event.type === 'agent:usage') {
-    state.liveAgentUsage[event.agentId] = {
-      input: event.usage.input,
-      output: event.usage.output,
-      cacheRead: event.usage.cacheRead,
-      cacheCreation: event.usage.cacheCreation,
-      cost: event.costUsd,
-      turns: event.numTurns,
-    };
-    // Update matching AgentThread with live usage
-    const thread = state.agentThreads.find((t) => t.agentId === event.agentId);
-    if (thread) {
-      thread.inputTokens = event.usage.input;
-      thread.outputTokens = event.usage.output;
-      thread.totalTokens = event.usage.total;
-      thread.cacheRead = event.usage.cacheRead;
-      thread.costUsd = event.costUsd;
-      thread.numTurns = event.numTurns;
+    const isFinal = (event as { final?: boolean }).final === true;
+    if (isFinal) {
+      // Authoritative cumulative total — last-wins replacement.
+      state.liveAgentUsage[event.agentId] = {
+        input: event.usage.input,
+        output: event.usage.output,
+        cacheRead: event.usage.cacheRead,
+        cacheCreation: event.usage.cacheCreation,
+        cost: event.costUsd,
+        turns: event.numTurns,
+      };
+      const thread = state.agentThreads.find((t) => t.agentId === event.agentId);
+      if (thread) {
+        thread.inputTokens = event.usage.input;
+        thread.outputTokens = event.usage.output;
+        thread.totalTokens = event.usage.total;
+        thread.cacheRead = event.usage.cacheRead;
+        thread.costUsd = event.costUsd;
+        thread.numTurns = event.numTurns;
+      }
+    } else {
+      // Per-turn delta — additive into running totals. Seed from zero when
+      // this is the first usage event for the agent.
+      const base = state.liveAgentUsage[event.agentId] ?? { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0, turns: 0 };
+      state.liveAgentUsage[event.agentId] = {
+        input: base.input + event.usage.input,
+        output: base.output + event.usage.output,
+        cacheRead: base.cacheRead + event.usage.cacheRead,
+        cacheCreation: base.cacheCreation + event.usage.cacheCreation,
+        cost: base.cost + event.costUsd,
+        turns: base.turns + event.numTurns,
+      };
+      const thread = state.agentThreads.find((t) => t.agentId === event.agentId);
+      if (thread) {
+        const nextInput = (thread.inputTokens ?? 0) + event.usage.input;
+        const nextOutput = (thread.outputTokens ?? 0) + event.usage.output;
+        thread.inputTokens = nextInput;
+        thread.outputTokens = nextOutput;
+        // Derive total from the running sums; don't trust the delta's `total` field.
+        thread.totalTokens = nextInput + nextOutput;
+        thread.cacheRead = (thread.cacheRead ?? 0) + event.usage.cacheRead;
+        thread.costUsd = (thread.costUsd ?? 0) + event.costUsd;
+        thread.numTurns = (thread.numTurns ?? 0) + event.numTurns;
+      }
     }
   }
 

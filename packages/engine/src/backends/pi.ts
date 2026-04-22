@@ -28,6 +28,7 @@ import { AsyncEventQueue } from '../concurrency.js';
 import { PiMcpBridge } from './pi-mcp-bridge.js';
 import { discoverPiExtensions, type PiExtensionConfig } from './pi-extensions.js';
 import { normalizeUsage, toModelUsageEntry } from './usage.js';
+import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
 import { isEforgePiResource, EFORGE_PI_PACKAGE_NAME } from './eforge-resource-filter.js';
 import { z } from 'zod/v4';
 
@@ -182,7 +183,7 @@ function translatePiEvent(
         agentId,
         agent,
         tool: event.toolName,
-        toolUseId: event.toolCallId,
+        toolUseId: normalizeToolUseId({ toolCallId: event.toolCallId }),
         input: event.args,
       });
       break;
@@ -199,7 +200,7 @@ function translatePiEvent(
         agentId,
         agent,
         tool: event.toolName,
-        toolUseId: event.toolCallId,
+        toolUseId: normalizeToolUseId({ toolCallId: event.toolCallId }),
         output: truncateOutput(output, 4096),
       });
       break;
@@ -275,20 +276,65 @@ export class PiBackend implements AgentBackend {
 
     // Validate model ref before proceeding
     if (!options.model) {
-      yield { type: 'agent:start', planId, agent, agentId, model: 'unknown', backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), ...(options.effort !== undefined ? { effort: options.effort } : {}), ...(options.thinking !== undefined ? { thinking: options.thinking } : {}), ...(options.effortClamped !== undefined ? { effortClamped: options.effortClamped } : {}), ...(options.effortOriginal !== undefined ? { effortOriginal: options.effortOriginal } : {}), ...(options.effortSource !== undefined ? { effortSource: options.effortSource } : {}), ...(options.thinkingSource !== undefined ? { thinkingSource: options.thinkingSource } : {}), ...(options.thinkingCoerced !== undefined ? { thinkingCoerced: options.thinkingCoerced } : {}), ...(options.thinkingOriginal !== undefined ? { thinkingOriginal: options.thinkingOriginal } : {}), timestamp: new Date().toISOString() };
+      yield buildAgentStartEvent({
+        planId,
+        agentId,
+        agent,
+        model: 'unknown',
+        backend: 'pi',
+        fallbackFrom: options.fallbackFrom,
+        effort: options.effort,
+        thinking: options.thinking,
+        effortClamped: options.effortClamped,
+        effortOriginal: options.effortOriginal,
+        effortSource: options.effortSource,
+        thinkingSource: options.thinkingSource,
+        thinkingCoerced: options.thinkingCoerced,
+        thinkingOriginal: options.thinkingOriginal,
+      });
       yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set agents.models.max (or the appropriate model class) in eforge/config.yaml.', timestamp: new Date().toISOString() };
       return;
     }
 
     if (!options.model.provider) {
-      yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), ...(options.effort !== undefined ? { effort: options.effort } : {}), ...(options.thinking !== undefined ? { thinking: options.thinking } : {}), ...(options.effortClamped !== undefined ? { effortClamped: options.effortClamped } : {}), ...(options.effortOriginal !== undefined ? { effortOriginal: options.effortOriginal } : {}), ...(options.effortSource !== undefined ? { effortSource: options.effortSource } : {}), ...(options.thinkingSource !== undefined ? { thinkingSource: options.thinkingSource } : {}), ...(options.thinkingCoerced !== undefined ? { thinkingCoerced: options.thinkingCoerced } : {}), ...(options.thinkingOriginal !== undefined ? { thinkingOriginal: options.thinkingOriginal } : {}), timestamp: new Date().toISOString() };
+      yield buildAgentStartEvent({
+        planId,
+        agentId,
+        agent,
+        model: options.model.id,
+        backend: 'pi',
+        fallbackFrom: options.fallbackFrom,
+        effort: options.effort,
+        thinking: options.thinking,
+        effortClamped: options.effortClamped,
+        effortOriginal: options.effortOriginal,
+        effortSource: options.effortSource,
+        thinkingSource: options.thinkingSource,
+        thinkingCoerced: options.thinkingCoerced,
+        thinkingOriginal: options.thinkingOriginal,
+      });
       yield { type: 'agent:stop', planId, agent, agentId, error: `No provider in model ref for Pi backend. Model refs must include "provider" (e.g. { provider: "openrouter", id: "${options.model.id}" }).`, timestamp: new Date().toISOString() };
       return;
     }
 
     const thinkingLevel = resolveThinkingLevel(options, this.piConfig);
 
-    yield { type: 'agent:start', planId, agent, agentId, model: options.model.id, backend: 'pi', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), ...(options.effort !== undefined ? { effort: options.effort } : {}), ...(options.thinking !== undefined ? { thinking: options.thinking } : {}), ...(options.effortClamped !== undefined ? { effortClamped: options.effortClamped } : {}), ...(options.effortOriginal !== undefined ? { effortOriginal: options.effortOriginal } : {}), ...(options.effortSource !== undefined ? { effortSource: options.effortSource } : {}), ...(options.thinkingSource !== undefined ? { thinkingSource: options.thinkingSource } : {}), ...(options.thinkingCoerced !== undefined ? { thinkingCoerced: options.thinkingCoerced } : {}), ...(options.thinkingOriginal !== undefined ? { thinkingOriginal: options.thinkingOriginal } : {}), timestamp: new Date().toISOString() };
+    yield buildAgentStartEvent({
+      planId,
+      agentId,
+      agent,
+      model: options.model.id,
+      backend: 'pi',
+      fallbackFrom: options.fallbackFrom,
+      effort: options.effort,
+      thinking: options.thinking,
+      effortClamped: options.effortClamped,
+      effortOriginal: options.effortOriginal,
+      effortSource: options.effortSource,
+      thinkingSource: options.thinkingSource,
+      thinkingCoerced: options.thinkingCoerced,
+      thinkingOriginal: options.thinkingOriginal,
+    });
 
     if (options.thinkingCoerced) {
       yield { type: 'agent:warning', planId, agentId, agent, code: 'thinking-coerced', message: `Thinking coerced from 'enabled' to 'adaptive': model ${options.model.id} only supports adaptive thinking`, timestamp: new Date().toISOString() };
@@ -538,6 +584,19 @@ export class PiBackend implements AgentBackend {
       let numTurns = 0;
       let resultText = '';
 
+      // Cumulative snapshot captured at the end of each turn. Pi's
+      // `session.getSessionStats()` reports cumulative session totals; we
+      // subtract the previous snapshot to emit per-turn deltas on
+      // `agent:usage`, matching the unified cadence contract (deltas per
+      // turn plus one `final: true` cumulative at session end).
+      const prevCumulative = {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+        cost: 0,
+      };
+
       // Subscribe to Pi agent events (session emits AgentSessionEvent which is a superset of AgentEvent)
       const unsubscribe = session.subscribe((event: AgentSessionEvent) => {
         translatePiEvent(event, eventQueue, agent, agentId, planId);
@@ -565,7 +624,23 @@ export class PiBackend implements AgentBackend {
           totalCacheWrite = stats.tokens.cacheWrite;
           totalCost = stats.cost;
 
-          // Emit agent:usage event for live monitoring
+          // Compute per-turn deltas by subtracting the previously observed
+          // cumulative snapshot, then advance the snapshot. Per the unified
+          // cadence contract, non-final `agent:usage` events carry deltas;
+          // the authoritative cumulative total is emitted once at session
+          // end with `final: true`.
+          const deltaUncachedInput = totalInputTokens - prevCumulative.input;
+          const deltaOutput = totalOutputTokens - prevCumulative.output;
+          const deltaCacheRead = totalCacheRead - prevCumulative.cacheRead;
+          const deltaCacheWrite = totalCacheWrite - prevCumulative.cacheWrite;
+          const deltaCost = totalCost - prevCumulative.cost;
+          prevCumulative.input = totalInputTokens;
+          prevCumulative.output = totalOutputTokens;
+          prevCumulative.cacheRead = totalCacheRead;
+          prevCumulative.cacheWrite = totalCacheWrite;
+          prevCumulative.cost = totalCost;
+
+          // Emit agent:usage event (per-turn delta) for live monitoring
           eventQueue.push({
             timestamp: new Date().toISOString(),
             type: 'agent:usage',
@@ -573,13 +648,13 @@ export class PiBackend implements AgentBackend {
             agentId,
             agent,
             usage: normalizeUsage({
-              uncachedInput: totalInputTokens,
-              output: totalOutputTokens,
-              cacheRead: totalCacheRead,
-              cacheCreation: totalCacheWrite,
+              uncachedInput: deltaUncachedInput,
+              output: deltaOutput,
+              cacheRead: deltaCacheRead,
+              cacheCreation: deltaCacheWrite,
             }),
-            costUsd: totalCost,
-            numTurns,
+            costUsd: deltaCost,
+            numTurns: 1,
           });
 
           // Enforce budget per-turn to abort early
@@ -729,6 +804,22 @@ export class PiBackend implements AgentBackend {
           ),
         },
         resultText: resultText || undefined,
+      };
+
+      // Authoritative cumulative usage for this session. Emitted right
+      // before agent:result so consumers have a single `final: true`
+      // checkpoint in the usage channel co-located with the rest of the
+      // lifecycle sequence.
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'agent:usage',
+        planId,
+        agentId,
+        agent,
+        usage: resultData.usage,
+        costUsd: resultData.totalCostUsd,
+        numTurns: resultData.numTurns,
+        final: true,
       };
 
       yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: resultData };

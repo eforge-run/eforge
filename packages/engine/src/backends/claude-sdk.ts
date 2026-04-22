@@ -18,6 +18,7 @@ import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
 import type { AgentBackend, AgentRunOptions, AgentTerminalSubtype, BackendDebugCallback, BackendDebugPayload } from '../backend.js';
 import { AgentTerminalError } from '../backend.js';
 import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
+import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
 import { EFORGE_DISALLOWED_TOOL_PATTERNS } from './eforge-resource-filter.js';
 
 export interface ClaudeSDKBackendOptions {
@@ -108,7 +109,22 @@ export class ClaudeSDKBackend implements AgentBackend {
 
   async *run(options: AgentRunOptions, agent: AgentRole, planId?: string): AsyncGenerator<EforgeEvent> {
     const agentId = crypto.randomUUID();
-    yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'default', backend: 'claude-sdk', ...(options.fallbackFrom ? { fallbackFrom: options.fallbackFrom } : {}), ...(options.effort !== undefined ? { effort: options.effort } : {}), ...(options.thinking !== undefined ? { thinking: options.thinking } : {}), ...(options.effortClamped !== undefined ? { effortClamped: options.effortClamped } : {}), ...(options.effortOriginal !== undefined ? { effortOriginal: options.effortOriginal } : {}), ...(options.effortSource !== undefined ? { effortSource: options.effortSource } : {}), ...(options.thinkingSource !== undefined ? { thinkingSource: options.thinkingSource } : {}), ...(options.thinkingCoerced !== undefined ? { thinkingCoerced: options.thinkingCoerced } : {}), ...(options.thinkingOriginal !== undefined ? { thinkingOriginal: options.thinkingOriginal } : {}), timestamp: new Date().toISOString() };
+    yield buildAgentStartEvent({
+      planId,
+      agentId,
+      agent,
+      model: options.model?.id ?? 'default',
+      backend: 'claude-sdk',
+      fallbackFrom: options.fallbackFrom,
+      effort: options.effort,
+      thinking: options.thinking,
+      effortClamped: options.effortClamped,
+      effortOriginal: options.effortOriginal,
+      effortSource: options.effortSource,
+      thinkingSource: options.thinkingSource,
+      thinkingCoerced: options.thinkingCoerced,
+      thinkingOriginal: options.thinkingOriginal,
+    });
 
     if (options.thinkingCoerced) {
       yield { type: 'agent:warning', planId, agentId, agent, code: 'thinking-coerced', message: `Thinking coerced from 'enabled' to 'adaptive': model ${options.model?.id ?? 'unknown'} only supports adaptive thinking`, timestamp: new Date().toISOString() };
@@ -270,7 +286,7 @@ export async function* mapSDKMessages(
               agentId: agentId!,
               agent,
               tool: block.name,
-              toolUseId: block.id,
+              toolUseId: normalizeToolUseId({ id: block.id }),
               input: block.input,
             };
           }
@@ -308,7 +324,7 @@ export async function* mapSDKMessages(
           agentId: agentId!,
           agent,
           tool: toolName,
-          toolUseId: userMsg.parent_tool_use_id,
+          toolUseId: normalizeToolUseId({ id: userMsg.parent_tool_use_id }),
           output: truncateOutput(rawOutput, 4096),
         };
         break;
@@ -326,7 +342,7 @@ export async function* mapSDKMessages(
             agentId: agentId!,
             agent,
             tool: toolName,
-            toolUseId,
+            toolUseId: normalizeToolUseId({ id: toolUseId }),
             output: truncateOutput(summaryMsg.summary, 4096),
           };
         }
@@ -348,7 +364,23 @@ export async function* mapSDKMessages(
           // Don't yield agent:message here — the text was already emitted
           // from the assistant message. Duplicating it causes double-parsing
           // of XML blocks (scope, clarification, review issues, verdicts).
-          yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: extractResultData(result, result.result) };
+          const resultData = extractResultData(result, result.result);
+          // Authoritative cumulative usage for this session. Emitted right
+          // before agent:result so consumers have a single `final: true`
+          // checkpoint in the usage channel co-located with the rest of the
+          // lifecycle sequence.
+          yield {
+            timestamp: new Date().toISOString(),
+            type: 'agent:usage',
+            planId,
+            agentId,
+            agent,
+            usage: resultData.usage,
+            costUsd: resultData.totalCostUsd,
+            numTurns: resultData.numTurns,
+            final: true,
+          };
+          yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: resultData };
         } else {
           const errorResult = result as SDKResultMessage & { errors?: string[] };
           const detail = errorResult.errors?.join('; ') || `Agent ${agent} failed`;

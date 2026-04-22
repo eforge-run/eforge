@@ -231,7 +231,19 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; model: string; backend: string; fallbackFrom?: string; effort?: string; thinking?: object; effortClamped?: boolean; effortOriginal?: string; effortSource?: 'planner' | 'role-config' | 'global-config' | 'default'; thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default'; thinkingCoerced?: boolean; thinkingOriginal?: object }
   | { type: 'agent:warning'; planId?: string; agentId: string; agent: AgentRole; code: string; message: string }
   | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string }
-  | { type: 'agent:usage'; planId?: string; agentId: string; agent: AgentRole; usage: { input: number; output: number; total: number; cacheRead: number; cacheCreation: number }; costUsd: number; numTurns: number }
+  /**
+   * Token/cost usage report for an agent run.
+   *
+   * Emission cadence (shared by every backend):
+   *  - After each assistant turn that reports usage, as a **per-turn delta**.
+   *  - Once at session end, as the **final cumulative total**, identifiable
+   *    by `final: true`.
+   *
+   * Consumers that need authoritative totals should prefer the final event.
+   * Consumers that need live progress should aggregate the non-final deltas.
+   * Mixing the two without branching on `final` will double-count usage.
+   */
+  | { type: 'agent:usage'; planId?: string; agentId: string; agent: AgentRole; usage: { input: number; output: number; total: number; cacheRead: number; cacheCreation: number }; costUsd: number; numTurns: number; final?: boolean }
 
   // Agent-level (verbose streaming)
   | { type: 'agent:message'; planId?: string; agentId: string; agent: AgentRole; content: string }
