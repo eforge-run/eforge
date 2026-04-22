@@ -13,6 +13,11 @@ export type {
   ExpeditionModule,
 } from '@eforge-build/engine/events';
 
+// Shared types owned by @eforge-build/client; re-export so every existing
+// `@/lib/types` importer continues to resolve the same names.
+import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
+export type { BuildStageSpec, ReviewProfileConfig };
+
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
 export type PipelineStage = 'plan' | 'implement' | 'doc-update' | 'test' | 'review' | 'evaluate' | 'complete' | 'failed';
@@ -53,15 +58,6 @@ export interface RunInfo {
   completedAt?: string;
   cwd: string;
   sessionId?: string;
-}
-
-export type BuildStageSpec = string | string[];
-
-export interface ReviewProfileConfig {
-  strategy: string;
-  perspectives: string[];
-  maxRounds: number;
-  evaluatorStrictness: string;
 }
 
 export interface ProfileConfig {

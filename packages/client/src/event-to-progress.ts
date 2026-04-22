@@ -1,4 +1,11 @@
 /**
+ * This module maps engine-emitted `EforgeEvent`s (defined in
+ * `@eforge-build/engine/events`) onto the wire-format `DaemonStreamEvent`
+ * (defined in this package) that consumers receive over
+ * `/api/events/:session` SSE. The engine event is the source of truth;
+ * `DaemonStreamEvent` is its serialized form. When engine events grow a new
+ * field, update the mapper and `DaemonStreamEvent` together.
+ *
  * Shared event -> progress mapping for `eforge_follow` consumers.
  *
  * The MCP proxy (`packages/eforge/src/cli/mcp-proxy.ts`) and the Pi extension

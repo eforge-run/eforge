@@ -67,14 +67,17 @@ export interface LatestRunResponse {
   runId: string | null;
 }
 
-// Types used within OrchestrationResponse
+// Types used within OrchestrationResponse.
+// Single owner: these types cross the daemon HTTP boundary and are re-exported
+// by @eforge-build/engine for engine-internal use. Do not duplicate elsewhere.
 export type BuildStageSpec = string | string[];
 
 export interface ReviewProfileConfig {
-  strategy: string;
+  strategy: 'auto' | 'single' | 'parallel';
   perspectives: string[];
   maxRounds: number;
-  evaluatorStrictness: string;
+  autoAcceptBelow?: 'suggestion' | 'warning';
+  evaluatorStrictness: 'strict' | 'standard' | 'lenient';
 }
 
 // GET /api/orchestration/:id

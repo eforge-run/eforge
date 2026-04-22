@@ -12,6 +12,11 @@ export interface LockfileData {
 export const LOCKFILE_NAME = 'daemon.lock';
 const LEGACY_LOCKFILE_NAME = 'monitor.lock';
 
+/** Polling interval (ms) used when waiting for the daemon lockfile to appear. */
+export const LOCKFILE_POLL_INTERVAL_MS = 250;
+/** Overall timeout (ms) for daemon lockfile polling. */
+export const LOCKFILE_POLL_TIMEOUT_MS = 5000;
+
 export function lockfilePath(cwd: string): string {
   return resolve(cwd, '.eforge', LOCKFILE_NAME);
 }

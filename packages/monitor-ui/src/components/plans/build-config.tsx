@@ -58,6 +58,11 @@ function ReviewConfig({ review }: { review: ReviewProfileConfig }) {
       <span className="text-[10px] text-text-dim">
         {review.evaluatorStrictness}
       </span>
+      {review.autoAcceptBelow && (
+        <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-bg-tertiary text-text-dim/80">
+          auto-accept: {review.autoAcceptBelow}
+        </span>
+      )}
     </div>
   );
 }

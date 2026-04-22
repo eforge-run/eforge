@@ -1,6 +1,8 @@
 export {
   type LockfileData,
   LOCKFILE_NAME,
+  LOCKFILE_POLL_INTERVAL_MS,
+  LOCKFILE_POLL_TIMEOUT_MS,
   readLockfile,
   isPidAlive,
   isServerAlive,

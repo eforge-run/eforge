@@ -24,6 +24,8 @@ import {
   parseRawConfigLegacy,
   subscribeToSession,
   eventToProgress,
+  LOCKFILE_POLL_INTERVAL_MS,
+  LOCKFILE_POLL_TIMEOUT_MS,
 } from '@eforge-build/client';
 import type {
   LatestRunResponse,
@@ -40,9 +42,6 @@ import type {
 import { handleBackendCommand, handleBackendNewCommand } from './backend-commands';
 import { handleConfigCommand } from './config-command';
 import type { UIContext } from './ui-helpers';
-
-const LOCKFILE_POLL_INTERVAL_MS = 250;
-const LOCKFILE_POLL_TIMEOUT_MS = 5000;
 
 // ---------------------------------------------------------------------------
 // Helpers

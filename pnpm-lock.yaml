@@ -173,6 +173,9 @@ importers:
       '@dagrejs/dagre':
         specifier: ^3.0.0
         version: 3.0.0
+      '@eforge-build/client':
+        specifier: workspace:*
+        version: link:../client
       '@eforge-build/engine':
         specifier: workspace:*
         version: link:../engine

@@ -12,7 +12,7 @@ import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS } from '@eforge-build/client';
 import type {
   LatestRunResponse,
   EnqueueResponse,
@@ -538,9 +538,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       force: z.boolean().optional().describe('When action is "stop" or "restart", force shutdown even if builds are active. Default: false.'),
     },
     async ({ action, force }) => {
-      const LOCKFILE_POLL_INTERVAL_MS = 250;
-      const LOCKFILE_POLL_TIMEOUT_MS = 5000;
-
       async function checkActiveBuilds(): Promise<string | null> {
         try {
           const { data: latestRun } = await daemonRequest<LatestRunResponse>(cwd, 'GET', '/api/latest-run');
