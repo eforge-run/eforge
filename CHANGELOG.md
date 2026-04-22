@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.12] - 2026-04-21
+
+### Features
+
+- **pi-follow-parity:** Pi extension parity: eforge_follow tool and command wiring
+- **mcp-follow-tool:** Add eforge_follow MCP tool and deprecate logging forwarder
+- **client-subscribe-helper:** Extract subscribeToSession helper into @eforge-build/client
+
+### Maintenance
+
+- remove merged PRD from queue/failed
+
 ## [0.5.11] - 2026-04-21
 
 ### Features
@@ -298,25 +310,6 @@
 ### Maintenance
 
 - Ignore tmp directory
-
-## [0.3.4] - 2026-04-03
-
-### Features
-
-- Filter eforge MCP servers and Pi extensions from build agents
-- Add renderCall/renderResult to eforge_status tool
-- Add eforge-plan skill for structured planning conversations
-- Add eforge_confirm_build TUI tool to Pi extension
-- Add Pi Package as architecture consumer
-
-### Bug Fixes
-
-- Use separate DynamicBorder instances for top and bottom borders in Pi package
-
-### Documentation
-
-- Note Pi-specific plan skill in README
-- Add eforge-plugin / pi-package parity convention to AGENTS.md
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
