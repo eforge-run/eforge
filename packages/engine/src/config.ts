@@ -6,7 +6,13 @@ import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
 import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client';
+import type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
+
+// Re-export shared types from @eforge-build/client so engine-internal callers
+// (plan.ts, eforge.ts, pipeline.ts, compiler.ts, events.ts, agents/*) can keep
+// importing from this module. The client package is the single owner.
+export type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Zod Schemas — single source of truth for config types
@@ -73,7 +79,9 @@ const STRATEGIES = ['auto', 'single', 'parallel'] as const;
 const STRICTNESS = ['strict', 'standard', 'lenient'] as const;
 const AUTO_ACCEPT = ['suggestion', 'warning'] as const;
 
-export const reviewProfileConfigSchema = z.object({
+// Bound to `z.ZodType<ReviewProfileConfig>` so a drift between this schema and
+// the shared TypeScript type in `@eforge-build/client` produces a compile error.
+export const reviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.object({
   strategy: z.enum(STRATEGIES).describe('Review strategy: "auto" picks based on perspective count, "single" uses one reviewer, "parallel" runs all perspectives concurrently'),
   perspectives: z.array(z.string()).nonempty().describe('Review perspective names, e.g. ["code", "security", "performance"]'),
   maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles (default 1)'),
@@ -229,9 +237,8 @@ export const eforgeConfigSchema = eforgeConfigBaseSchema.superRefine((data, ctx)
 // ---------------------------------------------------------------------------
 
 export type ToolPresetConfig = z.output<typeof toolPresetConfigSchema>;
-export type ReviewProfileConfig = z.output<typeof reviewProfileConfigSchema>;
-/** A single build stage name or an array of names to run in parallel. */
-export type BuildStageSpec = string | string[];
+// `ReviewProfileConfig` and `BuildStageSpec` are owned by `@eforge-build/client`
+// and re-exported at the top of this file.
 export type HookConfig = z.output<typeof hookConfigSchema>;
 export type PluginConfig = z.output<typeof pluginConfigSchema>;
 

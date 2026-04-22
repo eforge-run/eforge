@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",
+    "@eforge-build/client": "workspace:*",
     "@eforge-build/engine": "workspace:*",
     "@radix-ui/react-checkbox": "^1.3.3",
     "@radix-ui/react-collapsible": "^1.1.12",

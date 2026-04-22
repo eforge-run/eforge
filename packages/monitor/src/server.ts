@@ -14,6 +14,7 @@ import { parse as parseYaml } from 'yaml';
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
 import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
+import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
@@ -320,13 +321,6 @@ export async function startServer(
     }
   }
 
-  type BuildStageSpec = string | string[];
-  interface ReviewProfileConfig {
-    strategy: string;
-    perspectives: string[];
-    maxRounds: number;
-    evaluatorStrictness: string;
-  }
   type PlanResponse = { id: string; name: string; body: string; dependsOn: string[]; type: 'architecture' | 'module' | 'plan'; build?: BuildStageSpec[]; review?: ReviewProfileConfig };
 
   /**

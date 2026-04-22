@@ -35,6 +35,7 @@ const DEFAULT_MAX_RECONNECTS = 10;
  * parameterize `subscribeToSession<EforgeEvent>()` to get full typing on
  * their `onEvent` callback - this module does not depend on the engine.
  */
+// Serialized form of EforgeEvent - keep in sync with event-to-progress.ts
 export interface DaemonStreamEvent {
   type: string;
   sessionId?: string;

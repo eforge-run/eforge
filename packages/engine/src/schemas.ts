@@ -8,6 +8,7 @@
  */
 import { z } from 'zod/v4';
 import { stringify as stringifyYaml } from 'yaml';
+import type { ReviewProfileConfig } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Shared enums
@@ -564,8 +565,12 @@ const pipelineBuildStageSpecSchema = z.union([
 /**
  * Review profile config for pipeline composition — mirrors reviewProfileConfigSchema from config.ts.
  * Duplicated here to keep schemas.ts as a leaf-level file (no engine imports).
+ *
+ * Bound to `z.ZodType<ReviewProfileConfig>` so the pipeline composer output
+ * validation stays aligned with the shared TypeScript type owned by
+ * `@eforge-build/client`.
  */
-const pipelineReviewProfileConfigSchema = z.object({
+const pipelineReviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.object({
   strategy: z.enum(['auto', 'single', 'parallel']).describe('Review strategy'),
   perspectives: z.array(z.string()).nonempty().describe('Review perspective names'),
   maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles'),
