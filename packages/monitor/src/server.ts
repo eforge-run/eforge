@@ -869,7 +869,11 @@ export async function startServer(
             options.daemonState.onSpawnWatcher();
           }
         } else {
-          // Toggle OFF — let the running build finish naturally (no kill)
+          // Toggle OFF — SIGTERM the watcher. Its abort handler stops new PRD
+          // discovery and startReadyPrds short-circuits on the abort signal,
+          // so in-flight builds drain and the watcher exits without pulling
+          // the next PRD.
+          options.daemonState.onKillWatcher?.();
         }
         sendJson(res, {
           enabled: options.daemonState.autoBuild,
