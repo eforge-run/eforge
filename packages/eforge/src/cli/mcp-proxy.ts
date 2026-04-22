@@ -8,13 +8,19 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import http from 'node:http';
 import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, DAEMON_POLL_INTERVAL_MS, readLockfile } from '@eforge-build/client';
-import type { LatestRunResponse, EnqueueResponse, RunSummary, ConfigValidateResponse } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession } from '@eforge-build/client';
+import type {
+  LatestRunResponse,
+  EnqueueResponse,
+  RunSummary,
+  ConfigValidateResponse,
+  DaemonStreamEvent,
+  SessionSummary,
+} from '@eforge-build/client';
 
 declare const EFORGE_VERSION: string;
 
@@ -52,244 +58,86 @@ function sanitizeFlags(flags?: string[]): string[] | undefined {
 // Re-export for any consumers that imported from here
 export { ensureDaemon, daemonRequest, daemonRequestIfRunning };
 
-// --- SSE Subscriber ---
+// --- eforge_follow event -> progress mapping ---
 
-/** Events that trigger list_changed notifications */
-const LIST_CHANGED_EVENTS = new Set([
-  'phase:start',
-  'phase:end',
-  'build:complete',
-  'build:error',
-  'enqueue:complete',
-  'session:start',
-  'session:end',
-]);
-
-/** Events that trigger info-level logging notifications */
-const INFO_EVENTS = new Set([
-  'session:start',
-  'phase:start',
-  'phase:end',
-  'build:complete',
-  'plan:complete',
-  'plan:skip',
-]);
-
-/** Events that trigger error-level logging notifications */
-const ERROR_EVENTS = new Set([
-  'build:error',
-  'phase:error',
-]);
-
-const SESSION_POLL_INTERVAL_MS = 10_000;
-const SSE_RECONNECT_MAX_MS = 30_000;
-
-interface SseSubscriberState {
-  currentSessionId: string | null;
-  sseRequest: http.ClientRequest | null;
-  sessionPollTimer: ReturnType<typeof setInterval> | null;
-  reconnectDelay: number;
-  stopped: boolean;
+/** Running counters accumulated across events in a single follow subscription. */
+export interface FollowCounters {
+  filesChanged: number;
 }
 
-function parseSseChunk(chunk: string): Array<{ id?: string; data?: string }> {
-  const events: Array<{ id?: string; data?: string }> = [];
-  // Normalize line endings per SSE spec (supports \r\n, \r, and \n)
-  const normalized = chunk.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  const blocks = normalized.split('\n\n');
-  for (const block of blocks) {
-    if (!block.trim()) continue;
-    let id: string | undefined;
-    const dataLines: string[] = [];
-    for (const line of block.split('\n')) {
-      if (line.startsWith('id:')) {
-        const idVal = line.slice(3);
-        id = idVal.startsWith(' ') ? idVal.slice(1) : idVal;
-      } else if (line.startsWith('data:')) {
-        const dataVal = line.slice(5);
-        dataLines.push(dataVal.startsWith(' ') ? dataVal.slice(1) : dataVal);
-      }
+/** Shape of a single MCP progress notification payload (minus `progressToken`). */
+export interface ProgressUpdate {
+  message: string;
+  /** Updated counters after this event; callers advance their own monotonic progress index. */
+  counters: FollowCounters;
+}
+
+/**
+ * Map a daemon event to an MCP progress update. Returns `null` for events that
+ * should be filtered (noisy `agent:*` events, low-severity review issues, or
+ * any type not in the high-signal set).
+ *
+ * Callers pass the current `counters` and receive back the updated counters so
+ * running totals (e.g. files changed) can be surfaced in the message.
+ */
+export function eventToProgress(
+  event: DaemonStreamEvent,
+  counters: FollowCounters,
+): ProgressUpdate | null {
+  const type = event.type;
+  if (typeof type !== 'string') return null;
+
+  // Explicitly filter the noisy agent event family.
+  if (type.startsWith('agent:')) return null;
+
+  switch (type) {
+    case 'phase:start': {
+      const phase = (event.phase ?? event.command ?? event.planSet) as string | undefined;
+      const label = phase ?? 'unknown';
+      return { message: `Phase: ${label} starting`, counters };
     }
-    if (dataLines.length > 0) {
-      events.push({ id, data: dataLines.join('\n') });
+    case 'phase:end': {
+      const phase = (event.phase ?? event.command ?? event.planSet) as string | undefined;
+      const label = phase ?? 'unknown';
+      return { message: `Phase: ${label} complete`, counters };
     }
-  }
-  return events;
-}
-
-function buildLoggingData(event: Record<string, unknown>): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  if (event.sessionId) result.sessionId = event.sessionId;
-  if (event.planId) result.planId = event.planId;
-  if (event.phase) result.phase = event.phase;
-  // Build a human-readable message
-  const eventType = event.type as string;
-  if (event.message) {
-    result.message = event.message;
-  } else {
-    result.message = eventType;
-  }
-  return result;
-}
-
-function startSseSubscriber(server: McpServer, cwd: string): SseSubscriberState {
-  const state: SseSubscriberState = {
-    currentSessionId: null,
-    sseRequest: null,
-    sessionPollTimer: null,
-    reconnectDelay: 1000,
-    stopped: false,
-  };
-
-  function closeSseConnection() {
-    if (state.sseRequest) {
-      state.sseRequest.destroy();
-      state.sseRequest = null;
+    case 'build:files_changed': {
+      const files = (event as { files?: unknown }).files;
+      const delta = Array.isArray(files) ? files.length : 0;
+      const nextCounters: FollowCounters = {
+        ...counters,
+        filesChanged: counters.filesChanged + delta,
+      };
+      return {
+        message: `Files changed: ${delta} (total ${nextCounters.filesChanged})`,
+        counters: nextCounters,
+      };
     }
-  }
-
-  function connectToSse(port: number, sessionId: string) {
-    closeSseConnection();
-    state.currentSessionId = sessionId;
-
-    const url = `http://127.0.0.1:${port}/api/events/${encodeURIComponent(sessionId)}`;
-
-    const req = http.get(url, (res) => {
-      if (res.statusCode !== 200) {
-        res.resume(); // drain
-        scheduleReconnect(port);
-        return;
-      }
-
-      // Reset backoff on successful connection
-      state.reconnectDelay = 1000;
-
-      let buffer = '';
-      res.setEncoding('utf8');
-      res.on('data', (chunk: string) => {
-        buffer += chunk;
-        // Process complete SSE blocks (separated by double newlines)
-        const lastDoubleNewline = buffer.lastIndexOf('\n\n');
-        if (lastDoubleNewline === -1) return;
-        const complete = buffer.slice(0, lastDoubleNewline + 2);
-        buffer = buffer.slice(lastDoubleNewline + 2);
-
-        const sseEvents = parseSseChunk(complete);
-        for (const sseEvent of sseEvents) {
-          if (!sseEvent.data) continue;
-          try {
-            const event = JSON.parse(sseEvent.data) as Record<string, unknown>;
-            const eventType = event.type as string;
-            if (!eventType) continue;
-
-            // Send list_changed for lifecycle events
-            if (LIST_CHANGED_EVENTS.has(eventType)) {
-              try { server.sendResourceListChanged(); } catch { /* transport may be closed */ }
-            }
-
-            // Send logging notifications
-            if (INFO_EVENTS.has(eventType)) {
-              server.sendLoggingMessage({
-                level: 'info',
-                logger: 'eforge',
-                data: buildLoggingData(event),
-              }).catch(() => { /* client may not support logging */ });
-            } else if (ERROR_EVENTS.has(eventType)) {
-              server.sendLoggingMessage({
-                level: 'error',
-                logger: 'eforge',
-                data: buildLoggingData(event),
-              }).catch(() => {});
-            } else if (eventType === 'review:issue') {
-              const severity = event.severity as string | undefined;
-              if (severity === 'high' || severity === 'critical') {
-                server.sendLoggingMessage({
-                  level: 'warning',
-                  logger: 'eforge',
-                  data: buildLoggingData(event),
-                }).catch(() => {});
-              }
-            }
-          } catch {
-            // Ignore malformed SSE data
-          }
-        }
-      });
-
-      res.on('end', () => {
-        state.sseRequest = null;
-        if (!state.stopped) {
-          scheduleReconnect(port);
-        }
-      });
-
-      res.on('error', () => {
-        state.sseRequest = null;
-        if (!state.stopped) {
-          scheduleReconnect(port);
-        }
-      });
-    });
-
-    req.on('error', () => {
-      state.sseRequest = null;
-      if (!state.stopped) {
-        scheduleReconnect(port);
-      }
-    });
-
-    state.sseRequest = req;
-  }
-
-  function scheduleReconnect(port: number) {
-    if (state.stopped) return;
-    const delay = state.reconnectDelay;
-    state.reconnectDelay = Math.min(state.reconnectDelay * 2, SSE_RECONNECT_MAX_MS);
-    setTimeout(() => {
-      if (state.stopped) return;
-      if (state.currentSessionId) {
-        connectToSse(port, state.currentSessionId);
-      }
-    }, delay);
-  }
-
-  async function pollForSession() {
-    if (state.stopped) return;
-    try {
-      const result = await daemonRequestIfRunning<LatestRunResponse>(cwd, 'GET', '/api/latest-run');
-      if (!result) return; // Daemon not running - don't auto-start for polling
-      const { data, port } = result;
-      if (!data?.sessionId) return;
-
-      if (data.sessionId !== state.currentSessionId) {
-        connectToSse(port, data.sessionId);
-      }
-    } catch {
-      // Daemon not running or unreachable - skip this poll
+    case 'review:issue': {
+      const severity = (event as { severity?: unknown }).severity;
+      if (severity !== 'high' && severity !== 'critical') return null;
+      const summary = ((event as { summary?: unknown }).summary
+        ?? (event as { description?: unknown }).description
+        ?? (event as { message?: unknown }).message
+        ?? 'review issue') as string;
+      return { message: `Issue (${severity}): ${summary}`, counters };
     }
-  }
-
-  // Start polling for sessions
-  // Do an initial poll immediately
-  pollForSession();
-  state.sessionPollTimer = setInterval(pollForSession, SESSION_POLL_INTERVAL_MS);
-
-  return state;
-}
-
-function stopSseSubscriber(state: SseSubscriberState) {
-  state.stopped = true;
-  if (state.sessionPollTimer) {
-    clearInterval(state.sessionPollTimer);
-    state.sessionPollTimer = null;
-  }
-  if (state.sseRequest) {
-    state.sseRequest.destroy();
-    state.sseRequest = null;
+    case 'build:failed': {
+      const planId = (event as { planId?: unknown }).planId as string | undefined;
+      const error = (event as { error?: unknown }).error as string | undefined;
+      const label = planId ? `${planId}: ${error ?? 'failed'}` : (error ?? 'failed');
+      return { message: `Build failed: ${label}`, counters };
+    }
+    case 'phase:error': {
+      const error = (event as { error?: unknown }).error as string | undefined;
+      return { message: `Phase error: ${error ?? 'failed'}`, counters };
+    }
+    default:
+      return null;
   }
 }
 
-// --- End SSE Subscriber ---
+// --- End eforge_follow event mapping ---
 
 async function ensureGitignoreEntries(projectDir: string, entries: string[]): Promise<void> {
   const gitignorePath = join(projectDir, '.gitignore');
@@ -317,11 +165,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   const server = new McpServer({
     name: 'eforge',
     version: EFORGE_VERSION,
-  }, {
-    capabilities: {
-      resources: { listChanged: true },
-      logging: {},
-    },
   });
 
   // --- Resources ---
@@ -467,6 +310,111 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const { data, port } = await daemonRequest<EnqueueResponse>(cwd, 'POST', '/api/enqueue', { source });
       const response = { ...data, monitorUrl: `http://localhost:${port}` };
       return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+    },
+  );
+
+  // Tool: eforge_follow
+  // Long-running tool that blocks for the lifetime of a session and streams
+  // high-signal events as MCP `notifications/progress`. Resolves with the
+  // session summary so the outcome lands in the conversation transcript.
+  const DEFAULT_FOLLOW_TIMEOUT_MS = 1_800_000; // 30 minutes
+  server.tool(
+    'eforge_follow',
+    'Follow a running eforge session: streams phase/files-changed/issue updates as progress notifications and returns the final session summary. Use after eforge_build to surface live build status in the conversation.',
+    {
+      sessionId: z.string().describe('The session to follow (from eforge_build or eforge_status).'),
+      timeoutMs: z.number().optional().describe('Max time to wait for session completion in ms. Default 1,800,000 (30 minutes).'),
+    },
+    async ({ sessionId, timeoutMs }, extra) => {
+      const timeout = timeoutMs ?? DEFAULT_FOLLOW_TIMEOUT_MS;
+      const progressToken = extra?._meta?.progressToken;
+
+      // Combine the caller's abort signal with a timeout signal so the tool
+      // terminates cleanly on either cancellation or timeout.
+      const timeoutController = new AbortController();
+      const timeoutHandle = setTimeout(() => {
+        const timeoutReason = Object.assign(new Error('eforge_follow timed out'), { name: 'AbortError' });
+        timeoutController.abort(timeoutReason);
+      }, timeout);
+
+      const signals: AbortSignal[] = [timeoutController.signal];
+      if (extra?.signal) signals.push(extra.signal);
+      // `AbortSignal.any` is available on Node 22+ (the engines requirement).
+      const signal = AbortSignal.any(signals);
+
+      let progressCounter = 0;
+      let counters: FollowCounters = { filesChanged: 0 };
+
+      async function emitProgress(message: string): Promise<void> {
+        if (progressToken === undefined) return;
+        progressCounter += 1;
+        try {
+          await server.server.notification({
+            method: 'notifications/progress',
+            params: {
+              progressToken,
+              progress: progressCounter,
+              message,
+            },
+          });
+        } catch {
+          // Transport may be closed or the client may not support progress
+        }
+      }
+
+      let summary: SessionSummary | null = null;
+      let followError: Error | null = null;
+      const startedAt = Date.now();
+
+      try {
+        summary = await subscribeToSession<DaemonStreamEvent>(sessionId, {
+          cwd,
+          signal,
+          onEvent: (event) => {
+            const update = eventToProgress(event, counters);
+            if (!update) return;
+            counters = update.counters;
+            // Fire-and-forget; emitProgress swallows its own errors.
+            void emitProgress(update.message);
+          },
+        });
+      } catch (err) {
+        followError = err instanceof Error ? err : new Error(String(err));
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
+
+      if (followError || !summary) {
+        const message = followError?.message ?? 'eforge_follow failed';
+        const isAbort = followError?.name === 'AbortError' || /timed out/.test(message);
+        return {
+          content: [{
+            type: 'text',
+            text: JSON.stringify({
+              status: isAbort ? 'aborted' : 'error',
+              sessionId,
+              message,
+              filesChanged: counters.filesChanged,
+            }, null, 2),
+          }],
+          isError: true,
+        };
+      }
+
+      const response = {
+        status: summary.status,
+        sessionId: summary.sessionId,
+        summary: summary.summary,
+        monitorUrl: summary.monitorUrl,
+        durationMs: Date.now() - startedAt,
+        phaseCounts: { total: summary.phaseCount },
+        filesChanged: summary.filesChanged,
+        issueCounts: { errors: summary.errorCount },
+        eventCount: summary.eventCount,
+      };
+      return {
+        content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
+      };
     },
   );
 
@@ -1054,14 +1002,4 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-
-  // Start SSE subscriber after transport is connected
-  const sseState = startSseSubscriber(server, cwd);
-
-  // Chain SSE cleanup onto existing transport close handler
-  const originalOnclose = transport.onclose;
-  transport.onclose = () => {
-    stopSseSubscriber(sseState);
-    originalOnclose?.();
-  };
 }
