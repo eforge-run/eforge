@@ -5,6 +5,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from '@/components/ui/collapsible';
+import { Button } from '@/components/ui/button';
 
 interface BuildFailure {
   planId: string;
@@ -75,12 +76,12 @@ export function FailureBanner({ failures, phaseSummary }: FailureBannerProps) {
               </div>
             </CollapsibleContent>
             <CollapsibleTrigger asChild>
-              <button className="flex items-center gap-1 text-[11px] text-text-dim hover:text-text-bright transition-colors mt-1 cursor-pointer">
+              <Button type="button" variant="ghost" size="sm" className="mt-1 self-start">
                 <ChevronDown
                   className={`w-3 h-3 transition-transform ${open ? 'rotate-180' : ''}`}
                 />
                 {open ? 'Show less' : `Show ${hiddenFailures.length} more`}
-              </button>
+              </Button>
             </CollapsibleTrigger>
           </Collapsible>
         )}

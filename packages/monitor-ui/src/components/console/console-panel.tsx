@@ -2,6 +2,7 @@ import { forwardRef, type ReactNode, type RefObject } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TimelineControls } from '@/components/timeline/timeline-controls';
+import { Button } from '@/components/ui/button';
 
 export type LowerTab = 'log' | 'changes' | 'graph';
 
@@ -50,22 +51,23 @@ export const ConsolePanel = forwardRef<HTMLDivElement, ConsolePanelProps>(
             {TAB_ITEMS.map(({ id, label }) => {
               const disabled = id === 'graph' && !graphEnabled;
               return (
-                <button
+                <Button
                   key={id}
+                  type="button"
+                  variant="ghost"
+                  size="sm"
                   onClick={() => !disabled && onTabChange(id)}
                   disabled={disabled}
                   className={cn(
-                    'px-3 py-1.5 text-[11px] font-medium border-b-2 transition-colors',
+                    'rounded-none border-b-2',
                     activeTab === id
-                      ? 'border-primary text-foreground'
-                      : disabled
-                        ? 'border-transparent text-text-dim/40 cursor-default'
-                        : 'border-transparent text-text-dim hover:text-foreground cursor-pointer',
+                      ? 'border-primary'
+                      : 'border-transparent',
                   )}
                   title={disabled ? 'Available when plans have dependency edges' : undefined}
                 >
                   {label}
-                </button>
+                </Button>
               );
             })}
             {!collapsed && activeTab === 'log' && (
@@ -74,13 +76,16 @@ export const ConsolePanel = forwardRef<HTMLDivElement, ConsolePanelProps>(
               </div>
             )}
           </div>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={onToggleCollapse}
-            className="p-1 text-text-dim hover:text-foreground transition-colors cursor-pointer"
+            className="h-auto w-auto p-1"
             title={collapsed ? 'Expand panel' : 'Collapse panel'}
           >
             {collapsed ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
-          </button>
+          </Button>
         </div>
 
         {/* Panel body */}
@@ -97,12 +102,15 @@ export const ConsolePanel = forwardRef<HTMLDivElement, ConsolePanelProps>(
 
             {/* Auto-scroll button - log tab only */}
             {activeTab === 'log' && !autoScroll && (
-              <button
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
                 onClick={onEnableAutoScroll}
-                className="sticky bottom-2 left-1/2 -translate-x-1/2 bg-bg-tertiary border border-border rounded-md px-3 py-1.5 text-[11px] text-text-dim cursor-pointer hover:text-foreground z-10"
+                className="sticky bottom-2 left-1/2 -translate-x-1/2 z-10"
               >
                 ↓ Auto-scroll
-              </button>
+              </Button>
             )}
           </div>
         )}

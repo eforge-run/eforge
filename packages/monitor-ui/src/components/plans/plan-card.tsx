@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { BookOpen, ChevronDown, ChevronRight, FileText, GitBranch, Loader2, CheckCircle2, Puzzle } from 'lucide-react';
 import { PlanBodyHighlight } from '@/components/preview/plan-body-highlight';
 import { BuildConfigSection } from '@/components/plans/build-config';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { BuildStageSpec, ReviewProfileConfig, PipelineStage, PlanType } from '@/lib/types';
 import type { ModuleStatus } from '@/lib/reducer';
@@ -80,8 +81,10 @@ export function PlanCard({ id, name, body, status, dependsOn, filesChanged, type
   return (
     <div className="bg-card border border-border rounded-lg shadow-sm shadow-black/10 overflow-hidden">
       {/* Header — always visible */}
-      <button
-        className="w-full text-left flex items-start gap-2.5 px-4 py-3 cursor-pointer hover:bg-bg-tertiary transition-colors bg-transparent border-none"
+      <Button
+        type="button"
+        variant="ghost"
+        className="w-full h-auto justify-start text-left items-start gap-2.5 px-4 py-3 rounded-none whitespace-normal"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="mt-0.5 flex items-center gap-1.5">
@@ -112,7 +115,7 @@ export function PlanCard({ id, name, body, status, dependsOn, filesChanged, type
             )}
           </div>
         </div>
-      </button>
+      </Button>
 
       {/* Body — expanded */}
       {isExpanded && (

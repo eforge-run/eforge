@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { fetchFileDiff } from '@/lib/api';
 import { getHighlighter } from '@/lib/shiki';
+import { Button } from '@/components/ui/button';
 
 interface DiffEntry {
   planId: string;
@@ -129,13 +130,16 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, onClose }: Di
           {filePath}
           {planId && <span className="ml-2 text-text-bright">{planId}</span>}
         </div>
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
           onClick={onClose}
-          className="text-text-dim hover:text-text-bright text-sm cursor-pointer shrink-0 px-1"
+          className="h-auto w-auto shrink-0 p-1"
           title="Close (Escape)"
         >
           ✕
-        </button>
+        </Button>
       </div>
 
       {/* Content */}

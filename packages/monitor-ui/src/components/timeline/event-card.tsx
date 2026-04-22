@@ -3,6 +3,7 @@ import type { EforgeEvent } from '@/lib/types';
 import { formatDuration, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { usePlanPreview } from '@/components/preview';
+import { Button } from '@/components/ui/button';
 
 interface EventCardProps {
   event: EforgeEvent;
@@ -283,12 +284,15 @@ export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
         </div>
         {detail && (
           <>
-            <button
-              className="bg-transparent border-none text-text-dim cursor-pointer text-[10px] p-0 hover:text-foreground"
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto p-0"
               onClick={() => setIsExpanded(!isExpanded)}
             >
               {isExpanded ? 'hide' : 'details'}
-            </button>
+            </Button>
             {isExpanded && (
               <div className="text-text-dim text-[11px] mt-1 whitespace-pre-wrap break-words max-h-[200px] overflow-y-auto">
                 {detail}

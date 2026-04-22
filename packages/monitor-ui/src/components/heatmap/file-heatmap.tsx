@@ -6,6 +6,7 @@ import { HeatmapLegend } from './heatmap-legend';
 import { HeatmapSummary } from './heatmap-summary';
 import { DiffViewer } from './diff-viewer';
 import { shortenPath } from '@/lib/format';
+import { Button } from '@/components/ui/button';
 
 const DEFAULT_FILE_LIMIT = 50;
 
@@ -144,14 +145,17 @@ export function FileHeatmap({ runState, sessionId }: FileHeatmapProps) {
 
         {/* Show all toggle */}
         {hasMore && (
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
             onClick={() => setShowAll(!showAll)}
-            className="text-[11px] text-blue hover:text-text-bright cursor-pointer self-start"
+            className="self-start"
           >
             {showAll
               ? `Show top ${DEFAULT_FILE_LIMIT} files`
               : `Show all ${files.length} files (${files.length - DEFAULT_FILE_LIMIT} more)`}
-          </button>
+          </Button>
         )}
       </div>
 

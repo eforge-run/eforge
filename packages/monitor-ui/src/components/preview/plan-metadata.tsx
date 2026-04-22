@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 
 interface PlanMetadataProps {
   id: string;
@@ -65,14 +66,17 @@ export function PlanMetadata({ id, name, dependsOn, branch, migrations }: PlanMe
           <div className="flex items-baseline gap-2">
             <span className="text-text-dim min-w-[80px]">Migrations</span>
             <div>
-              <button
-                className="bg-transparent border-none text-foreground cursor-pointer text-[11px] p-0 hover:text-blue"
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-auto p-0"
                 onClick={() => setMigrationsExpanded(!migrationsExpanded)}
               >
                 {migrations.length} migration{migrations.length !== 1 ? 's' : ''}
                 {' '}
                 <span className="text-text-dim">{migrationsExpanded ? '(hide)' : '(show)'}</span>
-              </button>
+              </Button>
               {migrationsExpanded && (
                 <div className="mt-1 space-y-0.5">
                   {migrations.map((m, i) => (

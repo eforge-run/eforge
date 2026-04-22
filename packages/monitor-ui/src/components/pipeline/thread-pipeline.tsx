@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/button';
 import type { AgentThread, StoredEvent } from '@/lib/reducer';
 import type { AgentRole, PipelineStage, ReviewIssue, ProfileInfo, OrchestrationConfig, BuildStageSpec } from '@/lib/types';
 
@@ -45,9 +46,9 @@ const EMPTY_SET = new Set<string>();
 // --- Pill constants for artifact labels ---
 
 const pillClass =
-  'inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition-colors border-none';
-const prdPillClass = `${pillClass} bg-yellow/15 text-yellow/70 hover:bg-yellow/25`;
-const planPillClass = `${pillClass} bg-cyan/15 text-cyan/70 hover:bg-cyan/25`;
+  'inline-flex items-center h-auto px-2 py-0.5 rounded-full text-[11px] font-medium cursor-pointer transition-colors border-none';
+const prdPillClass = `${pillClass} bg-yellow/15 text-yellow/70 hover:bg-yellow/25 hover:text-yellow/90`;
+const planPillClass = `${pillClass} bg-cyan/15 text-cyan/70 hover:bg-cyan/25 hover:text-cyan/90`;
 
 function abbreviatePlanId(id: string): string {
   if (id === 'gap-close') return 'Gap Close';
@@ -734,12 +735,15 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
         <div className={`w-[100px] shrink-0 mt-0.5`} style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
                 className={prdPillClass}
                 onClick={() => openContentPreview(prdSource.label, prdSource.content)}
               >
                 PRD
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="left">{prdSource.label}</TooltipContent>
           </Tooltip>
@@ -751,12 +755,15 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
         <div className="w-[100px] shrink-0 mt-0.5" style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
                 className={planPillClass}
                 onClick={() => openContentPreview(planArtifact.name || planId, planArtifact.body)}
               >
                 {abbreviatePlanId(planId)}
-              </button>
+              </Button>
             </TooltipTrigger>
             <TooltipContent side="left">
               {planTooltipText.map((line, i) => (
@@ -772,12 +779,15 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
       <div className="w-[100px] shrink-0 mt-0.5" style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
         <Tooltip>
           <TooltipTrigger asChild>
-            <button
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
               className={planPillClass}
               onClick={disablePreview ? undefined : () => openPreview(planId)}
             >
               {abbreviatePlanId(planId)}
-            </button>
+            </Button>
           </TooltipTrigger>
           <TooltipContent side="left">{planId}</TooltipContent>
         </Tooltip>

@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
 
 interface ShutdownBannerProps {
   countdown: number;
@@ -33,12 +34,14 @@ export function ShutdownBanner({ countdown }: ShutdownBannerProps) {
       <span>
         Server shutting down in <strong>{countdown}s</strong> — no active runs
       </span>
-      <button
+      <Button
+        type="button"
+        variant="destructive"
+        size="sm"
         onClick={handleKeepAlive}
-        className="px-2 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-100 cursor-pointer transition-colors"
       >
         Keep Alive
-      </button>
+      </Button>
     </div>
   );
 }

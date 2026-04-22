@@ -7,6 +7,8 @@ import { groupRunsBySessions, partitionEnqueueSessions, type SessionGroup } from
 import { formatRelativeTime, formatRunDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { QueueSection } from './queue-section';
 import { EnqueueSection } from './enqueue-section';
 
@@ -66,16 +68,19 @@ function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
             </span>
             <div className="flex items-center gap-1.5">
               {showCancel && (
-                <button
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
                   title="Cancel this session"
-                  className="text-text-dim hover:text-red-400 transition-colors cursor-pointer"
+                  className="h-auto w-auto p-0"
                   onClick={(e) => {
                     e.stopPropagation();
                     cancelSession(group.key);
                   }}
                 >
                   <Square size={14} />
-                </button>
+                </Button>
               )}
               <span className="text-[11px] text-text-dim">{relative}</span>
             </div>
@@ -180,7 +185,7 @@ export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, dae
       />
       <QueueSection refreshTrigger={refreshTrigger} />
       <div className="relative mb-2">
-        <input
+        <Input
           type="text"
           value={searchQuery}
           onChange={(e) => {
@@ -190,18 +195,21 @@ export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, dae
             }
           }}
           placeholder="Search builds..."
-          className="w-full text-[11px] bg-bg-tertiary text-foreground placeholder:text-text-dim/50 border border-border/40 rounded-md px-2.5 py-1.5 pr-7 outline-none focus:ring-1 focus:ring-cyan/40"
+          className="h-8 text-xs pr-7"
         />
         {searchQuery && (
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={() => {
               setSearchQuery('');
               setVisibleCount(PAGE_SIZE);
             }}
-            className="absolute right-1.5 top-1/2 -translate-y-1/2 text-text-dim hover:text-foreground transition-colors cursor-pointer"
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 h-auto w-auto p-0"
           >
             <X size={12} />
-          </button>
+          </Button>
         )}
       </div>
       {visibleGroups.map((group, index) => (
@@ -217,12 +225,15 @@ export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, dae
         </div>
       ))}
       {showMoreButton && (
-        <button
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => setVisibleCount((prev) => prev + PAGE_SIZE)}
-          className="w-full text-[11px] text-text-dim hover:text-foreground py-2 mt-1 rounded-md hover:bg-bg-tertiary transition-colors cursor-pointer"
+          className="w-full mt-1"
         >
           Show {Math.min(PAGE_SIZE, remainingCount)} more ({remainingCount} remaining)
-        </button>
+        </Button>
       )}
     </aside>
   );

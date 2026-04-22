@@ -6,6 +6,7 @@ import { BuildConfigSection } from '@/components/plans/build-config';
 import { StatusBadge, ModuleStatusBadge } from '@/components/plans/plan-card';
 import { splitPlanContent, parseFrontmatterFields } from '@/lib/plan-content';
 import { useApi } from '@/hooks/use-api';
+import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { PlanData } from '@/lib/types';
 
@@ -103,13 +104,16 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
             {selectedPlan && planType === 'plan' && <StatusBadge status={planStatus} />}
             {selectedPlan && planType === 'module' && <ModuleStatusBadge status={moduleStatus} />}
           </div>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
             onClick={closePreview}
-            className="bg-transparent border-none text-text-dim hover:text-foreground cursor-pointer text-lg leading-none p-1"
+            className="h-auto w-auto p-1 text-lg leading-none"
             aria-label="Close preview"
           >
             &times;
-          </button>
+          </Button>
         </div>
 
         {/* Content */}
