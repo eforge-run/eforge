@@ -1,0 +1,48 @@
+name: hardening-09-replace-raw-button-input-with-shadcn-components-in-monitor-ui
+description: Replace raw button/input elements in monitor-ui components with
+  shadcn Button and Input components to restore consistency, accessibility, and
+  theming guarantees.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm --filter @eforge-build/monitor-ui type-check
+  - pnpm --filter @eforge-build/monitor-ui build
+plans:
+  - id: plan-01-shadcn-migration
+    name: Migrate raw button/input to shadcn components
+    depends_on: []
+    branch: hardening-09-replace-raw-button-input-with-shadcn-components-in-monitor-ui/shadcn-migration
+    build: &a1
+      - implement
+      - - review-cycle
+        - doc-update
+    review: &a2
+      strategy: single
+      perspectives:
+        - frontend
+        - accessibility
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This is a mechanical but wide refactor touching 18 sites across 11
+    files in a single package (monitor-ui). It's multi-file but all pieces are
+    homogeneous (swap raw <button>/<input> for shadcn primitives), so a single
+    planner session can easily enumerate all migration sites and any needed CVA
+    extensions - classic excursion territory, not expedition. Compile uses
+    planner plus plan-review-cycle as a quality gate to ensure every offender
+    site is captured and variant mappings are sensible before build. Build runs
+    implement first, then review-cycle in parallel with doc-update (doc-update
+    has no dependency on review and AGENTS.md's UI-components rule may warrant a
+    note). Review uses frontend + accessibility perspectives since shadcn
+    migration is specifically motivated by a11y defaults (focus ring, keyboard
+    semantics) and theming consistency. Two rounds at standard strictness is
+    appropriate: low-risk cosmetic/structural changes, but visual parity and
+    preserved handlers/props matter. autoAcceptBelow: suggestion keeps noise
+    down on a repetitive refactor."
