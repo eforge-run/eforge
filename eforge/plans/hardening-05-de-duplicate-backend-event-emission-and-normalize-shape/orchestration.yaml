@@ -1,0 +1,62 @@
+name: hardening-05-de-duplicate-backend-event-emission-and-normalize-shape
+description: "Extract shared helpers for agent:start payload construction and
+  tool-call ID normalization across ClaudeSDKBackend and PiBackend, document the
+  toolUseId contract on the AgentBackend event stream, and unify agent:usage
+  emission cadence (per-turn deltas plus a final cumulative emission flagged
+  with final: true) across both backends and their consumers."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-backend-common-and-usage-contract
+    name: Backend Common Helpers and Unified Usage Cadence
+    depends_on: []
+    branch: hardening-05-de-duplicate-backend-event-emission-and-normalize-shape/backend-common-and-usage-contract
+    build: &a1
+      - implement
+      - - review-cycle
+        - doc-update
+      - test-write
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+        - api-consistency
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This PRD is a focused refactor touching a well-defined set of files
+    across engine backends, events, monitor-ui reducer, and CLI - classic
+    excursion scope. It's not trivial (multiple files, new shared helpers,
+    contract changes, consumer updates) but it's also not expedition-scale: a
+    single planner session can easily enumerate all plans and cross-file
+    dependencies since the changes are tightly coupled around a shared contract.
+    The work has sequential dependencies (helpers must exist before backends
+    consume them; event shape must be updated before reducers handle it), which
+    is a negative expedition signal. Compile uses planner + plan-review-cycle
+    because contract/shape changes affecting multiple consumers benefit from a
+    plan quality gate to ensure the final:true discriminator, normalization
+    comment, and cadence contract are consistently planned across backends and
+    consumers. Build runs implement first, then review-cycle in parallel with
+    doc-update (doc-update has no conflict with review-cycle and the PRD touches
+    documentation in backend.ts and events.ts block comments), then test-write
+    sequentially since the PRD explicitly calls out a new test file
+    (test/backend-common.test.ts) and updates to agent-wiring tests - test-write
+    depends on implement and should land after review-cycle stabilizes the API.
+    Review uses single strategy with correctness and api-consistency
+    perspectives (maxRounds 2, standard strictness) because this is a
+    contract-normalization refactor where consistency between backends and
+    correct event-shape handling are the primary risks; parallel perspectives
+    would be overkill for a non-security refactor, but two focused perspectives
+    catch the dual concerns of logic correctness and cross-backend shape
+    alignment."
