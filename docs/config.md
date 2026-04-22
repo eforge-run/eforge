@@ -31,7 +31,7 @@ agents:
   # models:                    # Map model classes to model refs (override backend defaults)
   #   max:                     # Used by most roles by default
   #     id: claude-opus-4-7
-  #   balanced:                # Default for staleness-assessor, prd-validator, dependency-detector
+  #   balanced:                # Default for builder, review-fixer, validation-fixer, test-writer, tester, staleness-assessor, prd-validator, dependency-detector
   #     id: claude-sonnet-4-6
   #   fast:                    # Available via per-role modelClass override
   #     id: claude-haiku-4-5
