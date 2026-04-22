@@ -22,8 +22,21 @@ import {
   sleep,
   sanitizeProfileName,
   parseRawConfigLegacy,
+  subscribeToSession,
+  eventToProgress,
 } from '@eforge-build/client';
-import type { LatestRunResponse, EnqueueResponse, RunSummary, ConfigValidateResponse, QueueItem, AutoBuildState, ConfigShowResponse } from '@eforge-build/client';
+import type {
+  LatestRunResponse,
+  EnqueueResponse,
+  RunSummary,
+  ConfigValidateResponse,
+  QueueItem,
+  AutoBuildState,
+  ConfigShowResponse,
+  DaemonStreamEvent,
+  SessionSummary,
+  FollowCounters,
+} from '@eforge-build/client';
 import { handleBackendCommand, handleBackendNewCommand } from './backend-commands';
 import { handleConfigCommand } from './config-command';
 import type { UIContext } from './ui-helpers';
@@ -231,6 +244,191 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         { source: params.source },
       );
       return jsonResult(withMonitorUrl(data, port));
+    },
+  });
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_follow
+  // Long-running tool that blocks for the lifetime of a session and streams
+  // high-signal events to the caller via `onUpdate(message)`. Resolves with
+  // the `SessionSummary` so the outcome lands in the conversation transcript.
+  // Mirrors the MCP `eforge_follow` tool in packages/eforge/src/cli/mcp-proxy.ts
+  // - both consumers share `eventToProgress()` from @eforge-build/client so the
+  // per-event messages stay identical across Claude Code and Pi.
+  // ------------------------------------------------------------------
+  const DEFAULT_FOLLOW_TIMEOUT_MS = 1_800_000; // 30 minutes
+  pi.registerTool({
+    name: "eforge_follow",
+    label: "eforge follow",
+    description:
+      "Follow a running eforge session: streams phase/files-changed/issue updates as tool progress messages and returns the final session summary. Use after eforge_build to surface live build status in the conversation.",
+    parameters: Type.Object({
+      sessionId: Type.String({
+        description: "The session to follow (from eforge_build or eforge_status).",
+      }),
+      timeoutMs: Type.Optional(
+        Type.Number({
+          description:
+            "Max time to wait for session completion in ms. Default 1,800,000 (30 minutes).",
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, signal, onUpdate, ctx) {
+      const timeout = params.timeoutMs ?? DEFAULT_FOLLOW_TIMEOUT_MS;
+
+      // Combine the caller's abort signal with a timeout signal so the tool
+      // terminates cleanly on either cancellation or timeout.
+      const timeoutController = new AbortController();
+      const timeoutHandle = setTimeout(() => {
+        const timeoutReason = Object.assign(new Error("eforge_follow timed out"), {
+          name: "AbortError",
+        });
+        timeoutController.abort(timeoutReason);
+      }, timeout);
+
+      const signals: AbortSignal[] = [timeoutController.signal];
+      if (signal) signals.push(signal);
+      const combined = AbortSignal.any(signals);
+
+      let counters: FollowCounters = { filesChanged: 0 };
+
+      let summary: SessionSummary | null = null;
+      let followError: Error | null = null;
+      const startedAt = Date.now();
+
+      try {
+        summary = await subscribeToSession<DaemonStreamEvent>(params.sessionId, {
+          cwd: ctx.cwd,
+          signal: combined,
+          onEvent: (event) => {
+            const update = eventToProgress(event, counters);
+            if (!update) return;
+            counters = update.counters;
+            try {
+              onUpdate(update.message);
+            } catch {
+              // Pi UI may be closed or the callback may throw; swallow so the
+              // subscription keeps running.
+            }
+          },
+        });
+      } catch (err) {
+        followError = err instanceof Error ? err : new Error(String(err));
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
+
+      if (followError || !summary) {
+        const message = followError?.message ?? "eforge_follow failed";
+        const isAbort =
+          followError?.name === "AbortError" || /timed out/.test(message);
+        return jsonResult({
+          status: isAbort ? "aborted" : "error",
+          sessionId: params.sessionId,
+          message,
+          filesChanged: counters.filesChanged,
+        });
+      }
+
+      return jsonResult({
+        status: summary.status,
+        sessionId: summary.sessionId,
+        summary: summary.summary,
+        monitorUrl: summary.monitorUrl,
+        durationMs: Date.now() - startedAt,
+        phaseCounts: { total: summary.phaseCount },
+        filesChanged: summary.filesChanged,
+        issueCounts: { errors: summary.errorCount },
+        eventCount: summary.eventCount,
+      });
+    },
+
+    renderCall(args, theme) {
+      const sessionId = typeof args.sessionId === "string" ? args.sessionId : "?";
+      return new Text(
+        theme.fg("toolTitle", theme.bold("eforge follow ")) +
+          theme.fg("muted", sessionId),
+        0,
+        0,
+      );
+    },
+
+    renderResult(result, _options, theme) {
+      const text = result.content[0];
+      if (!text || text.type !== "text") {
+        return new Text(theme.fg("muted", "No data"), 0, 0);
+      }
+      try {
+        const data = JSON.parse(text.text) as {
+          status?: string;
+          sessionId?: string;
+          summary?: string;
+          monitorUrl?: string;
+          durationMs?: number;
+          phaseCounts?: { total?: number };
+          filesChanged?: number;
+          issueCounts?: { errors?: number };
+          eventCount?: number;
+          message?: string;
+        };
+
+        if (data.status === "aborted" || data.status === "error") {
+          const icon = data.status === "aborted" ? "⊘" : "✗";
+          const color = data.status === "aborted" ? "warning" : "error";
+          const lines: string[] = [
+            theme.fg(color, `${icon} ${data.status}`),
+          ];
+          if (data.message) {
+            lines.push(theme.fg("dim", `  ${data.message}`));
+          }
+          return new Text(lines.join("\n"), 0, 0);
+        }
+
+        const statusIcon =
+          data.status === "completed"
+            ? "✓"
+            : data.status === "failed"
+              ? "✗"
+              : "?";
+        const statusColor =
+          data.status === "completed"
+            ? "success"
+            : data.status === "failed"
+              ? "error"
+              : "muted";
+        const lines: string[] = [
+          theme.fg(statusColor, `${statusIcon} ${data.status ?? "unknown"}`),
+        ];
+
+        const phaseTotal = data.phaseCounts?.total ?? 0;
+        const filesChanged = data.filesChanged ?? 0;
+        const errors = data.issueCounts?.errors ?? 0;
+        const parts: string[] = [
+          theme.fg("dim", `${phaseTotal} phase(s)`),
+          theme.fg("dim", `${filesChanged} file(s) changed`),
+        ];
+        if (errors > 0) {
+          parts.push(theme.fg("error", `${errors} error(s)`));
+        } else {
+          parts.push(theme.fg("dim", "0 errors"));
+        }
+        lines.push(`  ${parts.join(theme.fg("dim", " · "))}`);
+
+        if (data.durationMs != null) {
+          const seconds = Math.round(data.durationMs / 1000);
+          const mins = Math.floor(seconds / 60);
+          const secs = seconds % 60;
+          const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+          lines.push(theme.fg("dim", `  ${timeStr}`));
+        }
+        if (data.monitorUrl) {
+          lines.push(theme.fg("accent", `  ${data.monitorUrl}`));
+        }
+
+        return new Text(lines.join("\n"), 0, 0);
+      } catch {
+        return new Text(theme.fg("muted", text.text), 0, 0);
+      }
     },
   });
 

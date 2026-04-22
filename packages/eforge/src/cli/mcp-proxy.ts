@@ -12,7 +12,7 @@ import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress } from '@eforge-build/client';
 import type {
   LatestRunResponse,
   EnqueueResponse,
@@ -20,6 +20,7 @@ import type {
   ConfigValidateResponse,
   DaemonStreamEvent,
   SessionSummary,
+  FollowCounters,
 } from '@eforge-build/client';
 
 declare const EFORGE_VERSION: string;
@@ -58,86 +59,12 @@ function sanitizeFlags(flags?: string[]): string[] | undefined {
 // Re-export for any consumers that imported from here
 export { ensureDaemon, daemonRequest, daemonRequestIfRunning };
 
-// --- eforge_follow event -> progress mapping ---
-
-/** Running counters accumulated across events in a single follow subscription. */
-export interface FollowCounters {
-  filesChanged: number;
-}
-
-/** Shape of a single MCP progress notification payload (minus `progressToken`). */
-export interface ProgressUpdate {
-  message: string;
-  /** Updated counters after this event; callers advance their own monotonic progress index. */
-  counters: FollowCounters;
-}
-
-/**
- * Map a daemon event to an MCP progress update. Returns `null` for events that
- * should be filtered (noisy `agent:*` events, low-severity review issues, or
- * any type not in the high-signal set).
- *
- * Callers pass the current `counters` and receive back the updated counters so
- * running totals (e.g. files changed) can be surfaced in the message.
- */
-export function eventToProgress(
-  event: DaemonStreamEvent,
-  counters: FollowCounters,
-): ProgressUpdate | null {
-  const type = event.type;
-  if (typeof type !== 'string') return null;
-
-  // Explicitly filter the noisy agent event family.
-  if (type.startsWith('agent:')) return null;
-
-  switch (type) {
-    case 'phase:start': {
-      const phase = (event.phase ?? event.command ?? event.planSet) as string | undefined;
-      const label = phase ?? 'unknown';
-      return { message: `Phase: ${label} starting`, counters };
-    }
-    case 'phase:end': {
-      const phase = (event.phase ?? event.command ?? event.planSet) as string | undefined;
-      const label = phase ?? 'unknown';
-      return { message: `Phase: ${label} complete`, counters };
-    }
-    case 'build:files_changed': {
-      const files = (event as { files?: unknown }).files;
-      const delta = Array.isArray(files) ? files.length : 0;
-      const nextCounters: FollowCounters = {
-        ...counters,
-        filesChanged: counters.filesChanged + delta,
-      };
-      return {
-        message: `Files changed: ${delta} (total ${nextCounters.filesChanged})`,
-        counters: nextCounters,
-      };
-    }
-    case 'review:issue': {
-      const severity = (event as { severity?: unknown }).severity;
-      if (severity !== 'high' && severity !== 'critical') return null;
-      const summary = ((event as { summary?: unknown }).summary
-        ?? (event as { description?: unknown }).description
-        ?? (event as { message?: unknown }).message
-        ?? 'review issue') as string;
-      return { message: `Issue (${severity}): ${summary}`, counters };
-    }
-    case 'build:failed': {
-      const planId = (event as { planId?: unknown }).planId as string | undefined;
-      const error = (event as { error?: unknown }).error as string | undefined;
-      const label = planId ? `${planId}: ${error ?? 'failed'}` : (error ?? 'failed');
-      return { message: `Build failed: ${label}`, counters };
-    }
-    case 'phase:error': {
-      const error = (event as { error?: unknown }).error as string | undefined;
-      return { message: `Phase error: ${error ?? 'failed'}`, counters };
-    }
-    default:
-      return null;
-  }
-}
-
-// --- End eforge_follow event mapping ---
+// `eventToProgress` and `FollowCounters` are imported from `@eforge-build/client`
+// so the MCP proxy and the Pi extension share a single source of truth for the
+// event -> progress mapping. See packages/client/src/event-to-progress.ts.
+// Re-export for any existing consumers of the previous in-file surface.
+export { eventToProgress };
+export type { FollowCounters };
 
 async function ensureGitignoreEntries(projectDir: string, entries: string[]): Promise<void> {
   const gitignorePath = join(projectDir, '.gitignore');

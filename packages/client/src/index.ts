@@ -34,6 +34,9 @@ export type {
   ParsedSseBlock,
 } from './session-stream.js';
 
+export { eventToProgress } from './event-to-progress.js';
+export type { FollowCounters, ProgressUpdate } from './event-to-progress.js';
+
 export type {
   HealthResponse,
   AutoBuildState,

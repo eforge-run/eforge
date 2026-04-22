@@ -130,10 +130,24 @@ After successful enqueue:
 > PRD enqueued (session: `{sessionId}`). The daemon will auto-build.
 >
 > The daemon formats your source into a PRD, selects a workflow profile, then compiles and builds. The pipeline varies by profile — errands skip straight to building, while excursions and expeditions go through planning and plan review first. Every profile gets blind code review (a separate agent with no builder context), merge, and post-merge validation.
->
-> Use `/eforge:status` for a quick inline status check.
 
 If the monitor is running, also include the monitor URL.
+
+### Step 6: Follow the Build
+
+Call the `eforge_follow` tool with `{ sessionId: "<sessionId>" }` using the `sessionId` returned from `eforge_build`.
+
+This is a long-running tool call: it blocks until the build completes and streams phase transitions, files-changed updates, and high/critical review issues as inline progress messages so the user sees live status. On completion it returns a final JSON summary with `status`, `phaseCounts`, `filesChanged`, `issueCounts`, `monitorUrl`, and `durationMs`.
+
+Report the final summary back to the user:
+
+> Build `{status}` — {phaseCounts.total} phases, {filesChanged} file(s) changed, {issueCounts.errors} error(s).
+>
+> Monitor: {monitorUrl}
+
+If `status` is `failed` or `error`, surface the error message from the response and suggest `/eforge:status` for more detail.
+
+If the user cancels or the tool is interrupted, acknowledge and point them at `/eforge:status` to re-check progress.
 
 ## Error Handling
 
