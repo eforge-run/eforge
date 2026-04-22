@@ -1,6 +1,6 @@
 {
   "name": "@eforge-build/client",
-  "version": "0.5.11",
+  "version": "0.5.12",
   "description": "Zero-dependency HTTP client for the eforge daemon. Implementation detail of @eforge-build/eforge - not intended for direct consumption.",
   "license": "Apache-2.0",
   "type": "module",
