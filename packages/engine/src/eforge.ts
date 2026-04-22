@@ -1002,11 +1002,16 @@ export class EforgeEngine {
       if (options.verbose) args.push('--verbose');
       args.push('--no-monitor');
 
-      // Use the current Node binary + the current CLI entrypoint so the child
-      // is guaranteed to be the same build as the parent. Spawning bare
-      // `eforge` from PATH would risk parent/child version skew (the exit
-      // code contract could be interpreted differently on each side).
-      const cliEntrypoint = process.argv[1];
+      // Use the current Node binary + the CLI entrypoint so the child is
+      // guaranteed to be the same build as the parent. Spawning bare `eforge`
+      // from PATH would risk parent/child version skew (the exit code contract
+      // could be interpreted differently on each side).
+      //
+      // Prefer EFORGE_CLI_PATH — the CLI sets this when forking the daemon so
+      // the in-process watcher can still locate the CLI even though its own
+      // argv[1] points at the monitor's server-main. Fall back to argv[1] for
+      // the direct-CLI path (e.g. `eforge run --queue --watch`).
+      const cliEntrypoint = process.env.EFORGE_CLI_PATH ?? process.argv[1];
       const child = cliEntrypoint
         ? spawn(process.execPath, [cliEntrypoint, ...args], { cwd, stdio: 'ignore' })
         : spawn('eforge', args, { cwd, stdio: 'ignore' });

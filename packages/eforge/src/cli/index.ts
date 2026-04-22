@@ -703,10 +703,17 @@ export function createProgram(abortController?: AbortController): Command {
         process.exit(1);
       }
 
+      // Pass the CLI path through to the daemon so its in-process watcher
+      // can spawn `queue exec` children against the CLI (argv[1] in the
+      // daemon points at server-main.js, not the CLI).
+      const env = { ...process.env };
+      if (process.argv[1]) env.EFORGE_CLI_PATH = process.argv[1];
+
       const child = fork(serverMainPath, [dbPath, String(preferredPort), cwd, '--persistent'], {
         detached: true,
         stdio: 'ignore',
         execArgv: [...process.execArgv, '--disable-warning=ExperimentalWarning'],
+        env,
       });
 
       child.on('error', (err) => {
