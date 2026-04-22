@@ -1,0 +1,39 @@
+name: revert-eforge-build-to-fire-and-forget-in-claude-code
+description: Revert the Claude Code /eforge:build skill to fire-and-forget
+  behavior by removing the blocking eforge_follow call, while keeping Pi's skill
+  behavior intact.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-revert-follow-in-plugin
+    name: Revert Claude Code build skill to fire-and-forget
+    depends_on: []
+    branch: revert-eforge-build-to-fire-and-forget-in-claude-code/plugin-revert
+    build: &a1
+      - implement
+    review: &a2
+      strategy: single
+      perspectives:
+        - general
+      maxRounds: 1
+      evaluatorStrictness: lenient
+pipeline:
+  scope: errand
+  compile:
+    - planner
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This PRD is a trivial, two-file revert: remove a section from a
+    markdown skill file (eforge-plugin/skills/build/build.md), tweak one success
+    message, and bump the plugin version in plugin.json. No code logic, no tests
+    affected, no API changes. The scope is explicitly enumerated and tightly
+    bounded, with 'Out of scope' clearly fencing off everything else. This is
+    the textbook errand case: single-purpose, low-risk, markdown + version bump.
+    A single planner + implement pass is sufficient; heavy review cycles,
+    doc-update, or test stages would be pure overhead. Review config is minimal
+    (single pass, lenient) to satisfy the stage schema without adding meaningful
+    gating."
