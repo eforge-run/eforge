@@ -5,7 +5,7 @@ disable-model-invocation: true
 
 # /eforge:status
 
-Quick inline status check — queries the eforge daemon via MCP tools for current run state and queue contents.
+Quick inline status check — queries the eforge daemon for current run state and queue contents.
 
 ## Workflow
 
@@ -63,7 +63,7 @@ Then offer to follow the running session inline:
 
 > Would you like me to follow this build and stream live progress? (yes / no)
 
-If the user agrees, call `mcp__eforge__eforge_follow` with `{ sessionId: "<sessionId>" }` using the `sessionId` from Step 1. The tool blocks until the build completes and streams phase transitions, files-changed updates, and high/critical review issues as progress notifications. On completion, report the final summary (`status`, `phaseCounts`, `filesChanged`, `issueCounts`, `monitorUrl`).
+If the user agrees, call the `mcp__eforge__eforge_follow` tool with `{ sessionId: "<sessionId>" }` using the `sessionId` from Step 1. The tool blocks until the build completes and streams phase transitions, files-changed updates, and high/critical review issues as progress messages. On completion, report the final summary (`status`, `phaseCounts`, `filesChanged`, `issueCounts`, `monitorUrl`).
 
 If the status is `completed` or `failed`:
 - **Completed**: "All plans completed successfully. Post-merge validation was included in the run."
@@ -73,8 +73,8 @@ If the status is `completed` or `failed`:
 
 | Condition | Action |
 |-----------|--------|
-| MCP tool returns error | Show the error, suggest running `eforge daemon start` manually |
-| Daemon not running | The MCP proxy auto-starts the daemon; if it still fails, suggest running `eforge daemon start` manually |
+| Tool returns error | Show the error, suggest running `eforge daemon start` manually |
+| Daemon not running | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
 | No config found | Tell the user: "No eforge config found. Run `/eforge:init` to initialize eforge in this project." |
 | Response is malformed | Report parse error, suggest running `eforge status` CLI directly |
 

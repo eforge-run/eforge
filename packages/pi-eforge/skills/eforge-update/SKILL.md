@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # /eforge:update
 
-Check for available eforge updates and walk through updating the npm package, restarting the daemon, and updating the Pi package.
+Check for available eforge updates and walk through updating the npm package, restarting the daemon, and updating the <!-- parity-skip-start -->Pi package<!-- parity-skip-end -->.
 
 ## Workflow
 
@@ -55,6 +55,7 @@ Then call the `eforge_daemon` tool with `{ action: "start" }`.
 
 After the daemon restarts, run `npx -y @eforge-build/eforge --version` to confirm the running version. If `newCliVersion` was not set in Step 4 (npx path), save this as `newCliVersion`.
 
+<!-- parity-skip-start -->
 ### Step 6: Update the Pi Package
 
 Tell the user:
@@ -68,6 +69,7 @@ Tell the user:
 > This will update all non-pinned packages including eforge.
 
 If the user installed via a local path (for development), remind them to pull the latest source and rebuild instead.
+<!-- parity-skip-end -->
 
 ### Step 7: Report Summary
 
@@ -78,7 +80,9 @@ Report the update results:
 > | Component | Old Version | New Version |
 > |-----------|-------------|-------------|
 > | npm package | v{currentVersion} | v{newCliVersion} |
+<!-- parity-skip-start -->
 > | Pi package | _(update via `pi update`)_ | _(latest)_ |
+<!-- parity-skip-end -->
 > | Daemon | _(restarted)_ | _(running new version)_ |
 
 ## Error Handling
@@ -95,9 +99,9 @@ Report the update results:
 
 | Skill | Command | When to suggest |
 |-------|---------|----------------|
-| Init | `eforge_init` | No eforge config found in the project |
-| Build | `eforge_build` | User wants to enqueue work for the daemon to build |
-| Config | `eforge_config` | User wants to view, edit, or validate the eforge config |
-| Plan | `eforge_plan` | User wants to plan changes before building |
-| Status | `eforge_status` | User wants to check build progress or queue state |
-| Restart | `eforge_restart` | User wants to restart the eforge daemon |
+| Init | `/eforge:init` | No eforge config found in the project |
+| Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
+| Config | `/eforge:config` | User wants to view, edit, or validate the eforge config |
+| Plan | `/eforge:plan` | User wants to plan changes before building |
+| Status | `/eforge:status` | User wants to check build progress or queue state |
+| Restart | `/eforge:restart` | User wants to restart the eforge daemon |

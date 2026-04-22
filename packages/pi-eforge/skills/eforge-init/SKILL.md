@@ -6,7 +6,9 @@ disable-model-invocation: true
 
 # /eforge:init
 
+<!-- parity-skip-start -->
 Initialize eforge in this project. Detects project context, asks the user for provider and model preferences, then creates a named backend profile under `eforge/backends/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.).
+<!-- parity-skip-end -->
 
 ## Workflow
 
@@ -24,6 +26,7 @@ If `eforge/config.yaml` already exists, also read its current `build.postMergeCo
 
 Present your suggested commands to the user briefly: "I'd suggest these postMergeCommands based on your project: ..." and ask if they look right. Accept corrections.
 
+<!-- parity-skip-start -->
 ### Step 1.5: Pick provider and model
 
 Since Pi is the backend:
@@ -38,6 +41,7 @@ Call the `eforge_init` tool with:
 - `postMergeCommands`: the commands from Step 1 (only applied when creating a new config - the tool preserves existing config formatting when the file already exists)
 - `provider`: the provider from Step 1.5
 - `maxModel`: the model ID from Step 1.5
+<!-- parity-skip-end -->
 
 The tool will create a named backend profile under `eforge/backends/`, activate it via `eforge/.active-backend`, and write `eforge/config.yaml` with only team-wide settings (no `backend:` field).
 

@@ -87,6 +87,7 @@ After the user responds, incorporate their answers into the working source and p
 
 ### Step 4: Confirm Source Preview
 
+<!-- parity-skip-start -->
 Call the `eforge_confirm_build` tool with `{ source: "<the complete working source text>" }`. This presents an interactive TUI overlay where the user can review the source (rendered as Markdown) and select confirm, edit, or cancel from a keyboard-navigable list.
 
 For **file path sources** (Branch A from Step 1), pass a brief summary of the file contents as the source text (not the full file), and note the file path in the summary.
@@ -96,6 +97,7 @@ The tool returns a JSON object with a `choice` field. Handle each value:
 - **`"confirm"`** - Proceed to **Step 5**
 - **`"edit"`** - Ask the user what they'd like to revise, incorporate their changes, then call `eforge_confirm_build` again with the updated source
 - **`"cancel"`** - Acknowledge the cancellation and stop
+<!-- parity-skip-end -->
 
 ### Step 5: Enqueue & Report
 

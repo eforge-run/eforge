@@ -153,7 +153,7 @@ If no, remind the user they can switch later with `/eforge:backend <name>`.
 | Invalid profile name | Surface the daemon error (names must match `[A-Za-z0-9._-]+`) |
 | Profile already exists | Offer to retry with `overwrite: true` |
 | Provider or model not found | Suggest rerunning Step 3 or Step 4 with a different choice |
-| MCP tool connection failure | The MCP proxy auto-starts the daemon; if it still fails, suggest `eforge daemon start` manually |
+| Tool connection failure | The daemon auto-starts; if it still fails, suggest `eforge daemon start` manually |
 
 ## Related Skills
 

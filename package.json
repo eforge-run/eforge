@@ -14,7 +14,7 @@
     "build": "pnpm -r build",
     "build:ui": "pnpm --filter @eforge-build/monitor-ui build",
     "dev:monitor": "pnpm --filter @eforge-build/monitor-ui dev",
-    "test": "vitest run",
+    "test": "node scripts/check-skill-parity.mjs && vitest run",
     "test:watch": "vitest",
     "type-check": "pnpm -r type-check",
     "release": "node scripts/bump-version.mjs",

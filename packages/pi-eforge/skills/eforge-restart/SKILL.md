@@ -38,7 +38,9 @@ If the user explicitly requests a forced restart (even with active builds), call
 
 | Error | Action |
 |-------|--------|
+<!-- parity-skip-start -->
 | Tool unavailable | Warn that eforge tools are not available; suggest checking the extension is loaded |
+<!-- parity-skip-end -->
 | Active build detected | Abort the restart; tell the user to wait until all builds complete before retrying, or use force restart |
 | Restart fails | Show error output; suggest running `/eforge:restart` again or checking daemon logs |
 

@@ -5,6 +5,33 @@
 // so plugin-form (`mcp__eforge__eforge_<x>`, `/eforge:<name>`) matches
 // Pi-form (`eforge_<x>`, `eforge_<name>`), then diffs the remaining narrative.
 // Exits 0 on full match across all pairs; 1 on any divergence.
+//
+// Normalization rules beyond plain tool-reference alignment:
+//
+//   1. `<!-- parity-skip-start --> ... <!-- parity-skip-end -->` blocks are
+//      stripped on both sides. This is the escape hatch for genuine
+//      platform-affordance divergence — e.g., Pi's `eforge_confirm_build`
+//      TUI overlay vs the plugin's plain-text preview + confirm/edit/cancel
+//      prompt, or `/plugin update eforge@eforge` vs `pi update`. Wrap only
+//      the minimum number of lines that legitimately cannot be unified;
+//      everything outside the markers must match post-normalization.
+//
+//      IMPORTANT: Content inside `parity-skip-*` markers must describe the
+//      *owning* platform only. A plugin file (`eforge-plugin/**`) must not
+//      contain Pi-specific content inside a skip block, and a Pi file
+//      (`packages/pi-eforge/**`) must not contain Claude-Code-plugin-specific
+//      content inside a skip block. Skip blocks tolerate divergence, not
+//      duplication — they are not a place to mirror the other platform's
+//      narrative. Because the HTML comments render nothing, duplicated
+//      skip blocks produce ungrammatical output and mislead agents reading
+//      the file. Each file should carry only its own platform's Step /
+//      table row / inline phrase inside a skip block.
+//
+//   2. A leading Pi-side `> **Note:** In Pi, ...` paragraph is stripped on
+//      the Pi side only. These notes explain that Pi additionally exposes
+//      a richer native interactive command (overlay-driven) and the SKILL
+//      file serves as a model-readable fallback. They don't apply to the
+//      Claude Code plugin, so the narrative beneath them must still match.
 
 import { readFileSync, existsSync } from "node:fs";
 import { resolve, dirname } from "node:path";
@@ -50,12 +77,33 @@ function stripFrontmatter(text) {
   return lines.slice(end + 1).join("\n");
 }
 
+// Strip `<!-- parity-skip-start --> ... <!-- parity-skip-end -->` blocks
+// (including the marker lines and a single trailing blank line if present).
+// Used on both sides to gate legitimate platform-affordance content.
+function stripSkipBlocks(text) {
+  // Multiline, non-greedy; also consume the newline after the end marker.
+  return text.replace(
+    /<!--\s*parity-skip-start\s*-->[\s\S]*?<!--\s*parity-skip-end\s*-->\n?/g,
+    "",
+  );
+}
+
+// Strip a leading Pi-side `> **Note:** In Pi, ...` paragraph (single
+// blockquote paragraph plus the blank line that follows). Only applied
+// to Pi bodies — the plugin never has these.
+function stripPiNoteBlock(text) {
+  return text.replace(
+    /^(?:[ \t]*\n)*> \*\*Note:\*\* In Pi,[^\n]*\n\n?/,
+    "",
+  );
+}
+
 // Normalize plugin-style tool references into Pi-style so bodies can be
 // compared byte-for-byte once frontmatter is gone.
 //   mcp__eforge__eforge_<x>  →  eforge_<x>
 //   /eforge:<name>           →  eforge_<name>
 function normalizePluginBody(text) {
-  return text
+  return stripSkipBlocks(text)
     .replace(/mcp__eforge__eforge_([a-zA-Z0-9_-]+)/g, "eforge_$1")
     .replace(/\/eforge:([a-zA-Z0-9_-]+)/g, (_, name) =>
       // Convert the `-` in command names (e.g. backend-new) to `_`
@@ -69,8 +117,9 @@ function normalizePluginBody(text) {
 // Pi bodies: `/eforge:<name>` occasionally appears in prose; keep the same
 // normalization so both sides converge.
 function normalizePiBody(text) {
-  return text.replace(/\/eforge:([a-zA-Z0-9_-]+)/g, (_, name) =>
-    `eforge_${name.replace(/-/g, "_")}`,
+  return stripPiNoteBlock(stripSkipBlocks(text)).replace(
+    /\/eforge:([a-zA-Z0-9_-]+)/g,
+    (_, name) => `eforge_${name.replace(/-/g, "_")}`,
   );
 }
 
@@ -113,8 +162,11 @@ for (const { plugin, pi } of SKILL_PAIRS) {
   const pluginRaw = readFileSync(pluginPath, "utf8");
   const piRaw = readFileSync(piPath, "utf8");
 
-  const pluginBody = normalizePluginBody(stripFrontmatter(pluginRaw)).trimEnd();
-  const piBody = normalizePiBody(stripFrontmatter(piRaw)).trimEnd();
+  // Trim both ends — frontmatter stripping leaves a leading newline on the
+  // plugin side that the Pi-note stripper incidentally consumes on the Pi
+  // side. Trimming is simpler than normalizing whitespace at both boundaries.
+  const pluginBody = normalizePluginBody(stripFrontmatter(pluginRaw)).trim();
+  const piBody = normalizePiBody(stripFrontmatter(piRaw)).trim();
 
   checked++;
 

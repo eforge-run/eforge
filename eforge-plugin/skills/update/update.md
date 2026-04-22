@@ -5,7 +5,7 @@ disable-model-invocation: true
 
 # /eforge:update
 
-Check for available eforge updates and walk through updating the npm package, restarting the daemon, and updating the Claude Code plugin.
+Check for available eforge updates and walk through updating the npm package, restarting the daemon, and updating the <!-- parity-skip-start -->Claude Code plugin<!-- parity-skip-end -->.
 
 ## Workflow
 
@@ -48,12 +48,13 @@ After the install completes, run `npx -y @eforge-build/eforge --version` again t
 
 - If the status is anything other than `'running'`, proceed to stop and restart the daemon:
 
-Call the `mcp__eforge__eforge_daemon` tool with `action: "stop"`.
+Call the `mcp__eforge__eforge_daemon` tool with `{ action: "stop" }`.
 
-Then call the `mcp__eforge__eforge_daemon` tool with `action: "start"`.
+Then call the `mcp__eforge__eforge_daemon` tool with `{ action: "start" }`.
 
 After the daemon restarts, run `npx -y @eforge-build/eforge --version` to confirm the running version. If `newCliVersion` was not set in Step 4 (npx path), save this as `newCliVersion`.
 
+<!-- parity-skip-start -->
 ### Step 6: Update the Plugin
 
 Tell the user:
@@ -65,6 +66,7 @@ Tell the user:
 > This cannot be done automatically - skills cannot invoke slash commands.
 
 Wait for the user to confirm they've updated the plugin before proceeding.
+<!-- parity-skip-end -->
 
 ### Step 7: Report Summary
 
@@ -75,7 +77,9 @@ Report the update results:
 > | Component | Old Version | New Version |
 > |-----------|-------------|-------------|
 > | npm package | v{currentVersion} | v{newCliVersion} |
+<!-- parity-skip-start -->
 > | Plugin | _(updated via /plugin update)_ | _(latest)_ |
+<!-- parity-skip-end -->
 > | Daemon | _(restarted)_ | _(running new version)_ |
 
 ## Error Handling
@@ -95,5 +99,6 @@ Report the update results:
 | Init | `/eforge:init` | No eforge config found in the project |
 | Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
 | Config | `/eforge:config` | User wants to view, edit, or validate the eforge config |
+| Plan | `/eforge:plan` | User wants to plan changes before building |
 | Status | `/eforge:status` | User wants to check build progress or queue state |
 | Restart | `/eforge:restart` | User wants to restart the eforge daemon |

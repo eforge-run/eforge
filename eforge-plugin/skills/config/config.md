@@ -6,7 +6,7 @@ argument-hint: "[--init|--edit]"
 
 # /eforge:config
 
-Create or modify an `eforge/config.yaml` configuration file interactively. Supports two modes - init for new projects and edit for existing configs. Validation uses the eforge MCP server.
+Create or modify an `eforge/config.yaml` configuration file interactively. Supports two modes - init for new projects and edit for existing configs. Validation uses the eforge daemon.
 
 ## Mode Detection
 
@@ -27,7 +27,7 @@ If `eforge/config.yaml` already exists, ask the user whether they want to switch
 
 Read project context to understand the codebase:
 
-- **CLAUDE.md** - Project overview, tech stack, build commands
+- **AGENTS.md / CLAUDE.md** - Project overview, tech stack, build commands
 - **package.json** or equivalent - Dependencies, scripts
 - **Project structure** - Scan top-level directories
 
@@ -39,19 +39,19 @@ Walk the user through configuration sections, asking about each one. Only includ
 
 **Sections to cover:**
 
-1. **Backend selection** (required) - Which LLM backend: `claude-sdk` (uses Claude Code's built-in SDK) or `pi` (experimental, multi-provider via Pi SDK supporting OpenRouter, Anthropic, OpenAI, Google, etc.). Note: for richer backend management (named profiles with bundled model/tuning config, project or user scope), see `/eforge:backend:new`. The `backend:` field here acts as the project config fallback in the 5-step active profile precedence.
+1. **Backend selection** (required) - Which LLM backend: `claude-sdk` (uses Claude Code's built-in SDK) or `pi` (multi-provider via Pi SDK supporting OpenRouter, Anthropic, OpenAI, Google, etc.). Note: for richer backend management (named profiles with bundled model/tuning config, project or user scope), see `/eforge:backend:new`. The `backend:` field here acts as the project config fallback in the 5-step active profile precedence.
 2. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`
 3. **Model & thinking tuning** (opt-in - "Would you like to customize model or thinking settings? Most users keep defaults.") - Model references are objects: `{ id: "model-name" }` for Claude SDK, `{ provider: "provider-name", id: "model-name" }` for Pi. Model class overrides via `agents.models` (map class names `max`/`balanced`/`fast` to model ref objects), global `agents.model` override (bypasses class system), `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`xhigh`/`max`). Model resolution order: per-role model > global model > user class override > backend class default > fallback chain. Eight roles (`builder`, `review-fixer`, `validation-fixer`, `test-writer`, `tester`, `staleness-assessor`, `prd-validator`, `dependency-detector`) default to `balanced`; all others default to `max`. If a role's model class has no configured model, eforge walks up to more capable tiers, then down, before erroring. For `pi`, users should set at least `agents.models.max` (or `agents.model`) with `{ provider, id }` refs because Pi has no built-in model class defaults.
-4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false, auto-enabled when `ANTHROPIC_API_KEY` env var is set - passes `--bare` to Claude Code subprocess)
+4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false)
 5. **Per-role agent overrides** (opt-in - "Would you like to tune specific agent roles differently? Most users skip this.") - Override settings per agent role. Available roles grouped: planning (`planner`, `module-planner`), building (`builder`), review/eval (`reviewer`, `evaluator`, `plan-reviewer`, `plan-evaluator`, `architecture-reviewer`, `architecture-evaluator`, `cohesion-reviewer`, `cohesion-evaluator`), fixers (`validation-fixer`, `review-fixer`, `merge-conflict-resolver`), utilities (`formatter`, `doc-updater`, `test-writer`, `tester`, `staleness-assessor`, `prd-validator`, `dependency-detector`, `pipeline-composer`, `gap-closer`). Note: Eight roles (`builder`, `review-fixer`, `validation-fixer`, `test-writer`, `tester`, `staleness-assessor`, `prd-validator`, `dependency-detector`) default to `balanced`; all others default to `max`. Per-role options: `model`, `modelClass` (override which class the role belongs to: `max`/`balanced`/`fast`), `thinking`, `effort`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`, `maxTurns`, `promptAppend` (text appended to the agent's prompt - useful for project-specific rules like "flag raw SQL queries" for the reviewer).
 6. **Prompt customization** (opt-in - "Would you like to customize agent prompts?") - `agents.promptDir` points to a directory of `.md` files that shadow bundled prompts by name (e.g. `eforge/prompts/reviewer.md` replaces the built-in reviewer prompt). Per-role `promptAppend` is safer - it appends instructions without replacing the full prompt.
 7. **Profiles** - Custom workflow profiles or overrides of built-in profiles (`errand`, `excursion`, `expedition`). A profile defines compile stages only - build stages and review config are per-plan in orchestration.yaml. A profile can `extends` a built-in and override compile stages or agent settings.
 8. **Hooks** - Event-driven commands that run on specific eforge events (e.g. `session:start`, `phase:end`). Each hook has `event` (pattern), `command`, and optional `timeout`.
 9. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
 10. **Plugin settings** - Enable/disable plugin loading, include/exclude lists
-11. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue, CLI override: `--max-concurrent-builds`)
+11. **PRD queue** - Queue directory (`dir`), `autoBuild` (default true - daemon auto-builds after enqueue), `watchPollIntervalMs` (default 5000ms), and top-level `maxConcurrentBuilds` (default 2 - max concurrent PRD builds from the queue)
 12. **Daemon** (opt-in - "Would you like to customize daemon behavior?") - `idleShutdownMs` (default 7200000 = 2 hours, set to 0 to run forever)
-13. **Pi backend** (conditional - only if user chose `backend: pi` in step 1) - `thinkingLevel` (`off`/`low`/`medium`/`high`/`xhigh`), `extensions` (auto-discover from `.pi/extensions/`), `compaction` (context compaction threshold), and `retry` config. Authentication usually comes from env vars or `~/.pi/agent/auth.json`. Model selection uses `agents.model` or `agents.models.*` with `{ provider, id }` refs (provider is part of each model ref, not a separate config field). Note: experimental and untested.
+13. **Pi backend** (conditional - only if user chose `backend: pi` in step 1) - `thinkingLevel` (`off`/`low`/`medium`/`high`/`xhigh`), `extensions` (auto-discover from `.pi/extensions/`), `compaction` (context compaction threshold), and `retry` config. Authentication usually comes from env vars or `~/.pi/agent/auth.json`. Model selection uses `agents.model` or `agents.models.*` with `{ provider, id }` refs (provider is part of each model ref, not a separate config field).
 
 For each section, explain what it controls and suggest values based on the project context gathered in Step 2. Skip sections the user isn't interested in.
 
@@ -129,7 +129,7 @@ agents:
   permissionMode: bypass               # bypass or default
   settingSources:                      # Which settings files agents load
     - project
-  bare: false                          # Pass --bare to Claude Code (auto-true when ANTHROPIC_API_KEY set)
+  bare: false                          # Bare mode
   # --- Model class system ---
   # models:                            # Map model classes to model refs
   #   max:
@@ -202,7 +202,7 @@ profiles:
       - planner
       - plan-review-cycle
 
-# Pi backend (experimental - only used when backend: pi)
+# Pi backend (only used when backend: pi)
 # pi:
 #   thinkingLevel: medium              # 'off', 'low', 'medium', 'high', 'xhigh'
 #   extensions:
@@ -234,7 +234,7 @@ profiles:
 | `mcp__eforge__eforge_config` validate returns errors | Show errors, offer to fix |
 | User provides invalid profile stage name | Warn and suggest valid stage names |
 | YAML syntax error in existing file | Report the error, offer to recreate |
-| MCP tool connection failure | The MCP proxy auto-starts the daemon; if it still fails, suggest running `eforge daemon start` manually |
+| Daemon connection failure | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |
 
 ## Related Skills
 
@@ -244,6 +244,7 @@ profiles:
 | Backend | `/eforge:backend` | User wants to list, inspect, or switch backend profiles |
 | Backend (new) | `/eforge:backend:new` | User wants to create a new backend profile (project or user scope) |
 | Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
+| Plan | `/eforge:plan` | User wants to plan changes before building |
 | Status | `/eforge:status` | User wants to check build progress or queue state |
 | Restart | `/eforge:restart` | User wants to restart the eforge daemon |
 | Update | `/eforge:update` | User wants to check for or install eforge updates |

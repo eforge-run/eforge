@@ -5,7 +5,9 @@ argument-hint: "[--force] [--migrate]"
 
 # /eforge:init
 
+<!-- parity-skip-start -->
 Initialize eforge in this project. Presents a form to select a backend, provider, and model, then creates a named backend profile under `eforge/backends/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.).
+<!-- parity-skip-end -->
 
 ## Workflow
 
@@ -23,6 +25,7 @@ If `eforge/config.yaml` already exists, also read its current `build.postMergeCo
 
 Present your suggested commands to the user briefly: "I'd suggest these postMergeCommands based on your project: ..." and ask if they look right. Accept corrections.
 
+<!-- parity-skip-start -->
 ### Step 1.5: Pick backend, provider, and model
 
 1. **Backend kind**: Ask the user to choose between `claude-sdk` (Claude Code's built-in SDK) or `pi` (multi-provider via Pi SDK). Default to `claude-sdk`.
@@ -31,9 +34,10 @@ Present your suggested commands to the user briefly: "I'd suggest these postMerg
 
 ### Step 2: Call the tool
 
-Call `mcp__eforge__eforge_init` with:
+Call the `mcp__eforge__eforge_init` tool with:
 - `force: true` if `$ARGUMENTS` contains `--force` or `force`
 - `postMergeCommands`: the commands from Step 1 (only applied when creating a new config - the tool preserves existing config formatting when the file already exists)
+<!-- parity-skip-end -->
 
 The tool will create a named backend profile under `eforge/backends/`, activate it via `eforge/.active-backend`, and write `eforge/config.yaml` with only team-wide settings (no `backend:` field).
 
@@ -59,6 +63,7 @@ Once the tool completes successfully, inform the user:
 | Config | `/eforge:config` | User wants to view, edit, or validate the eforge config |
 | Backend | `/eforge:backend` | User wants to inspect or switch backend profiles |
 | Backend (new) | `/eforge:backend:new` | User wants to create a personal backend profile |
+| Plan | `/eforge:plan` | User wants to plan changes before building |
 | Status | `/eforge:status` | User wants to check build progress or queue state |
 | Restart | `/eforge:restart` | User wants to restart the eforge daemon |
 | Update | `/eforge:update` | User wants to check for or install eforge updates |

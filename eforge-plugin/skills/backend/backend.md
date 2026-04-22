@@ -75,7 +75,7 @@ When a profile name is resolved, the profile file is looked up project-first, th
 |-----------|--------|
 | Profile name does not exist | Show the daemon error and list available profiles |
 | No `eforge/backends/` directory | Suggest `/eforge:backend:new` to create the first profile |
-| MCP tool connection failure | The MCP proxy auto-starts the daemon; if it still fails, suggest `eforge daemon start` manually |
+| Tool connection failure | The daemon auto-starts; if it still fails, suggest `eforge daemon start` manually |
 | No config found | Tell the user: "No eforge config found. Run `/eforge:init` to initialize eforge in this project." |
 
 ## Related Skills
