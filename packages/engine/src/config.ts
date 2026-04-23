@@ -385,19 +385,6 @@ export async function findConfigFile(startDir: string): Promise<string | null> {
     dir = parent;
   }
 
-  // Check for legacy eforge.yaml at startDir only
-  const legacyCandidate = resolve(startDir, 'eforge.yaml');
-  try {
-    await access(legacyCandidate);
-    console.error(
-      `[eforge] Found legacy config at ${legacyCandidate}. ` +
-      `Please move it to eforge/config.yaml. ` +
-      `Run: mkdir -p eforge && mv eforge.yaml eforge/config.yaml`,
-    );
-  } catch {
-    // no legacy config either
-  }
-
   return null;
 }
 
@@ -501,12 +488,12 @@ export class ConfigMigrationError extends Error {
 /**
  * Parse and validate a raw YAML object into a partial EforgeConfig.
  * Uses zod schema for validation — invalid fields are dropped and
- * a warning is logged to stderr so users get feedback on typos.
+ * a warning is returned so users get feedback on typos.
  *
  * @param context  `'config'` (default) for config.yaml parsing — rejects and strips `backend:`.
  *                 `'profile'` for profile file parsing — keeps `backend:`.
  */
-export function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
+export function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): { config: PartialEforgeConfig; warnings: string[] } {
   // Config.yaml context: reject backend: field (hard break — must migrate)
   if (context === 'config' && data.backend !== undefined) {
     throw new ConfigMigrationError(
@@ -518,13 +505,13 @@ export function parseRawConfig(data: Record<string, unknown>, context: 'config' 
 
   const result = partialEforgeConfigSchema.safeParse(data);
   if (result.success) {
-    return stripUndefinedSections(result.data);
+    return { config: stripUndefinedSections(result.data), warnings: [] };
   }
-  // Log validation errors so users know about typos/invalid values
-  console.error('eforge config warning: some fields were invalid and will be ignored:\n' + z.prettifyError(result.error));
+  // Collect validation errors so callers can surface them to users
+  const warning = 'eforge config warning: some fields were invalid and will be ignored:\n' + z.prettifyError(result.error);
   // Parse again with passthrough to salvage valid fields —
   // safeParse is all-or-nothing per property, so re-parse each section independently
-  return parseRawConfigFallback(data, context);
+  return { config: parseRawConfigFallback(data, context), warnings: [warning] };
 }
 
 /**
@@ -688,7 +675,8 @@ export async function loadUserConfig(
     if (!data || typeof data !== 'object') {
       return {};
     }
-    return parseRawConfig(data as Record<string, unknown>);
+    const { config } = parseRawConfig(data as Record<string, unknown>);
+    return config;
   } catch (err) {
     // Re-throw migration errors so callers surface a hard error
     if (err instanceof ConfigMigrationError) throw err;
@@ -704,12 +692,33 @@ export async function loadUserConfig(
  * When an active backend profile is found (via `eforge/.active-backend`
  * marker), the profile is merged on top of the project config before
  * env-var resolution.
+ *
+ * Returns `{ config, warnings }` where `warnings` is a list of user-facing
+ * diagnostic messages about invalid config fields or migration issues.
+ * Consumers with an active event stream should yield `config:warning` events;
+ * bootstrap consumers (CLI startup, daemon startup) should write to stderr.
  */
-export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
+export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; warnings: string[] }> {
   const globalConfig = await loadUserConfig();
+  const allWarnings: string[] = [];
 
   const startDir = cwd ?? process.cwd();
   const configPath = await findConfigFile(startDir);
+
+  // Check for legacy eforge.yaml and surface a migration warning
+  if (!configPath) {
+    const legacyCandidate = resolve(startDir, 'eforge.yaml');
+    try {
+      await access(legacyCandidate);
+      allWarnings.push(
+        `[eforge] Found legacy config at ${legacyCandidate}. ` +
+        `Please move it to eforge/config.yaml. ` +
+        `Run: mkdir -p eforge && mv eforge.yaml eforge/config.yaml`,
+      );
+    } catch {
+      // no legacy config either
+    }
+  }
 
   let projectConfig: PartialEforgeConfig = {};
   if (configPath) {
@@ -717,7 +726,9 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
       const raw = await readFile(configPath, 'utf-8');
       const data = parseYaml(raw);
       if (data && typeof data === 'object') {
-        projectConfig = parseRawConfig(data as Record<string, unknown>);
+        const { config, warnings } = parseRawConfig(data as Record<string, unknown>);
+        projectConfig = config;
+        allWarnings.push(...warnings);
       }
     } catch (err) {
       // Re-throw migration errors so callers surface a hard error
@@ -731,7 +742,8 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
   if (configPath) {
     const configDir = dirname(configPath);
     try {
-      const { name } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
+      const { name, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
+      allWarnings.push(...warnings);
       if (name) {
         const result = await loadBackendProfile(configDir, name);
         if (result) {
@@ -745,7 +757,7 @@ export async function loadConfig(cwd?: string): Promise<EforgeConfig> {
 
   const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
   const merged = profileConfig ? mergePartialConfigs(baseMerged, profileConfig) : baseMerged;
-  return resolveConfig(merged);
+  return { config: resolveConfig(merged), warnings: allWarnings };
 }
 
 // ---------------------------------------------------------------------------
@@ -768,9 +780,6 @@ const ACTIVE_BACKEND_MARKER = '.active-backend';
 
 /** Profile subdirectory inside the eforge config directory. */
 const BACKENDS_SUBDIR = 'backends';
-
-/** Track marker warnings already emitted to keep them one-shot per process. */
-const _staleMarkerWarnings = new Set<string>();
 
 function profilePath(configDir: string, name: string): string {
   return resolve(configDir, BACKENDS_SUBDIR, `${name}.yaml`);
@@ -846,45 +855,46 @@ export async function getConfigDir(cwd?: string): Promise<string | null> {
  *    referenced profile file exists in either project or user scope.
  * 2. User marker `~/.config/eforge/.active-backend` — user-level dev-local override.
  * 3. Otherwise no profile is applied.
+ *
+ * Returns `{ name, source, warnings }` where `warnings` carries any diagnostic
+ * messages (e.g. stale marker warnings). Consumers should surface these to the user.
  */
 export async function resolveActiveProfileName(
   configDir: string,
   projectConfig: PartialEforgeConfig,
   userConfig?: PartialEforgeConfig,
-): Promise<{ name: string | null; source: ActiveProfileSource }> {
+): Promise<{ name: string | null; source: ActiveProfileSource; warnings: string[] }> {
+  const warnings: string[] = [];
+
   // Step 1: Project marker
   const projectMarkerName = await readMarkerName(markerPath(configDir));
 
   if (projectMarkerName !== null) {
     if (await profileExistsInAnyScope(configDir, projectMarkerName)) {
-      return { name: projectMarkerName, source: 'local' };
+      return { name: projectMarkerName, source: 'local', warnings };
     }
-    // Marker is stale — log one-shot warning, then attempt fallbacks
-    const key = `${configDir}:${projectMarkerName}`;
-    if (!_staleMarkerWarnings.has(key)) {
-      _staleMarkerWarnings.add(key);
-      console.error(
-        `[eforge] Active backend marker ${markerPath(configDir)} points at ` +
-        `"${projectMarkerName}" but no profile file exists in project or user scope. ` +
-        `Falling back to next available source.`,
-      );
-    }
+    // Marker is stale — collect warning, then attempt fallbacks
+    warnings.push(
+      `[eforge] Active backend marker ${markerPath(configDir)} points at ` +
+      `"${projectMarkerName}" but no profile file exists in project or user scope. ` +
+      `Falling back to next available source.`,
+    );
     // Try user marker as fallback
     const userMarker = await readMarkerName(userMarkerPath());
     if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
-      return { name: userMarker, source: 'user-local' };
+      return { name: userMarker, source: 'user-local', warnings };
     }
-    return { name: null, source: 'missing' };
+    return { name: null, source: 'missing', warnings };
   }
 
   // Step 2: User marker
   const userMarker = await readMarkerName(userMarkerPath());
   if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
-    return { name: userMarker, source: 'user-local' };
+    return { name: userMarker, source: 'user-local', warnings };
   }
 
   // Step 3: None
-  return { name: null, source: 'none' };
+  return { name: null, source: 'none', warnings };
 }
 
 /**
@@ -907,7 +917,8 @@ async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | 
   if (!data || typeof data !== 'object') {
     return {};
   }
-  return parseRawConfig(data as Record<string, unknown>, 'profile');
+  const { config } = parseRawConfig(data as Record<string, unknown>, 'profile');
+  return config;
 }
 
 /**
@@ -1022,7 +1033,8 @@ export async function setActiveBackend(
     const raw = await readFile(cfgPath, 'utf-8');
     const data = parseYaml(raw);
     if (data && typeof data === 'object') {
-      projectConfig = parseRawConfig(data as Record<string, unknown>);
+      const { config } = parseRawConfig(data as Record<string, unknown>);
+      projectConfig = config;
     }
   } catch {
     // no project config
@@ -1109,7 +1121,8 @@ export async function createBackendProfile(
     const raw = await readFile(cfgPath, 'utf-8');
     const data = parseYaml(raw);
     if (data && typeof data === 'object') {
-      projectConfig = parseRawConfig(data as Record<string, unknown>);
+      const { config } = parseRawConfig(data as Record<string, unknown>);
+      projectConfig = config;
     }
   } catch {
     // no project config

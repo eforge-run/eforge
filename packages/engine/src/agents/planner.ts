@@ -206,6 +206,8 @@ ${existingPlans}`;
       continuation_context: continuationContextText,
       scope: options.scope ?? '',
       parallelLanes: '',
+      profiles: '',
+      profileGeneration: '',
       clarification_schema: getClarificationSchemaYaml(),
       module_schema: getModuleSchemaYaml(),
       plan_frontmatter_schema: getPlanFrontmatterSchemaYaml(),

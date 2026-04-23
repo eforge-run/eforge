@@ -73,7 +73,8 @@ graph TD
 | Category | Purpose |
 |----------|---------|
 | `session:*` / `phase:*` | Lifecycle boundaries |
-| `plan:*` | Planning, plan review, architecture review, cohesion review, submission, error |
+| `config:*` | Config-load diagnostics (`config:warning` for malformed fields, unknown keys, stale markers) |
+| `plan:*` | Planning, plan review, architecture review, cohesion review, submission, error, and load-time `plan:warning` diagnostics |
 | `build:*` | Implementation, code review, fix, evaluate, doc-update, test |
 | `schedule:*` / `merge:*` | Orchestration scheduling and merge sequencing |
 | `expedition:*` | Expedition-specific planning phases |

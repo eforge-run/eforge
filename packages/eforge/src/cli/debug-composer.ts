@@ -86,7 +86,11 @@ async function loadConfigForProfile(
     const raw = await readFile(configPath, 'utf-8');
     const data = parseYaml(raw);
     if (data && typeof data === 'object') {
-      projectConfig = parseRawConfig(data as Record<string, unknown>);
+      const { config, warnings } = parseRawConfig(data as Record<string, unknown>);
+      projectConfig = config;
+      for (const warning of warnings) {
+        process.stderr.write(`${warning}\n`);
+      }
     }
   } catch {
     // fall through with empty projectConfig — mirrors loadConfig()'s
@@ -96,7 +100,11 @@ async function loadConfigForProfile(
   // Resolve profile name: explicit arg > active marker > error
   let resolvedName = profileName;
   if (!resolvedName) {
-    const active = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
+    const { name: activeName, warnings: activeWarnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
+    for (const warning of activeWarnings) {
+      process.stderr.write(`${warning}\n`);
+    }
+    const active = { name: activeName };
     if (!active.name) {
       throw new Error(
         `No backend profile specified and no active profile marker found. ` +

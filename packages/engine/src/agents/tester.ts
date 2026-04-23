@@ -62,10 +62,8 @@ export async function* runTestWriter(
     const vars: Record<string, string> = {
       plan_id: options.planId,
       plan_content: options.planContent,
+      implementation_context: options.implementationContext ?? '',
     };
-    if (options.implementationContext) {
-      vars.implementation_context = options.implementationContext;
-    }
 
     const prompt = await loadPrompt('test-writer', vars, options.promptAppend);
 

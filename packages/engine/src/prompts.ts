@@ -36,6 +36,11 @@ export function setPromptDir(dir: string | undefined, cwd: string): void {
  * 2. Bundled prompts directory (`packages/engine/src/prompts/`)
  *
  * After variable substitution, `append` text is concatenated to the end.
+ *
+ * Throws if any `{{variable}}` tokens remain unresolved after substitution.
+ * The error message includes the prompt filename and the deduplicated list of
+ * missing variable names, so callers are forced to supply every placeholder a
+ * prompt declares rather than silently shipping broken prompts to the model.
  */
 export async function loadPrompt(
   name: string,
@@ -68,6 +73,13 @@ export async function loadPrompt(
 
   const allVars: Record<string, string> = { attribution: ATTRIBUTION, ...vars };
   content = content.replace(/\{\{(\w+)\}\}/g, (match, key) => allVars[key] ?? match);
+
+  const unresolved = [...content.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g)].map(m => m[1]);
+  if (unresolved.length > 0) {
+    throw new Error(
+      `loadPrompt(${filename}): unresolved template variables: ${[...new Set(unresolved)].join(', ')}`,
+    );
+  }
 
   if (append) {
     content = content + '\n\n' + append;

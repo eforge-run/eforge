@@ -142,17 +142,15 @@ describe('prompt resolution', () => {
       expect(prompt).toBe('Hello Alice, your role is reviewer.');
     });
 
-    it('leaves unmatched variables as-is', async () => {
+    it('throws when template variables remain unresolved after substitution', async () => {
       const customContent = 'Hello {{name}}, {{unknown}} stays.';
       await writeFile(resolve(PROMPTS_DIR, 'test-unmatched.md'), customContent);
 
       setPromptDir('prompts', TEST_DIR);
 
-      const prompt = await loadPrompt('test-unmatched', {
-        name: 'Bob',
-      });
-
-      expect(prompt).toBe('Hello Bob, {{unknown}} stays.');
+      await expect(
+        loadPrompt('test-unmatched', { name: 'Bob' }),
+      ).rejects.toThrow('loadPrompt(test-unmatched.md): unresolved template variables: unknown');
     });
 
     it('always provides {{attribution}} variable', async () => {

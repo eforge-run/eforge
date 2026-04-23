@@ -153,13 +153,14 @@ export async function parsePlanFile(mdPath: string): Promise<PlanFile> {
 
   // Parse optional agents block with graceful fallback
   let agents: PlanFile['agents'] | undefined;
+  const planWarnings: string[] = [];
   if (frontmatter.agents !== undefined) {
     const agentsValidator = z.record(z.string(), agentTuningSchema);
     const agentsResult = agentsValidator.safeParse(frontmatter.agents);
     if (agentsResult.success) {
       agents = agentsResult.data as PlanFile['agents'];
     } else {
-      console.error(`[eforge] Plan file ${absPath}: malformed 'agents' block will be ignored: ${z.prettifyError(agentsResult.error)}`);
+      planWarnings.push(`[eforge] Plan file ${absPath}: malformed 'agents' block will be ignored: ${z.prettifyError(agentsResult.error)}`);
     }
   }
 
@@ -170,6 +171,7 @@ export async function parsePlanFile(mdPath: string): Promise<PlanFile> {
     branch: typeof frontmatter.branch === 'string' ? frontmatter.branch : '',
     migrations: Array.isArray(frontmatter.migrations) ? frontmatter.migrations : undefined,
     ...(agents && { agents }),
+    ...(planWarnings.length > 0 && { warnings: planWarnings }),
     body,
     filePath: absPath,
   };
@@ -177,11 +179,15 @@ export async function parsePlanFile(mdPath: string): Promise<PlanFile> {
 
 /**
  * Parse an orchestration.yaml file into OrchestrationConfig.
+ * Warnings about malformed optional fields are returned in the `warnings` property
+ * of the result. Callers with an active event stream should yield `plan:warning`
+ * events for each warning.
  */
 export async function parseOrchestrationConfig(yamlPath: string): Promise<OrchestrationConfig> {
   const absPath = resolve(yamlPath);
   const raw = await readFile(absPath, 'utf-8');
   const data = parseYaml(raw) as Record<string, unknown>;
+  const orchWarnings: string[] = [];
 
   if (!data.name || typeof data.name !== 'string') {
     throw new Error(`Orchestration config missing required 'name' field: ${absPath}`);
@@ -209,7 +215,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
           if (agentsResult.success) {
             agents = agentsResult.data as Record<string, { effort?: string; thinking?: object; rationale?: string }>;
           } else {
-            console.error(`[eforge] Plan '${id}': malformed 'agents' block in orchestration config will be ignored`);
+            orchWarnings.push(`[eforge] Plan '${id}': malformed 'agents' block in orchestration config will be ignored`);
           }
         }
 
@@ -248,6 +254,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
     pipeline: pipelineResult.data,
     plans: transitiveReduce(plans),
     ...(validate && validate.length > 0 && { validate }),
+    ...(orchWarnings.length > 0 && { warnings: orchWarnings }),
   };
 }
 

@@ -892,6 +892,10 @@ registerCompileStage({
             // plan file frontmatter, so parsePlanFile() returns empty dependsOn arrays.
             // Cross-reference orchestration.yaml to enrich the event.
             const orchConfig = await parseOrchestrationConfig(orchYamlPath);
+            // Yield plan:warning events for any orchestration config warnings
+            for (const warning of orchConfig.warnings ?? []) {
+              yield { timestamp: new Date().toISOString(), type: 'plan:warning', message: warning, source: 'parseOrchestrationConfig' };
+            }
             const enrichedPlans = backfillDependsOn(event.plans, orchConfig);
             ctx.plans = enrichedPlans;
             yield { ...event, plans: enrichedPlans };

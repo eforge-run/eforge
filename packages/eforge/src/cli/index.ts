@@ -109,7 +109,10 @@ async function consumeEvents(
 async function showDryRun(planSet: string): Promise<never> {
   const cwd = process.cwd();
   const { loadConfig } = await import('@eforge-build/engine/config');
-  const resolvedConfig = await loadConfig(cwd);
+  const { config: resolvedConfig, warnings: configWarnings } = await loadConfig(cwd);
+  for (const warning of configWarnings) {
+    process.stderr.write(`${warning}\n`);
+  }
   const configPath = resolve(cwd, resolvedConfig.plan.outputDir, planSet, 'orchestration.yaml');
   const validation = await validatePlanSet(configPath);
   if (!validation.valid) {
@@ -459,7 +462,10 @@ export function createProgram(abortController?: AbortController): Command {
     .action(async () => {
       const { loadQueue, isPrdRunning } = await import('@eforge-build/engine/prd-queue');
       const { loadConfig } = await import('@eforge-build/engine/config');
-      const config = await loadConfig();
+      const { config, warnings: configWarnings } = await loadConfig();
+      for (const warning of configWarnings) {
+        process.stderr.write(`${warning}\n`);
+      }
       const cwd = process.cwd();
       const queueDir = config.prdQueue.dir;
 
@@ -642,7 +648,10 @@ export function createProgram(abortController?: AbortController): Command {
     .action(async () => {
       const { loadConfig } = await import('@eforge-build/engine/config');
       const { stringify } = await import('yaml');
-      const resolved = await loadConfig();
+      const { config: resolved, warnings: configWarnings } = await loadConfig();
+      for (const warning of configWarnings) {
+        process.stderr.write(`${warning}\n`);
+      }
       console.log(stringify(resolved));
     });
 

@@ -428,10 +428,14 @@ async function main(): Promise<void> {
   }
 
   // Load config before starting server so we can pass it for validation
-  let config: Awaited<ReturnType<typeof loadConfig>> | undefined;
+  let config: Awaited<ReturnType<typeof loadConfig>>['config'] | undefined;
   if (persistent) {
     try {
-      config = await loadConfig(cwd);
+      const { config: loadedConfig, warnings } = await loadConfig(cwd);
+      for (const warning of warnings) {
+        process.stderr.write(`[eforge] ${warning}\n`);
+      }
+      config = loadedConfig;
     } catch {
       // Config load failure — leave config undefined
     }
