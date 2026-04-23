@@ -1,3 +1,26 @@
+/**
+ * Reducer for eforge session run state.
+ *
+ * ## Action types
+ *
+ * ### `ADD_EVENT`
+ * Appends a single `EforgeEvent` to the event log and updates all derived
+ * aggregates (token counts, cost, plan statuses, agent threads, file changes,
+ * review issues, etc.) incrementally. Use for live SSE events received after
+ * the initial batch load.
+ *
+ * ### `BATCH_LOAD`
+ * Rebuilds the entire state from scratch by replaying a full array of stored
+ * events. Accepts an optional `serverStatus` that acts as an authoritative
+ * override for `isComplete`/`resultStatus` when the event array alone would
+ * leave those fields unset (e.g. the terminal `session:end` event was missed).
+ * Use for the initial HTTP snapshot or when loading a cached completed session.
+ *
+ * ### `RESET`
+ * Returns the initial empty state with freshly allocated mutable containers
+ * (`fileChanges: new Map()`, etc.). Use when the session changes to `null` or
+ * when the hook is cleaning up.
+ */
 import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, ProfileInfo, ReviewIssue } from './types';
 import type { PipelineStage } from './types';
 import { formatDuration, formatThinking } from './format';

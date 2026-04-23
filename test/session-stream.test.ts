@@ -266,6 +266,17 @@ describe('subscribeToSession', () => {
     }
   });
 
+  it("rejects with clear error when baseUrl: '' is used in a non-browser (node) runtime", async () => {
+    // In the Node.js test environment EventSource is not defined globally,
+    // so passing baseUrl: '' must reject immediately with the documented error.
+    await expect(
+      subscribeToSession('sess-browser-only', {
+        baseUrl: '',
+        onEvent: () => { /* unreached */ },
+      }),
+    ).rejects.toThrow("subscribeToSession: baseUrl: '' is only supported in browser runtimes");
+  });
+
   it('sends Last-Event-ID on reconnect to resume from the last observed id', async () => {
     const seenLastEventIds: Array<string | undefined> = [];
     const test = await startTestServer((req, res, idx) => {
