@@ -1,0 +1,77 @@
+name: hardening-12-pipeline-ts-refactor-and-eforge-build-client-boundary-decision
+description: Decompose the 2,080-line packages/engine/src/pipeline.ts into a
+  pipeline/ directory with named helpers (extract resolveAgentConfig,
+  validatePipeline, stage inner generators, git helpers, and an error
+  translator), and resolve the @eforge-build/client public-vs-internal ambiguity
+  by declaring it public with a stability policy (Option 1).
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-pipeline-refactor
+    name: Decompose pipeline.ts into pipeline/ directory
+    depends_on: []
+    branch: hardening-12-pipeline-ts-refactor-and-eforge-build-client-boundary-decision/pipeline-refactor
+    agents:
+      builder:
+        effort: xhigh
+        rationale: "Mechanical but very large refactor: 2,080-line file decomposed into
+          ~6 new files with strict no-behavior-change guarantee. Builder must
+          preserve every export, function signature, registration call, and
+          event order while moving code across files."
+      reviewer:
+        effort: high
+        rationale: Must verify zero behavior change across stage generators, register*
+          call ordering, and re-export surface. Subtle reordering or dropped
+          event yields would silently break the engine.
+    build: &a1
+      - implement
+      - - review-cycle
+        - doc-update
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+        - maintainability
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+  - id: plan-02-client-boundary-public
+    name: Declare @eforge-build/client public with stability policy
+    depends_on: []
+    branch: hardening-12-pipeline-ts-refactor-and-eforge-build-client-boundary-decision/client-boundary-public
+    build: *a1
+    review: *a2
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This PRD is a mechanical refactor of pipeline.ts plus a
+    documentation/metadata change in the client package - classic excursion
+    scope. The work touches multiple files (pipeline.ts plus new helper files
+    under packages/engine/src/pipeline/, plus packages/client/package.json and
+    README.md) but stays within two well-defined subsystems, and a single
+    planner session can enumerate all extractions and file moves without
+    delegated module planning. Compile uses planner + plan-review-cycle because
+    the refactor has explicit size/line-count acceptance criteria (no function
+    over ~80 lines, sub-functions under ~50 lines) and extraction boundaries
+    (stage context builders, git-helpers.ts, error translator) that benefit from
+    a plan quality gate before code changes. Build uses implement followed by
+    review-cycle parallel with doc-update: the PRD explicitly rewrites
+    packages/client/README.md (stability policy) and may require README notes
+    about the new pipeline/ directory layout, so doc-update pays off;
+    review-cycle (rather than a single review) is appropriate because this is a
+    pure structural refactor where behavior-preservation is the key risk and
+    iterative review catches subtle regressions. Review strictness is standard
+    (not strict - no security/data concerns; not lenient - behavior-change
+    regressions would be costly), with correctness and maintainability
+    perspectives targeted at verifying no semantic drift and that the extracted
+    helpers genuinely improve readability. maxRounds of 2 is sufficient for a
+    refactor where existing tests (agent-wiring, pipeline) already cover the
+    behavior contract."
