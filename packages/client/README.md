@@ -22,6 +22,8 @@ Zero-dependency HTTP client for the eforge daemon.
 
 The Pi extension (`packages/pi-eforge/`) cannot depend on the main `@eforge-build/eforge` package because it pulls in heavy engine dependencies (Claude SDK, build pipeline, etc.) that are unnecessary for a thin HTTP client. This zero-dependency package extracts the shared daemon wire protocol - lockfile operations, HTTP client helpers, and response type definitions - so both the MCP proxy and the Pi extension use the same typed client without duplicating code.
 
-## Note
+## Stability
 
-This is an internal contract package. Application consumers should depend on `@eforge-build/eforge` (CLI) or `@eforge-build/pi-eforge` (Pi extension) rather than taking a direct dependency on `@eforge-build/client`.
+- Public exports are stability-promised within a major version.
+- Breaking changes bump the major version and are noted in the release.
+- `DAEMON_API_VERSION` is bumped independently when the HTTP contract breaks.

@@ -1,7 +1,7 @@
 {
   "name": "@eforge-build/client",
   "version": "0.5.12",
-  "description": "Zero-dependency HTTP client for the eforge daemon. Implementation detail of @eforge-build/eforge - not intended for direct consumption.",
+  "description": "Shared types, route constants, and daemon client helpers consumed by the eforge CLI, Claude Code plugin, and Pi extension.",
   "license": "Apache-2.0",
   "type": "module",
   "exports": {
