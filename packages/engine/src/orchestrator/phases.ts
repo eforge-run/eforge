@@ -500,7 +500,7 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
           type: 'validation:command:timeout',
           command: cmd,
           timeoutMs: effectiveTimeoutMs,
-          pid: result.pid,
+          pid: result.pid ?? -1,
         };
         const output = `[timed out after ${effectiveTimeoutMs}ms]`;
         yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 124, output };

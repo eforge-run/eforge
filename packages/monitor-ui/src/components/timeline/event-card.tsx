@@ -188,7 +188,7 @@ function eventDetail(event: EforgeEvent): string | null {
     case 'validation:command:complete':
       return event.output || null;
     case 'validation:command:timeout':
-      return `Command killed after ${event.timeoutMs}ms (pid ${event.pid ?? 'n/a'}). The process group was terminated.`;
+      return `Command killed after ${event.timeoutMs}ms (pid ${event.pid}). The process group was terminated.`;
     case 'prd_validation:complete': {
       if (event.passed) return 'All PRD requirements satisfied.';
       const gapParts: string[] = [];
