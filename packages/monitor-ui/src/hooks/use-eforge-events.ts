@@ -1,7 +1,7 @@
 import { useReducer, useEffect, useRef, useState, useCallback } from 'react';
 import { eforgeReducer, initialRunState, type RunState } from '@/lib/reducer';
 import type { ConnectionStatus, EforgeEvent } from '@/lib/types';
-import { API_ROUTES, buildPath } from '@eforge-build/client';
+import { API_ROUTES, buildPath, subscribeToSession } from '@eforge-build/client';
 
 interface UseEforgeEventsResult {
   runState: RunState;
@@ -18,7 +18,6 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
   const [runState, dispatch] = useReducer(eforgeReducer, initialRunState);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [shutdownCountdown, setShutdownCountdown] = useState<number | null>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
   const cacheRef = useRef<Map<string, RunState>>(new Map());
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -61,124 +60,73 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
       return;
     }
 
-    // Close existing SSE connection
-    if (eventSourceRef.current) {
-      eventSourceRef.current.close();
-      eventSourceRef.current = null;
-    }
-
-    let cancelled = false;
+    const abort = new AbortController();
     setConnectionStatus('connecting');
 
-    // Batch-fetch all events via HTTP
-    fetch(buildPath(API_ROUTES.runState, { id: sessionId }))
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        return res.json() as Promise<RunStateResponse>;
-      })
-      .then((data) => {
-        if (cancelled) return;
+    (async () => {
+      // Initial HTTP snapshot (batch-load all events already stored by the daemon)
+      const res = await fetch(buildPath(API_ROUTES.runState, { id: sessionId }), { signal: abort.signal });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as RunStateResponse;
 
-        // Parse all events and dispatch as a single batch
-        const parsed: Array<{ event: EforgeEvent; eventId: string }> = [];
-        for (const ev of data.events) {
-          try {
-            parsed.push({ event: JSON.parse(ev.data), eventId: String(ev.id) });
-          } catch { /* skip unparseable */ }
-        }
+      // Parse all events and dispatch as a single batch
+      const parsed: Array<{ event: EforgeEvent; eventId: string }> = [];
+      for (const ev of data.events) {
+        try {
+          parsed.push({ event: JSON.parse(ev.data) as EforgeEvent, eventId: String(ev.id) });
+        } catch { /* skip unparseable */ }
+      }
 
-        dispatch({ type: 'BATCH_LOAD', events: parsed, serverStatus: data.status });
-        setConnectionStatus('connected');
+      dispatch({ type: 'BATCH_LOAD', events: parsed, serverStatus: data.status });
+      setConnectionStatus('connected');
 
-        const lastEventId = data.events.length > 0 ? data.events[data.events.length - 1].id : 0;
-        const isServerComplete = data.status === 'completed' || data.status === 'failed';
+      const isServerComplete = data.status === 'completed' || data.status === 'failed';
 
-        if (isServerComplete) {
-          // Session is done — cache it and skip SSE
-          const finalState = parsed.reduce(
-            (st, ev) => eforgeReducer(st, { type: 'ADD_EVENT', ...ev }),
-            { ...initialRunState, fileChanges: new Map() } as RunState,
-          );
-          cacheRef.current.set(sessionId, finalState);
-          return;
-        }
+      if (isServerComplete) {
+        // Session is done — cache it and skip SSE
+        const finalState = parsed.reduce(
+          (st, ev) => eforgeReducer(st, { type: 'ADD_EVENT', ...ev }),
+          { ...initialRunState, fileChanges: new Map() } as RunState,
+        );
+        cacheRef.current.set(sessionId, finalState);
+        return;
+      }
 
-        // Session is still active — open SSE for live events only
-        const es = new EventSource(buildPath(API_ROUTES.events, { runId: sessionId }));
-        eventSourceRef.current = es;
+      // Track the highest event id from the batch so we can skip replayed events
+      // on the first SSE connection (the daemon replays historical events when no
+      // Last-Event-ID header is sent).
+      const lastBatchEventId = data.events.length > 0 ? data.events[data.events.length - 1].id : null;
 
-        // Track which events we already have from batch load
-        let maxSeenId = lastEventId;
-
-        es.onmessage = (msg) => {
-          if (cancelled) return;
-          const msgId = parseInt(msg.lastEventId, 10);
-          // Skip events we already have from the batch
-          if (msgId <= maxSeenId) return;
-          maxSeenId = msgId;
-          try {
-            const event: EforgeEvent = JSON.parse(msg.data);
-            dispatch({ type: 'ADD_EVENT', event, eventId: msg.lastEventId });
-          } catch (e) {
-            console.error('Failed to parse event:', e);
+      // Session is still active — subscribe for live events via subscribeToSession
+      await subscribeToSession<EforgeEvent>(sessionId, {
+        baseUrl: '',
+        signal: abort.signal,
+        onEvent: (event, meta) => {
+          // Skip events already received via the batch load
+          if (lastBatchEventId !== null && meta.eventId !== undefined) {
+            if (parseInt(meta.eventId, 10) <= lastBatchEventId) return;
           }
-        };
-
-        // Named SSE events for shutdown countdown
-        es.addEventListener('monitor:shutdown-pending', (msg) => {
-          if (cancelled) return;
-          try {
-            const data = JSON.parse(msg.data) as { countdown: number };
-            startCountdownTick(data.countdown);
-          } catch {}
-        });
-        es.addEventListener('monitor:shutdown-cancelled', () => {
-          if (cancelled) return;
-          cancelCountdownTick();
-        });
-
-        es.onerror = () => {
-          if (!cancelled) setConnectionStatus('connecting');
-        };
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        console.error('Failed to fetch run state:', err);
-        setConnectionStatus('disconnected');
-        // Fallback to SSE-only for backward compat
-        dispatch({ type: 'RESET' });
-        const es = new EventSource(buildPath(API_ROUTES.events, { runId: sessionId }));
-        eventSourceRef.current = es;
-        es.onopen = () => { if (!cancelled) setConnectionStatus('connected'); };
-        es.onmessage = (msg) => {
-          if (cancelled) return;
-          try {
-            const event: EforgeEvent = JSON.parse(msg.data);
-            dispatch({ type: 'ADD_EVENT', event, eventId: msg.lastEventId });
-          } catch (e) {
-            console.error('Failed to parse event:', e);
+          dispatch({ type: 'ADD_EVENT', event, eventId: meta.eventId ?? '' });
+        },
+        onNamedEvent: (name, payload) => {
+          if (name === 'monitor:shutdown-pending') {
+            try {
+              const parsed = JSON.parse(payload) as { countdown: number };
+              startCountdownTick(parsed.countdown);
+            } catch { /* ignore malformed payload */ }
+          } else if (name === 'monitor:shutdown-cancelled') {
+            cancelCountdownTick();
           }
-        };
-        es.addEventListener('monitor:shutdown-pending', (msg) => {
-          if (cancelled) return;
-          try {
-            const data = JSON.parse(msg.data) as { countdown: number };
-            startCountdownTick(data.countdown);
-          } catch {}
-        });
-        es.addEventListener('monitor:shutdown-cancelled', () => {
-          if (cancelled) return;
-          cancelCountdownTick();
-        });
-        es.onerror = () => { if (!cancelled) setConnectionStatus('connecting'); };
+        },
       });
+    })().catch((err: unknown) => {
+      if (abort.signal.aborted) return;
+      console.error('subscribeToSession failed:', err);
+      setConnectionStatus('disconnected');
+    });
 
     return () => {
-      cancelled = true;
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-        eventSourceRef.current = null;
-      }
+      abort.abort();
       cancelCountdownTick();
     };
   }, [sessionId, startCountdownTick, cancelCountdownTick]);

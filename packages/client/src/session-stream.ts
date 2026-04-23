@@ -17,6 +17,20 @@
  * Callers that want full `EforgeEvent` typing on the `onEvent` callback
  * parameterize the helper with the engine's `EforgeEvent` type at the call
  * site; this module defines only a minimal structural shape.
+ *
+ * ## Transport selection
+ *
+ * `connect()` branches on `typeof EventSource !== 'undefined'`:
+ *   - **Browser runtime**: uses `fetch` + `ReadableStream` for manual SSE
+ *     parsing. This gives full control over the `event:` field (enabling
+ *     `onNamedEvent`), `Last-Event-ID` replay, and `AbortSignal` support.
+ *     Pass `baseUrl: ''` to use same-origin relative URLs.
+ *   - **Node runtime**: uses `node:http`. Requires an absolute `baseUrl` or
+ *     a resolvable lockfile `cwd`. Passing `baseUrl: ''` in a non-browser
+ *     runtime throws a clear error.
+ *
+ * Both paths share the same reconnect/backoff counters, aggregate counters,
+ * `SessionSummary` construction, and settlement logic.
  */
 
 import http from 'node:http';
@@ -69,16 +83,20 @@ export interface SessionSummary {
 export interface SubscribeOptions<E extends DaemonStreamEvent = DaemonStreamEvent> {
   /**
    * Called for every event received, including the terminal `session:end`.
-   * Invocations are synchronous with SSE data parsing - do not throw.
+   * The second `meta` argument carries the SSE event id so consumers can
+   * store it alongside the event (e.g. for `ADD_EVENT` dispatches that
+   * require a stable eventId). Invocations are synchronous with SSE data
+   * parsing - do not throw.
    */
-  onEvent: (event: E) => void;
+  onEvent: (event: E, meta: { eventId?: string }) => void;
   /** Optional convenience hook invoked with the final summary on `session:end`. */
   onEnd?: (summary: SessionSummary) => void;
   /** Aborts the subscription. Rejects the returned promise with `AbortError`. */
   signal?: AbortSignal;
   /**
    * Explicit daemon base URL (e.g. `http://127.0.0.1:3737`). Takes precedence
-   * over `cwd`. Required in tests; production callers typically pass `cwd`.
+   * over `cwd`. Pass `''` to use same-origin relative URLs — browser runtimes
+   * only (see transport selection in the module JSDoc).
    */
   baseUrl?: string;
   /**
@@ -88,16 +106,26 @@ export interface SubscribeOptions<E extends DaemonStreamEvent = DaemonStreamEven
   cwd?: string;
   /** Hard cap on reconnect attempts. Default 10. */
   maxReconnects?: number;
+  /**
+   * Called for named SSE events — those with an `event:` field in the SSE
+   * wire format (e.g. `monitor:shutdown-pending`, `monitor:shutdown-cancelled`).
+   * These are distinct from the JSON `EforgeEvent` messages delivered via
+   * `onEvent`. `name` is the value of the SSE `event:` field; `data` is the
+   * raw `data:` payload string. Do not throw from this callback.
+   */
+  onNamedEvent?: (name: string, data: string) => void;
 }
 
-/** One parsed SSE block: a single `data:` payload with optional `id:`. */
+/** One parsed SSE block: a single `data:` payload with optional `id:` and `event:`. */
 export interface ParsedSseBlock {
   id?: string;
   data?: string;
+  /** The SSE `event:` field value, if present. */
+  event?: string;
 }
 
 /**
- * Parse an SSE wire chunk into discrete `{ id, data }` blocks. Supports
+ * Parse an SSE wire chunk into discrete `{ id, data, event }` blocks. Supports
  * `\r\n`, `\r`, and `\n` line terminators per the SSE spec.
  *
  * Exported for reuse by `mcp-proxy.ts` (rewired in plan-02). Only blocks
@@ -110,6 +138,7 @@ export function parseSseChunk(chunk: string): ParsedSseBlock[] {
   for (const block of blocks) {
     if (!block.trim()) continue;
     let id: string | undefined;
+    let eventType: string | undefined;
     const dataLines: string[] = [];
     for (const line of block.split('\n')) {
       if (line.startsWith('id:')) {
@@ -118,16 +147,21 @@ export function parseSseChunk(chunk: string): ParsedSseBlock[] {
       } else if (line.startsWith('data:')) {
         const dataVal = line.slice(5);
         dataLines.push(dataVal.startsWith(' ') ? dataVal.slice(1) : dataVal);
+      } else if (line.startsWith('event:')) {
+        const eventVal = line.slice(6);
+        eventType = eventVal.startsWith(' ') ? eventVal.slice(1) : eventVal;
       }
     }
     if (dataLines.length > 0) {
-      events.push({ id, data: dataLines.join('\n') });
+      events.push({ id, data: dataLines.join('\n'), event: eventType });
     }
   }
   return events;
 }
 
 function resolveBaseUrl(opts: { baseUrl?: string; cwd?: string }): string {
+  // Explicit same-origin opt-in for browser runtimes
+  if (opts.baseUrl === '') return '';
   if (opts.baseUrl) return opts.baseUrl.replace(/\/$/, '');
   if (!opts.cwd) {
     throw new Error('subscribeToSession: either `baseUrl` or `cwd` must be provided');
@@ -155,6 +189,7 @@ function resolveBaseUrl(opts: { baseUrl?: string; cwd?: string }): string {
  * connections but emits no data cannot escape the `maxReconnects` cap.
  *
  * `onEvent` is invoked for every event received, including `session:end`.
+ * The second `meta` argument carries the SSE `id:` value for the message.
  */
 export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEvent>(
   sessionId: string,
@@ -171,7 +206,16 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       return;
     }
 
+    // Guard: baseUrl: '' is only valid in browser runtimes
+    if (baseUrl === '' && typeof EventSource === 'undefined') {
+      reject(new Error(
+        "subscribeToSession: baseUrl: '' is only supported in browser runtimes",
+      ));
+      return;
+    }
+
     let request: http.ClientRequest | null = null;
+    let browserReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelay = INITIAL_RECONNECT_MS;
     let reconnectCount = 0;
@@ -193,6 +237,10 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       if (request) {
         request.destroy();
         request = null;
+      }
+      if (browserReader) {
+        browserReader.cancel().catch(() => {});
+        browserReader = null;
       }
       if (opts.signal) {
         opts.signal.removeEventListener('abort', onAbort);
@@ -243,7 +291,7 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       opts.signal.addEventListener('abort', onAbort, { once: true });
     }
 
-    function handleEvent(raw: string): void {
+    function handleEvent(raw: string, currentEventId?: string): void {
       let parsed: DaemonStreamEvent;
       try {
         parsed = JSON.parse(raw) as DaemonStreamEvent;
@@ -278,7 +326,7 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       }
 
       try {
-        opts.onEvent(parsed as E);
+        opts.onEvent(parsed as E, { eventId: currentEventId });
       } catch {
         // Callback exceptions must not disrupt the stream
       }
@@ -319,8 +367,108 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       }, delay);
     }
 
+    /**
+     * Browser transport path: uses `fetch` + `ReadableStream` for manual SSE
+     * parsing. This mirrors the node path's chunk-buffering loop but works in
+     * browser contexts where `node:http` is unavailable. Using `fetch` instead
+     * of native `EventSource` gives us access to the raw SSE wire text so we
+     * can parse the `event:` field and route named events to `onNamedEvent`.
+     */
+    function connectBrowser(): void {
+      if (settled) return;
+      const url = `${baseUrl}/api/events/${encodeURIComponent(sessionId)}`;
+      const fetchHeaders: Record<string, string> = { accept: 'text/event-stream' };
+      if (lastEventId !== undefined) {
+        fetchHeaders['last-event-id'] = lastEventId;
+      }
+
+      fetch(url, { headers: fetchHeaders, signal: opts.signal })
+        .then(async (response) => {
+          if (!response.ok) {
+            // 404/410 are terminal: the session does not exist or was dropped.
+            if (response.status === 404 || response.status === 410) {
+              settleReject(new Error(
+                `subscribeToSession: daemon returned ${response.status} for session ${sessionId}`,
+              ));
+              return;
+            }
+            scheduleReconnect();
+            return;
+          }
+
+          if (!response.body) {
+            scheduleReconnect();
+            return;
+          }
+
+          const reader = response.body.getReader();
+          browserReader = reader;
+          const decoder = new TextDecoder();
+          let buffer = '';
+
+          try {
+            while (!settled) {
+              const { done, value } = await reader.read();
+              if (done) break;
+
+              buffer += decoder.decode(value, { stream: true });
+
+              // SSE event boundaries may be either LF (`\n\n`) or CRLF (`\r\n\r\n`)
+              // per the spec. Find the last boundary so we process only complete blocks.
+              const boundaryRegex = /\r?\n\r?\n/g;
+              let lastBoundaryEnd = -1;
+              let match: RegExpExecArray | null;
+              while ((match = boundaryRegex.exec(buffer)) !== null) {
+                lastBoundaryEnd = match.index + match[0].length;
+              }
+              if (lastBoundaryEnd === -1) continue;
+              const complete = buffer.slice(0, lastBoundaryEnd);
+              buffer = buffer.slice(lastBoundaryEnd);
+
+              const blocks = parseSseChunk(complete);
+              for (const block of blocks) {
+                if (block.id !== undefined) lastEventId = block.id;
+                if (block.event !== undefined && block.data !== undefined) {
+                  // Named SSE event (has an `event:` field) — route to onNamedEvent
+                  try {
+                    opts.onNamedEvent?.(block.event, block.data);
+                  } catch {
+                    // Callback exceptions must not disrupt the stream
+                  }
+                } else if (block.data !== undefined) {
+                  handleEvent(block.data, lastEventId);
+                }
+                if (settled) return;
+              }
+            }
+          } catch {
+            // Reader errors (including cancellation via cleanup)
+          } finally {
+            browserReader = null;
+          }
+
+          if (!settled) scheduleReconnect();
+        })
+        .catch((err: unknown) => {
+          browserReader = null;
+          if (settled) return;
+          // AbortError from fetch means the signal fired; onAbort handles settlement
+          if (err instanceof Error && err.name === 'AbortError') return;
+          scheduleReconnect();
+        });
+    }
+
     function connect(): void {
       if (settled) return;
+
+      // Browser path: use fetch + ReadableStream for full SSE text parsing,
+      // supporting named events (event: field) and Last-Event-ID replay.
+      if (typeof EventSource !== 'undefined') {
+        connectBrowser();
+        return;
+      }
+
+      // Node path (uses node:http — requires absolute baseUrl)
       const url = `${baseUrl}/api/events/${encodeURIComponent(sessionId)}`;
       const headers: http.OutgoingHttpHeaders = { accept: 'text/event-stream' };
       if (lastEventId !== undefined) {
@@ -366,7 +514,16 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
           const blocks = parseSseChunk(complete);
           for (const block of blocks) {
             if (block.id !== undefined) lastEventId = block.id;
-            if (block.data !== undefined) handleEvent(block.data);
+            if (block.event !== undefined && block.data !== undefined) {
+              // Named SSE event (has an `event:` field) — route to onNamedEvent
+              try {
+                opts.onNamedEvent?.(block.event, block.data);
+              } catch {
+                // Callback exceptions must not disrupt the stream
+              }
+            } else if (block.data !== undefined) {
+              handleEvent(block.data, lastEventId);
+            }
             if (settled) return;
           }
         });
