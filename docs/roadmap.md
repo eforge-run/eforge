@@ -31,7 +31,6 @@
 - **Shared tool registry** — Factor tool definitions into `@eforge-build/client` so MCP proxy and Pi extension become thin adapters. Eliminates remaining ~400 lines of cross-package tool-definition duplication. Depends on schema library unification.
 - **Typed SSE events in client package** — Extract `EforgeEvent` wire-protocol types from `packages/engine/src/events.ts` into `@eforge-build/client`. Requires decoupling from engine-internal imports.
 - **Pi extension SSE event streaming** — Add SSE subscriber to Pi extension for live build progress via Pi `ExtensionAPI` channel.
-- **Monitor UI client adoption** — Port `packages/monitor-ui/src/lib/api.ts` to import response types from `@eforge-build/client`.
 - **TypeScript project references** — Adopt `tsconfig.json` `references` across workspace members for automatic topological ordering.
 
 ---
