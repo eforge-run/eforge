@@ -39,7 +39,6 @@ import {
   renderEvent,
   renderDryRun,
   renderLangfuseStatus,
-  stopAllSpinners,
 } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { formatCliError } from './errors.js';

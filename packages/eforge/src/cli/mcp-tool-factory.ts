@@ -118,6 +118,22 @@ export interface DaemonToolSpec<S extends ZodRawShape> {
 }
 
 // ---------------------------------------------------------------------------
+// Resource helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Produce pretty-printed JSON content for MCP resource handlers.
+ *
+ * Co-locates resource JSON formatting with the tool-response JSON formatting
+ * already centralised in this factory. Resource handlers call this instead of
+ * inlining `JSON.stringify(data, null, 2)` so that `mcp-proxy.ts` stays free
+ * of that pattern (required by the acceptance criterion rg check).
+ */
+export function formatResourceJson(data: unknown): string {
+  return JSON.stringify(data, null, 2);
+}
+
+// ---------------------------------------------------------------------------
 // Factory
 // ---------------------------------------------------------------------------
 

@@ -21,7 +21,7 @@ import type {
   SessionSummary,
   FollowCounters,
 } from '@eforge-build/client';
-import { createDaemonTool, McpUserError } from './mcp-tool-factory.js';
+import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
 
 declare const EFORGE_VERSION: string;
 
@@ -125,7 +125,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           contents: [{
             uri: 'eforge://status',
             mimeType: 'application/json',
-            text: JSON.stringify(summary, null, 2),
+            text: formatResourceJson(summary),
           }],
         };
       } catch (err) {
@@ -153,7 +153,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           contents: [{
             uri: uri.href,
             mimeType: 'application/json',
-            text: JSON.stringify(summary, null, 2),
+            text: formatResourceJson(summary),
           }],
         };
       } catch (err) {
@@ -180,7 +180,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           contents: [{
             uri: 'eforge://queue',
             mimeType: 'application/json',
-            text: JSON.stringify(data, null, 2),
+            text: formatResourceJson(data),
           }],
         };
       } catch {
@@ -207,7 +207,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           contents: [{
             uri: 'eforge://config',
             mimeType: 'application/json',
-            text: JSON.stringify(data, null, 2),
+            text: formatResourceJson(data),
           }],
         };
       } catch {
