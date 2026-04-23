@@ -1,6 +1,6 @@
 {
   "name": "@eforge-build/monitor",
-  "version": "0.5.12",
+  "version": "0.6.0",
   "description": "HTTP server and web dashboard for eforge builds. Implementation detail of @eforge-build/eforge - not intended for direct consumption.",
   "license": "Apache-2.0",
   "type": "module",
