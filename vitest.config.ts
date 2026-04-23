@@ -9,8 +9,8 @@ export default defineConfig({
     include: ['test/**/*.test.ts'],
     server: {
       deps: {
-        inline: [/^@eforge-build\//],
-        moduleDirectories: ['node_modules', 'packages/engine/node_modules'],
+        inline: [/^@eforge-build\//, /^@modelcontextprotocol\//],
+        moduleDirectories: ['node_modules', 'packages/engine/node_modules', 'packages/eforge/node_modules'],
       },
     },
   },
@@ -21,6 +21,16 @@ export default defineConfig({
       { find: '@eforge-build/monitor', replacement: resolve(root, 'packages/monitor/src/index.ts') },
       { find: /^@eforge-build\/monitor-ui\/(.*)$/, replacement: resolve(root, 'packages/monitor-ui/src/$1') },
       { find: '@eforge-build/client', replacement: resolve(root, 'packages/client/src/index.ts') },
+      // @modelcontextprotocol/sdk is installed in packages/eforge/node_modules only; map sub-paths
+      // to the ESM dist so test files can import from it directly.
+      {
+        find: /^@modelcontextprotocol\/sdk\/(.+)$/,
+        replacement: resolve(root, 'packages/eforge/node_modules/@modelcontextprotocol/sdk/dist/esm/$1'),
+      },
+      {
+        find: '@modelcontextprotocol/sdk',
+        replacement: resolve(root, 'packages/eforge/node_modules/@modelcontextprotocol/sdk/dist/esm/index.js'),
+      },
     ],
   },
 });

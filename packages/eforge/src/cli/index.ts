@@ -7,21 +7,17 @@ declare const EFORGE_VERSION: string;
 
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { QueueExecExitCode, queueExecExitCode } from '@eforge-build/engine/prd-queue';
-import {
-  validatePlanSet,
-  parseOrchestrationConfig,
-  resolveDependencyGraph,
-  validateRuntimeReadiness,
-} from '@eforge-build/engine/plan';
 import type { EforgeConfig, HookConfig } from '@eforge-build/engine/config';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { withHooks } from '@eforge-build/engine/hooks';
 import { withSessionId, withRunId, runSession } from '@eforge-build/engine/session';
-import { initDisplay, renderEvent, renderStatus, renderDryRun, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
+import { initDisplay, renderEvent, renderStatus, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { registerDebugComposerCommand } from './debug-composer.js';
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '@eforge-build/monitor';
 import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, removeLockfile, isAgentWorktreeCwd } from '@eforge-build/client';
+import { runOrDelegate } from './run-or-delegate.js';
+import { formatCliError } from './errors.js';
 
 const SHUTDOWN_TIMEOUT_MS = 5000;
 
@@ -106,34 +102,6 @@ async function consumeEvents(
   return result;
 }
 
-async function showDryRun(planSet: string): Promise<never> {
-  const cwd = process.cwd();
-  const { loadConfig } = await import('@eforge-build/engine/config');
-  const resolvedConfig = await loadConfig(cwd);
-  const configPath = resolve(cwd, resolvedConfig.plan.outputDir, planSet, 'orchestration.yaml');
-  const validation = await validatePlanSet(configPath);
-  if (!validation.valid) {
-    console.error(
-      `Validation failed:\n${validation.errors.map((e) => `  - ${e}`).join('\n')}`,
-    );
-    process.exit(1);
-  }
-  const config = await parseOrchestrationConfig(configPath);
-  const { waves, mergeOrder } = resolveDependencyGraph(config.plans);
-
-  // Runtime readiness warnings
-  const warnings = await validateRuntimeReadiness(cwd, config.plans);
-  if (warnings.length > 0) {
-    console.log('');
-    console.log(chalk.yellow('\u26a0 Runtime readiness warnings:'));
-    for (const warning of warnings) {
-      console.log(chalk.yellow(`  - ${warning}`));
-    }
-  }
-
-  renderDryRun(config, waves, mergeOrder);
-  process.exit(0);
-}
 
 export function createProgram(abortController?: AbortController): Command {
   const program = new Command();
@@ -254,152 +222,20 @@ export function createProgram(abortController?: AbortController): Command {
           return;
         }
 
-        // Default path: delegate to daemon when source is provided and no special flags
-        if (source && !options.foreground && !options.queue && !options.dryRun) {
-          try {
-            const { ensureDaemon, daemonRequest, API_ROUTES } = await import('@eforge-build/client');
-            const cwd = process.cwd();
-            await ensureDaemon(cwd);
-            const { data } = await daemonRequest(cwd, 'POST', API_ROUTES.enqueue, { source });
-            const result = data as { sessionId?: string };
-            const sessionId = result?.sessionId ?? 'unknown';
-            console.log(chalk.green(`PRD enqueued (session: ${sessionId}). Daemon will auto-build.`));
-
-            // Show monitor URL if daemon is running
-            const lock = readLockfile(cwd);
-            if (lock) {
-              if (lock.port !== 4567) {
-                console.log(chalk.green.bold(`  Monitor: http://localhost:${lock.port}`));
-              } else {
-                console.log(chalk.dim(`  Monitor: http://localhost:${lock.port}`));
-              }
-            }
-
-            process.exit(0);
-          } catch (err) {
-            console.error(chalk.yellow(`⚠ Daemon unavailable, falling back to foreground execution`));
-            console.error(chalk.dim(err instanceof Error ? err.message : String(err)));
-            // Fall through to in-process execution
-          }
-        }
-
         // Normal mode: source is required
         if (!source) {
           console.error(chalk.red('Error: <source> is required unless --queue is specified'));
           process.exit(1);
         }
 
-        initDisplay({ verbose: options.verbose });
-
-        const configOverrides = buildConfigOverrides(options);
-
-        const engine = await EforgeEngine.create({
-          onClarification: createClarificationHandler(options.auto ?? false),
-          onApproval: createApprovalHandler(options.auto ?? false),
-          ...(configOverrides && { config: configOverrides }),
-        });
-
-        // Phase 1: Enqueue — format and add to queue, capture file path and name
-        let enqueuedName: string | undefined;
-        let enqueueResult = 'completed' as 'completed' | 'failed' | 'skipped';
-
-        const enqueueSessionId = randomUUID();
-
-        await withMonitor(options.monitor === false, async (monitor) => {
-          const enqueueEvents = engine.enqueue(source!, {
-            name: options.name,
-            verbose: options.verbose,
-            abortController,
-          });
-
-          const wrapped = wrapEvents(
-            runSession(enqueueEvents, enqueueSessionId),
-            monitor,
-            engine.resolvedConfig.hooks,
-          );
-
-          for await (const event of wrapped) {
-            renderEvent(event);
-            if (event.type === 'enqueue:complete') {
-              enqueuedName = options.name ?? event.id;
-            }
-            if (event.type === 'session:end') {
-              enqueueResult = event.result.status;
-            }
-          }
-        });
-
-        if (enqueueResult === 'failed' || !enqueuedName) {
-          console.error(chalk.red('Enqueue failed'));
-          process.exit(1);
+        try {
+          const result = await runOrDelegate({ mode: 'build', source, options, abortController, onMonitor: (m) => { activeMonitor = m; } });
+          process.exit(result.code);
+        } catch (err) {
+          const { message, exitCode } = formatCliError(err);
+          console.error(chalk.red(`Error: ${message}`));
+          process.exit(exitCode);
         }
-
-        // --dry-run: compile only, then show execution plan
-        if (options.dryRun) {
-          // For dry-run, we need to compile the enqueued PRD to generate plans,
-          // then display the execution plan without building
-          let planSetName: string | undefined;
-          let compileResult: 'completed' | 'failed' | 'skipped' = 'completed';
-
-          await withMonitor(options.monitor === false, async (monitor) => {
-            const compileSessionId = randomUUID();
-
-            // Find the enqueued PRD file path from the queue
-            const { loadQueue } = await import('@eforge-build/engine/prd-queue');
-            const prds = await loadQueue(engine.resolvedConfig.prdQueue.dir, process.cwd());
-            const prd = prds.find((p) => p.id === enqueuedName || p.frontmatter.title === enqueuedName);
-            if (!prd) {
-              console.error(chalk.red(`Could not find enqueued PRD: ${enqueuedName}`));
-              process.exit(1);
-            }
-
-            const compileEvents = engine.compile(prd.filePath, {
-              auto: options.auto,
-              verbose: options.verbose,
-              name: options.name,
-              abortController,
-            });
-
-            const wrapped = wrapEvents(
-              runSession(compileEvents, compileSessionId),
-              monitor,
-              engine.resolvedConfig.hooks,
-            );
-
-            for await (const event of wrapped) {
-              renderEvent(event);
-              if (event.type === 'phase:start') {
-                planSetName = event.planSet;
-                renderLangfuseStatus(engine.resolvedConfig);
-              }
-              if (event.type === 'phase:end') {
-                compileResult = event.result.status;
-              }
-            }
-          });
-
-          if (planSetName && compileResult === 'completed') {
-            await showDryRun(planSetName);
-          }
-          process.exit(compileResult === 'completed' ? 0 : 1);
-        }
-
-        // Phase 2: Run queue to process the just-enqueued PRD
-        await withMonitor(options.monitor === false, async (monitor) => {
-          const queueEvents = engine.runQueue({
-            name: enqueuedName,
-            auto: options.auto,
-            verbose: options.verbose,
-            abortController,
-          });
-
-          const result = await consumeEvents(
-            wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks),
-            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-          );
-
-          process.exit(result === 'completed' ? 0 : 1);
-        });
       },
     );
 
@@ -509,38 +345,14 @@ export function createProgram(abortController?: AbortController): Command {
           pollInterval?: number;
         },
       ) => {
-        initDisplay({ verbose: options.verbose });
-
-        const configOverrides = buildConfigOverrides(options);
-
-        const engine = await EforgeEngine.create({
-          onClarification: createClarificationHandler(options.auto ?? false),
-          onApproval: createApprovalHandler(options.auto ?? false),
-          ...(configOverrides && { config: configOverrides }),
-        });
-
-        await withMonitor(options.monitor === false, async (monitor) => {
-          const queueOpts = {
-            name,
-            all: options.all,
-            auto: options.auto,
-            verbose: options.verbose,
-            abortController,
-            ...(options.pollInterval !== undefined && { pollIntervalMs: options.pollInterval }),
-          };
-
-          const queueEvents = options.watch
-            ? engine.watchQueue(queueOpts)
-            : engine.runQueue(queueOpts);
-
-          const result = await consumeEvents(
-            wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks),
-            { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
-          );
-
-          // In watch mode, abort is a clean exit
-          process.exit(options.watch ? 0 : (result === 'completed' ? 0 : 1));
-        });
+        try {
+          const result = await runOrDelegate({ mode: 'queue', name, options, abortController, onMonitor: (m) => { activeMonitor = m; } });
+          process.exit(result.code);
+        } catch (err) {
+          const { message, exitCode } = formatCliError(err);
+          console.error(chalk.red(`Error: ${message}`));
+          process.exit(exitCode);
+        }
       },
     );
 
