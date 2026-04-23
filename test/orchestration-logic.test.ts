@@ -8,6 +8,7 @@ import type { PlanRunner } from '@eforge-build/engine/orchestrator';
 import { saveState } from '@eforge-build/engine/state';
 import type { EforgeState, EforgeEvent, OrchestrationConfig, PlanState } from '@eforge-build/engine/events';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
+import { ModelTracker } from '@eforge-build/engine/model-tracker';
 import { useTempDir } from './test-tmpdir.js';
 
 // --- Helpers ---
@@ -424,6 +425,7 @@ describe('executePlans - build:failed handling', () => {
       recentlyMergedIds: [],
       featureBranchMerged: false,
       resumed: false,
+      modelTracker: new ModelTracker(),
     };
 
     const events: EforgeEvent[] = [];
@@ -490,6 +492,7 @@ describe('executePlans - build:failed handling', () => {
       recentlyMergedIds: [],
       featureBranchMerged: false,
       resumed: false,
+      modelTracker: new ModelTracker(),
     };
 
     for await (const _event of executePlans(ctx)) {
@@ -655,5 +658,136 @@ describe('initializeState', () => {
     expect(state.setName).toBe('new-set');
     expect(state.plans['plan-a'].status).toBe('pending');
     expect(state.plans['plan-b'].status).toBe('pending');
+  });
+});
+
+describe('executePlans - ModelTracker recording', () => {
+  const makeTempDir = useTempDir();
+
+  it('records agent:start models from planRunner stream into ctx.modelTracker', async () => {
+    const stateDir = makeTempDir();
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+
+    const state = initializeState(stateDir, config, '/tmp/repo').state;
+
+    // PlanRunner that emits three agent:start events: A, B, A (A is duplicated)
+    const planRunner: PlanRunner = async function* () {
+      yield { type: 'agent:start', planId: 'plan-a', agentId: 'agent-1', agent: 'builder' as const, model: 'A', backend: 'test', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'agent:start', planId: 'plan-a', agentId: 'agent-2', agent: 'builder' as const, model: 'B', backend: 'test', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'agent:start', planId: 'plan-a', agentId: 'agent-3', agent: 'builder' as const, model: 'A', backend: 'test', timestamp: new Date().toISOString() } as EforgeEvent;
+    };
+
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      mergePlan: async () => 'abc123',
+      reconcile: async () => ({ valid: [], recovered: [], orphaned: [] }),
+    } as unknown as WorktreeManager;
+
+    const modelTracker = new ModelTracker();
+    const ctx: PhaseContext = {
+      state,
+      config,
+      stateDir,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      featureBranchMerged: false,
+      resumed: false,
+      modelTracker,
+    };
+
+    for await (const _event of executePlans(ctx)) {
+      // drain all events
+    }
+
+    // Three agent:start events emitted: A, B, A — should deduplicate to 2 unique models
+    expect(ctx.modelTracker.size).toBe(2);
+    expect(ctx.modelTracker.toTrailer()).toBe('Models-Used: A, B');
+  });
+
+  it('isolates per-plan trackers across multiple plans', async () => {
+    const stateDir = makeTempDir();
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+        { id: 'plan-b', name: 'Plan B', dependsOn: ['plan-a'], branch: 'feature/plan-b', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+
+    const state = initializeState(stateDir, config, '/tmp/repo').state;
+
+    // plan-a uses model X, plan-b uses model Y — each plan should have its own tracker
+    const mergedPlanTrackers: Record<string, ModelTracker | undefined> = {};
+
+    const planRunner: PlanRunner = async function* (planId) {
+      const model = planId === 'plan-a' ? 'model-X' : 'model-Y';
+      yield { type: 'agent:start', planId, agentId: `agent-${planId}`, agent: 'builder' as const, model, backend: 'test', timestamp: new Date().toISOString() } as EforgeEvent;
+    };
+
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      mergePlan: async (planId: string, _plan: unknown, opts: { modelTracker?: ModelTracker }) => {
+        mergedPlanTrackers[planId] = opts.modelTracker;
+        return 'abc123';
+      },
+      reconcile: async () => ({ valid: [], recovered: [], orphaned: [] }),
+    } as unknown as WorktreeManager;
+
+    const modelTracker = new ModelTracker();
+    const ctx: PhaseContext = {
+      state,
+      config,
+      stateDir,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      featureBranchMerged: false,
+      resumed: false,
+      modelTracker,
+    };
+
+    for await (const _event of executePlans(ctx)) {
+      // drain
+    }
+
+    // Per-plan trackers should be isolated
+    expect(mergedPlanTrackers['plan-a']?.size).toBe(1);
+    expect(mergedPlanTrackers['plan-a']?.has('model-X')).toBe(true);
+    expect(mergedPlanTrackers['plan-a']?.has('model-Y')).toBe(false);
+
+    expect(mergedPlanTrackers['plan-b']?.size).toBe(1);
+    expect(mergedPlanTrackers['plan-b']?.has('model-Y')).toBe(true);
+    expect(mergedPlanTrackers['plan-b']?.has('model-X')).toBe(false);
+
+    // Shared ctx.modelTracker should have the union
+    expect(ctx.modelTracker.size).toBe(2);
+    expect(ctx.modelTracker.has('model-X')).toBe(true);
+    expect(ctx.modelTracker.has('model-Y')).toBe(true);
   });
 });

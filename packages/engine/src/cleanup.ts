@@ -10,6 +10,7 @@ import { promisify } from 'node:util';
 
 import type { EforgeEvent } from './events.js';
 import { forgeCommit, retryOnLock } from './git.js';
+import { composeCommitMessage } from './model-tracker.js';
 
 const exec = promisify(execFile);
 
@@ -53,7 +54,7 @@ export async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir:
     const commitMsg = prdFilePath
       ? `cleanup(${planSet}): remove plan files and PRD`
       : `cleanup(${planSet}): remove plan files after successful build`;
-    await forgeCommit(cwd, commitMsg);
+    await forgeCommit(cwd, composeCommitMessage(commitMsg));
 
   } catch (err) {
     // Non-fatal — ensure cleanup:complete always pairs with cleanup:start

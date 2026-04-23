@@ -10,6 +10,8 @@ import { promisify } from 'node:util';
 import type { EforgeEvent } from '../events.js';
 import type { BuildStageContext } from './types.js';
 import { forgeCommit } from '../git.js';
+import type { ModelTracker } from '../model-tracker.js';
+import { composeCommitMessage } from '../model-tracker.js';
 
 const exec = promisify(execFile);
 
@@ -160,8 +162,9 @@ export async function* emitFilesChanged(ctx: BuildStageContext): AsyncGenerator<
  * @param planSetName - Name of the plan set
  * @param planFilesCwd - Optional directory where plan files live (defaults to commitCwd)
  * @param outputDir - Optional output directory for plan files (defaults to 'eforge/plans')
+ * @param modelTracker - Optional tracker for Models-Used: commit trailer
  */
-export async function commitPlanArtifacts(commitCwd: string, planSetName: string, planFilesCwd?: string, outputDir?: string): Promise<void> {
+export async function commitPlanArtifacts(commitCwd: string, planSetName: string, planFilesCwd?: string, outputDir?: string, modelTracker?: ModelTracker): Promise<void> {
   const planDir = resolve(planFilesCwd ?? commitCwd, outputDir ?? 'eforge/plans', planSetName);
   // Skip silently if no plan files exist yet — happens when the planner exhausted
   // its turn budget before submitting. The original (max_turns) error must
@@ -172,5 +175,5 @@ export async function commitPlanArtifacts(commitCwd: string, planSetName: string
   // when artifacts were already committed by a previous continuation checkpoint)
   const { stdout: staged } = await exec('git', ['diff', '--cached', '--name-only'], { cwd: commitCwd });
   if (staged.trim().length === 0) return;
-  await forgeCommit(commitCwd, `plan(${planSetName}): initial planning artifacts`);
+  await forgeCommit(commitCwd, composeCommitMessage(`plan(${planSetName}): initial planning artifacts`, modelTracker));
 }

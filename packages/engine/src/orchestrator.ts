@@ -19,6 +19,7 @@ import {
 import { WorktreeManager } from './worktree-manager.js';
 import { executePlans, validate, prdValidate, finalize, type PhaseContext } from './orchestrator/phases.js';
 import { resumeState } from './orchestrator/plan-lifecycle.js';
+import { ModelTracker } from './model-tracker.js';
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -170,6 +171,7 @@ export class Orchestrator {
       mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, gapCloser: this.options.gapCloser,
       minCompletionPercent: this.options.minCompletionPercent ?? 75, worktreeManager: wm,
       failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, resumed, gapClosePerformed: false,
+      modelTracker: new ModelTracker(),
       shouldCleanup: this.options.shouldCleanup, cleanupPlanSet: this.options.cleanupPlanSet,
       cleanupOutputDir: this.options.cleanupOutputDir, cleanupPrdFilePath: this.options.cleanupPrdFilePath,
     };

@@ -19,6 +19,7 @@ pnpm type-check   # Type check without emitting
 ## Conventions
 
 - All engine commits use `forgeCommit()` from `packages/engine/src/git.ts` - this appends the `Co-Authored-By: forged-by-eforge` trailer. The helper accepts `(cwd, message, options?)` where `options` carries `paths?: string[]` (stage-and-commit subset) and `reuseMessage?: boolean` (rewrites `.git/MERGE_MSG` to include the trailer, then runs `git commit --no-edit` - used after merge-conflict resolution to preserve Git's preserved merge message). Do not use raw `exec('git', ['commit', ...])` in engine code outside of `git.ts`.
+- All engine commits produced during a build session also carry a `Models-Used: <model-id>, <model-id>` trailer (sorted lexicographically, no backend prefix, placed before the `Co-Authored-By: forged-by-eforge` trailer) when one or more agents were invoked. Emitted via `composeCommitMessage(body, modelTracker)` from `packages/engine/src/model-tracker.ts`. When no models were recorded (e.g. admin commits like enqueue, cleanup, retry), the trailer is omitted.
 - Provider SDK imports (`@anthropic-ai/claude-agent-sdk`, `@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`) are restricted to `packages/engine/src/backends/` - agent code uses the `AgentBackend` interface.
 - **Always bump the plugin version** in `eforge-plugin/.claude-plugin/plugin.json` when changing anything in the plugin. Plugin and npm package versions are independent.
 - **Do not bump the Pi package version** in `packages/pi-eforge/package.json`. It will be versioned with the npm package at publish time.

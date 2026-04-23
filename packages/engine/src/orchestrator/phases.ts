@@ -16,10 +16,10 @@ import { WorktreeManager } from '../worktree-manager.js';
 import { Semaphore, AsyncEventQueue } from '../concurrency.js';
 import type { PlanRunner, ValidationFixer, PrdValidator, GapCloser } from '../orchestrator.js';
 import type { MergeResolver } from '../worktree-ops.js';
-import { ATTRIBUTION } from '../git.js';
 import { cleanupPlanFiles } from '../cleanup.js';
 import { execWithTimeout } from '../exec-with-timeout.js';
 import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS } from '../config.js';
+import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
 
 /**
  * Shared context passed between phase functions.
@@ -54,6 +54,8 @@ export interface PhaseContext {
   featureBranchMerged: boolean;
   /** Whether this execution is resuming from a prior interrupted run */
   resumed: boolean;
+  /** Accumulates model IDs from agent:start events across all phases. Used for the final merge commit's Models-Used: trailer. */
+  modelTracker: ModelTracker;
   /** Whether to run cleanup on the feature branch before the final merge. */
   shouldCleanup?: boolean;
   /** Plan set name for cleanup commit message. */
@@ -220,6 +222,9 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
   // Track running plans: planId → Promise that resolves when the plan finishes
   const running = new Map<string, Promise<void>>();
 
+  // Per-plan model trackers: planId → ModelTracker (populated by observing agent:start events)
+  const perPlanTrackers = new Map<string, ModelTracker>();
+
   /**
    * Check if a plan is ready to start: pending status and all deps merged.
    */
@@ -240,6 +245,10 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
   const launchPlan = (planId: string): Promise<void> => {
     eventQueue.addProducer();
 
+    // Create a per-plan tracker to record models for this plan's squash-merge commit
+    const perPlanTracker = new ModelTracker();
+    perPlanTrackers.set(planId, perPlanTracker);
+
     const planPromise = (async () => {
       const plan = planMap.get(planId)!;
       let worktreePath: string | undefined;
@@ -258,6 +267,11 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         for await (const event of planRunner(planId, worktreePath, plan)) {
           if (event.type === 'build:failed' && event.planId === planId) {
             buildFailedError = event.error;
+          }
+          // Record agent:start events into per-plan and shared trackers
+          if (event.type === 'agent:start') {
+            perPlanTracker.record(event.model);
+            ctx.modelTracker.record(event.model);
           }
           eventQueue.push(event);
         }
@@ -386,6 +400,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
             mergeResolver: ctx.mergeResolver,
             recentlyMergedIds: ctx.recentlyMergedIds,
             planMap,
+            modelTracker: perPlanTrackers.get(planId),
           });
 
           transitionPlan(state, planId, 'merged');
@@ -529,6 +544,7 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     // Attempt fix if retries remain and a fixer is available
     if (attempt < maxRetries && validationFixer && !signal?.aborted) {
       for await (const event of validationFixer(mergeWorktreePath, failures, attempt + 1, maxRetries)) {
+        if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
         yield event;
       }
       // Loop continues to re-validate
@@ -559,6 +575,7 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
   let terminalEmitted = false;
   try {
     for await (const event of prdValidator(ctx.mergeWorktreePath)) {
+      if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
       yield event;
       if (event.type === 'prd_validation:complete') terminalEmitted = true;
 
@@ -572,7 +589,10 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
           saveState(stateDir, state);
         } else if (ctx.gapCloser && !ctx.gapClosePerformed) {
           try {
-            yield* ctx.gapCloser(ctx.mergeWorktreePath, event.gaps, event.completionPercent);
+            for await (const gapEvent of ctx.gapCloser(ctx.mergeWorktreePath, event.gaps, event.completionPercent)) {
+              if (gapEvent.type === 'agent:start') ctx.modelTracker.record(gapEvent.model);
+              yield gapEvent;
+            }
             ctx.gapClosePerformed = true;
           } catch (err) {
             if (err instanceof Error && err.name === 'AbortError') throw err;
@@ -665,10 +685,10 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       const prefix = config.mode === 'errand' ? 'fix' : 'feat';
       let commitMessage: string;
       if (config.plans.length === 1) {
-        commitMessage = `${prefix}(${config.name}): ${config.plans[0].name}\n\n${ATTRIBUTION}`;
+        commitMessage = composeCommitMessage(`${prefix}(${config.name}): ${config.plans[0].name}`, ctx.modelTracker);
       } else {
         const planList = config.plans.map((p) => `- ${p.id}: ${p.name}`).join('\n');
-        commitMessage = `${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}\n\n${ATTRIBUTION}`;
+        commitMessage = composeCommitMessage(`${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}`, ctx.modelTracker);
       }
       const commitSha = await ctx.worktreeManager.mergeToBase(config.baseBranch, commitMessage, ctx.mergeResolver);
       ctx.featureBranchMerged = true;
