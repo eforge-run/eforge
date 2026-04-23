@@ -167,6 +167,7 @@ const eforgeConfigBaseSchema = z.object({
   build: z.object({
     worktreeDir: z.string().optional(),
     postMergeCommands: z.array(z.string()).optional(),
+    postMergeCommandTimeoutMs: z.number().int().positive().optional(),
     maxValidationRetries: z.number().int().nonnegative().optional(),
     cleanupPlanFiles: z.boolean().optional(),
   }).optional(),
@@ -304,7 +305,7 @@ export interface EforgeConfig {
     /** Directory of .md files that shadow bundled prompts by name match. */
     promptDir?: string;
   };
-  build: { worktreeDir?: string; postMergeCommands?: string[]; maxValidationRetries: number; cleanupPlanFiles: boolean };
+  build: { worktreeDir?: string; postMergeCommands?: string[]; postMergeCommandTimeoutMs?: number; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
   plugins: PluginConfig;
   prdQueue: { dir: string; autoBuild: boolean; watchPollIntervalMs: number };
@@ -333,6 +334,9 @@ export const configYamlSchema = eforgeConfigBaseSchema.omit({ backend: true }).p
   }
 });
 
+/** Minimum allowed value for postMergeCommandTimeoutMs. Values below this are clamped. */
+export const MIN_POST_MERGE_COMMAND_TIMEOUT_MS = 10_000;
+
 export const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
   strategy: 'auto' as const,
   perspectives: Object.freeze(['code']) as unknown as string[],
@@ -344,7 +348,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   maxConcurrentBuilds: 2,
   langfuse: Object.freeze({ enabled: false, host: 'https://cloud.langfuse.com' }),
   agents: Object.freeze({ maxTurns: 30, maxContinuations: 3, permissionMode: 'bypass' as const, settingSources: ['project'] as string[], bare: false }),
-  build: Object.freeze({ worktreeDir: undefined, postMergeCommands: undefined, maxValidationRetries: 2, cleanupPlanFiles: true }),
+  build: Object.freeze({ worktreeDir: undefined, postMergeCommands: undefined, postMergeCommandTimeoutMs: 300_000, maxValidationRetries: 2, cleanupPlanFiles: true }),
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
   plugins: Object.freeze({ enabled: true }),
   prdQueue: Object.freeze({ dir: 'eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
@@ -424,6 +428,7 @@ export function resolveConfig(
     build: Object.freeze({
       worktreeDir: fileConfig.build?.worktreeDir ?? DEFAULT_CONFIG.build.worktreeDir,
       postMergeCommands: fileConfig.build?.postMergeCommands ?? DEFAULT_CONFIG.build.postMergeCommands,
+      postMergeCommandTimeoutMs: fileConfig.build?.postMergeCommandTimeoutMs ?? DEFAULT_CONFIG.build.postMergeCommandTimeoutMs,
       maxValidationRetries: fileConfig.build?.maxValidationRetries ?? DEFAULT_CONFIG.build.maxValidationRetries,
       cleanupPlanFiles: fileConfig.build?.cleanupPlanFiles ?? DEFAULT_CONFIG.build.cleanupPlanFiles,
     }),

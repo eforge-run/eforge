@@ -548,6 +548,13 @@ export function renderEvent(event: EforgeEvent): void {
       }
       break;
 
+    case 'validation:command:timeout':
+      failSpinner(
+        `validation:${event.command}`,
+        `${chalk.cyan(event.command)} ${chalk.red(`timed out after ${Math.round(event.timeoutMs / 1000)}s`)}`,
+      );
+      break;
+
     case 'validation:complete':
       if (event.passed) {
         console.log(chalk.green('\u2713 All validation commands passed'));

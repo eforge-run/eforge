@@ -18,6 +18,8 @@ import type { PlanRunner, ValidationFixer, PrdValidator, GapCloser } from '../or
 import type { MergeResolver } from '../worktree-ops.js';
 import { ATTRIBUTION } from '../git.js';
 import { cleanupPlanFiles } from '../cleanup.js';
+import { execWithTimeout } from '../exec-with-timeout.js';
+import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS } from '../config.js';
 
 /**
  * Shared context passed between phase functions.
@@ -33,6 +35,7 @@ export interface PhaseContext {
   signal?: AbortSignal;
   postMergeCommands?: string[];
   validateCommands?: string[];
+  postMergeCommandTimeoutMs?: number;
   validationFixer?: ValidationFixer;
   maxValidationRetries: number;
   mergeResolver?: MergeResolver;
@@ -458,10 +461,28 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
   if (!allMerged || allValidationCommands.length === 0 || signal?.aborted) return;
 
+  // Resolve effective timeout: clamp to floor and warn if below minimum.
+  let effectiveTimeoutMs = ctx.postMergeCommandTimeoutMs ?? 300_000;
+  let timeoutWarningEmitted = false;
+  if (effectiveTimeoutMs < MIN_POST_MERGE_COMMAND_TIMEOUT_MS) {
+    effectiveTimeoutMs = MIN_POST_MERGE_COMMAND_TIMEOUT_MS;
+    timeoutWarningEmitted = true;
+  }
+
   // Validation runs in the merge worktree (which already has featureBranch checked out)
   let passed = false;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    // Emit clamp warning once, before the first command on the first attempt.
+    if (attempt === 0 && timeoutWarningEmitted) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'config:warning' as const,
+        source: 'validate',
+        message: `postMergeCommandTimeoutMs is below the minimum (${MIN_POST_MERGE_COMMAND_TIMEOUT_MS}ms); clamped to floor.`,
+      } as EforgeEvent;
+    }
+
     yield { timestamp: new Date().toISOString(), type: 'validation:start', commands: allValidationCommands };
     const failures: Array<{ command: string; exitCode: number; output: string }> = [];
     let validationPassed = true;
@@ -471,19 +492,30 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
 
       yield { timestamp: new Date().toISOString(), type: 'validation:command:start', command: cmd };
 
-      try {
-        const { stdout, stderr } = await exec('sh', ['-c', cmd], { cwd: mergeWorktreePath });
-        const output = (stdout + stderr).trim();
-        yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 0, output };
-      } catch (err) {
-        const execErr = err as { code?: number | string; stdout?: string; stderr?: string; message?: string };
-        const exitCode = typeof execErr.code === 'number' ? execErr.code : 1;
-        const stdOutput = (execErr.stdout ?? '') + (execErr.stderr ?? '');
-        const output = (stdOutput || (execErr.message ?? '')).trim();
-        yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode, output };
-        failures.push({ command: cmd, exitCode, output });
+      const result = await execWithTimeout(cmd, { cwd: mergeWorktreePath, timeoutMs: effectiveTimeoutMs, signal });
+
+      if (result.timedOut) {
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'validation:command:timeout',
+          command: cmd,
+          timeoutMs: effectiveTimeoutMs,
+          pid: result.pid,
+        };
+        const output = `[timed out after ${effectiveTimeoutMs}ms]`;
+        yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 124, output };
+        failures.push({ command: cmd, exitCode: 124, output });
+        validationPassed = false;
+        break; // Stop on timeout, same as non-zero exit
+      } else if (result.exitCode !== 0) {
+        const output = (result.stdout + result.stderr).trim();
+        yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: result.exitCode, output };
+        failures.push({ command: cmd, exitCode: result.exitCode, output });
         validationPassed = false;
         break; // Stop on first non-zero exit code
+      } else {
+        const output = (result.stdout + result.stderr).trim();
+        yield { timestamp: new Date().toISOString(), type: 'validation:command:complete', command: cmd, exitCode: 0, output };
       }
     }
 

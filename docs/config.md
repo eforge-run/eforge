@@ -63,9 +63,12 @@ build:
   maxValidationRetries: 2     # Fix attempts on validation failure (0 = no retries)
   cleanupPlanFiles: true      # Remove plan files after successful build
   # worktreeDir: /custom/path # Override worktree base directory
+  # postMergeCommandTimeoutMs: 300000  # Per-command timeout (ms) for postMerge/validate commands (default: 300000, floor: 10000)
   # postMergeCommands:        # Extra validation commands
   #   - "pnpm type-check"
   #   - "pnpm test"
+
+Each command in `postMergeCommands` and the planner-generated validate commands runs under a wall-clock timeout. On expiry the full subprocess tree is killed and the validation-fixer loop is invoked as if the command had exited non-zero. Default 300000 ms (5 minutes). Values below 10000 ms are clamped and emit a `config:warning` event.
 
 plan:
   outputDir: eforge/plans     # Where plan artifacts are written

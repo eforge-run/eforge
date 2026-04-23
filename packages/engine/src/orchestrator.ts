@@ -70,6 +70,7 @@ export interface OrchestratorOptions {
   signal?: AbortSignal;
   postMergeCommands?: string[];
   validateCommands?: string[];
+  postMergeCommandTimeoutMs?: number;
   validationFixer?: ValidationFixer;
   maxValidationRetries?: number;
   mergeResolver?: MergeResolver;
@@ -164,6 +165,7 @@ export class Orchestrator {
       state, config, stateDir, repoRoot, featureBranch, mergeWorktreePath,
       planRunner: this.options.planRunner, parallelism: config.plans.length || 1,
       signal, postMergeCommands: this.options.postMergeCommands, validateCommands: this.options.validateCommands,
+      postMergeCommandTimeoutMs: this.options.postMergeCommandTimeoutMs,
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
       mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, gapCloser: this.options.gapCloser,
       minCompletionPercent: this.options.minCompletionPercent ?? 75, worktreeManager: wm,
