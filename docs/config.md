@@ -4,6 +4,12 @@
 
 ## `eforge/config.yaml`
 
+> **Upgrading from pre-overhaul `eforge.yaml`:** Earlier versions of eforge stored configuration at `eforge.yaml` in the project root. This path is no longer supported. If you have a legacy `eforge.yaml`, move it with:
+> ```
+> mkdir -p eforge && mv eforge.yaml eforge/config.yaml
+> ```
+> Running eforge without migrating now aborts with a clear `ConfigMigrationError`.
+
 The `backend` field is required. All other fields are optional with defaults shown below:
 
 ```yaml

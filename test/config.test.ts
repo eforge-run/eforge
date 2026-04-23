@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, piThinkingLevelSchema, claudeSdkConfigSchema, modelClassSchema, MODEL_CLASSES, configYamlSchema, sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, ConfigMigrationError, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, piThinkingLevelSchema, claudeSdkConfigSchema, modelClassSchema, MODEL_CLASSES, configYamlSchema, sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
 import { pickSdkOptions } from '@eforge-build/engine/backend';
 import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
 
@@ -491,25 +491,23 @@ describe('findConfigFile', () => {
 // ---------------------------------------------------------------------------
 
 describe('loadConfig legacy eforge.yaml detection', () => {
-  it('returns a warning when legacy eforge.yaml exists at project root (no eforge/config.yaml)', async () => {
+  it('throws ConfigMigrationError with the mv instruction when only legacy eforge.yaml exists', async () => {
     const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
 
-    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-legacy-warn-'));
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-legacy-error-'));
     await writeFile(join(tmpDir, 'eforge.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
 
     try {
-      const { warnings } = await loadConfig(tmpDir);
-      const warningText = warnings.join('\n');
-      expect(warningText).toContain('legacy config');
-      expect(warningText).toContain('eforge/config.yaml');
+      await expect(loadConfig(tmpDir)).rejects.toThrow(ConfigMigrationError);
+      await expect(loadConfig(tmpDir)).rejects.toThrow('mv eforge.yaml eforge/config.yaml');
     } finally {
       await rm(tmpDir, { recursive: true });
     }
   });
 
-  it('returns no warnings when eforge/config.yaml is present (legacy eforge.yaml ignored)', async () => {
+  it('loads eforge/config.yaml successfully when present (no legacy detection needed)', async () => {
     const { writeFile, mkdir, mkdtemp, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
@@ -517,14 +515,12 @@ describe('loadConfig legacy eforge.yaml detection', () => {
     const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-no-legacy-'));
     await mkdir(join(tmpDir, 'eforge'), { recursive: true });
     await writeFile(join(tmpDir, 'eforge', 'config.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
-    // Also plant a legacy file to confirm it's not picked up
-    await writeFile(join(tmpDir, 'eforge.yaml'), 'agents:\n  maxTurns: 99\n', 'utf-8');
 
     try {
       const { config, warnings } = await loadConfig(tmpDir);
-      // Uses the eforge/config.yaml, not legacy
+      // Uses the eforge/config.yaml
       expect(config.agents.maxTurns).toBe(10);
-      // No legacy warning because eforge/config.yaml was found first
+      // No legacy warning because eforge/config.yaml was found
       const warningText = warnings.join('\n');
       expect(warningText).not.toContain('legacy config');
     } finally {

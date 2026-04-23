@@ -43,7 +43,7 @@ export interface PiBackendOptions {
   extensions?: PiExtensionConfig;
   /** When true, skip extension auto-discovery and Pi settings files. */
   bare?: boolean;
-  /** Pi-specific configuration from eforge.yaml. */
+  /** Pi-specific configuration from eforge/config.yaml. */
   piConfig?: PiConfig;
   /**
    * Optional callback fired just before each `session.prompt` dispatch with a

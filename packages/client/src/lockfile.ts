@@ -9,7 +9,6 @@ export interface LockfileData {
 }
 
 export const LOCKFILE_NAME = 'daemon.lock';
-const LEGACY_LOCKFILE_NAME = 'monitor.lock';
 
 /** Polling interval (ms) used when waiting for the daemon lockfile to appear. */
 export const LOCKFILE_POLL_INTERVAL_MS = 250;
@@ -18,10 +17,6 @@ export const LOCKFILE_POLL_TIMEOUT_MS = 5000;
 
 export function lockfilePath(cwd: string): string {
   return resolve(cwd, '.eforge', LOCKFILE_NAME);
-}
-
-function legacyLockfilePath(cwd: string): string {
-  return resolve(cwd, '.eforge', LEGACY_LOCKFILE_NAME);
 }
 
 function tryReadLockfileAt(path: string): LockfileData | null {
@@ -42,8 +37,7 @@ function tryReadLockfileAt(path: string): LockfileData | null {
 }
 
 export function readLockfile(cwd: string): LockfileData | null {
-  // Try daemon.lock first, fall back to legacy monitor.lock
-  return tryReadLockfileAt(lockfilePath(cwd)) ?? tryReadLockfileAt(legacyLockfilePath(cwd));
+  return tryReadLockfileAt(lockfilePath(cwd));
 }
 
 export function writeLockfile(cwd: string, data: LockfileData): void {
@@ -57,14 +51,8 @@ export function writeLockfile(cwd: string, data: LockfileData): void {
 }
 
 export function removeLockfile(cwd: string): void {
-  // Remove both daemon.lock and legacy monitor.lock
   try {
     unlinkSync(lockfilePath(cwd));
-  } catch {
-    // Already removed or never existed
-  }
-  try {
-    unlinkSync(legacyLockfilePath(cwd));
   } catch {
     // Already removed or never existed
   }

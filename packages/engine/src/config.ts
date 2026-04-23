@@ -362,8 +362,6 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
 
 /**
  * Walk up the directory tree looking for eforge/config.yaml.
- * If not found, checks for legacy eforge.yaml at startDir only and logs a
- * migration warning to stderr.
  * Returns the absolute path if found, null otherwise.
  */
 export async function findConfigFile(startDir: string): Promise<string | null> {
@@ -685,13 +683,17 @@ export async function loadUserConfig(
 }
 
 /**
- * Load eforge.yaml config from the given directory (searching upward),
+ * Load eforge/config.yaml from the given directory (searching upward),
  * merged with user-level global config (~/.config/eforge/config.yaml).
  * Returns DEFAULT_CONFIG when no config files exist.
  *
  * When an active backend profile is found (via `eforge/.active-backend`
  * marker), the profile is merged on top of the project config before
  * env-var resolution.
+ *
+ * Throws `ConfigMigrationError` if a legacy `eforge.yaml` is detected at
+ * the start directory and no `eforge/config.yaml` is found. Users must run:
+ *   mkdir -p eforge && mv eforge.yaml eforge/config.yaml
  *
  * Returns `{ config, warnings }` where `warnings` is a list of user-facing
  * diagnostic messages about invalid config fields or migration issues.
@@ -705,18 +707,19 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
   const startDir = cwd ?? process.cwd();
   const configPath = await findConfigFile(startDir);
 
-  // Check for legacy eforge.yaml and surface a migration warning
+  // Detect legacy eforge.yaml and abort with a migration error
   if (!configPath) {
     const legacyCandidate = resolve(startDir, 'eforge.yaml');
     try {
       await access(legacyCandidate);
-      allWarnings.push(
-        `[eforge] Found legacy config at ${legacyCandidate}. ` +
-        `Please move it to eforge/config.yaml. ` +
+      throw new ConfigMigrationError(
+        `Found legacy config at ${legacyCandidate}. ` +
+        `eforge/config.yaml is now required. ` +
         `Run: mkdir -p eforge && mv eforge.yaml eforge/config.yaml`,
       );
-    } catch {
-      // no legacy config either
+    } catch (err) {
+      if (err instanceof ConfigMigrationError) throw err;
+      // no legacy config either — continue with defaults
     }
   }
 
