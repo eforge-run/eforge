@@ -1,9 +1,16 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { validate } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import type { EforgeEvent, EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
+import type { ExecWithTimeoutResult } from '@eforge-build/engine/exec-with-timeout';
 import { useTempDir } from './test-tmpdir.js';
+
+// Mock execWithTimeout so phase-logic tests run instantly without real subprocess spawning.
+// The exec-with-timeout unit tests (exec-with-timeout.test.ts) cover the real kill behavior.
+vi.mock('@eforge-build/engine/exec-with-timeout');
+import { execWithTimeout } from '@eforge-build/engine/exec-with-timeout';
+const mockExecWithTimeout = vi.mocked(execWithTimeout);
 
 const TEST_PIPELINE = {
   planner: { enabled: true },
@@ -75,16 +82,30 @@ function makeCtx(
   };
 }
 
-// Skip on Windows — process-group kill semantics are POSIX-only.
-const isWindows = process.platform === 'win32';
-const describePosix = isWindows ? describe.skip : describe;
+// A successful exec result (command exited 0).
+function successResult(): ExecWithTimeoutResult {
+  return { stdout: '', stderr: '', exitCode: 0, timedOut: false, pid: 0 };
+}
 
-describePosix('validate phase — timeout behavior', () => {
+// A timed-out exec result.
+function timeoutResult(pid = 99999): ExecWithTimeoutResult {
+  return { stdout: '', stderr: '', exitCode: 1, timedOut: true, pid };
+}
+
+describe('validate phase — timeout behavior', () => {
   const makeTempDir = useTempDir();
+
+  beforeEach(() => {
+    // Default behaviour: commands succeed instantly.
+    mockExecWithTimeout.mockResolvedValue(successResult());
+  });
 
   it('emits validation:command:timeout then validation:command:complete with exitCode 124 and invokes fixer', async () => {
     const stateDir = makeTempDir();
     const mergeWorktreePath = makeTempDir();
+
+    // All calls time out (covers both the initial attempt and the retry).
+    mockExecWithTimeout.mockResolvedValue(timeoutResult(99999));
 
     const fixerEvents: EforgeEvent[] = [];
     const fixerInvocations: Array<{ attempt: number }> = [];
@@ -109,9 +130,11 @@ describePosix('validate phase — timeout behavior', () => {
       yield fixerEvents[fixerEvents.length - 1];
     };
 
+    // Use 15_000 (above the 10_000ms floor) so no clamping occurs and the emitted
+    // timeoutMs matches exactly what we configure here.
     const ctx = makeCtx(stateDir, mergeWorktreePath, {
       validateCommands: ["sh -c 'sleep 60'"],
-      postMergeCommandTimeoutMs: 250,
+      postMergeCommandTimeoutMs: 15_000,
       maxValidationRetries: 1,
       validationFixer,
     });
@@ -144,8 +167,9 @@ describePosix('validate phase — timeout behavior', () => {
       (e) => e.type === 'validation:command:timeout',
     ) as Extract<EforgeEvent, { type: 'validation:command:timeout' }>;
     expect(timeoutEvent).toBeDefined();
-    expect(timeoutEvent.timeoutMs).toBe(250);
-    expect(timeoutEvent.pid).toBeGreaterThan(0);
+    // timeoutMs reflects the effective (unclamped) configured value
+    expect(timeoutEvent.timeoutMs).toBe(15_000);
+    expect(timeoutEvent.pid).toBe(99999);
     expect(timeoutEvent.command).toBe("sh -c 'sleep 60'");
 
     // validation:complete should be emitted with passed: false
@@ -157,11 +181,14 @@ describePosix('validate phase — timeout behavior', () => {
 
     // The fixer should have been invoked (maxValidationRetries: 1)
     expect(fixerInvocations).toHaveLength(1);
-  }, 10_000);
+  });
 
   it('emits config:warning before commands when postMergeCommandTimeoutMs is below the floor', async () => {
     const stateDir = makeTempDir();
     const mergeWorktreePath = makeTempDir();
+
+    // exit 0 — mock returns success
+    mockExecWithTimeout.mockResolvedValue(successResult());
 
     const ctx = makeCtx(stateDir, mergeWorktreePath, {
       validateCommands: ['exit 0'],
@@ -189,11 +216,13 @@ describePosix('validate phase — timeout behavior', () => {
     expect(warningEvent).toBeDefined();
     expect(warningEvent!.source).toBe('validate');
     expect(warningEvent!.message).toContain('10000');
-  }, 10_000);
+  });
 
   it('does not emit config:warning when timeout is at or above the floor', async () => {
     const stateDir = makeTempDir();
     const mergeWorktreePath = makeTempDir();
+
+    mockExecWithTimeout.mockResolvedValue(successResult());
 
     const ctx = makeCtx(stateDir, mergeWorktreePath, {
       validateCommands: ['exit 0'],
@@ -207,11 +236,13 @@ describePosix('validate phase — timeout behavior', () => {
     }
 
     expect(events.find((e) => e.type === 'config:warning')).toBeUndefined();
-  }, 10_000);
+  });
 
   it('uses default timeout of 300_000ms when postMergeCommandTimeoutMs is not set', async () => {
     const stateDir = makeTempDir();
     const mergeWorktreePath = makeTempDir();
+
+    mockExecWithTimeout.mockResolvedValue(successResult());
 
     const ctx = makeCtx(stateDir, mergeWorktreePath, {
       validateCommands: ['exit 0'],
@@ -233,5 +264,46 @@ describePosix('validate phase — timeout behavior', () => {
       | undefined;
     expect(completeEvent).toBeDefined();
     expect(completeEvent!.passed).toBe(true);
-  }, 10_000);
+  });
+
+  it('passes the effective timeout to execWithTimeout', async () => {
+    const stateDir = makeTempDir();
+    const mergeWorktreePath = makeTempDir();
+
+    mockExecWithTimeout.mockResolvedValue(successResult());
+
+    const ctx = makeCtx(stateDir, mergeWorktreePath, {
+      validateCommands: ['pnpm type-check'],
+      postMergeCommandTimeoutMs: 20_000,
+      maxValidationRetries: 0,
+    });
+
+    for await (const _ of validate(ctx)) { /* drain */ }
+
+    expect(mockExecWithTimeout).toHaveBeenCalledWith(
+      'pnpm type-check',
+      expect.objectContaining({ timeoutMs: 20_000, cwd: mergeWorktreePath }),
+    );
+  });
+
+  it('clamps sub-floor timeout to 10_000ms when calling execWithTimeout', async () => {
+    const stateDir = makeTempDir();
+    const mergeWorktreePath = makeTempDir();
+
+    mockExecWithTimeout.mockResolvedValue(successResult());
+
+    const ctx = makeCtx(stateDir, mergeWorktreePath, {
+      validateCommands: ['exit 0'],
+      postMergeCommandTimeoutMs: 500, // below floor
+      maxValidationRetries: 0,
+    });
+
+    for await (const _ of validate(ctx)) { /* drain */ }
+
+    // The clamped value (10_000) is passed to execWithTimeout, not the raw 500.
+    expect(mockExecWithTimeout).toHaveBeenCalledWith(
+      'exit 0',
+      expect.objectContaining({ timeoutMs: 10_000 }),
+    );
+  });
 });
