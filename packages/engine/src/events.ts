@@ -18,7 +18,7 @@ export interface PrdValidationGap {
 
 export type ExpeditionModule = z.output<typeof expeditionModuleSchema>;
 
-export type EforgeResult = { status: 'completed' | 'failed'; summary: string };
+export type EforgeResult = { status: 'completed' | 'failed' | 'skipped'; summary: string };
 
 export type ClarificationQuestion = z.output<typeof clarificationQuestionSchema>;
 
