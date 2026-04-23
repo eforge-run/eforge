@@ -98,7 +98,7 @@ Update `src/engine/events.ts`:
 
 ### 7. Agent role and config
 
-- Add `'gap-closer'` to `AGENT_ROLE_DEFAULTS` in `src/engine/pipeline.ts` if a non-default `maxTurns` is needed for plan generation
+- Add `'gap-closer'` to `AGENT_ROLE_DEFAULTS` in `src/engine/pipeline/agent-config.ts` if a non-default `maxTurns` is needed for plan generation
 - The implement stage already has its own `maxTurns: 50` and continuation logic, so the builder agent used during gap-close execution inherits those settings
 
 ## Scope
