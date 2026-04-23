@@ -813,10 +813,17 @@ export class EforgeEngine {
    * monitor recorder writes to SQLite) and returns. The parent scheduler handles
    * lock release and file-location transitions in its child.on('exit') handler
    * based on the child's exit code.
+   *
+   * When `sessionId` is provided (injected by the parent scheduler via `--session-id`),
+   * the child uses it verbatim and does NOT emit `session:start` — the parent already
+   * emitted it onto its own event queue so the DB row exists before the child starts.
+   * When absent (direct programmatic invocation), generates a new UUID and emits
+   * `session:start` as before.
    */
   async *buildSinglePrd(
     prd: import('./prd-queue.js').QueuedPrd,
     options: QueueOptions,
+    sessionId?: string,
   ): AsyncGenerator<EforgeEvent> {
     const cwd = this.cwd;
     const verbose = options.verbose;
@@ -833,6 +840,9 @@ export class EforgeEngine {
     const claimed = await claimPrd(prd.id, cwd);
     if (!claimed) {
       yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: QueueSkipReason.AlreadyClaimed };
+      if (sessionId !== undefined) {
+        yield { type: 'session:end', sessionId, result: { status: 'skipped', summary: 'PRD already claimed by another process' }, timestamp: new Date().toISOString() } as EforgeEvent;
+      }
       yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
       return;
     }
@@ -864,6 +874,9 @@ export class EforgeEngine {
 
       if (stalenessVerdict === 'obsolete') {
         yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: QueueSkipReason.Obsolete };
+        if (sessionId !== undefined) {
+          yield { type: 'session:end', sessionId, result: { status: 'skipped', summary: 'PRD is obsolete' }, timestamp: new Date().toISOString() } as EforgeEvent;
+        }
         yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
         return;
       }
@@ -886,25 +899,32 @@ export class EforgeEngine {
         } else {
           // Skip — needs manual revision
           yield { timestamp: new Date().toISOString(), type: 'queue:prd:skip', prdId: prd.id, reason: QueueSkipReason.NeedsRevision };
+          if (sessionId !== undefined) {
+            yield { type: 'session:end', sessionId, result: { status: 'skipped', summary: 'PRD needs manual revision' }, timestamp: new Date().toISOString() } as EforgeEvent;
+          }
           yield { timestamp: new Date().toISOString(), type: 'queue:prd:complete', prdId: prd.id, status: 'skipped' };
           return;
         }
       }
     }
 
-    // Per-PRD session: each PRD gets its own sessionId for monitor grouping
-    const prdSessionId = randomUUID();
+    // Per-PRD session: each PRD gets its own sessionId for monitor grouping.
+    // When sessionId is injected by the parent scheduler, use it verbatim and
+    // skip the child-side session:start emission (parent already emitted it).
+    const prdSessionId = sessionId ?? randomUUID();
     let prdResult: { status: 'completed' | 'failed' | 'skipped'; summary: string } = {
       status: 'failed',
       summary: 'Session terminated abnormally',
     };
 
     try {
-      yield {
-        type: 'session:start',
-        sessionId: prdSessionId,
-        timestamp: new Date().toISOString(),
-      } as EforgeEvent;
+      if (sessionId === undefined) {
+        yield {
+          type: 'session:start',
+          sessionId: prdSessionId,
+          timestamp: new Date().toISOString(),
+        } as EforgeEvent;
+      }
 
       // Compile (plan) the PRD
       let compileFailed = false;
@@ -990,6 +1010,7 @@ export class EforgeEngine {
   private spawnPrdChild(
     prd: import('./prd-queue.js').QueuedPrd,
     options: QueueOptions,
+    prdSessionId: string,
   ): Promise<'completed' | 'failed' | 'skipped'> {
     const cwd = this.cwd;
     const prdId = prd.id;
@@ -1001,6 +1022,7 @@ export class EforgeEngine {
       if (options.auto) args.push('--auto');
       if (options.verbose) args.push('--verbose');
       args.push('--no-monitor');
+      args.push('--session-id', prdSessionId);
 
       // Use the current Node binary + the CLI entrypoint so the child is
       // guaranteed to be the same build as the parent. Spawning bare `eforge`
@@ -1202,6 +1224,17 @@ export class EforgeEngine {
         const state = prdState.get(prd.id)!;
         state.status = 'running';
 
+        // Parent owns the sessionId: generate it here and emit session:start
+        // immediately so the DB row exists before the child subprocess starts.
+        // The child receives the id via --session-id and skips its own
+        // session:start emission to avoid double-creating the row.
+        const prdSessionId = randomUUID();
+        eventQueue.push({
+          type: 'session:start',
+          sessionId: prdSessionId,
+          timestamp: new Date().toISOString(),
+        } as EforgeEvent);
+
         eventQueue.addProducer();
 
         // Launch asynchronously — semaphore gates actual execution.
@@ -1214,7 +1247,7 @@ export class EforgeEngine {
             await semaphore.acquire();
             acquired = true;
 
-            status = await this.spawnPrdChild(prd, options);
+            status = await this.spawnPrdChild(prd, options, prdSessionId);
 
             eventQueue.push({
               timestamp: new Date().toISOString(),
@@ -1439,6 +1472,17 @@ export class EforgeEngine {
         const state = prdState.get(prd.id)!;
         state.status = 'running';
 
+        // Parent owns the sessionId: generate it here and emit session:start
+        // immediately so the DB row exists before the child subprocess starts.
+        // The child receives the id via --session-id and skips its own
+        // session:start emission to avoid double-creating the row.
+        const prdSessionId = randomUUID();
+        eventQueue.push({
+          type: 'session:start',
+          sessionId: prdSessionId,
+          timestamp: new Date().toISOString(),
+        } as EforgeEvent);
+
         eventQueue.addProducer();
 
         void (async () => {
@@ -1448,7 +1492,7 @@ export class EforgeEngine {
             await semaphore.acquire();
             acquired = true;
 
-            status = await this.spawnPrdChild(prd, options);
+            status = await this.spawnPrdChild(prd, options, prdSessionId);
 
             eventQueue.push({
               timestamp: new Date().toISOString(),

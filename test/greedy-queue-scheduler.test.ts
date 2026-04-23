@@ -252,3 +252,134 @@ describe('git reset --hard removal verification', () => {
     expect(queueCode).not.toContain("reset','--hard'");
   });
 });
+
+// ---------------------------------------------------------------------------
+// Parent scheduler owns sessionId: session:start emitted before child spawn
+// ---------------------------------------------------------------------------
+
+describe('parent-side sessionId ownership', () => {
+  it('buildSinglePrd with injected sessionId emits no session:start event', async () => {
+    const { engine, cwd } = await createTestEngine();
+
+    // Create a minimal PRD in the queue directory so claimPrd can find the lock dir
+    const queueDir = join(cwd, 'eforge', 'queue');
+    const prdId = 'test-prd-injected-session';
+    const prdFilePath = join(queueDir, `${prdId}.md`);
+    await writeFile(
+      prdFilePath,
+      `---\ntitle: Test PRD\nstatus: pending\n---\n\n# Test PRD\n\nDo something.`,
+    );
+
+    const prd = {
+      id: prdId,
+      filePath: prdFilePath,
+      frontmatter: { title: 'Test PRD' },
+      content: '# Test PRD\n\nDo something.',
+      lastCommitHash: '', // Empty — skips staleness check
+      lastCommitDate: '',
+    };
+
+    const injectedSessionId = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+
+    const events: EforgeEvent[] = [];
+    // buildSinglePrd will fail (no git repo for compile) but we only care that
+    // session:start is NOT emitted when a sessionId is injected
+    for await (const event of engine.buildSinglePrd(prd, {}, injectedSessionId)) {
+      events.push(event);
+    }
+
+    const sessionStartEvents = events.filter((e) => e.type === 'session:start');
+    expect(sessionStartEvents).toHaveLength(0);
+
+    // session:end IS still emitted by the child with the injected id
+    const sessionEndEvents = events.filter((e) => e.type === 'session:end');
+    expect(sessionEndEvents).toHaveLength(1);
+    expect((sessionEndEvents[0] as { sessionId: string }).sessionId).toBe(injectedSessionId);
+  });
+
+  it('buildSinglePrd without sessionId emits session:start (baseline behavior)', async () => {
+    const { engine, cwd } = await createTestEngine();
+
+    const queueDir = join(cwd, 'eforge', 'queue');
+    const prdId = 'test-prd-no-session';
+    const prdFilePath = join(queueDir, `${prdId}.md`);
+    await writeFile(
+      prdFilePath,
+      `---\ntitle: Test PRD\nstatus: pending\n---\n\n# Test PRD\n\nDo something.`,
+    );
+
+    const prd = {
+      id: prdId,
+      filePath: prdFilePath,
+      frontmatter: { title: 'Test PRD' },
+      content: '# Test PRD\n\nDo something.',
+      lastCommitHash: '',
+      lastCommitDate: '',
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of engine.buildSinglePrd(prd, {})) {
+      events.push(event);
+    }
+
+    // Without injected sessionId, session:start IS emitted
+    const sessionStartEvents = events.filter((e) => e.type === 'session:start');
+    expect(sessionStartEvents).toHaveLength(1);
+  });
+
+  it('runQueue emits parent-side session:start before queue:prd:complete for each PRD', async () => {
+    const { engine, cwd } = await createTestEngine({
+      maxConcurrentBuilds: 1,
+    });
+
+    const queueDir = join(cwd, 'eforge', 'queue');
+    await writeFile(
+      join(queueDir, 'prd-session-test.md'),
+      '---\ntitle: Session Test PRD\nstatus: pending\n---\n\n# Session Test PRD\n\nDo something.',
+    );
+
+    const events = await collectEvents(engine.runQueue());
+    const types = events.map((e) => e.type);
+
+    // Parent must emit session:start
+    expect(types).toContain('session:start');
+
+    // session:start must appear before queue:prd:complete
+    const sessionStartIdx = types.indexOf('session:start');
+    const prdCompleteIdx = types.indexOf('queue:prd:complete');
+    expect(sessionStartIdx).toBeGreaterThan(-1);
+    expect(prdCompleteIdx).toBeGreaterThan(-1);
+    expect(sessionStartIdx).toBeLessThan(prdCompleteIdx);
+
+    // The session:start event must have a valid UUID sessionId
+    const sessionStartEvent = events[sessionStartIdx] as { sessionId: string };
+    expect(sessionStartEvent.sessionId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it('spawnPrdChild passes --session-id flag in child args', async () => {
+    const { readFileSync } = await import('node:fs');
+    const eforgeSrc = readFileSync(
+      join(import.meta.dirname, '..', 'packages', 'engine', 'src', 'eforge.ts'),
+      'utf-8',
+    );
+
+    // Locate the spawnPrdChild method body
+    const spawnStart = eforgeSrc.indexOf('private spawnPrdChild(');
+    expect(spawnStart).toBeGreaterThan(-1);
+
+    // Find the end of the method (next 'private' or 'async *' method declaration)
+    const spawnBody = eforgeSrc.slice(spawnStart, eforgeSrc.indexOf('\n  async *runQueue(', spawnStart));
+
+    // The method must accept prdSessionId as a parameter
+    expect(spawnBody).toContain('prdSessionId: string');
+
+    // The args array must include '--session-id' and prdSessionId
+    expect(spawnBody).toContain("'--session-id'");
+    expect(spawnBody).toContain('prdSessionId');
+
+    // Verify the '--session-id' and prdSessionId appear together (args.push call)
+    expect(spawnBody).toContain("args.push('--session-id', prdSessionId)");
+  });
+});
