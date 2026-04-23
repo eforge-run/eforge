@@ -219,6 +219,62 @@ describe('eforgeReducer', () => {
     expect(state.events).toHaveLength(1);
   });
 
+  it('processes config:warning event without throwing and records it', () => {
+    const event: EforgeEvent = {
+      type: 'config:warning',
+      message: 'eforge config warning: some fields were invalid and will be ignored',
+      source: 'loadConfig',
+      timestamp: '2024-01-01T00:00:00Z',
+    };
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'cw-1',
+    });
+    // Event is recorded in state
+    expect(state.events).toHaveLength(1);
+    expect(state.events[0].event.type).toBe('config:warning');
+    // State is otherwise unmodified
+    expect(state.isComplete).toBe(false);
+    expect(state.tokensIn).toBe(0);
+  });
+
+  it('processes plan:warning event without throwing and records it', () => {
+    const event: EforgeEvent = {
+      type: 'plan:warning',
+      planId: 'plan-01',
+      message: '[eforge] Plan file /path/to/plan.md: malformed agents block will be ignored',
+      source: 'parsePlanFile',
+      timestamp: '2024-01-01T00:00:00Z',
+    };
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'pw-1',
+    });
+    // Event is recorded in state
+    expect(state.events).toHaveLength(1);
+    expect(state.events[0].event.type).toBe('plan:warning');
+    // State is otherwise unmodified
+    expect(state.isComplete).toBe(false);
+  });
+
+  it('processes plan:warning event without planId', () => {
+    const event: EforgeEvent = {
+      type: 'plan:warning',
+      message: '[eforge] Plan orchestration warning: malformed agents block will be ignored',
+      source: 'parseOrchestrationConfig',
+      timestamp: '2024-01-01T00:00:00Z',
+    };
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'pw-2',
+    });
+    expect(state.events).toHaveLength(1);
+    expect(state.events[0].event.type).toBe('plan:warning');
+  });
+
   it('populates fileChanges on build:files_changed', () => {
     const state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',

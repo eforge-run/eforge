@@ -336,9 +336,57 @@ agents:
     expect(plan.agents).toBeUndefined();
   });
 
+  it('malformed agents block returns warnings field with diagnostic message', async () => {
+    const dir = makeTempDir();
+    const planPath = join(dir, 'plan-warn-agents.md');
+    writeFileSync(planPath, `---
+id: plan-03-warn
+name: Warn Agents Plan
+depends_on: []
+branch: warn/main
+agents:
+  builder:
+    effort: not-a-valid-effort
+---
+
+# Plan body
+`);
+
+    const plan = await parsePlanFile(planPath);
+    // agents is silently dropped
+    expect(plan.agents).toBeUndefined();
+    // but a warning is returned describing the problem
+    expect(plan.warnings).toBeDefined();
+    expect(plan.warnings).toHaveLength(1);
+    expect(plan.warnings![0]).toContain('agents');
+  });
+
+  it('valid agents block has no warnings', async () => {
+    const dir = makeTempDir();
+    const planPath = join(dir, 'plan-ok-agents.md');
+    writeFileSync(planPath, `---
+id: plan-04-ok
+name: OK Agents Plan
+depends_on: []
+branch: ok/main
+agents:
+  builder:
+    effort: high
+    rationale: solid rationale
+---
+
+# Plan body
+`);
+
+    const plan = await parsePlanFile(planPath);
+    expect(plan.agents).toBeDefined();
+    expect(plan.warnings).toBeUndefined();
+  });
+
   it('plan without agents block has undefined agents', async () => {
     const plan = await parsePlanFile(resolve(fixturesDir, 'plans/valid-plan.md'));
     expect(plan.agents).toBeUndefined();
+    expect(plan.warnings).toBeUndefined();
   });
 });
 
@@ -397,5 +445,66 @@ describe('parseOrchestrationConfig agents propagation', () => {
 
     const config = await parseOrchestrationConfig(yamlPath);
     expect(config.plans[0].agents).toBeUndefined();
+    expect(config.warnings).toBeUndefined();
+  });
+
+  it('malformed agents block in plan entry returns warnings (no throw)', async () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'bad-agents-orch-test',
+      description: 'Test malformed agents in orch config',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      pipeline: ERRAND_PIPELINE,
+      plans: [{
+        id: 'p1',
+        name: 'Plan 1',
+        depends_on: [],
+        branch: 'b1',
+        build: ['implement', 'review-cycle'],
+        review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
+        agents: {
+          builder: { effort: 'not-a-real-effort-level' },
+        },
+      }],
+    }));
+
+    // Should not throw — invalid agents are silently dropped
+    const config = await parseOrchestrationConfig(yamlPath);
+    expect(config.plans[0].agents).toBeUndefined();
+    // But a warning is returned
+    expect(config.warnings).toBeDefined();
+    expect(config.warnings!.length).toBeGreaterThan(0);
+    expect(config.warnings![0]).toContain('p1');
+  });
+
+  it('valid agents block in orchestration config has no warnings', async () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'valid-agents-orch-test',
+      description: 'Test valid agents in orch config',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      pipeline: ERRAND_PIPELINE,
+      plans: [{
+        id: 'p1',
+        name: 'Plan 1',
+        depends_on: [],
+        branch: 'b1',
+        build: ['implement', 'review-cycle'],
+        review: { strategy: 'auto', perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' },
+        agents: {
+          builder: { effort: 'high', rationale: 'good work' },
+        },
+      }],
+    }));
+
+    const config = await parseOrchestrationConfig(yamlPath);
+    expect(config.plans[0].agents).toBeDefined();
+    expect(config.warnings).toBeUndefined();
   });
 });

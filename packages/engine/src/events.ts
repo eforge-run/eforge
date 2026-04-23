@@ -49,6 +49,8 @@ export interface PlanFile {
   agents?: Record<string, { effort?: string; thinking?: object; rationale?: string }>;
   body: string;
   filePath: string;
+  /** Parsing warnings collected when the plan file was read (e.g. malformed agents block). */
+  warnings?: string[];
 }
 
 export interface OrchestrationConfig {
@@ -60,6 +62,8 @@ export interface OrchestrationConfig {
   pipeline: PipelineComposition;
   plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string; build: BuildStageSpec[]; review: ReviewProfileConfig; maxContinuations?: number; agents?: Record<string, { effort?: string; thinking?: object; rationale?: string }> }>;
   validate?: string[];
+  /** Parsing warnings collected when the orchestration config was read. */
+  warnings?: string[];
 }
 
 export interface PlanState {
@@ -147,6 +151,10 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   // Phase lifecycle (one per compile/build phase)
   | { type: 'phase:start'; runId: string; planSet: string; command: 'compile' | 'build' }
   | { type: 'phase:end'; runId: string; result: EforgeResult }
+
+  // Config and plan warnings (emitted when config or plan files contain invalid/unexpected fields)
+  | { type: 'config:warning'; message: string; source: string; details?: string }
+  | { type: 'plan:warning'; planId?: string; message: string; source: string; details?: string }
 
   // Planning
   | { type: 'plan:start'; source: string; label?: string }

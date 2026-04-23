@@ -75,7 +75,7 @@ describe('resolveActiveProfileName', () => {
 
   it('returns source=none when no marker and no matching team profile', async () => {
     const result = await resolveActiveProfileName(configDir, {});
-    expect(result).toEqual({ name: null, source: 'none' });
+    expect(result).toEqual({ name: null, source: 'none', warnings: [] });
   });
 
   it('marker present overrides config.yaml backend', async () => {
@@ -87,7 +87,7 @@ describe('resolveActiveProfileName', () => {
     await writeFile(join(configDir, '.active-backend'), 'pi-prod\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, { backend: 'claude-sdk' });
-    expect(result).toEqual({ name: 'pi-prod', source: 'local' });
+    expect(result).toEqual({ name: 'pi-prod', source: 'local', warnings: [] });
   });
 
   it('marker absent + no matching profile → source=none (backend: in config.yaml no longer used for resolution)', async () => {
@@ -97,37 +97,30 @@ describe('resolveActiveProfileName', () => {
     // Even with backend: 'pi' in project config and a matching profile file,
     // resolution no longer uses config.yaml backend: field
     const result = await resolveActiveProfileName(configDir, { backend: 'pi' });
-    expect(result).toEqual({ name: null, source: 'none' });
+    expect(result).toEqual({ name: null, source: 'none', warnings: [] });
   });
 
-  it('unknown profile name in marker logs warning and returns missing when no user marker', async () => {
+  it('unknown profile name in marker returns warning and missing when no user marker', async () => {
     await mkdir(join(configDir, 'backends'), { recursive: true });
     await writeFile(join(configDir, 'backends', 'claude-sdk.yaml'), 'backend: claude-sdk\n', 'utf-8');
     await writeFile(join(configDir, '.active-backend'), 'nonexistent\n', 'utf-8');
 
-    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const result = await resolveActiveProfileName(configDir, { backend: 'claude-sdk' });
-      // No team fallback, no user marker → missing
-      expect(result.name).toBeNull();
-      expect(result.source).toBe('missing');
-      const warnings = stderrSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-      expect(warnings).toContain('nonexistent');
-    } finally {
-      stderrSpy.mockRestore();
-    }
+    const result = await resolveActiveProfileName(configDir, { backend: 'claude-sdk' });
+    // No team fallback, no user marker → missing
+    expect(result.name).toBeNull();
+    expect(result.source).toBe('missing');
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('nonexistent');
   });
 
   it('unknown profile name in marker with no team fallback returns name=null source=missing', async () => {
     await writeFile(join(configDir, '.active-backend'), 'nonexistent\n', 'utf-8');
 
-    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const result = await resolveActiveProfileName(configDir, {});
-      expect(result).toEqual({ name: null, source: 'missing' });
-    } finally {
-      stderrSpy.mockRestore();
-    }
+    const result = await resolveActiveProfileName(configDir, {});
+    expect(result.name).toBeNull();
+    expect(result.source).toBe('missing');
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('nonexistent');
   });
 });
 
@@ -356,14 +349,9 @@ describe('loadConfig integration with backend profiles', () => {
     ({ projectDir, configDir } = await makeProject({
       configYaml: 'agents:\n  maxTurns: 25\n',
     }));
-    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const cfg = await loadConfig(projectDir);
-      expect(cfg.backend).toBeUndefined();
-      expect(cfg.agents.maxTurns).toBe(25);
-    } finally {
-      stderrSpy.mockRestore();
-    }
+    const { config: cfg } = await loadConfig(projectDir);
+    expect(cfg.backend).toBeUndefined();
+    expect(cfg.agents.maxTurns).toBe(25);
   });
 
   it('profile merges on top of project config when marker is active', async () => {
@@ -378,7 +366,7 @@ describe('loadConfig integration with backend profiles', () => {
     );
     // Profile is only loaded when a marker is present (team resolution removed)
     await writeFile(join(configDir, '.active-backend'), 'pi\n', 'utf-8');
-    const cfg = await loadConfig(projectDir);
+    const { config: cfg } = await loadConfig(projectDir);
     expect(cfg.agents.maxTurns).toBe(40);
   });
 
@@ -399,7 +387,7 @@ describe('loadConfig integration with backend profiles', () => {
     );
     await writeFile(join(configDir, '.active-backend'), 'local\n', 'utf-8');
 
-    const cfg = await loadConfig(projectDir);
+    const { config: cfg } = await loadConfig(projectDir);
     expect(cfg.backend).toBe('claude-sdk');
     expect(cfg.agents.maxTurns).toBe(99);
   });
@@ -513,7 +501,7 @@ describe('user-scope: resolveActiveProfileName', () => {
     await writeFile(join(userEforgeDir, '.active-backend'), 'default\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
-    expect(result).toEqual({ name: 'default', source: 'user-local' });
+    expect(result).toEqual({ name: 'default', source: 'user-local', warnings: [] });
   });
 
   it('returns source=local (project) when both project and user markers exist', async () => {
@@ -527,7 +515,7 @@ describe('user-scope: resolveActiveProfileName', () => {
     await writeFile(join(userEforgeDir, '.active-backend'), 'usr\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
-    expect(result).toEqual({ name: 'proj', source: 'local' });
+    expect(result).toEqual({ name: 'proj', source: 'local', warnings: [] });
   });
 
   it('user marker wins over user config backend field', async () => {
@@ -541,7 +529,7 @@ describe('user-scope: resolveActiveProfileName', () => {
       {},
       { backend: 'config-pick' } as PartialEforgeConfig,
     );
-    expect(result).toEqual({ name: 'marker-pick', source: 'user-local' });
+    expect(result).toEqual({ name: 'marker-pick', source: 'user-local', warnings: [] });
   });
 
   it('returns source=none when only user config backend: is set (user-team resolution removed)', async () => {
@@ -554,7 +542,7 @@ describe('user-scope: resolveActiveProfileName', () => {
       {},
       { backend: 'team-default' } as PartialEforgeConfig,
     );
-    expect(result).toEqual({ name: null, source: 'none' });
+    expect(result).toEqual({ name: null, source: 'none', warnings: [] });
   });
 
   it('project marker can resolve to a user-scope profile file', async () => {
@@ -564,7 +552,7 @@ describe('user-scope: resolveActiveProfileName', () => {
     await writeFile(join(configDir, '.active-backend'), 'shared\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
-    expect(result).toEqual({ name: 'shared', source: 'local' });
+    expect(result).toEqual({ name: 'shared', source: 'local', warnings: [] });
   });
 });
 
@@ -793,13 +781,11 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
     await writeFile(join(userEforgeDir, 'backends', 'fallback.yaml'), 'backend: claude-sdk\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-backend'), 'fallback\n', 'utf-8');
 
-    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      const result = await resolveActiveProfileName(configDir, {});
-      expect(result).toEqual({ name: 'fallback', source: 'user-local' });
-    } finally {
-      stderrSpy.mockRestore();
-    }
+    const result = await resolveActiveProfileName(configDir, {});
+    expect(result.name).toBe('fallback');
+    expect(result.source).toBe('user-local');
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('gone');
   });
 
   it('stale project marker falls through to missing when no user marker exists (user-team removed)', async () => {
@@ -807,18 +793,16 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
     await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
     await writeFile(join(userEforgeDir, 'backends', 'team-default.yaml'), 'backend: pi\n', 'utf-8');
 
-    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    try {
-      // user config backend: is no longer used for fallback
-      const result = await resolveActiveProfileName(
-        configDir,
-        {},
-        { backend: 'team-default' } as PartialEforgeConfig,
-      );
-      expect(result).toEqual({ name: null, source: 'missing' });
-    } finally {
-      stderrSpy.mockRestore();
-    }
+    // user config backend: is no longer used for fallback
+    const result = await resolveActiveProfileName(
+      configDir,
+      {},
+      { backend: 'team-default' } as PartialEforgeConfig,
+    );
+    expect(result.name).toBeNull();
+    expect(result.source).toBe('missing');
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('gone');
   });
 
   it('user marker wins when no project marker exists (team resolution removed)', async () => {
@@ -831,13 +815,13 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
     await writeFile(join(userEforgeDir, '.active-backend'), 'usr\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, { backend: 'team' } as PartialEforgeConfig);
-    expect(result).toEqual({ name: 'usr', source: 'user-local' });
+    expect(result).toEqual({ name: 'usr', source: 'user-local', warnings: [] });
   });
 
   it('returns source=none when all sources are empty', async () => {
     // No markers, no config backend: fields
     const result = await resolveActiveProfileName(configDir, {}, {});
-    expect(result).toEqual({ name: null, source: 'none' });
+    expect(result).toEqual({ name: null, source: 'none', warnings: [] });
   });
 
   it('user config backend: field is ignored (user-team source removed)', async () => {
@@ -847,7 +831,7 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
       {},
       { backend: 'phantom' } as PartialEforgeConfig,
     );
-    expect(result).toEqual({ name: null, source: 'none' });
+    expect(result).toEqual({ name: null, source: 'none', warnings: [] });
   });
 });
 
@@ -946,7 +930,7 @@ describe('user-scope: loadConfig integration', () => {
     );
     await writeFile(join(userEforgeDir, '.active-backend'), 'user-override\n', 'utf-8');
 
-    const cfg = await loadConfig(projectDir);
+    const { config: cfg } = await loadConfig(projectDir);
     expect(cfg.backend).toBe('pi');
     expect(cfg.agents.maxTurns).toBe(55);
   });

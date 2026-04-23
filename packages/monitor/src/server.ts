@@ -919,11 +919,14 @@ export async function startServer(
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
         const userConfig = await loadUserConfig();
-        const { name, source } = await resolveActiveProfileName(
+        const { name, source, warnings } = await resolveActiveProfileName(
           configDir,
           projectConfig as Parameters<typeof resolveActiveProfileName>[1],
           userConfig as Parameters<typeof resolveActiveProfileName>[2],
         );
+        for (const warning of warnings) {
+          process.stderr.write(`${warning}\n`);
+        }
         sendJson(res, { profiles, active: name, source });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list backend profiles');
@@ -942,11 +945,14 @@ export async function startServer(
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
         const userConfig = await loadUserConfig();
-        const { name, source } = await resolveActiveProfileName(
+        const { name, source, warnings: resolveWarnings } = await resolveActiveProfileName(
           configDir,
           projectConfig as Parameters<typeof resolveActiveProfileName>[1],
           userConfig as Parameters<typeof resolveActiveProfileName>[2],
         );
+        for (const warning of resolveWarnings) {
+          process.stderr.write(`${warning}\n`);
+        }
         let profile: unknown = null;
         let backend: 'claude-sdk' | 'pi' | undefined;
         let profileScope: 'project' | 'user' | undefined;
@@ -1140,7 +1146,8 @@ export async function startServer(
     } else if (url === API_ROUTES.configShow) {
       try {
         const { loadConfig } = await import('@eforge-build/engine/config');
-        const resolved = await loadConfig(options?.cwd);
+        const { config: resolved, warnings } = await loadConfig(options?.cwd);
+        for (const warning of warnings) { process.stderr.write(`${warning}\n`); }
         sendJson(res, resolved);
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load config');

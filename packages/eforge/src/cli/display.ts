@@ -642,6 +642,15 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
+    // Config and plan warnings
+    case 'config:warning':
+      console.error(`[eforge] config warning: ${event.message}`);
+      break;
+
+    case 'plan:warning':
+      console.error(`[eforge] plan warning${event.planId ? ` (${event.planId})` : ''}: ${event.message}`);
+      break;
+
     // Agent lifecycle (consumed by hooks, monitor, tracing — no CLI display)
     case 'agent:start':
       break;

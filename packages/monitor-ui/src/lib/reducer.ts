@@ -343,6 +343,11 @@ function processEvent(
     }
   }
 
+  if (event.type === 'config:warning' || event.type === 'plan:warning') {
+    // Warnings flow through the event stream; visual surfacing is optional
+    console.log('[eforge] warning:', (event as { message: string }).message);
+  }
+
   if (event.type === 'agent:stop' && 'timestamp' in event && event.timestamp) {
     const thread = state.agentThreads.find((t) => t.agentId === event.agentId);
     if (thread) {

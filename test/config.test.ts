@@ -301,12 +301,9 @@ describe('parseRawConfig validation warnings', () => {
   // a PartialEforgeConfig that simulates what parseRawConfig would produce,
   // plus direct stderr spy tests to verify warning output.
 
-  it('parseRawConfig with invalid maxTurns logs a warning containing "maxTurns"', async () => {
-    // We need to test parseRawConfig indirectly. The simplest way is to
-    // write a temp config file and load it, but we can also test via the
-    // config module internals. Since parseRawConfig is private, we test
-    // that the schema validation produces warnings by importing loadConfig
-    // with a temp file.
+  it('loadConfig with invalid maxTurns returns a warning containing "maxTurns"', async () => {
+    // We test parseRawConfig indirectly via loadConfig, which calls it on the
+    // YAML data. Warnings are returned in the { warnings } field — not logged.
     const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
@@ -317,18 +314,16 @@ describe('parseRawConfig validation warnings', () => {
     const configPath = join(tmpDir, 'eforge', 'config.yaml');
     await writeFile(configPath, 'agents:\n  maxTurns: "not-a-number"\n', 'utf-8');
 
-    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      await loadConfig(tmpDir);
-      const warnings = stderrSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-      expect(warnings).toContain('maxTurns');
+      const { warnings } = await loadConfig(tmpDir);
+      const warningText = warnings.join('\n');
+      expect(warningText).toContain('maxTurns');
     } finally {
-      stderrSpy.mockRestore();
       await rm(tmpDir, { recursive: true });
     }
   });
 
-  it('parseRawConfig with invalid permissionMode logs a warning containing "permissionMode"', async () => {
+  it('loadConfig with invalid permissionMode returns a warning containing "permissionMode"', async () => {
     const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
@@ -339,13 +334,11 @@ describe('parseRawConfig validation warnings', () => {
     const configPath = join(tmpDir, 'eforge', 'config.yaml');
     await writeFile(configPath, 'agents:\n  permissionMode: "skip"\n', 'utf-8');
 
-    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
-      await loadConfig(tmpDir);
-      const warnings = stderrSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-      expect(warnings).toContain('permissionMode');
+      const { warnings } = await loadConfig(tmpDir);
+      const warningText = warnings.join('\n');
+      expect(warningText).toContain('permissionMode');
     } finally {
-      stderrSpy.mockRestore();
       await rm(tmpDir, { recursive: true });
     }
   });
@@ -474,7 +467,7 @@ describe('eforgeConfigSchema backend-conditional model ref validation', () => {
 // ---------------------------------------------------------------------------
 
 describe('findConfigFile', () => {
-  it('returns null when only legacy eforge.yaml exists and logs a warning', async () => {
+  it('returns null when only legacy eforge.yaml exists (no eforge/config.yaml)', async () => {
     const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
@@ -482,15 +475,59 @@ describe('findConfigFile', () => {
     const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-find-'));
     await writeFile(join(tmpDir, 'eforge.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
 
-    const stderrSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
     try {
       const result = await findConfigFile(tmpDir);
+      // findConfigFile only searches for eforge/config.yaml — legacy eforge.yaml
+      // is detected by loadConfig which surfaces a warning in its return value.
       expect(result).toBeNull();
-      const warnings = stderrSpy.mock.calls.map((c) => c.join(' ')).join('\n');
-      expect(warnings).toContain('legacy config');
-      expect(warnings).toContain('eforge/config.yaml');
     } finally {
-      stderrSpy.mockRestore();
+      await rm(tmpDir, { recursive: true });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// loadConfig legacy eforge.yaml detection
+// ---------------------------------------------------------------------------
+
+describe('loadConfig legacy eforge.yaml detection', () => {
+  it('returns a warning when legacy eforge.yaml exists at project root (no eforge/config.yaml)', async () => {
+    const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-legacy-warn-'));
+    await writeFile(join(tmpDir, 'eforge.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
+
+    try {
+      const { warnings } = await loadConfig(tmpDir);
+      const warningText = warnings.join('\n');
+      expect(warningText).toContain('legacy config');
+      expect(warningText).toContain('eforge/config.yaml');
+    } finally {
+      await rm(tmpDir, { recursive: true });
+    }
+  });
+
+  it('returns no warnings when eforge/config.yaml is present (legacy eforge.yaml ignored)', async () => {
+    const { writeFile, mkdir, mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-no-legacy-'));
+    await mkdir(join(tmpDir, 'eforge'), { recursive: true });
+    await writeFile(join(tmpDir, 'eforge', 'config.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
+    // Also plant a legacy file to confirm it's not picked up
+    await writeFile(join(tmpDir, 'eforge.yaml'), 'agents:\n  maxTurns: 99\n', 'utf-8');
+
+    try {
+      const { config, warnings } = await loadConfig(tmpDir);
+      // Uses the eforge/config.yaml, not legacy
+      expect(config.agents.maxTurns).toBe(10);
+      // No legacy warning because eforge/config.yaml was found first
+      const warningText = warnings.join('\n');
+      expect(warningText).not.toContain('legacy config');
+    } finally {
       await rm(tmpDir, { recursive: true });
     }
   });

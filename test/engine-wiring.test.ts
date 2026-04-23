@@ -44,8 +44,8 @@ import { StubBackend } from './stub-backend.js';
 
 const mockedLoadConfig = vi.mocked(loadConfig);
 
-function makeConfig(overrides: Partial<typeof DEFAULT_CONFIG> = {}): typeof DEFAULT_CONFIG {
-  return { ...DEFAULT_CONFIG, ...overrides };
+function makeConfig(overrides: Partial<typeof DEFAULT_CONFIG> = {}): { config: typeof DEFAULT_CONFIG; warnings: string[] } {
+  return { config: { ...DEFAULT_CONFIG, ...overrides }, warnings: [] };
 }
 
 describe('EforgeEngine.create() backend selection', () => {

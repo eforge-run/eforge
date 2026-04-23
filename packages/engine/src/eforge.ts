@@ -120,9 +120,12 @@ export class EforgeEngine {
   private readonly backend: AgentBackend;
   private readonly onClarification?: EforgeEngineOptions['onClarification'];
   private readonly onApproval?: EforgeEngineOptions['onApproval'];
+  /** Config warnings collected during loadConfig — emitted as config:warning events. */
+  private readonly configWarnings: string[];
 
-  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}) {
+  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = []) {
     this.config = config;
+    this.configWarnings = configWarnings;
     this.cwd = options.cwd ?? process.cwd();
     this.backend = options.backend ?? new ClaudeSDKBackend({
       mcpServers: options.mcpServers,
@@ -146,7 +149,8 @@ export class EforgeEngine {
    */
   static async create(options: EforgeEngineOptions = {}): Promise<EforgeEngine> {
     const cwd = options.cwd ?? process.cwd();
-    let config = await loadConfig(cwd);
+    const { config: loadedConfig, warnings: configWarnings } = await loadConfig(cwd);
+    let config = loadedConfig;
 
     if (options.config) {
       config = mergeConfig(config, options.config);
@@ -206,7 +210,7 @@ export class EforgeEngine {
       }
     }
 
-    return new EforgeEngine(config, options);
+    return new EforgeEngine(config, options, configWarnings);
   }
 
   /**
@@ -224,6 +228,11 @@ export class EforgeEngine {
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Compile complete';
+
+    // Emit any config warnings collected during engine creation
+    for (const warning of this.configWarnings) {
+      yield { timestamp: new Date().toISOString(), type: 'config:warning', message: warning, source: 'loadConfig' };
+    }
 
     try {
       const planSetName = options.name ?? deriveNameFromSource(source);
@@ -466,6 +475,11 @@ export class EforgeEngine {
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Build complete';
 
+    // Emit any config warnings collected during engine creation
+    for (const warning of this.configWarnings) {
+      yield { timestamp: new Date().toISOString(), type: 'config:warning', message: warning, source: 'loadConfig' };
+    }
+
     try {
       validatePlanSetName(planSet);
       tracing = createTracingContext(this.config, runId, 'build', planSet);
@@ -502,12 +516,20 @@ export class EforgeEngine {
 
       // Load orchestration config
       const orchConfig = await parseOrchestrationConfig(configPath);
+      // Emit any orchestration config warnings as plan:warning events
+      for (const warning of orchConfig.warnings ?? []) {
+        yield { timestamp: new Date().toISOString(), type: 'plan:warning', message: warning, source: 'parseOrchestrationConfig' };
+      }
 
       // Pre-load plan files for the runner
       const planDir = resolve(planBaseCwd, this.config.plan.outputDir, planSet);
       const planFileMap = new Map<string, PlanFile>();
       for (const plan of orchConfig.plans) {
         const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
+        // Emit any plan file warnings as plan:warning events
+        for (const warning of planFile.warnings ?? []) {
+          yield { timestamp: new Date().toISOString(), type: 'plan:warning', planId: plan.id, message: warning, source: 'parsePlanFile' };
+        }
         planFileMap.set(plan.id, planFile);
       }
 
