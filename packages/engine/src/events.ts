@@ -268,6 +268,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'validation:start'; commands: string[] }
   | { type: 'validation:command:start'; command: string }
   | { type: 'validation:command:complete'; command: string; exitCode: number; output: string }
+  | { type: 'validation:command:timeout'; command: string; timeoutMs: number; pid: number }
   | { type: 'validation:complete'; passed: boolean }
   | { type: 'validation:fix:start'; attempt: number; maxAttempts: number }
   | { type: 'validation:fix:complete'; attempt: number }

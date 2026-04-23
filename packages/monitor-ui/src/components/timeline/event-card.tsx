@@ -17,6 +17,7 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
     const status = 'result' in event ? (event as { result?: { status?: string } }).result?.status : undefined;
     return { cls: status === 'failed' ? 'failed' : 'complete', label: type };
   }
+  if (type === 'validation:command:timeout') return { cls: 'failed', label: type };
   if (type.endsWith(':start')) return { cls: 'start', label: type };
   if (type.endsWith(':complete')) return { cls: 'complete', label: type };
   if (type.endsWith(':failed')) return { cls: 'failed', label: type };
@@ -81,6 +82,7 @@ function eventSummary(event: EforgeEvent): string {
     case 'validation:start': return `Validation: ${event.commands?.length || 0} command(s)`;
     case 'validation:command:start': return `Running: ${event.command}`;
     case 'validation:command:complete': return `${event.command}: exit ${event.exitCode}`;
+    case 'validation:command:timeout': return `${event.command}: timed out (${event.timeoutMs}ms)`;
     case 'validation:complete': return event.passed ? 'Validation passed' : 'Validation failed';
     case 'validation:fix:start': return `Fix attempt ${event.attempt}/${event.maxAttempts}`;
     case 'validation:fix:complete': return `Fix attempt ${event.attempt} complete`;
@@ -185,6 +187,8 @@ function eventDetail(event: EforgeEvent): string | null {
       return event.modules?.map((m) => `${m.id}: ${m.description}${m.dependsOn?.length ? ' (depends: ' + m.dependsOn.join(', ') + ')' : ''}`).join('\n') ?? null;
     case 'validation:command:complete':
       return event.output || null;
+    case 'validation:command:timeout':
+      return `Command killed after ${event.timeoutMs}ms (pid ${event.pid}). The process group was terminated.`;
     case 'prd_validation:complete': {
       if (event.passed) return 'All PRD requirements satisfied.';
       const gapParts: string[] = [];

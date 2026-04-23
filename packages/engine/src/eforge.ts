@@ -763,6 +763,7 @@ export class EforgeEngine {
         signal,
         postMergeCommands: config.build.postMergeCommands,
         validateCommands: orchConfig.validate,
+        postMergeCommandTimeoutMs: config.build.postMergeCommandTimeoutMs,
         validationFixer,
         maxValidationRetries: config.build.maxValidationRetries,
         mergeResolver,
