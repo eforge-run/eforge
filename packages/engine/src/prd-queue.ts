@@ -13,6 +13,7 @@ import { promisify } from 'node:util';
 import { z } from 'zod/v4';
 import { resolveDependencyGraph } from './plan.js';
 import { forgeCommit, retryOnLock } from './git.js';
+import { composeCommitMessage } from './model-tracker.js';
 
 const exec = promisify(execFile);
 
@@ -284,7 +285,7 @@ export async function cleanupCompletedPrd(filePath: string, queueDir: string, cw
 
 
   const prdId = basename(filePath, '.md');
-  await forgeCommit(cwd, `cleanup(${prdId}): remove completed PRD`, { paths: [filePath] });
+  await forgeCommit(cwd, composeCommitMessage(`cleanup(${prdId}): remove completed PRD`), { paths: [filePath] });
 }
 
 // ---------------------------------------------------------------------------
@@ -304,7 +305,7 @@ export async function movePrdToSubdir(filePath: string, subdir: string, cwd: str
   const prdId = basename(filePath, '.md');
 
   await retryOnLock(() => exec('git', ['mv', '--', filePath, destPath], { cwd }), cwd);
-  await forgeCommit(cwd, `queue(${prdId}): move to ${subdir}`);
+  await forgeCommit(cwd, composeCommitMessage(`queue(${prdId}): move to ${subdir}`));
 }
 
 /**

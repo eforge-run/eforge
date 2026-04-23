@@ -14,6 +14,7 @@ import type { EforgeConfig, BuildStageSpec, ReviewProfileConfig } from '../confi
 import type { PipelineComposition } from '../schemas.js';
 import type { AgentBackend } from '../backend.js';
 import type { TracingContext } from '../tracing.js';
+import type { ModelTracker } from '../model-tracker.js';
 
 export interface PipelineContext {
   backend: AgentBackend;
@@ -34,6 +35,9 @@ export interface PipelineContext {
   /** The actual base branch from repoRoot (before worktree creation). When cwd is a merge worktree,
    *  `git rev-parse --abbrev-ref HEAD` returns the feature branch, not the real base. */
   baseBranch?: string;
+
+  /** Accumulates model IDs from agent:start events during this pipeline run. Used for Models-Used: commit trailer. */
+  modelTracker: ModelTracker;
 
   // Mutable state passed between stages
   plans: PlanFile[];

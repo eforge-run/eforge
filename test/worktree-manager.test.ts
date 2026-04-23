@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
 import { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import { createMergeWorktree } from '@eforge-build/engine/worktree-ops';
+import { ModelTracker } from '@eforge-build/engine/model-tracker';
 
 const exec = promisify(execFile);
 
@@ -185,5 +186,95 @@ describe('WorktreeManager', () => {
     expect(Array.isArray(report.removed)).toBe(true);
     expect(Array.isArray(report.fallback)).toBe(true);
     expect(Array.isArray(report.failed)).toBe(true);
+  });
+
+  it('mergePlan includes Models-Used: trailer when modelTracker is non-empty', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    const branch = 'eforge/plan-models-used';
+    const path = await wm.acquireForPlan('plan-models-used', branch, true);
+
+    // Commit on plan worktree
+    writeFileSync(join(path, 'impl.txt'), 'implementation\n');
+    await exec('git', ['add', '.'], { cwd: path });
+    await exec('git', ['commit', '-m', 'implement feature'], { cwd: path });
+
+    // Create a non-empty ModelTracker
+    const tracker = new ModelTracker();
+    tracker.record('claude-opus-4-5');
+    tracker.record('claude-sonnet-4-5');
+
+    await wm.mergePlan(
+      'plan-models-used',
+      { id: 'plan-models-used', name: 'Models Used Test', branch },
+      { modelTracker: tracker },
+    );
+
+    // Inspect the commit message on the merge worktree
+    const { stdout: commitMsg } = await exec('git', ['log', '-1', '--format=%B'], { cwd: mergeWorktreePath });
+    const msg = commitMsg.trim();
+
+    // Models-Used: trailer should appear before Co-Authored-By: trailer
+    const modelsUsedIdx = msg.indexOf('Models-Used:');
+    const coAuthoredIdx = msg.indexOf('Co-Authored-By:');
+    expect(modelsUsedIdx).toBeGreaterThan(-1);
+    expect(coAuthoredIdx).toBeGreaterThan(-1);
+    expect(modelsUsedIdx).toBeLessThan(coAuthoredIdx);
+
+    // Models should be sorted lexicographically
+    expect(msg).toContain('Models-Used: claude-opus-4-5, claude-sonnet-4-5');
+  });
+
+  it('mergePlan omits Models-Used: trailer when modelTracker is empty', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    const branch = 'eforge/plan-no-models';
+    const path = await wm.acquireForPlan('plan-no-models', branch, true);
+
+    writeFileSync(join(path, 'impl.txt'), 'implementation\n');
+    await exec('git', ['add', '.'], { cwd: path });
+    await exec('git', ['commit', '-m', 'implement'], { cwd: path });
+
+    // Empty tracker
+    const emptyTracker = new ModelTracker();
+
+    await wm.mergePlan(
+      'plan-no-models',
+      { id: 'plan-no-models', name: 'No Models Test', branch },
+      { modelTracker: emptyTracker },
+    );
+
+    const { stdout: commitMsg } = await exec('git', ['log', '-1', '--format=%B'], { cwd: mergeWorktreePath });
+    expect(commitMsg).not.toContain('Models-Used:');
+  });
+
+  it('mergePlan omits Models-Used: trailer when no modelTracker provided', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    const branch = 'eforge/plan-no-tracker';
+    const path = await wm.acquireForPlan('plan-no-tracker', branch, true);
+
+    writeFileSync(join(path, 'impl.txt'), 'implementation\n');
+    await exec('git', ['add', '.'], { cwd: path });
+    await exec('git', ['commit', '-m', 'implement'], { cwd: path });
+
+    // No tracker passed — existing behavior preserved
+    await wm.mergePlan(
+      'plan-no-tracker',
+      { id: 'plan-no-tracker', name: 'No Tracker Test', branch },
+    );
+
+    const { stdout: commitMsg } = await exec('git', ['log', '-1', '--format=%B'], { cwd: mergeWorktreePath });
+    expect(commitMsg).not.toContain('Models-Used:');
+    expect(commitMsg).toContain('Co-Authored-By: forged-by-eforge');
   });
 });

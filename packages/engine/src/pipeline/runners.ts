@@ -19,6 +19,7 @@ import {
 } from '../retry.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { forgeCommit } from '../git.js';
+import { composeCommitMessage } from '../model-tracker.js';
 
 import type { PipelineContext, BuildStageContext } from './types.js';
 import { getCompileStage, getBuildStage } from './registry.js';
@@ -154,11 +155,14 @@ export async function* runCompilePipeline(
       // (reviewers read committed files)
       if (ctx.plans.length > 0 || ctx.expeditionModules.length > 0) {
         const commitCwd = ctx.planCommitCwd ?? ctx.cwd;
-        await commitPlanArtifacts(commitCwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir);
+        await commitPlanArtifacts(commitCwd, ctx.planSetName, ctx.cwd, ctx.config.plan.outputDir, ctx.modelTracker);
       }
     }
     const stage = getCompileStage(stageName);
-    yield* stage(ctx);
+    for await (const event of stage(ctx)) {
+      if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
+      yield event;
+    }
     if (ctx.skipped) break;
     // If the stage at our current position is still the one we just ran, it
     // ran to completion — advance past it. This handles composers that shrink
@@ -200,14 +204,17 @@ export async function* runBuildPipeline(
           run: () => stage(ctx),
         };
       });
-      yield* runParallel(tasks);
+      for await (const event of runParallel(tasks)) {
+        if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
+        yield event;
+      }
 
       // After parallel group, commit any uncommitted changes (e.g., from doc-update)
       try {
         const { stdout: statusOut } = await exec('git', ['status', '--porcelain'], { cwd: ctx.worktreePath });
         if (statusOut.trim().length > 0) {
           await exec('git', ['add', '-A'], { cwd: ctx.worktreePath });
-          await forgeCommit(ctx.worktreePath, `chore(${ctx.planId}): post-parallel-group auto-commit`);
+          await forgeCommit(ctx.worktreePath, composeCommitMessage(`chore(${ctx.planId}): post-parallel-group auto-commit`, ctx.modelTracker));
         }
       } catch (err) {
         // Non-critical — best-effort commit, but yield a warning so it's observable
@@ -216,7 +223,10 @@ export async function* runBuildPipeline(
     } else {
       // Sequential stage
       const stage = getBuildStage(spec);
-      yield* stage(ctx);
+      for await (const event of stage(ctx)) {
+        if (event.type === 'agent:start') ctx.modelTracker.record(event.model);
+        yield event;
+      }
     }
 
     // Stop pipeline if a stage signaled failure (e.g., implement stage)

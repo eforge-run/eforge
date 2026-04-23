@@ -2,6 +2,18 @@
  * Git helpers — shared commit logic with eforge attribution.
  * All engine-level commits go through forgeCommit() to ensure
  * the Co-Authored-By trailer is always appended.
+ *
+ * Callers typically compose their commit body via composeCommitMessage(body, modelTracker?)
+ * from model-tracker.ts before passing to forgeCommit(). This places the Models-Used: trailer
+ * immediately before the Co-Authored-By trailer that forgeCommit appends. The message passed
+ * to forgeCommit may already contain a Models-Used: trailer, which is preserved as-is.
+ *
+ * Trailer ordering in the final commit:
+ *   <body>
+ *
+ *   Models-Used: <id1>, <id2>   ← placed by composeCommitMessage() when tracker is non-empty
+ *
+ *   Co-Authored-By: forged-by-eforge <noreply@eforge.build>   ← always appended by forgeCommit()
  */
 
 import { execFile } from 'node:child_process';

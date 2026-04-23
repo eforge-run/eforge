@@ -17,7 +17,8 @@ import {
   cleanupWorktrees,
   type MergeResolver,
 } from './worktree-ops.js';
-import { ATTRIBUTION } from './git.js';
+import type { ModelTracker } from './model-tracker.js';
+import { composeCommitMessage } from './model-tracker.js';
 import type { EforgeState, ReconciliationReport } from './events.js';
 
 const exec = promisify(execFile);
@@ -146,11 +147,12 @@ export class WorktreeManager {
       mergeResolver?: MergeResolver;
       recentlyMergedIds?: string[];
       planMap?: Map<string, { name: string }>;
+      modelTracker?: ModelTracker;
     } = {},
   ): Promise<string> {
     const managed = this.worktrees.get(planId);
     const prefix = opts.mode === 'errand' ? 'fix' : 'feat';
-    const commitMessage = `${prefix}(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}`;
+    const commitMessage = composeCommitMessage(`${prefix}(${plan.id}): ${plan.name}`, opts.modelTracker);
 
     if (managed?.builtOnMerge) {
       // Plan built directly on the merge worktree - commits already on featureBranch.

@@ -45,6 +45,7 @@ import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validate
 import { loadState, saveState as saveEforgeState } from './state.js';
 import { runCompilePipeline, runBuildPipeline, createToolTracker, resolveAgentConfig, type PipelineContext, type BuildStageContext } from './pipeline.js';
 import { forgeCommit, retryOnLock } from './git.js';
+import { ModelTracker, composeCommitMessage } from './model-tracker.js';
 import { cleanupPlanFiles } from './cleanup.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { withRunId } from './session.js';
@@ -289,6 +290,7 @@ export class EforgeEngine {
         auto: options.auto,
         abortController: options.abortController,
         onClarification: this.onClarification,
+        modelTracker: new ModelTracker(),
         plans: [],
         expeditionModules: [],
         moduleBuildConfigs: new Map(),
@@ -307,7 +309,7 @@ export class EforgeEngine {
         // when artifacts were already committed by a previous run/retry).
         const { stdout: staged } = await exec('git', ['diff', '--cached', '--name-only'], { cwd: mergeWorktreePath });
         if (staged.trim().length > 0) {
-          await forgeCommit(mergeWorktreePath, `plan(${planSetName}): initial planning artifacts`);
+          await forgeCommit(mergeWorktreePath, composeCommitMessage(`plan(${planSetName}): initial planning artifacts`, ctx.modelTracker));
         }
       }
 
@@ -441,7 +443,7 @@ export class EforgeEngine {
       // Commit the enqueued PRD
       try {
         await retryOnLock(() => exec('git', ['add', enqueueResult.filePath], { cwd }), cwd);
-        await forgeCommit(cwd, `enqueue(${enqueueResult.id}): ${title}`);
+        await forgeCommit(cwd, composeCommitMessage(`enqueue(${enqueueResult.id}): ${title}`));
       } catch (err) {
         yield {
           timestamp: new Date().toISOString(),
@@ -567,6 +569,7 @@ export class EforgeEngine {
           sourceContent: '', // Not needed for build stages
           verbose,
           abortController,
+          modelTracker: new ModelTracker(),
           plans: Array.from(planFileMap.values()),
           expeditionModules: [],
           moduleBuildConfigs: new Map(),
@@ -910,7 +913,7 @@ export class EforgeEngine {
           await writeFile(prd.filePath, revision, 'utf-8');
           try {
             await retryOnLock(() => exec('git', ['add', '--', prd.filePath], { cwd }), cwd);
-            await forgeCommit(cwd, `chore(queue): revise stale PRD ${prd.id}`);
+            await forgeCommit(cwd, composeCommitMessage(`chore(queue): revise stale PRD ${prd.id}`));
           } catch (err) {
             yield {
               timestamp: new Date().toISOString(),

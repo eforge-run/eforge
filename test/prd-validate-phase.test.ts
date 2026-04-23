@@ -3,6 +3,7 @@ import { prdValidate } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import type { EforgeEvent, EforgeState, OrchestrationConfig } from '@eforge-build/engine/events';
+import { ModelTracker } from '@eforge-build/engine/model-tracker';
 import { useTempDir } from './test-tmpdir.js';
 
 const TEST_PIPELINE = {
@@ -66,6 +67,7 @@ function makeCtx(stateDir: string, prdValidator: PhaseContext['prdValidator']): 
     recentlyMergedIds: [],
     featureBranchMerged: false,
     resumed: false,
+    modelTracker: new ModelTracker(),
     prdValidator,
   };
 }

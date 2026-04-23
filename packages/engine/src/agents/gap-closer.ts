@@ -7,6 +7,7 @@ import type { PipelineComposition } from '../schemas.js';
 import type { TracingContext } from '../tracing.js';
 import { loadPrompt } from '../prompts.js';
 import { resolveAgentConfig } from '../pipeline.js';
+import { ModelTracker } from '../model-tracker.js';
 
 export interface GapCloserContext extends SdkPassthroughConfig {
   backend: AgentBackend;
@@ -136,6 +137,7 @@ export async function* runGapCloser(
     reviewIssues: [],
     build,
     review,
+    modelTracker: new ModelTracker(),
   };
 
   try {

@@ -27,6 +27,7 @@ import { promisify } from 'node:util';
 import type { AgentTerminalSubtype } from './backend.js';
 import { AgentTerminalError, isPlannerSubmissionError } from './backend.js';
 import { forgeCommit } from './git.js';
+import { composeCommitMessage } from './model-tracker.js';
 import { parsePlanFile } from './plan.js';
 import type { EforgeEvent, AgentRole } from './events.js';
 
@@ -151,7 +152,7 @@ export async function commitPlanArtifacts(
   await exec('git', ['add', planDir], { cwd: commitCwd });
   const { stdout: staged } = await exec('git', ['diff', '--cached', '--name-only'], { cwd: commitCwd });
   if (staged.trim().length === 0) return;
-  await forgeCommit(commitCwd, `plan(${planSetName}): initial planning artifacts`);
+  await forgeCommit(commitCwd, composeCommitMessage(`plan(${planSetName}): initial planning artifacts`));
 }
 
 /**
@@ -336,7 +337,7 @@ export async function buildBuilderContinuationInput(
   await exec('git', ['add', '-A'], { cwd: worktreePath });
   await forgeCommit(
     worktreePath,
-    `wip(${planId}): continuation checkpoint (attempt ${info.attempt + 1})`,
+    composeCommitMessage(`wip(${planId}): continuation checkpoint (attempt ${info.attempt + 1})`),
   );
 
   let completedDiff: string;
