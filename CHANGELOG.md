@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.6.1] - 2026-04-23
+
+### Features
+
+- add searchable overlays for provider and model selection
+
 ## [0.6.0] - 2026-04-23
 
 ### Features
@@ -300,31 +306,6 @@
 - Bundle @eforge-build/client into eforge-pi tarball
 - Bundle @eforge-build/* workspace packages into executables
 - Remove one-time deprecate step from publish-all
-
-## [0.3.8] - 2026-04-04
-
-### Bug Fixes
-
-- Use value equality for compile loop restart detection
-
-### Documentation
-
-- Refine README project description and review rationale
-
-## [0.3.7] - 2026-04-04
-
-### Bug Fixes
-
-- Planner guard and compile loop reset
-- Dirty working tree detection, recovery, and merge hardening
-
-### Features
-
-- Buffer verbose agent streaming output
-
-### Other
-
-- Upgrade deps
 
 ## [0.3.6] - 2026-04-03
 
