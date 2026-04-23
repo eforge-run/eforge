@@ -5,7 +5,7 @@
  */
 
 import { execFile } from 'node:child_process';
-import { stat, unlink } from 'node:fs/promises';
+import { readFile, writeFile, stat, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -88,14 +88,45 @@ export async function retryOnLock<T>(
  * Create a git commit with the eforge attribution appended.
  *
  * @param cwd - Working directory for the git command
- * @param message - Commit message (attribution is appended automatically)
- * @param paths - Optional paths to pass after `--` (for `git commit -m <msg> -- <paths>`)
+ * @param message - Commit message (attribution is appended automatically). Ignored when `reuseMessage` is true.
+ * @param options - Optional settings:
+ *   - `paths`: paths to pass after `--` (for `git commit -m <msg> -- <paths>`)
+ *   - `reuseMessage`: when true, reads and rewrites `.git/MERGE_MSG` to append the attribution
+ *     trailer, then runs `git commit --no-edit`. Use for post-conflict-resolution commits that
+ *     must preserve Git's preserved merge message.
  */
-export async function forgeCommit(cwd: string, message: string, paths?: string[]): Promise<void> {
+export async function forgeCommit(
+  cwd: string,
+  message: string | undefined,
+  options?: { paths?: string[]; reuseMessage?: boolean },
+): Promise<void> {
+  if (options?.reuseMessage) {
+    // Resolve .git directory (supports both regular repos and worktrees)
+    const { stdout: gitDirRaw } = await exec('git', ['rev-parse', '--git-dir'], { cwd });
+    const gitDir = gitDirRaw.trim();
+    const absoluteGitDir = gitDir.startsWith('/') ? gitDir : join(cwd, gitDir);
+    const mergeMsgPath = join(absoluteGitDir, 'MERGE_MSG');
+
+    // Append attribution trailer to MERGE_MSG if not already present
+    let mergeMsg = '';
+    try {
+      mergeMsg = await readFile(mergeMsgPath, 'utf8');
+    } catch {
+      // MERGE_MSG doesn't exist — start with empty string
+    }
+    if (!mergeMsg.includes(ATTRIBUTION)) {
+      mergeMsg = mergeMsg.trimEnd() + `\n\n${ATTRIBUTION}`;
+      await writeFile(mergeMsgPath, mergeMsg);
+    }
+
+    await retryOnLock(() => exec('git', ['commit', '--no-edit'], { cwd }), cwd);
+    return;
+  }
+
   const fullMessage = `${message}\n\n${ATTRIBUTION}`;
   const args = ['commit', '-m', fullMessage];
-  if (paths && paths.length > 0) {
-    args.push('--', ...paths);
+  if (options?.paths && options.paths.length > 0) {
+    args.push('--', ...options.paths);
   }
   await retryOnLock(() => exec('git', args, { cwd }), cwd);
 }

@@ -9,7 +9,7 @@ import { basename, resolve, join } from 'node:path';
 import { mkdir, rm } from 'node:fs/promises';
 import { promisify } from 'node:util';
 
-import { retryOnLock } from './git.js';
+import { retryOnLock, forgeCommit } from './git.js';
 
 const exec = promisify(execFile);
 
@@ -153,7 +153,7 @@ export async function mergeWorktree(
   await retryOnLock(() => exec('git', ['checkout', baseBranch], { cwd }), cwd);
   try {
     await retryOnLock(() => exec('git', ['merge', '--squash', branch], { cwd }), cwd);
-    await retryOnLock(() => exec('git', ['commit', '-m', commitMessage], { cwd }), cwd);
+    await forgeCommit(cwd, commitMessage);
   } catch (err) {
     // Attempt resolution via callback if provided
     if (mergeResolver) {
@@ -170,7 +170,7 @@ export async function mergeWorktree(
               );
               if (stdout.trim().length === 0) {
                 // All conflicts resolved — commit the squash-merge
-                await retryOnLock(() => exec('git', ['commit', '-m', commitMessage], { cwd }), cwd);
+                await forgeCommit(cwd, commitMessage);
                 return;
               }
             } catch {
@@ -289,7 +289,7 @@ export async function mergeFeatureBranchToBase(
             );
             if (remaining.trim().length === 0) {
               // All conflicts resolved — commit using Git's preserved merge message
-              await exec('git', ['commit', '--no-edit'], { cwd: repoRoot });
+              await forgeCommit(repoRoot, undefined, { reuseMessage: true });
               const { stdout: shaOut } = await exec('git', ['rev-parse', 'HEAD'], { cwd: repoRoot });
               return shaOut.trim();
             }

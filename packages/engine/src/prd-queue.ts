@@ -284,7 +284,7 @@ export async function cleanupCompletedPrd(filePath: string, queueDir: string, cw
 
 
   const prdId = basename(filePath, '.md');
-  await forgeCommit(cwd, `cleanup(${prdId}): remove completed PRD`, [filePath]);
+  await forgeCommit(cwd, `cleanup(${prdId}): remove completed PRD`, { paths: [filePath] });
 }
 
 // ---------------------------------------------------------------------------
