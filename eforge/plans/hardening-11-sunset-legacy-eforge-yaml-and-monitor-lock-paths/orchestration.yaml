@@ -1,0 +1,52 @@
+name: hardening-11-sunset-legacy-eforge-yaml-and-monitor-lock-paths
+description: "Remove the legacy `eforge.yaml` and `monitor.lock` dual-path
+  support: convert the soft config warning into a hard migration error, delete
+  the lockfile fallback, simplify CLI guidance, update docs, and replace
+  legacy-path tests with tests for the new error paths."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-sunset-legacy-paths
+    name: Sunset legacy eforge.yaml and monitor.lock paths
+    depends_on: []
+    branch: hardening-11-sunset-legacy-eforge-yaml-and-monitor-lock-paths/sunset-legacy-paths
+    build: &a1
+      - implement
+      - - review-cycle
+        - doc-update
+      - test-write
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+        - breaking-changes
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This is a focused breaking-change cleanup touching a handful of
+    files across engine/config.ts, client/lockfile.ts, and eforge/cli - well
+    within a single planner session's budget. Excursion is correct: sequential
+    dependencies (remove fallback -> update error paths -> update tests ->
+    update docs) rule out expedition's parallel module planning. A
+    plan-review-cycle is warranted because this is a breaking change with
+    explicit acceptance criteria (specific ripgrep assertions, error message
+    requirements, migration path preservation) - catching scope gaps before
+    build saves rework. Build stages: implement first, then review-cycle
+    (correctness + breaking-changes perspectives since users with legacy
+    eforge.yaml will hit the new error) in parallel with doc-update
+    (docs/config.md is explicitly in scope and doesn't depend on review), then
+    test-write to cover the two new tests the PRD mandates (legacy-only config
+    error, legacy-only lockfile error). Standard strictness and 2 rounds match
+    the risk profile - a contained removal with clear acceptance criteria, not
+    security-critical."
