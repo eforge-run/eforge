@@ -90,9 +90,20 @@ Add a test: `loadPrompt('planner', { /* partial vars */ })` throws with the miss
 
 **Files touched (in scope):**
 - `packages/engine/src/{events,plan,config,prompts,git,worktree-ops,pipeline}.ts`
-- `packages/eforge/src/cli/index.ts` (render new warning events)
-- `packages/monitor-ui/src/lib/reducer.ts` (handle new warning events; display is optional — can be console.log in UI is fine as long as events flow)
-- Tests: `test/prompts.test.ts`, `test/git.test.ts` (or wherever commit trailer is tested), `test/plan.test.ts`, `test/config.test.ts`
+- All callers of `loadConfig()`, `parseRawConfig()`, `findConfigFile()`, and `resolveActiveProfileName()` across `packages/engine/src`, `packages/eforge/src`, `packages/monitor/src`, and `packages/pi-eforge/extensions` — every call site must destructure the new `{ ..., warnings }` shape.
+- `packages/eforge/src/cli/index.ts` (render new warning events; print early-startup warnings to stderr from the consumer side).
+- `packages/monitor-ui/src/lib/reducer.ts` (handle new warning events; display is optional — can be console.log in UI is fine as long as events flow).
+- **Tests (all that reference the changed signatures — do not miss any):**
+  - `test/prompts.test.ts` or `test/prompt-resolution.test.ts` — loadPrompt strictness.
+  - `test/git.test.ts` or a new `test/git-forge-commit.test.ts` — commit trailer assertion.
+  - `test/plan.test.ts` or a new `test/plan-warnings.test.ts` — plan warning events.
+  - `test/config.test.ts` — loadConfig return shape.
+  - **`test/config-backend-profile.test.ts`** — MUST be updated. This file was missed in the previous attempt and caused 9 test failures. It contains:
+    - 4 `const cfg = await loadConfig(projectDir)` call sites (around lines 361, 381, 402, 949) that must be rewritten to destructure `const { config: cfg } = await loadConfig(projectDir);`.
+    - 8 `expect(result).toEqual({ name, source })` assertions on `resolveActiveProfileName` (around lines 515, 529, 539, 552, 788, 807, 823, 829, 839) that must include the new `warnings: [...]` key — empty array for the happy paths and the stale-marker warning string for the two stale-marker edge cases.
+
+**Process guidance (learned from previous attempt):**
+Before considering the builder done, run `rg -l "loadConfig\\(|resolveActiveProfileName\\(|parseRawConfig\\(|findConfigFile\\(" test/ packages/` and confirm every hit compiles against the new `{ ..., warnings }` shape.
 
 **Out of scope:**
 - Adding schema validation beyond what exists in `packages/engine/src/schemas.ts`.
