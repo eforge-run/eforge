@@ -21,6 +21,7 @@ import type {
   SessionSummary,
   FollowCounters,
 } from '@eforge-build/client';
+import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
 
 declare const EFORGE_VERSION: string;
 
@@ -124,7 +125,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           contents: [{
             uri: 'eforge://status',
             mimeType: 'application/json',
-            text: JSON.stringify(summary, null, 2),
+            text: formatResourceJson(summary),
           }],
         };
       } catch (err) {
@@ -152,7 +153,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           contents: [{
             uri: uri.href,
             mimeType: 'application/json',
-            text: JSON.stringify(summary, null, 2),
+            text: formatResourceJson(summary),
           }],
         };
       } catch (err) {
@@ -179,7 +180,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           contents: [{
             uri: 'eforge://queue',
             mimeType: 'application/json',
-            text: JSON.stringify(data, null, 2),
+            text: formatResourceJson(data),
           }],
         };
       } catch {
@@ -206,7 +207,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           contents: [{
             uri: 'eforge://config',
             mimeType: 'application/json',
-            text: JSON.stringify(data, null, 2),
+            text: formatResourceJson(data),
           }],
         };
       } catch {
@@ -224,34 +225,34 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // --- Tools ---
 
   // Tool: eforge_build
-  server.tool(
-    'eforge_build',
-    'Enqueue a PRD source for the eforge daemon to build. Returns a sessionId and autoBuild status.',
-    {
+  createDaemonTool(server, cwd, {
+    name: 'eforge_build',
+    description: 'Enqueue a PRD source for the eforge daemon to build. Returns a sessionId and autoBuild status.',
+    schema: {
       source: z
         .string()
         .describe('PRD file path or inline description to enqueue for building'),
     },
-    async ({ source }) => {
-      const { data, port } = await daemonRequest<EnqueueResponse>(cwd, 'POST', API_ROUTES.enqueue, { source });
-      const response = { ...data, monitorUrl: `http://localhost:${port}` };
-      return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+    handler: async ({ source }, { cwd: toolCwd }) => {
+      const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, { source });
+      return { ...data, monitorUrl: `http://localhost:${port}` };
     },
-  );
+  });
 
   // Tool: eforge_follow
   // Long-running tool that blocks for the lifetime of a session and streams
   // high-signal events as MCP `notifications/progress`. Resolves with the
   // session summary so the outcome lands in the conversation transcript.
   const DEFAULT_FOLLOW_TIMEOUT_MS = 1_800_000; // 30 minutes
-  server.tool(
-    'eforge_follow',
-    'Follow a running eforge session: streams phase/files-changed/issue updates as progress notifications and returns the final session summary. Use after eforge_build to surface live build status in the conversation.',
-    {
+
+  createDaemonTool(server, cwd, {
+    name: 'eforge_follow',
+    description: 'Follow a running eforge session: streams phase/files-changed/issue updates as progress notifications and returns the final session summary. Use after eforge_build to surface live build status in the conversation.',
+    schema: {
       sessionId: z.string().describe('The session to follow (from eforge_build or eforge_status).'),
       timeoutMs: z.number().optional().describe('Max time to wait for session completion in ms. Default 1,800,000 (30 minutes).'),
     },
-    async ({ sessionId, timeoutMs }, extra) => {
+    handler: async ({ sessionId, timeoutMs }, { cwd: toolCwd, extra, server: toolServer }) => {
       const timeout = timeoutMs ?? DEFAULT_FOLLOW_TIMEOUT_MS;
       const progressToken = extra?._meta?.progressToken;
 
@@ -264,7 +265,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       }, timeout);
 
       const signals: AbortSignal[] = [timeoutController.signal];
-      if (extra?.signal) signals.push(extra.signal);
+      if (extra?.signal) signals.push(extra.signal as AbortSignal);
       // `AbortSignal.any` is available on Node 22+ (the engines requirement).
       const signal = AbortSignal.any(signals);
 
@@ -275,7 +276,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (progressToken === undefined) return;
         progressCounter += 1;
         try {
-          await server.server.notification({
+          await toolServer.server.notification({
             method: 'notifications/progress',
             params: {
               progressToken,
@@ -294,7 +295,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
       try {
         summary = await subscribeToSession<DaemonStreamEvent>(sessionId, {
-          cwd,
+          cwd: toolCwd,
           signal,
           onEvent: (event) => {
             const update = eventToProgress(event, counters);
@@ -313,21 +314,15 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       if (followError || !summary) {
         const message = followError?.message ?? 'eforge_follow failed';
         const isAbort = followError?.name === 'AbortError' || /timed out/.test(message);
-        return {
-          content: [{
-            type: 'text',
-            text: JSON.stringify({
-              status: isAbort ? 'aborted' : 'error',
-              sessionId,
-              message,
-              filesChanged: counters.filesChanged,
-            }, null, 2),
-          }],
-          isError: true,
-        };
+        throw new McpUserError({
+          status: isAbort ? 'aborted' : 'error',
+          sessionId,
+          message,
+          filesChanged: counters.filesChanged,
+        });
       }
 
-      const response = {
+      return {
         status: summary.status,
         sessionId: summary.sessionId,
         summary: summary.summary,
@@ -338,97 +333,90 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         issueCounts: { errors: summary.errorCount },
         eventCount: summary.eventCount,
       };
-      return {
-        content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-      };
     },
-  );
+  });
 
   // Tool: eforge_enqueue
-  server.tool(
-    'eforge_enqueue',
-    'Normalize input and add it to the eforge PRD queue.',
-    {
+  createDaemonTool(server, cwd, {
+    name: 'eforge_enqueue',
+    description: 'Normalize input and add it to the eforge PRD queue.',
+    schema: {
       source: z.string().describe('PRD file path, inline prompt, or rough notes to enqueue'),
       flags: z.array(z.string()).optional().describe('Optional CLI flags'),
     },
-    async ({ source, flags }) => {
-      const { data, port } = await daemonRequest<EnqueueResponse>(cwd, 'POST', API_ROUTES.enqueue, { source, flags: sanitizeFlags(flags) });
-      const response = { ...data, monitorUrl: `http://localhost:${port}` };
-      return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
+    handler: async ({ source, flags }, { cwd: toolCwd }) => {
+      const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, { source, flags: sanitizeFlags(flags) });
+      return { ...data, monitorUrl: `http://localhost:${port}` };
     },
-  );
+  });
 
   // Tool: eforge_auto_build
-  server.tool(
-    'eforge_auto_build',
-    'Get or set the daemon auto-build state. When enabled, the daemon automatically builds PRDs as they are enqueued.',
-    {
+  createDaemonTool(server, cwd, {
+    name: 'eforge_auto_build',
+    description: 'Get or set the daemon auto-build state. When enabled, the daemon automatically builds PRDs as they are enqueued.',
+    schema: {
       action: z.enum(['get', 'set']).describe("'get' returns current auto-build state, 'set' updates it"),
       enabled: z.boolean().optional().describe('Required when action is "set". Whether auto-build should be enabled.'),
     },
-    async ({ action, enabled }) => {
+    handler: async ({ action, enabled }, { cwd: toolCwd }) => {
       if (action === 'get') {
-        const { data } = await daemonRequest(cwd, 'GET', API_ROUTES.autoBuildGet);
-        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+        const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.autoBuildGet);
+        return data;
       }
       // action === 'set'
       if (enabled === undefined) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify({ error: '"enabled" is required when action is "set"' }, null, 2) }],
-          isError: true,
-        };
+        throw new Error('"enabled" is required when action is "set"');
       }
-      const { data } = await daemonRequest(cwd, 'POST', API_ROUTES.autoBuildSet, { enabled });
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.autoBuildSet, { enabled });
+      return data;
     },
-  );
+  });
 
   // Tool: eforge_status
-  server.tool(
-    'eforge_status',
-    'Get the current run status including plan progress, session state, and event summary.',
-    {},
-    async () => {
-      const { data: latestRun } = await daemonRequest<LatestRunResponse>(cwd, 'GET', API_ROUTES.latestRun);
+  createDaemonTool(server, cwd, {
+    name: 'eforge_status',
+    description: 'Get the current run status including plan progress, session state, and event summary.',
+    schema: {},
+    handler: async (_args, { cwd: toolCwd }) => {
+      const { data: latestRun } = await daemonRequest<LatestRunResponse>(toolCwd, 'GET', API_ROUTES.latestRun);
       if (!latestRun?.sessionId) {
-        return { content: [{ type: 'text', text: JSON.stringify({ status: 'idle', message: 'No active eforge sessions.' }) }] };
+        return { status: 'idle', message: 'No active eforge sessions.' };
       }
-      const { data: summary } = await daemonRequest<RunSummary>(cwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
-      return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
+      const { data: summary } = await daemonRequest<RunSummary>(toolCwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
+      return summary;
     },
-  );
+  });
 
   // Tool: eforge_queue_list
-  server.tool(
-    'eforge_queue_list',
-    'List all PRDs currently in the eforge queue with their metadata.',
-    {},
-    async () => {
-      const { data } = await daemonRequest(cwd, 'GET', API_ROUTES.queue);
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+  createDaemonTool(server, cwd, {
+    name: 'eforge_queue_list',
+    description: 'List all PRDs currently in the eforge queue with their metadata.',
+    schema: {},
+    handler: async (_args, { cwd: toolCwd }) => {
+      const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.queue);
+      return data;
     },
-  );
+  });
 
   // Tool: eforge_config
-  server.tool(
-    'eforge_config',
-    'Show resolved eforge configuration or validate eforge/config.yaml.',
-    {
+  createDaemonTool(server, cwd, {
+    name: 'eforge_config',
+    description: 'Show resolved eforge configuration or validate eforge/config.yaml.',
+    schema: {
       action: z.enum(['show', 'validate']).describe("'show' returns resolved config, 'validate' checks for errors"),
     },
-    async ({ action }) => {
+    handler: async ({ action }, { cwd: toolCwd }) => {
       const path = action === 'validate' ? API_ROUTES.configValidate : API_ROUTES.configShow;
-      const { data } = await daemonRequest(cwd, 'GET', path);
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      const { data } = await daemonRequest(toolCwd, 'GET', path);
+      return data;
     },
-  );
+  });
 
   // Tool: eforge_backend
-  server.tool(
-    'eforge_backend',
-    'Manage named backend profiles in eforge/backends/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-backend to switch profiles; "create" writes a new eforge/backends/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
-    {
+  createDaemonTool(server, cwd, {
+    name: 'eforge_backend',
+    description: 'Manage named backend profiles in eforge/backends/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-backend to switch profiles; "create" writes a new eforge/backends/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+    schema: {
       action: z.enum(['list', 'show', 'use', 'create', 'delete']).describe(
         "'list' enumerates profiles, 'show' returns the resolved active profile, 'use' switches the active profile, 'create' writes a new profile, 'delete' removes a profile",
       ),
@@ -442,106 +430,88 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         'Scope for the operation. "list" accepts project|user|all (default: all). "use", "create", "delete" accept project|user (default: project). "show" ignores scope (resolves via precedence).',
       ),
     },
-    async ({ action, name, backend, pi, agents, overwrite, force, scope }) => {
+    handler: async ({ action, name, backend, pi, agents, overwrite, force, scope }, { cwd: toolCwd }) => {
       if (action === 'list') {
         const params = new URLSearchParams();
         if (scope) params.set('scope', scope);
         const qs = params.toString();
-        const { data } = await daemonRequest(cwd, 'GET', `${API_ROUTES.backendList}${qs ? `?${qs}` : ''}`);
-        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.backendList}${qs ? `?${qs}` : ''}`);
+        return data;
       }
 
       if (action === 'show') {
-        const { data } = await daemonRequest(cwd, 'GET', API_ROUTES.backendShow);
-        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+        const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.backendShow);
+        return data;
       }
 
       if (action === 'use') {
-        if (!name) {
-          return {
-            content: [{ type: 'text', text: JSON.stringify({ error: '"name" is required when action is "use"' }, null, 2) }],
-            isError: true,
-          };
-        }
+        if (!name) throw new Error('"name" is required when action is "use"');
         const useBody: Record<string, unknown> = { name };
         if (scope) useBody.scope = scope;
-        const { data } = await daemonRequest(cwd, 'POST', API_ROUTES.backendUse, useBody);
-        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.backendUse, useBody);
+        return data;
       }
 
       if (action === 'create') {
-        if (!name) {
-          return {
-            content: [{ type: 'text', text: JSON.stringify({ error: '"name" is required when action is "create"' }, null, 2) }],
-            isError: true,
-          };
-        }
+        if (!name) throw new Error('"name" is required when action is "create"');
         if (backend !== 'claude-sdk' && backend !== 'pi') {
-          return {
-            content: [{ type: 'text', text: JSON.stringify({ error: '"backend" is required when action is "create" (must be "claude-sdk" or "pi")' }, null, 2) }],
-            isError: true,
-          };
+          throw new Error('"backend" is required when action is "create" (must be "claude-sdk" or "pi")');
         }
         const body: Record<string, unknown> = { name, backend };
         if (pi !== undefined) body.pi = pi;
         if (agents !== undefined) body.agents = agents;
         if (overwrite !== undefined) body.overwrite = overwrite;
         if (scope) body.scope = scope;
-        const { data } = await daemonRequest(cwd, 'POST', API_ROUTES.backendCreate, body);
-        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.backendCreate, body);
+        return data;
       }
 
       // action === 'delete'
-      if (!name) {
-        return {
-          content: [{ type: 'text', text: JSON.stringify({ error: '"name" is required when action is "delete"' }, null, 2) }],
-          isError: true,
-        };
-      }
+      if (!name) throw new Error('"name" is required when action is "delete"');
       const body: Record<string, unknown> = {};
       if (force !== undefined) body.force = force;
       if (scope) body.scope = scope;
-      const { data } = await daemonRequest(cwd, 'DELETE', buildPath(API_ROUTES.backendDelete, { name }), body);
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      const { data } = await daemonRequest(toolCwd, 'DELETE', buildPath(API_ROUTES.backendDelete, { name }), body);
+      return data;
     },
-  );
+  });
 
   // Tool: eforge_models
-  server.tool(
-    'eforge_models',
-    'List providers or models available for a given backend. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first.',
-    {
+  createDaemonTool(server, cwd, {
+    name: 'eforge_models',
+    description: 'List providers or models available for a given backend. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first.',
+    schema: {
       action: z.enum(['providers', 'list']).describe("'providers' returns provider names, 'list' returns available models"),
       backend: z.enum(['claude-sdk', 'pi']).describe('Which backend to query'),
       provider: z.string().optional().describe('Optional provider filter for "list" (Pi only). Ignored for claude-sdk.'),
     },
-    async ({ action, backend, provider }) => {
+    handler: async ({ action, backend, provider }, { cwd: toolCwd }) => {
       if (action === 'providers') {
-        const { data } = await daemonRequest(cwd, 'GET', `${API_ROUTES.modelProviders}?backend=${encodeURIComponent(backend)}`);
-        return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.modelProviders}?backend=${encodeURIComponent(backend)}`);
+        return data;
       }
       // action === 'list'
       const params = new URLSearchParams({ backend });
       if (provider) params.set('provider', provider);
-      const { data } = await daemonRequest(cwd, 'GET', `${API_ROUTES.modelList}?${params.toString()}`);
-      return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+      const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.modelList}?${params.toString()}`);
+      return data;
     },
-  );
+  });
 
   // Tool: eforge_daemon
-  server.tool(
-    'eforge_daemon',
-    'Manage the eforge daemon lifecycle: start, stop, or restart the daemon.',
-    {
+  createDaemonTool(server, cwd, {
+    name: 'eforge_daemon',
+    description: 'Manage the eforge daemon lifecycle: start, stop, or restart the daemon.',
+    schema: {
       action: z.enum(['start', 'stop', 'restart']).describe("'start' ensures daemon is running, 'stop' gracefully stops it, 'restart' stops then starts"),
       force: z.boolean().optional().describe('When action is "stop" or "restart", force shutdown even if builds are active. Default: false.'),
     },
-    async ({ action, force }) => {
+    handler: async ({ action, force }, { cwd: toolCwd }) => {
       async function checkActiveBuilds(): Promise<string | null> {
         try {
-          const { data: latestRun } = await daemonRequest<LatestRunResponse>(cwd, 'GET', API_ROUTES.latestRun);
+          const { data: latestRun } = await daemonRequest<LatestRunResponse>(toolCwd, 'GET', API_ROUTES.latestRun);
           if (!latestRun?.sessionId) return null;
-          const { data: summary } = await daemonRequest<RunSummary>(cwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
+          const { data: summary } = await daemonRequest<RunSummary>(toolCwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
           if (summary?.status === 'running') {
             return 'An eforge build is currently active. Use force: true to stop anyway.';
           }
@@ -552,13 +522,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       }
 
       async function stopDaemon(forceStop: boolean): Promise<{ stopped: boolean; message: string }> {
-        // Check if daemon is running
-        const lock = readLockfile(cwd);
+        const lock = readLockfile(toolCwd);
         if (!lock) {
           return { stopped: true, message: 'Daemon is not running.' };
         }
 
-        // Check for active builds unless force
         if (!forceStop) {
           const activeMessage = await checkActiveBuilds();
           if (activeMessage) {
@@ -566,18 +534,16 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           }
         }
 
-        // Send stop request
         try {
-          await daemonRequest(cwd, 'POST', API_ROUTES.daemonStop, { force: forceStop });
+          await daemonRequest(toolCwd, 'POST', API_ROUTES.daemonStop, { force: forceStop });
         } catch {
           // Daemon may have already shut down before responding
         }
 
-        // Poll for lockfile removal
         const deadline = Date.now() + LOCKFILE_POLL_TIMEOUT_MS;
         while (Date.now() < deadline) {
           await sleep(LOCKFILE_POLL_INTERVAL_MS);
-          const current = readLockfile(cwd);
+          const current = readLockfile(toolCwd);
           if (!current) {
             return { stopped: true, message: 'Daemon stopped successfully.' };
           }
@@ -587,86 +553,72 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       }
 
       if (action === 'start') {
-        const port = await ensureDaemon(cwd);
-        return { content: [{ type: 'text', text: JSON.stringify({ status: 'running', port }, null, 2) }] };
+        const port = await ensureDaemon(toolCwd);
+        return { status: 'running', port };
       }
 
       if (action === 'stop') {
         const result = await stopDaemon(force === true);
         if (!result.stopped) {
-          return { content: [{ type: 'text', text: JSON.stringify({ error: result.message }, null, 2) }], isError: true };
+          throw new McpUserError({ error: result.message });
         }
-        return { content: [{ type: 'text', text: JSON.stringify({ status: 'stopped', message: result.message }, null, 2) }] };
+        return { status: 'stopped', message: result.message };
       }
 
       // action === 'restart'
       const stopResult = await stopDaemon(force === true);
       if (!stopResult.stopped) {
-        return { content: [{ type: 'text', text: JSON.stringify({ error: stopResult.message }, null, 2) }], isError: true };
+        throw new McpUserError({ error: stopResult.message });
       }
-
-      const port = await ensureDaemon(cwd);
-      return { content: [{ type: 'text', text: JSON.stringify({ status: 'restarted', port, message: 'Daemon restarted successfully.' }, null, 2) }] };
+      const port = await ensureDaemon(toolCwd);
+      return { status: 'restarted', port, message: 'Daemon restarted successfully.' };
     },
-  );
+  });
 
   // Tool: eforge_init
-  server.tool(
-    'eforge_init',
-    'Initialize eforge in a project: creates a named backend profile under eforge/backends/, activates it, and writes eforge/config.yaml for team-wide settings. Presents an elicitation form for backend, provider, and model selection. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.',
-    {
+  createDaemonTool(server, cwd, {
+    name: 'eforge_init',
+    description: 'Initialize eforge in a project: creates a named backend profile under eforge/backends/, activates it, and writes eforge/config.yaml for team-wide settings. Presents an elicitation form for backend, provider, and model selection. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.',
+    schema: {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands (e.g. ["pnpm install", "pnpm test"]). Only applied when creating a new config, not when merging with existing.'),
       migrate: z.boolean().optional().describe('Extract backend config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.'),
     },
-    async ({ force, postMergeCommands, migrate }) => {
-      const configDir = join(cwd, 'eforge');
+    handler: async ({ force, postMergeCommands, migrate }, { cwd: toolCwd, server: toolServer }) => {
+      const configDir = join(toolCwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
 
       // Ensure .gitignore has daemon state (.eforge/) and the per-developer active-backend marker.
-      await ensureGitignoreEntries(cwd, ['.eforge/', 'eforge/.active-backend']);
+      await ensureGitignoreEntries(toolCwd, ['.eforge/', 'eforge/.active-backend']);
 
       // --- Migrate mode ---
       if (migrate) {
-        // Require existing config.yaml
         let rawYaml: string;
         try {
           rawYaml = await readFile(configPath, 'utf-8');
         } catch {
-          return {
-            content: [{ type: 'text', text: JSON.stringify({ error: 'No existing eforge/config.yaml found. Nothing to migrate.' }, null, 2) }],
-            isError: true,
-          };
+          throw new McpUserError({ error: 'No existing eforge/config.yaml found. Nothing to migrate.' });
         }
 
         let data: Record<string, unknown>;
         try {
           const parsed = parseYaml(rawYaml);
           if (!parsed || typeof parsed !== 'object') {
-            return {
-              content: [{ type: 'text', text: JSON.stringify({ error: 'Existing config.yaml is empty or not an object.' }, null, 2) }],
-              isError: true,
-            };
+            throw new McpUserError({ error: 'Existing config.yaml is empty or not an object.' });
           }
           data = parsed as Record<string, unknown>;
         } catch (err) {
-          return {
-            content: [{ type: 'text', text: JSON.stringify({ error: `Failed to parse config.yaml: ${err instanceof Error ? err.message : String(err)}` }, null, 2) }],
-            isError: true,
-          };
+          if (err instanceof McpUserError) throw err;
+          throw new McpUserError({ error: `Failed to parse config.yaml: ${err instanceof Error ? err.message : String(err)}` });
         }
 
         if (data.backend === undefined) {
-          return {
-            content: [{ type: 'text', text: JSON.stringify({ error: 'config.yaml has no top-level "backend:" field. Nothing to migrate.' }, null, 2) }],
-            isError: true,
-          };
+          throw new McpUserError({ error: 'config.yaml has no top-level "backend:" field. Nothing to migrate.' });
         }
 
         const { profile, remaining } = parseRawConfigLegacy(data);
         const backend = profile.backend as string;
 
-        // Derive a profile name from the backend + model info
         let maxModelId: string | undefined;
         let provider: string | undefined;
         const agents = profile.agents as Record<string, unknown> | undefined;
@@ -685,7 +637,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           ? sanitizeProfileName(backend, provider, maxModelId)
           : backend;
 
-        // Create the profile via daemon
         const createBody: Record<string, unknown> = {
           name: profileName,
           backend,
@@ -694,56 +645,44 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (profile.agents) createBody.agents = profile.agents;
         if (profile.pi) createBody.pi = profile.pi;
 
-        await daemonRequest(cwd, 'POST', API_ROUTES.backendCreate, createBody);
+        await daemonRequest(toolCwd, 'POST', API_ROUTES.backendCreate, createBody);
 
-        // Rewrite config.yaml with remaining fields only (no backend:) before
-        // activating the profile, so a failed write leaves the profile inactive
-        // (cleanly recoverable by re-running migrate).
         const yamlOut = Object.keys(remaining).length > 0
           ? stringifyYaml(remaining)
           : '';
         await writeFile(configPath, yamlOut, 'utf-8');
 
-        // Activate the profile
-        await daemonRequest(cwd, 'POST', API_ROUTES.backendUse, { name: profileName });
+        await daemonRequest(toolCwd, 'POST', API_ROUTES.backendUse, { name: profileName });
 
         return {
-          content: [{ type: 'text', text: JSON.stringify({
-            status: 'migrated',
-            configPath: 'eforge/config.yaml',
-            profileName,
-            profilePath: `eforge/backends/${profileName}.yaml`,
-            backend,
-            moved: Object.keys(profile),
-            kept: Object.keys(remaining),
-          }, null, 2) }],
+          status: 'migrated',
+          configPath: 'eforge/config.yaml',
+          profileName,
+          profilePath: `eforge/backends/${profileName}.yaml`,
+          backend,
+          moved: Object.keys(profile),
+          kept: Object.keys(remaining),
         };
       }
 
       // --- Fresh init mode ---
 
-      // Check if config already exists
       try {
         await access(configPath);
         if (!force) {
-          return {
-            content: [{
-              type: 'text',
-              text: JSON.stringify({
-                error: 'eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract backend config into a profile.',
-              }, null, 2),
-            }],
-            isError: true,
-          };
+          throw new McpUserError({
+            error: 'eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract backend config into a profile.',
+          });
         }
-      } catch {
+      } catch (err) {
+        if (err instanceof McpUserError) throw err;
         // File does not exist - proceed
       }
 
       // Elicit backend choice from user
       let backend: string;
       try {
-        const result = await server.server.elicitInput({
+        const result = await toolServer.server.elicitInput({
           mode: 'form',
           message: 'Configure eforge for this project:',
           requestedSchema: {
@@ -765,27 +704,24 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         });
 
         if (result.action === 'decline') {
-          return { content: [{ type: 'text', text: 'Initialization declined by user.' }] };
+          return { status: 'declined', message: 'Initialization declined by user.' };
         }
         if (result.action === 'cancel' || !result.content) {
-          return { content: [{ type: 'text', text: 'Initialization cancelled.' }] };
+          return { status: 'cancelled', message: 'Initialization cancelled.' };
         }
         backend = result.content.backend as string;
       } catch (err) {
-        return {
-          content: [{
-            type: 'text',
-            text: `Elicitation failed: ${err instanceof Error ? err.message : String(err)}. You can use /eforge:config instead.`,
-          }],
-          isError: true,
-        };
+        if (err instanceof McpUserError) throw err;
+        throw new McpUserError({
+          error: `Elicitation failed: ${err instanceof Error ? err.message : String(err)}. You can use /eforge:config instead.`,
+        });
       }
 
       // Elicit provider (if pi, via /api/models/providers)
       let provider: string | undefined;
       if (backend === 'pi') {
         try {
-          const { data: providersResp } = await daemonRequest<{ providers: string[] }>(cwd, 'GET', `${API_ROUTES.modelProviders}?backend=pi`);
+          const { data: providersResp } = await daemonRequest<{ providers: string[] }>(toolCwd, 'GET', `${API_ROUTES.modelProviders}?backend=pi`);
           if (providersResp.providers.length > 0) {
             const providerSchema = {
               type: 'object' as const,
@@ -800,7 +736,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
               },
               required: ['provider'],
             };
-            const provResult = await server.server.elicitInput({
+            const provResult = await toolServer.server.elicitInput({
               mode: 'form',
               message: 'Select a provider:',
               requestedSchema: providerSchema,
@@ -820,7 +756,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const params = new URLSearchParams({ backend });
         if (provider) params.set('provider', provider);
         const { data: modelsResp } = await daemonRequest<{ models: Array<{ id: string; provider?: string }> }>(
-          cwd, 'GET', `${API_ROUTES.modelList}?${params.toString()}`,
+          toolCwd, 'GET', `${API_ROUTES.modelList}?${params.toString()}`,
         );
         if (modelsResp.models.length > 0) {
           const topModels = modelsResp.models.slice(0, 10);
@@ -837,7 +773,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
             },
             required: ['model'],
           };
-          const modelResult = await server.server.elicitInput({
+          const modelResult = await toolServer.server.elicitInput({
             mode: 'form',
             message: 'Select the max model:',
             requestedSchema: modelSchema,
@@ -852,16 +788,13 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         // Best-effort model selection
       }
 
-      // Compute profile name
       const profileName = maxModelId
         ? sanitizeProfileName(backend, provider, maxModelId)
         : backend;
 
-      // Build model ref
       const modelRef: Record<string, string> = maxModelId ? { id: maxModelId } : { id: 'claude-opus-4-7' };
       if (provider) modelRef.provider = provider;
 
-      // Create the profile via daemon
       const createBody: Record<string, unknown> = {
         name: profileName,
         backend,
@@ -874,19 +807,16 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         },
       };
       if (force) createBody.overwrite = true;
-      await daemonRequest(cwd, 'POST', API_ROUTES.backendCreate, createBody);
+      await daemonRequest(toolCwd, 'POST', API_ROUTES.backendCreate, createBody);
 
-      // Activate the profile
-      await daemonRequest(cwd, 'POST', API_ROUTES.backendUse, { name: profileName });
+      await daemonRequest(toolCwd, 'POST', API_ROUTES.backendUse, { name: profileName });
 
-      // Create eforge/ directory if it doesn't exist
       try {
         await mkdir(configDir, { recursive: true });
       } catch {
         // Directory may already exist
       }
 
-      // Write config.yaml with only non-backend fields (never emit backend:)
       const configData: Record<string, unknown> = {};
       if (postMergeCommands && postMergeCommands.length > 0) {
         configData.build = { postMergeCommands };
@@ -896,10 +826,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         : '';
       await writeFile(configPath, configContent, 'utf-8');
 
-      // Validate config via daemon (best-effort)
       let validation: ConfigValidateResponse | null = null;
       try {
-        const { data } = await daemonRequest<ConfigValidateResponse>(cwd, 'GET', API_ROUTES.configValidate);
+        const { data } = await daemonRequest<ConfigValidateResponse>(toolCwd, 'GET', API_ROUTES.configValidate);
         validation = data;
       } catch {
         // Daemon validation is best-effort
@@ -917,11 +846,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         response.validation = validation;
       }
 
-      return {
-        content: [{ type: 'text', text: JSON.stringify(response, null, 2) }],
-      };
+      return response;
     },
-  );
+  });
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
