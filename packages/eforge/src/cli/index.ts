@@ -257,10 +257,10 @@ export function createProgram(abortController?: AbortController): Command {
         // Default path: delegate to daemon when source is provided and no special flags
         if (source && !options.foreground && !options.queue && !options.dryRun) {
           try {
-            const { ensureDaemon, daemonRequest } = await import('@eforge-build/client');
+            const { ensureDaemon, daemonRequest, API_ROUTES } = await import('@eforge-build/client');
             const cwd = process.cwd();
             await ensureDaemon(cwd);
-            const { data } = await daemonRequest(cwd, 'POST', '/api/enqueue', { source });
+            const { data } = await daemonRequest(cwd, 'POST', API_ROUTES.enqueue, { source });
             const result = data as { sessionId?: string };
             const sessionId = result?.sessionId ?? 'unknown';
             console.log(chalk.green(`PRD enqueued (session: ${sessionId}). Daemon will auto-build.`));

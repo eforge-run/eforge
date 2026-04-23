@@ -3,6 +3,7 @@ import { CheckCircle2, XCircle, Loader2, Square, X } from 'lucide-react';
 import type { RunInfo, SessionMetadata } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
 import { cancelSession } from '@/lib/api';
+import { API_ROUTES } from '@eforge-build/client';
 import { groupRunsBySessions, partitionEnqueueSessions, type SessionGroup } from '@/lib/session-utils';
 import { formatRelativeTime, formatRunDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -126,8 +127,8 @@ function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
 const PAGE_SIZE = 25;
 
 export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, daemonActive }: SidebarProps) {
-  const { data: runs, refetch } = useApi<RunInfo[]>('/api/runs');
-  const { data: metadataMap, refetch: refetchMetadata } = useApi<Record<string, SessionMetadata>>('/api/session-metadata');
+  const { data: runs, refetch } = useApi<RunInfo[]>(API_ROUTES.runs);
+  const { data: metadataMap, refetch: refetchMetadata } = useApi<Record<string, SessionMetadata>>(API_ROUTES.sessionMetadata);
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 

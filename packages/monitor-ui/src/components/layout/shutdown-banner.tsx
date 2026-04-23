@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import { API_ROUTES } from '@eforge-build/client';
 
 interface ShutdownBannerProps {
   countdown: number;
@@ -9,7 +10,7 @@ export function ShutdownBanner({ countdown }: ShutdownBannerProps) {
   const pingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   function sendKeepAlive() {
-    fetch('/api/keep-alive', { method: 'POST' }).catch(() => {});
+    fetch(API_ROUTES.keepAlive, { method: 'POST' }).catch(() => {});
   }
 
   function handleKeepAlive() {

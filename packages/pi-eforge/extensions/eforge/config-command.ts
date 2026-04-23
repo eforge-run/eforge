@@ -7,7 +7,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { daemonRequest } from "@eforge-build/client";
+import { daemonRequest, API_ROUTES } from "@eforge-build/client";
 import { showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
 
 // ---------------------------------------------------------------------------
@@ -27,7 +27,7 @@ export async function handleConfigCommand(
   let config: Record<string, unknown>;
   try {
     const { data } = await withLoader(ctx, "Loading config...", () =>
-      daemonRequest<Record<string, unknown>>(ctx.cwd, "GET", "/api/config/show"),
+      daemonRequest<Record<string, unknown>>(ctx.cwd, "GET", API_ROUTES.configShow),
     );
     config = (data ?? {}) as Record<string, unknown>;
   } catch (err) {

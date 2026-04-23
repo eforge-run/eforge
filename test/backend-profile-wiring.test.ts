@@ -15,6 +15,7 @@ import { readFileSync, existsSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+import { API_ROUTES } from '@eforge-build/client';
 
 // Resolve paths relative to the repo root (one dir up from `test/`).
 const REPO_ROOT = resolve(fileURLToPath(new URL('..', import.meta.url)));
@@ -246,18 +247,27 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
   });
 
   it('dispatches eforge_backend actions to the expected daemon endpoints', () => {
-    // Each action should reach its matching REST path.
-    // The list endpoint now uses a template literal for optional query params.
-    expect(source).toMatch(/\/api\/backend\/list/);
-    expect(source).toContain("'/api/backend/show'");
-    expect(source).toContain("'/api/backend/use'");
-    expect(source).toContain("'/api/backend/create'");
-    expect(source).toMatch(/\/api\/backend\/\$\{encodeURIComponent\(name\)\}/);
+    // After the API_ROUTES migration, the source uses API_ROUTES.* constants
+    // instead of literal path strings. Verify the constants are referenced.
+    expect(source).toContain('API_ROUTES.backendList');
+    expect(source).toContain('API_ROUTES.backendShow');
+    expect(source).toContain('API_ROUTES.backendUse');
+    expect(source).toContain('API_ROUTES.backendCreate');
+    expect(source).toContain('API_ROUTES.backendDelete');
+    // Verify the routes resolve to the correct paths via the shared constant.
+    expect(API_ROUTES.backendList).toBe('/api/backend/list');
+    expect(API_ROUTES.backendShow).toBe('/api/backend/show');
+    expect(API_ROUTES.backendUse).toBe('/api/backend/use');
+    expect(API_ROUTES.backendCreate).toBe('/api/backend/create');
+    expect(API_ROUTES.backendDelete).toBe('/api/backend/:name');
   });
 
   it('dispatches eforge_models actions to the expected daemon endpoints', () => {
-    expect(source).toMatch(/\/api\/models\/providers\?backend=/);
-    expect(source).toMatch(/\/api\/models\/list\?/);
+    // After the API_ROUTES migration, verify the source uses API_ROUTES constants.
+    expect(source).toContain('API_ROUTES.modelProviders');
+    expect(source).toContain('API_ROUTES.modelList');
+    expect(API_ROUTES.modelProviders).toBe('/api/models/providers');
+    expect(API_ROUTES.modelList).toBe('/api/models/list');
   });
 
   it("adds 'eforge/.active-backend' to the init tool's managed gitignore block", () => {
@@ -294,17 +304,17 @@ describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index
   });
 
   it('dispatches eforge_backend to the daemon via daemonRequest', () => {
-    // Parity with the MCP proxy — must touch the same endpoints.
-    expect(source).toContain('/api/backend/list');
-    expect(source).toContain('/api/backend/show');
-    expect(source).toContain('/api/backend/use');
-    expect(source).toContain('/api/backend/create');
-    expect(source).toMatch(/\/api\/backend\/\$\{encodeURIComponent\(name\)\}/);
+    // After the API_ROUTES migration, the source uses API_ROUTES.* constants.
+    expect(source).toContain('API_ROUTES.backendList');
+    expect(source).toContain('API_ROUTES.backendShow');
+    expect(source).toContain('API_ROUTES.backendUse');
+    expect(source).toContain('API_ROUTES.backendCreate');
+    expect(source).toContain('API_ROUTES.backendDelete');
   });
 
   it('dispatches eforge_models to the daemon via daemonRequest', () => {
-    expect(source).toMatch(/\/api\/models\/providers\?backend=/);
-    expect(source).toMatch(/\/api\/models\/list\?/);
+    expect(source).toContain('API_ROUTES.modelProviders');
+    expect(source).toContain('API_ROUTES.modelList');
   });
 });
 
@@ -579,12 +589,12 @@ describe('Ambient status keys (plan-02-native-pi-ux)', () => {
   });
 
   it('fetches queue count from /api/queue for ambient status', () => {
-    // The refreshStatus function should call /api/queue
+    // The refreshStatus function should call the queue route via API_ROUTES.queue
     const refreshStart = source.indexOf('async function refreshStatus');
     expect(refreshStart).toBeGreaterThan(-1);
     const refreshEnd = source.indexOf('pi.on(', refreshStart);
     const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
-    expect(refreshBlock).toContain("'/api/queue'");
+    expect(refreshBlock).toContain('API_ROUTES.queue');
   });
 
   it('fetches latest run status from /api/latest-run for ambient status', () => {
@@ -592,7 +602,7 @@ describe('Ambient status keys (plan-02-native-pi-ux)', () => {
     expect(refreshStart).toBeGreaterThan(-1);
     const refreshEnd = source.indexOf('pi.on(', refreshStart);
     const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
-    expect(refreshBlock).toContain("'/api/latest-run'");
+    expect(refreshBlock).toContain('API_ROUTES.latestRun');
   });
 
   it('fetches run summary for build phase/agent display', () => {
@@ -600,7 +610,8 @@ describe('Ambient status keys (plan-02-native-pi-ux)', () => {
     expect(refreshStart).toBeGreaterThan(-1);
     const refreshEnd = source.indexOf('pi.on(', refreshStart);
     const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
-    expect(refreshBlock).toMatch(/\/api\/run-summary\//);
+    // After the API_ROUTES migration, the source uses API_ROUTES.runSummary constant.
+    expect(refreshBlock).toContain('API_ROUTES.runSummary');
   });
 
   it('hides eforge-queue when queue is empty (sets undefined)', () => {

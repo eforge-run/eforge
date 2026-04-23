@@ -9,6 +9,7 @@ import { useApi } from '@/hooks/use-api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { PlanData } from '@/lib/types';
+import { API_ROUTES, buildPath } from '@eforge-build/client';
 
 interface PlanPreviewPanelProps {
   sessionId: string | null;
@@ -18,7 +19,7 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
   const { selectedPlanId, contentPreview, closePreview, planStatuses, fileChanges, moduleStatuses } = usePlanPreview();
   const isOpen = selectedPlanId !== null || contentPreview !== null;
   const { data: plans, loading, error } = useApi<PlanData[]>(
-    selectedPlanId && sessionId ? `/api/plans/${sessionId}` : null,
+    selectedPlanId && sessionId ? buildPath(API_ROUTES.plans, { runId: sessionId }) : null,
   );
 
   // Find selected plan

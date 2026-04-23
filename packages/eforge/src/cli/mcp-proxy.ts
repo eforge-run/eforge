@@ -11,8 +11,7 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, sanitizeProfileName, parseRawConfigLegacy, API_ROUTES, buildPath } from '@eforge-build/client';
 import type {
   LatestRunResponse,
   EnqueueResponse,
@@ -110,7 +109,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     { description: 'Current eforge build status - latest session summary or idle state' },
     async () => {
       try {
-        const { data: latestRun } = await requireDaemon<LatestRunResponse>('GET', '/api/latest-run');
+        const { data: latestRun } = await requireDaemon<LatestRunResponse>('GET', API_ROUTES.latestRun);
         if (!latestRun?.sessionId) {
           return {
             contents: [{
@@ -120,7 +119,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
             }],
           };
         }
-        const { data: summary } = await requireDaemon<RunSummary>('GET', `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`);
+        const { data: summary } = await requireDaemon<RunSummary>('GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
         return {
           contents: [{
             uri: 'eforge://status',
@@ -148,7 +147,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     async (uri, variables) => {
       const sessionId = Array.isArray(variables.sessionId) ? variables.sessionId[0] : variables.sessionId;
       try {
-        const { data: summary } = await requireDaemon<RunSummary>('GET', `/api/run-summary/${encodeURIComponent(sessionId)}`);
+        const { data: summary } = await requireDaemon<RunSummary>('GET', buildPath(API_ROUTES.runSummary, { id: sessionId }));
         return {
           contents: [{
             uri: uri.href,
@@ -175,7 +174,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     { description: 'Current eforge PRD queue listing' },
     async () => {
       try {
-        const { data } = await requireDaemon('GET', '/api/queue');
+        const { data } = await requireDaemon('GET', API_ROUTES.queue);
         return {
           contents: [{
             uri: 'eforge://queue',
@@ -202,7 +201,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     { description: 'Resolved eforge configuration' },
     async () => {
       try {
-        const { data } = await requireDaemon('GET', '/api/config/show');
+        const { data } = await requireDaemon('GET', API_ROUTES.configShow);
         return {
           contents: [{
             uri: 'eforge://config',
@@ -234,7 +233,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         .describe('PRD file path or inline description to enqueue for building'),
     },
     async ({ source }) => {
-      const { data, port } = await daemonRequest<EnqueueResponse>(cwd, 'POST', '/api/enqueue', { source });
+      const { data, port } = await daemonRequest<EnqueueResponse>(cwd, 'POST', API_ROUTES.enqueue, { source });
       const response = { ...data, monitorUrl: `http://localhost:${port}` };
       return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
     },
@@ -354,7 +353,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       flags: z.array(z.string()).optional().describe('Optional CLI flags'),
     },
     async ({ source, flags }) => {
-      const { data, port } = await daemonRequest<EnqueueResponse>(cwd, 'POST', '/api/enqueue', { source, flags: sanitizeFlags(flags) });
+      const { data, port } = await daemonRequest<EnqueueResponse>(cwd, 'POST', API_ROUTES.enqueue, { source, flags: sanitizeFlags(flags) });
       const response = { ...data, monitorUrl: `http://localhost:${port}` };
       return { content: [{ type: 'text', text: JSON.stringify(response, null, 2) }] };
     },
@@ -370,7 +369,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
     async ({ action, enabled }) => {
       if (action === 'get') {
-        const { data } = await daemonRequest(cwd, 'GET', '/api/auto-build');
+        const { data } = await daemonRequest(cwd, 'GET', API_ROUTES.autoBuildGet);
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
       // action === 'set'
@@ -380,7 +379,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           isError: true,
         };
       }
-      const { data } = await daemonRequest(cwd, 'POST', '/api/auto-build', { enabled });
+      const { data } = await daemonRequest(cwd, 'POST', API_ROUTES.autoBuildSet, { enabled });
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     },
   );
@@ -391,11 +390,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     'Get the current run status including plan progress, session state, and event summary.',
     {},
     async () => {
-      const { data: latestRun } = await daemonRequest<LatestRunResponse>(cwd, 'GET', '/api/latest-run');
+      const { data: latestRun } = await daemonRequest<LatestRunResponse>(cwd, 'GET', API_ROUTES.latestRun);
       if (!latestRun?.sessionId) {
         return { content: [{ type: 'text', text: JSON.stringify({ status: 'idle', message: 'No active eforge sessions.' }) }] };
       }
-      const { data: summary } = await daemonRequest<RunSummary>(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`);
+      const { data: summary } = await daemonRequest<RunSummary>(cwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
       return { content: [{ type: 'text', text: JSON.stringify(summary, null, 2) }] };
     },
   );
@@ -406,7 +405,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     'List all PRDs currently in the eforge queue with their metadata.',
     {},
     async () => {
-      const { data } = await daemonRequest(cwd, 'GET', '/api/queue');
+      const { data } = await daemonRequest(cwd, 'GET', API_ROUTES.queue);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     },
   );
@@ -419,7 +418,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       action: z.enum(['show', 'validate']).describe("'show' returns resolved config, 'validate' checks for errors"),
     },
     async ({ action }) => {
-      const path = action === 'validate' ? '/api/config/validate' : '/api/config/show';
+      const path = action === 'validate' ? API_ROUTES.configValidate : API_ROUTES.configShow;
       const { data } = await daemonRequest(cwd, 'GET', path);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     },
@@ -448,12 +447,12 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const params = new URLSearchParams();
         if (scope) params.set('scope', scope);
         const qs = params.toString();
-        const { data } = await daemonRequest(cwd, 'GET', `/api/backend/list${qs ? `?${qs}` : ''}`);
+        const { data } = await daemonRequest(cwd, 'GET', `${API_ROUTES.backendList}${qs ? `?${qs}` : ''}`);
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
 
       if (action === 'show') {
-        const { data } = await daemonRequest(cwd, 'GET', '/api/backend/show');
+        const { data } = await daemonRequest(cwd, 'GET', API_ROUTES.backendShow);
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
 
@@ -466,7 +465,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }
         const useBody: Record<string, unknown> = { name };
         if (scope) useBody.scope = scope;
-        const { data } = await daemonRequest(cwd, 'POST', '/api/backend/use', useBody);
+        const { data } = await daemonRequest(cwd, 'POST', API_ROUTES.backendUse, useBody);
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
 
@@ -488,7 +487,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (agents !== undefined) body.agents = agents;
         if (overwrite !== undefined) body.overwrite = overwrite;
         if (scope) body.scope = scope;
-        const { data } = await daemonRequest(cwd, 'POST', '/api/backend/create', body);
+        const { data } = await daemonRequest(cwd, 'POST', API_ROUTES.backendCreate, body);
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
 
@@ -502,7 +501,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const body: Record<string, unknown> = {};
       if (force !== undefined) body.force = force;
       if (scope) body.scope = scope;
-      const { data } = await daemonRequest(cwd, 'DELETE', `/api/backend/${encodeURIComponent(name)}`, body);
+      const { data } = await daemonRequest(cwd, 'DELETE', buildPath(API_ROUTES.backendDelete, { name }), body);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     },
   );
@@ -518,13 +517,13 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
     async ({ action, backend, provider }) => {
       if (action === 'providers') {
-        const { data } = await daemonRequest(cwd, 'GET', `/api/models/providers?backend=${encodeURIComponent(backend)}`);
+        const { data } = await daemonRequest(cwd, 'GET', `${API_ROUTES.modelProviders}?backend=${encodeURIComponent(backend)}`);
         return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       }
       // action === 'list'
       const params = new URLSearchParams({ backend });
       if (provider) params.set('provider', provider);
-      const { data } = await daemonRequest(cwd, 'GET', `/api/models/list?${params.toString()}`);
+      const { data } = await daemonRequest(cwd, 'GET', `${API_ROUTES.modelList}?${params.toString()}`);
       return { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
     },
   );
@@ -540,9 +539,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     async ({ action, force }) => {
       async function checkActiveBuilds(): Promise<string | null> {
         try {
-          const { data: latestRun } = await daemonRequest<LatestRunResponse>(cwd, 'GET', '/api/latest-run');
+          const { data: latestRun } = await daemonRequest<LatestRunResponse>(cwd, 'GET', API_ROUTES.latestRun);
           if (!latestRun?.sessionId) return null;
-          const { data: summary } = await daemonRequest<RunSummary>(cwd, 'GET', `/api/run-summary/${encodeURIComponent(latestRun.sessionId)}`);
+          const { data: summary } = await daemonRequest<RunSummary>(cwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
           if (summary?.status === 'running') {
             return 'An eforge build is currently active. Use force: true to stop anyway.';
           }
@@ -569,7 +568,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
         // Send stop request
         try {
-          await daemonRequest(cwd, 'POST', '/api/daemon/stop', { force: forceStop });
+          await daemonRequest(cwd, 'POST', API_ROUTES.daemonStop, { force: forceStop });
         } catch {
           // Daemon may have already shut down before responding
         }
@@ -695,7 +694,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (profile.agents) createBody.agents = profile.agents;
         if (profile.pi) createBody.pi = profile.pi;
 
-        await daemonRequest(cwd, 'POST', '/api/backend/create', createBody);
+        await daemonRequest(cwd, 'POST', API_ROUTES.backendCreate, createBody);
 
         // Rewrite config.yaml with remaining fields only (no backend:) before
         // activating the profile, so a failed write leaves the profile inactive
@@ -706,7 +705,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         await writeFile(configPath, yamlOut, 'utf-8');
 
         // Activate the profile
-        await daemonRequest(cwd, 'POST', '/api/backend/use', { name: profileName });
+        await daemonRequest(cwd, 'POST', API_ROUTES.backendUse, { name: profileName });
 
         return {
           content: [{ type: 'text', text: JSON.stringify({
@@ -786,7 +785,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       let provider: string | undefined;
       if (backend === 'pi') {
         try {
-          const { data: providersResp } = await daemonRequest<{ providers: string[] }>(cwd, 'GET', `/api/models/providers?backend=pi`);
+          const { data: providersResp } = await daemonRequest<{ providers: string[] }>(cwd, 'GET', `${API_ROUTES.modelProviders}?backend=pi`);
           if (providersResp.providers.length > 0) {
             const providerSchema = {
               type: 'object' as const,
@@ -821,7 +820,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const params = new URLSearchParams({ backend });
         if (provider) params.set('provider', provider);
         const { data: modelsResp } = await daemonRequest<{ models: Array<{ id: string; provider?: string }> }>(
-          cwd, 'GET', `/api/models/list?${params.toString()}`,
+          cwd, 'GET', `${API_ROUTES.modelList}?${params.toString()}`,
         );
         if (modelsResp.models.length > 0) {
           const topModels = modelsResp.models.slice(0, 10);
@@ -875,10 +874,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         },
       };
       if (force) createBody.overwrite = true;
-      await daemonRequest(cwd, 'POST', '/api/backend/create', createBody);
+      await daemonRequest(cwd, 'POST', API_ROUTES.backendCreate, createBody);
 
       // Activate the profile
-      await daemonRequest(cwd, 'POST', '/api/backend/use', { name: profileName });
+      await daemonRequest(cwd, 'POST', API_ROUTES.backendUse, { name: profileName });
 
       // Create eforge/ directory if it doesn't exist
       try {
@@ -900,7 +899,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       // Validate config via daemon (best-effort)
       let validation: ConfigValidateResponse | null = null;
       try {
-        const { data } = await daemonRequest<ConfigValidateResponse>(cwd, 'GET', '/api/config/validate');
+        const { data } = await daemonRequest<ConfigValidateResponse>(cwd, 'GET', API_ROUTES.configValidate);
         validation = data;
       } catch {
         // Daemon validation is best-effort

@@ -15,6 +15,17 @@ const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
 import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
+import { API_ROUTES } from '@eforge-build/client';
+
+// Derived prefix constants for parameterised routes (used in startsWith checks)
+const CANCEL_BASE = API_ROUTES.cancel.slice(0, API_ROUTES.cancel.indexOf('/:'));
+const BACKEND_BASE = API_ROUTES.backendDelete.slice(0, API_ROUTES.backendDelete.indexOf('/:'));
+const EVENTS_BASE = API_ROUTES.events.slice(0, API_ROUTES.events.indexOf('/:'));
+const ORCHESTRATION_BASE = API_ROUTES.orchestration.slice(0, API_ROUTES.orchestration.indexOf('/:'));
+const RUN_SUMMARY_BASE = API_ROUTES.runSummary.slice(0, API_ROUTES.runSummary.indexOf('/:'));
+const RUN_STATE_BASE = API_ROUTES.runState.slice(0, API_ROUTES.runState.indexOf('/:'));
+const PLANS_BASE = API_ROUTES.plans.slice(0, API_ROUTES.plans.indexOf('/:'));
+const DIFF_BASE = API_ROUTES.diff.slice(0, API_ROUTES.diff.indexOf('/:'));
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
@@ -763,7 +774,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url === '/api/keep-alive') {
+    if (req.method === 'POST' && url === API_ROUTES.keepAlive) {
       if (keepAliveCallback) keepAliveCallback();
       res.writeHead(200, {
         'Content-Type': 'application/json',
@@ -774,7 +785,7 @@ export async function startServer(
     }
 
     // --- Control-plane POST routes (daemon mode) ---
-    if (req.method === 'POST' && url === '/api/enqueue') {
+    if (req.method === 'POST' && url === API_ROUTES.enqueue) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
@@ -802,12 +813,12 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url.startsWith('/api/cancel/')) {
+    if (req.method === 'POST' && url.startsWith(`${CANCEL_BASE}/`)) {
       if (!options?.workerTracker) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
       }
-      const sessionId = url.slice('/api/cancel/'.length);
+      const sessionId = url.slice(`${CANCEL_BASE}/`.length);
       if (!sessionId || !/^[\w-]+$/.test(sessionId)) {
         sendJsonError(res, 400, 'Invalid sessionId');
         return;
@@ -822,7 +833,7 @@ export async function startServer(
     }
 
     // --- Auto-build API routes ---
-    if (req.method === 'POST' && url === '/api/daemon/stop') {
+    if (req.method === 'POST' && url === API_ROUTES.daemonStop) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
@@ -843,7 +854,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'GET' && url === '/api/auto-build') {
+    if (req.method === 'GET' && url === API_ROUTES.autoBuildGet) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
@@ -855,7 +866,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url === '/api/auto-build') {
+    if (req.method === 'POST' && url === API_ROUTES.autoBuildSet) {
       if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
@@ -890,7 +901,7 @@ export async function startServer(
     }
 
     // --- Backend profile management (DAEMON_API_VERSION 2) ---
-    if (req.method === 'GET' && (url === '/api/backend/list' || url.startsWith('/api/backend/list?'))) {
+    if (req.method === 'GET' && (url === API_ROUTES.backendList || url.startsWith(`${API_ROUTES.backendList}?`))) {
       try {
         const { getConfigDir, listBackendProfiles, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
@@ -920,7 +931,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'GET' && url === '/api/backend/show') {
+    if (req.method === 'GET' && url === API_ROUTES.backendShow) {
       try {
         const { getConfigDir, loadBackendProfile, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
@@ -957,7 +968,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url === '/api/backend/use') {
+    if (req.method === 'POST' && url === API_ROUTES.backendUse) {
       try {
         const body = await parseJsonBody(req) as { name?: unknown; scope?: unknown };
         if (!body.name || typeof body.name !== 'string') {
@@ -989,7 +1000,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url === '/api/backend/create') {
+    if (req.method === 'POST' && url === API_ROUTES.backendCreate) {
       try {
         const body = await parseJsonBody(req) as {
           name?: unknown;
@@ -1039,8 +1050,8 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'DELETE' && url.startsWith('/api/backend/')) {
-      const name = url.slice('/api/backend/'.length);
+    if (req.method === 'DELETE' && url.startsWith(`${BACKEND_BASE}/`)) {
+      const name = url.slice(`${BACKEND_BASE}/`.length);
       if (!name || !/^[A-Za-z0-9._-]+$/.test(name)) {
         sendJsonError(res, 400, 'Invalid backend profile name');
         return;
@@ -1085,7 +1096,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'GET' && url.startsWith('/api/models/providers')) {
+    if (req.method === 'GET' && url.startsWith(API_ROUTES.modelProviders)) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);
       const backend = params.get('backend');
@@ -1103,7 +1114,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'GET' && url.startsWith('/api/models/list')) {
+    if (req.method === 'GET' && url.startsWith(API_ROUTES.modelList)) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);
       const backend = params.get('backend');
@@ -1122,11 +1133,11 @@ export async function startServer(
       return;
     }
 
-    if (url === '/api/project-context') {
+    if (url === API_ROUTES.projectContext) {
       serveProjectContext(req, res);
-    } else if (url === '/api/health') {
+    } else if (url === API_ROUTES.health) {
       serveHealth(req, res);
-    } else if (url === '/api/config/show') {
+    } else if (url === API_ROUTES.configShow) {
       try {
         const { loadConfig } = await import('@eforge-build/engine/config');
         const resolved = await loadConfig(options?.cwd);
@@ -1134,7 +1145,7 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load config');
       }
-    } else if (url === '/api/config/validate') {
+    } else if (url === API_ROUTES.configValidate) {
       try {
         const { validateConfigFile } = await import('@eforge-build/engine/config');
         const result = await validateConfigFile(options?.cwd);
@@ -1142,33 +1153,33 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to validate config');
       }
-    } else if (url === '/api/queue') {
+    } else if (url === API_ROUTES.queue) {
       await serveQueue(req, res);
-    } else if (url === '/api/session-metadata') {
+    } else if (url === API_ROUTES.sessionMetadata) {
       const metadata = db.getSessionMetadataBatch();
       sendJson(res, metadata);
-    } else if (url === '/api/runs') {
+    } else if (url === API_ROUTES.runs) {
       serveRuns(req, res);
-    } else if (url === '/api/latest-run') {
+    } else if (url === API_ROUTES.latestRun) {
       serveLatestRunId(req, res);
-    } else if (url.startsWith('/api/events/')) {
-      const runId = url.slice('/api/events/'.length);
+    } else if (url.startsWith(`${EVENTS_BASE}/`)) {
+      const runId = url.slice(`${EVENTS_BASE}/`.length);
       if (!runId || !/^[\w-]+$/.test(runId)) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('Invalid runId');
         return;
       }
       serveSSE(req, res, runId);
-    } else if (url.startsWith('/api/orchestration/')) {
-      const runId = url.slice('/api/orchestration/'.length);
+    } else if (url.startsWith(`${ORCHESTRATION_BASE}/`)) {
+      const runId = url.slice(`${ORCHESTRATION_BASE}/`.length);
       if (!runId || !/^[\w-]+$/.test(runId)) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('Invalid runId');
         return;
       }
       await serveOrchestration(req, res, runId);
-    } else if (url.startsWith('/api/run-summary/')) {
-      const id = url.slice('/api/run-summary/'.length);
+    } else if (url.startsWith(`${RUN_SUMMARY_BASE}/`)) {
+      const id = url.slice(`${RUN_SUMMARY_BASE}/`.length);
       if (!id || !/^[\w-]+$/.test(id)) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('Invalid id');
@@ -1305,8 +1316,8 @@ export async function startServer(
         eventCounts: { total: totalEvents, errors: errorCount },
         duration,
       });
-    } else if (url.startsWith('/api/run-state/')) {
-      const id = url.slice('/api/run-state/'.length);
+    } else if (url.startsWith(`${RUN_STATE_BASE}/`)) {
+      const id = url.slice(`${RUN_STATE_BASE}/`.length);
       if (!id || !/^[\w-]+$/.test(id)) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('Invalid id');
@@ -1335,17 +1346,17 @@ export async function startServer(
         data: hydrateEventData(evt.data, evt.timestamp, evt.type),
       }));
       res.end(JSON.stringify({ status, events: hydratedEvents }));
-    } else if (url.startsWith('/api/plans/')) {
-      const runId = url.slice('/api/plans/'.length).split('?')[0];
+    } else if (url.startsWith(`${PLANS_BASE}/`)) {
+      const runId = url.slice(`${PLANS_BASE}/`.length).split('?')[0];
       if (!runId || !/^[\w-]+$/.test(runId)) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.end('Invalid runId');
         return;
       }
       await servePlans(req, res, runId);
-    } else if (url.startsWith('/api/diff/')) {
+    } else if (url.startsWith(`${DIFF_BASE}/`)) {
       // Route: /api/diff/:sessionId/:planId?file=path
-      const pathPart = url.slice('/api/diff/'.length);
+      const pathPart = url.slice(`${DIFF_BASE}/`.length);
       const [routePath, queryString] = pathPart.split('?');
       const segments = routePath.split('/');
       const sessionIdParam = segments[0];

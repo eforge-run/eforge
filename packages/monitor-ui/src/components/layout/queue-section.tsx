@@ -4,6 +4,7 @@ import { ChevronRight } from 'lucide-react';
 import type { QueueItem } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
 import { cn } from '@/lib/utils';
+import { API_ROUTES } from '@eforge-build/client';
 
 const STATUS_ORDER: Record<string, number> = {
   running: 0,
@@ -54,7 +55,7 @@ interface QueueSectionProps {
 
 export function QueueSection({ refreshTrigger }: QueueSectionProps) {
   const [open, setOpen] = useState(true);
-  const { data: items, refetch } = useApi<QueueItem[]>('/api/queue');
+  const { data: items, refetch } = useApi<QueueItem[]>(API_ROUTES.queue);
 
   // Poll every 5 seconds
   useEffect(() => {

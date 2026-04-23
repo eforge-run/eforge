@@ -1,6 +1,7 @@
 import { useReducer, useEffect, useRef, useState, useCallback } from 'react';
 import { eforgeReducer, initialRunState, type RunState } from '@/lib/reducer';
 import type { ConnectionStatus, EforgeEvent } from '@/lib/types';
+import { API_ROUTES, buildPath } from '@eforge-build/client';
 
 interface UseEforgeEventsResult {
   runState: RunState;
@@ -70,7 +71,7 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
     setConnectionStatus('connecting');
 
     // Batch-fetch all events via HTTP
-    fetch(`/api/run-state/${sessionId}`)
+    fetch(buildPath(API_ROUTES.runState, { id: sessionId }))
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         return res.json() as Promise<RunStateResponse>;
@@ -103,7 +104,7 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
         }
 
         // Session is still active — open SSE for live events only
-        const es = new EventSource(`/api/events/${sessionId}`);
+        const es = new EventSource(buildPath(API_ROUTES.events, { runId: sessionId }));
         eventSourceRef.current = es;
 
         // Track which events we already have from batch load
@@ -146,7 +147,7 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
         setConnectionStatus('disconnected');
         // Fallback to SSE-only for backward compat
         dispatch({ type: 'RESET' });
-        const es = new EventSource(`/api/events/${sessionId}`);
+        const es = new EventSource(buildPath(API_ROUTES.events, { runId: sessionId }));
         eventSourceRef.current = es;
         es.onopen = () => { if (!cancelled) setConnectionStatus('connected'); };
         es.onmessage = (msg) => {

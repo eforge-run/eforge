@@ -8,7 +8,7 @@
  */
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { daemonRequest } from "@eforge-build/client";
+import { daemonRequest, API_ROUTES, buildPath } from "@eforge-build/client";
 import { showSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
 
 // ---------------------------------------------------------------------------
@@ -49,7 +49,7 @@ export async function handleBackendCommand(
   if (profileName) {
     try {
       await withLoader(ctx, "Switching profile...", () =>
-        daemonRequest(ctx.cwd, "POST", "/api/backend/use", { name: profileName }),
+        daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name: profileName }),
       );
       await onStatusRefresh();
       await showInfoOverlay(
@@ -71,7 +71,7 @@ export async function handleBackendCommand(
   let listData: BackendListData;
   try {
     const result = await withLoader(ctx, "Loading profiles...", () =>
-      daemonRequest<BackendListData>(ctx.cwd, "GET", "/api/backend/list?scope=all"),
+      daemonRequest<BackendListData>(ctx.cwd, "GET", `${API_ROUTES.backendList}?scope=all`),
     );
     listData = result.data;
   } catch (err) {
@@ -126,7 +126,7 @@ export async function handleBackendCommand(
   if (action === "switch") {
     try {
       await withLoader(ctx, "Switching profile...", () =>
-        daemonRequest(ctx.cwd, "POST", "/api/backend/use", { name: selected }),
+        daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name: selected }),
       );
       await onStatusRefresh();
       await showInfoOverlay(
@@ -196,7 +196,7 @@ export async function handleBackendNewCommand(
     let providers: string[];
     try {
       const { data } = await withLoader(ctx, "Loading providers...", () =>
-        daemonRequest<{ providers: string[] }>(ctx.cwd, "GET", "/api/models/providers?backend=pi"),
+        daemonRequest<{ providers: string[] }>(ctx.cwd, "GET", `${API_ROUTES.modelProviders}?backend=pi`),
       );
       providers = data.providers;
     } catch (err) {
@@ -234,7 +234,7 @@ export async function handleBackendNewCommand(
       daemonRequest<{ models: Array<{ id: string; provider?: string; releasedAt?: string }> }>(
         ctx.cwd,
         "GET",
-        `/api/models/list?${modelQueryParams.toString()}`,
+        `${API_ROUTES.modelList}?${modelQueryParams.toString()}`,
       ),
     );
     models = data.models;
@@ -346,7 +346,7 @@ export async function handleBackendNewCommand(
 
   try {
     await withLoader(ctx, "Creating profile...", () =>
-      daemonRequest(ctx.cwd, "POST", "/api/backend/create", createBody),
+      daemonRequest(ctx.cwd, "POST", API_ROUTES.backendCreate, createBody),
     );
   } catch (err) {
     await showInfoOverlay(
@@ -366,7 +366,7 @@ export async function handleBackendNewCommand(
   if (activate === "yes") {
     try {
       await withLoader(ctx, "Activating profile...", () =>
-        daemonRequest(ctx.cwd, "POST", "/api/backend/use", { name, scope }),
+        daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name, scope }),
       );
       await onStatusRefresh();
       await showInfoOverlay(
