@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.6.2] - 2026-04-23
+
+### Features
+
+- **add-session-scoped-model-registry-to-append-models-used-trailer-to-eforge-commits**: ModelTracker and Models-Used commit trailer
+- **core**: PRD Gap Close
+- **per-command-timeout-for-post-merge-validate-phase**: Per-command timeout for post-merge validate phase
+- **sunset-legacy-eforge-yaml-and-monitor-lock-paths**: Sunset legacy eforge.yaml and monitor.lock paths
+
+### Bug Fixes
+
+- **engine**: emit terminal event when PRD validator crashes
+
+### Documentation
+
+- **eforge-release**: include package scope in changelog entries
+
+### Maintenance
+
+- **validate-command-timeout**: fix validate-phase timeout test
+
 ## [0.6.1] - 2026-04-23
 
 ### Features
@@ -324,23 +345,6 @@
 ### Documentation
 
 - Remove stale "default backend" and "experimental" labels
-
-## [0.3.5] - 2026-04-03
-
-### Features
-
-- Redesign eforge model configuration so model references are backend-aware objects instead of plain strings
-- Right-size default model classes per agent role with ascending-then-descending fallback chain
-
-### Bug Fixes
-
-- Guard plan artifact commits against empty staging area
-- Fix crash when orchestration.yaml is missing in plannerStage
-- Fix pi eforge build skill to do the right thing
-
-### Maintenance
-
-- Ignore tmp directory
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
