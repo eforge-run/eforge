@@ -177,7 +177,7 @@ async function runForProfile(
     captured = p;
   });
 
-  const composerConfig = resolveAgentConfig('pipeline-composer', config, config.backend);
+  const composerConfig = resolveAgentConfig('pipeline-composer', config);
 
   // Drive composePipeline and collect the terminal composition event.
   // We keep a non-fatal try/catch so a failed compose still writes whatever

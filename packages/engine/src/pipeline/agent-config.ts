@@ -321,7 +321,8 @@ export function resolveAgentConfig(
   config: EforgeConfig,
   planEntry?: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string }> },
 ): ResolvedAgentConfig {
-  const { agentRuntimeName, harness } = resolveAgentRuntimeForRole(role, config, planEntry);
+  // planEntry.agentRuntime wiring deferred to plan-04; pass undefined for now
+  const { agentRuntimeName, harness } = resolveAgentRuntimeForRole(role, config, undefined);
   const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
   const { fields, effortSource, thinkingSource } = resolveSdkPassthrough(role, config, planEntry, builtinRoleDefaults);
   const { model, fallbackFrom, provenance: modelProvenance } = resolveModel(role, config, harness, builtinRoleDefaults);
