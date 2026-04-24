@@ -1,0 +1,151 @@
+name: per-agent-runtime-configuration-harness-model
+description: Introduce per-agent runtime configuration via a named agentRuntimes
+  map and rename the "backend" concept to "harness"/"profile" throughout the
+  codebase, unlocking mixed-runtime runs (e.g. Opus planner + local builder).
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-schema-resolver
+    name: Config Schema + Resolver (Non-Breaking Additions)
+    depends_on: []
+    branch: per-agent-runtime-configuration-harness-model/schema-resolver
+    agents:
+      builder:
+        effort: high
+        rationale: Zod schema cross-field refinements and resolver precedence logic have
+          non-trivial interactions; per-role provider-ness validation moves from
+          schema-time to resolve-time and needs careful wiring.
+      reviewer:
+        effort: high
+        rationale: Schema changes are the foundation for every downstream plan; reviewer
+          must catch subtle refinement gaps (e.g. cross-kind sub-blocks,
+          dangling refs, provenance in error messages).
+    build: &a1
+      - implement
+      - review-cycle
+      - - doc-update
+        - test-write
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - correctness
+        - architecture
+        - api-design
+      maxRounds: 3
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: strict
+  - id: plan-02-registry-pipeline
+    name: Agent Runtime Registry + Engine + Pipeline Wiring
+    depends_on:
+      - plan-01-schema-resolver
+    branch: per-agent-runtime-configuration-harness-model/registry-pipeline
+    agents:
+      builder:
+        effort: high
+        rationale: EforgeEngine lifecycle rewiring + 23 pipeline callsite updates +
+          agent function option rename across ~25 files require careful
+          coordination to keep the tree green.
+      reviewer:
+        effort: high
+        rationale: Lazy Pi import correctness and memoization semantics are easy to get
+          wrong; reviewer must verify no stage ever double-instantiates a
+          harness or eager-imports Pi.
+    build: *a1
+    review: *a2
+  - id: plan-03-harness-rename
+    name: "Mechanical Rename: Backend -> Harness"
+    depends_on:
+      - plan-02-registry-pipeline
+    branch: per-agent-runtime-configuration-harness-model/harness-rename
+    agents:
+      builder:
+        effort: medium
+        rationale: Mechanical rename across ~30 files; the risk is missed references,
+          not design complexity.
+      reviewer:
+        effort: medium
+        rationale: Rename verification; look for stale `Backend` / `backend` tokens in
+          comments, debug callback types, SDK-restriction doc blocks, and test
+          fixtures.
+    build: *a1
+    review: *a2
+  - id: plan-04-legacy-removal-events
+    name: Rip Legacy Shape + Plan-File Override + Events + Monitor UI
+    depends_on:
+      - plan-03-harness-rename
+    branch: per-agent-runtime-configuration-harness-model/legacy-removal-events
+    agents:
+      builder:
+        effort: high
+        rationale: Removing scalar backend + top-level pi/claudeSdk is the breaking
+          boundary; plan-file override introduces a new precedence layer; event
+          shape change must be kept in lockstep with monitor UI render to avoid
+          a visual regression.
+      reviewer:
+        effort: high
+        rationale: Breaking release; reviewer must confirm no coexistence paths remain,
+          the migration rejection message actually fires with clear guidance,
+          and the plan-file precedence matches the PRD (plan > role > default).
+    build: *a1
+    review: *a2
+  - id: plan-05-profile-rename-api-docs
+    name: Profile Rename + MCP/Slash/HTTP Surface + Docs
+    depends_on:
+      - plan-04-legacy-removal-events
+    branch: per-agent-runtime-configuration-harness-model/profile-rename-api-docs
+    agents:
+      builder:
+        effort: high
+        rationale: Rename spans Claude Code plugin + Pi extension + daemon HTTP + shared
+          client package + monitor UI; skill-parity check must pass across
+          plugin and Pi; DAEMON_API_VERSION bump is a breaking HTTP contract
+          change.
+      reviewer:
+        effort: high
+        rationale: Cross-surface rename; reviewer must verify parity between
+          eforge-plugin/skills and packages/pi-eforge per AGENTS.md, correctness
+          of DAEMON_API_VERSION bump, plugin version bump, and that
+          auto-migration of eforge/backends/*.yaml -> eforge/profiles/ is safe.
+      doc-updater:
+        effort: medium
+        rationale: README, AGENTS.md, and plugin READMEs need coordinated copy updates
+          for the new terminology; CHANGELOG.md is release-flow-owned and must
+          NOT be edited (per memory).
+    build: *a1
+    review: *a2
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: This PRD is a large, well-scoped refactor with a sequential 9-step
+    implementation order where each commit must keep the tree green. Although it
+    touches many files across packages (engine, pi-eforge, eforge CLI, monitor,
+    monitor-ui, plugin, client), the changes are dominated by mechanical
+    renames, schema extensions, and resolver rewrites that a single planner
+    session can enumerate in full - the author has already listed every critical
+    file and callsite count. There are no 4+ independent subsystems; instead
+    there's a tight dependency chain (schema -> resolver -> engine -> pipeline
+    -> renames -> rip -> plan-file -> profile rename -> docs) with shared
+    contracts (AgentHarness interface, ResolvedAgentConfig, agent:start event)
+    consumed across the codebase. This is the classic excursion shape with
+    ordered plans, not expedition. Compile uses planner + plan-review-cycle
+    because the stepwise ordering is subtle (each commit must stay green) and
+    plan quality materially affects whether the rip-and-replace succeeds without
+    breaking intermediate commits. Build uses implement followed by a strict
+    review-cycle since this is a breaking API change (DAEMON_API_VERSION bump,
+    loader rejection of old shapes, plugin 0.8.0) where correctness and
+    completeness matter deeply; doc-update and test-write run in parallel after
+    review-cycle because the PRD explicitly calls for README/AGENTS.md/plugin
+    READMEs updates and a rich suite of new unit/integration tests
+    (agent-runtime-registry, agent-config.resolution, mixed-harness, plan-file,
+    agent-wiring). Review uses parallel perspectives (correctness, architecture,
+    api-design) with strict evaluator because this is a cross-cutting rename +
+    architectural reshape of the harness/runtime boundary, with maxRounds 3 to
+    allow the review loop to catch subtle missed callsites or validation gaps.
