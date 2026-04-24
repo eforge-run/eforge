@@ -64,7 +64,7 @@ function AppContent() {
 
   const stats = getSummaryStats(runState);
   const hasEvents = runState.events.length > 0;
-  const hasPlans = runState.events.some((e) => e.event.type === 'plan:complete');
+  const hasPlans = runState.events.some((e) => e.event.type === 'planning:complete');
   const hasExpeditionContent = runState.expeditionModules.length > 0;
 
   // Refetch trigger for expedition files — increments as modules complete.
@@ -173,7 +173,7 @@ function AppContent() {
   useEffect(() => {
     const merged = new Set<string>();
     for (const { event } of runState.events) {
-      if (event.type === 'merge:complete' && 'planId' in event) {
+      if (event.type === 'plan:merge:complete' && 'planId' in event) {
         merged.add((event as { planId: string }).planId);
       }
     }
@@ -208,8 +208,8 @@ function AppContent() {
 
   // Derive PRD source from the first plan:start event
   const prdSource = useMemo(() => {
-    const planStart = runState.events.find((e) => e.event.type === 'plan:start');
-    if (!planStart || planStart.event.type !== 'plan:start') return null;
+    const planStart = runState.events.find((e) => e.event.type === 'planning:start');
+    if (!planStart || planStart.event.type !== 'planning:start') return null;
     return { label: planStart.event.label ?? 'Build PRD', content: planStart.event.source };
   }, [runState.events]);
 
@@ -218,7 +218,7 @@ function AppContent() {
     const seen = new Set<string>();
     const plans: Array<{ id: string; name: string; body: string }> = [];
     for (const { event } of runState.events) {
-      if (event.type === 'plan:complete') {
+      if (event.type === 'planning:complete') {
         for (const p of event.plans) {
           if (!seen.has(p.id)) {
             seen.add(p.id);
@@ -238,7 +238,7 @@ function AppContent() {
   const buildFailures = useMemo(() => {
     const failures: Array<{ planId: string; error: string }> = [];
     for (const { event } of runState.events) {
-      if (event.type === 'build:failed') {
+      if (event.type === 'plan:build:failed') {
         failures.push({ planId: event.planId, error: event.error });
       }
     }

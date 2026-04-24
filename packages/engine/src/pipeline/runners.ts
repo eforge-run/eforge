@@ -192,7 +192,7 @@ export async function* runCompilePipeline(
 export async function* runBuildPipeline(
   ctx: BuildStageContext,
 ): AsyncGenerator<EforgeEvent> {
-  yield { timestamp: new Date().toISOString(), type: 'build:start', planId: ctx.planId };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:start', planId: ctx.planId };
 
   for (const spec of ctx.build) {
     if (Array.isArray(spec)) {
@@ -218,7 +218,7 @@ export async function* runBuildPipeline(
         }
       } catch (err) {
         // Non-critical — best-effort commit, but yield a warning so it's observable
-        yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `post-parallel-group auto-commit failed: ${err instanceof Error ? err.message : String(err)}` };
+        yield { timestamp: new Date().toISOString(), type: 'plan:build:progress', planId: ctx.planId, message: `post-parallel-group auto-commit failed: ${err instanceof Error ? err.message : String(err)}` };
       }
     } else {
       // Sequential stage
@@ -233,5 +233,5 @@ export async function* runBuildPipeline(
     if (ctx.buildFailed) return;
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'build:complete', planId: ctx.planId };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:complete', planId: ctx.planId };
 }

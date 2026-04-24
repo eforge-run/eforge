@@ -301,12 +301,12 @@ describe('multi-phase session recording with withRunId', () => {
       yield { type: 'session:start', sessionId: 'session-multi', timestamp: now } as unknown as EforgeEvent;
       // Compile phase
       yield { type: 'phase:start', runId: 'run-compile', sessionId: 'session-multi', planSet: 'test-set', command: 'compile', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'plan:start', source: 'test.md' , timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'planning:start', source: 'test.md' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-compile', sessionId: 'session-multi', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
       // Build phase
       yield { type: 'phase:start', runId: 'run-build', sessionId: 'session-multi', planSet: 'test-set', command: 'build', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'build:start', planId: 'plan-01' , timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'build:complete', planId: 'plan-01' , timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'plan:build:start', planId: 'plan-01' , timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'plan:build:complete', planId: 'plan-01' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-build', sessionId: 'session-multi', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
       yield { type: 'session:end', sessionId: 'session-multi', result: { status: 'completed', summary: 'All done' }, timestamp: now } as unknown as EforgeEvent;
     }
@@ -358,7 +358,7 @@ describe('queue cycle recording with session:end presence', () => {
       // --- PRD 1 session ---
       yield { type: 'session:start', sessionId: 'session-1', timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:start', runId: 'run-1', sessionId: 'session-1', planSet: 'prd-1', command: 'build', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'build:start', planId: 'plan-01' , timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'plan:build:start', planId: 'plan-01' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-1', sessionId: 'session-1', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
       yield { type: 'session:end', sessionId: 'session-1', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
 
@@ -368,7 +368,7 @@ describe('queue cycle recording with session:end presence', () => {
       // --- PRD 2 session ---
       yield { type: 'session:start', sessionId: 'session-2', timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:start', runId: 'run-2', sessionId: 'session-2', planSet: 'prd-2', command: 'build', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'build:start', planId: 'plan-02' , timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'plan:build:start', planId: 'plan-02' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-2', sessionId: 'session-2', result: { status: 'completed' }, timestamp: now } as unknown as EforgeEvent;
       yield { type: 'session:end', sessionId: 'session-2', result: { status: 'completed', summary: 'Done' }, timestamp: now } as unknown as EforgeEvent;
     }
@@ -427,7 +427,7 @@ describe('recorder extracts diffs from build:files_changed events', () => {
         type: 'phase:start', runId, sessionId, planSet: 'test-set', command: 'build', timestamp: now,
       } as unknown as EforgeEvent;
       yield {
-        type: 'build:files_changed',
+        type: 'plan:build:files_changed',
         runId,
         planId: 'plan-01',
         files: ['src/a.ts', 'src/b.ts'],
@@ -463,7 +463,7 @@ describe('recorder extracts diffs from build:files_changed events', () => {
 
     // The serialized event in the events table should NOT contain diffs
     const events = db.getEvents(runId);
-    const filesChangedEvent = events.find((e) => e.type === 'build:files_changed');
+    const filesChangedEvent = events.find((e) => e.type === 'plan:build:files_changed');
     expect(filesChangedEvent).toBeDefined();
     const parsed = JSON.parse(filesChangedEvent!.data);
     expect(parsed.diffs).toBeUndefined();
@@ -488,7 +488,7 @@ describe('recorder extracts diffs from build:files_changed events', () => {
         type: 'phase:start', runId, sessionId, planSet: 'test-set', command: 'build', timestamp: now,
       } as unknown as EforgeEvent;
       yield {
-        type: 'build:files_changed',
+        type: 'plan:build:files_changed',
         runId,
         planId: 'plan-01',
         files: ['src/a.ts'],
@@ -515,7 +515,7 @@ describe('recorder extracts diffs from build:files_changed events', () => {
 
     // The event should still be recorded normally
     const events = db.getEvents(runId);
-    const filesChangedEvent = events.find((e) => e.type === 'build:files_changed');
+    const filesChangedEvent = events.find((e) => e.type === 'plan:build:files_changed');
     expect(filesChangedEvent).toBeDefined();
     const parsed = JSON.parse(filesChangedEvent!.data);
     expect(parsed.files).toEqual(['src/a.ts']);

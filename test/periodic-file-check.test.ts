@@ -73,9 +73,9 @@ describe('withPeriodicFileCheck', () => {
 
   it('passes through inner events unchanged', async () => {
     const innerEvents: EforgeEvent[] = [
-      { type: 'build:implement:start', planId: 'test-plan' } as EforgeEvent,
-      { type: 'build:implement:progress', planId: 'test-plan', message: 'working' } as EforgeEvent,
-      { type: 'build:implement:complete', planId: 'test-plan' } as EforgeEvent,
+      { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent,
+      { type: 'plan:build:implement:progress', planId: 'test-plan', message: 'working' } as EforgeEvent,
+      { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent,
     ];
 
     const ctx = makeCtx();
@@ -89,9 +89,9 @@ describe('withPeriodicFileCheck', () => {
 
     // All inner events should pass through
     expect(collected.map((e) => e.type)).toEqual([
-      'build:implement:start',
-      'build:implement:progress',
-      'build:implement:complete',
+      'plan:build:implement:start',
+      'plan:build:implement:progress',
+      'plan:build:implement:complete',
     ]);
   });
 
@@ -102,10 +102,10 @@ describe('withPeriodicFileCheck', () => {
 
     // Create a generator that yields one event, then waits long enough for a timer tick
     async function* slowInner(): AsyncGenerator<EforgeEvent> {
-      yield { type: 'build:implement:start', planId: 'test-plan' } as EforgeEvent;
+      yield { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent;
       // Wait longer than the test interval so the periodic timer fires
       await sleep(TEST_INTERVAL_MS * 3);
-      yield { type: 'build:implement:complete', planId: 'test-plan' } as EforgeEvent;
+      yield { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent;
     }
 
     const wrapped = withPeriodicFileCheck(slowInner(), ctx, TEST_INTERVAL_MS);
@@ -116,11 +116,11 @@ describe('withPeriodicFileCheck', () => {
     }
 
     const types = collected.map((e) => e.type);
-    expect(types).toContain('build:files_changed');
+    expect(types).toContain('plan:build:files_changed');
 
-    const fileEvent = collected.find((e) => e.type === 'build:files_changed');
+    const fileEvent = collected.find((e) => e.type === 'plan:build:files_changed');
     expect(fileEvent).toBeDefined();
-    if (fileEvent && fileEvent.type === 'build:files_changed') {
+    if (fileEvent && fileEvent.type === 'plan:build:files_changed') {
       expect(fileEvent.files).toEqual(['src/bar.ts', 'src/foo.ts']); // sorted
       expect(fileEvent.planId).toBe('test-plan');
     }
@@ -137,9 +137,9 @@ describe('withPeriodicFileCheck', () => {
     const ctx = makeCtx();
 
     async function* slowInner(): AsyncGenerator<EforgeEvent> {
-      yield { type: 'build:implement:start', planId: 'test-plan' } as EforgeEvent;
+      yield { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent;
       await sleep(TEST_INTERVAL_MS * 3);
-      yield { type: 'build:implement:complete', planId: 'test-plan' } as EforgeEvent;
+      yield { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent;
     }
 
     const wrapped = withPeriodicFileCheck(slowInner(), ctx, TEST_INTERVAL_MS);
@@ -149,9 +149,9 @@ describe('withPeriodicFileCheck', () => {
       collected.push(event);
     }
 
-    const fileEvent = collected.find((e) => e.type === 'build:files_changed');
+    const fileEvent = collected.find((e) => e.type === 'plan:build:files_changed');
     expect(fileEvent).toBeDefined();
-    if (fileEvent && fileEvent.type === 'build:files_changed') {
+    if (fileEvent && fileEvent.type === 'plan:build:files_changed') {
       expect(fileEvent.baseBranch).toBe('main');
       expect(fileEvent.diffs).toBeDefined();
       expect(fileEvent.diffs!.length).toBeGreaterThan(0);
@@ -170,10 +170,10 @@ describe('withPeriodicFileCheck', () => {
     const ctx = makeCtx();
 
     async function* slowInner(): AsyncGenerator<EforgeEvent> {
-      yield { type: 'build:implement:start', planId: 'test-plan' } as EforgeEvent;
+      yield { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent;
       // Wait long enough for multiple timer ticks
       await sleep(TEST_INTERVAL_MS * 5);
-      yield { type: 'build:implement:complete', planId: 'test-plan' } as EforgeEvent;
+      yield { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent;
     }
 
     const wrapped = withPeriodicFileCheck(slowInner(), ctx, TEST_INTERVAL_MS);
@@ -184,7 +184,7 @@ describe('withPeriodicFileCheck', () => {
     }
 
     // Should only emit files_changed once since the list didn't change
-    const fileEvents = collected.filter((e) => e.type === 'build:files_changed');
+    const fileEvents = collected.filter((e) => e.type === 'plan:build:files_changed');
     expect(fileEvents.length).toBe(1);
   });
 
@@ -194,9 +194,9 @@ describe('withPeriodicFileCheck', () => {
     const ctx = makeCtx();
 
     async function* slowInner(): AsyncGenerator<EforgeEvent> {
-      yield { type: 'build:implement:start', planId: 'test-plan' } as EforgeEvent;
+      yield { type: 'plan:build:implement:start', planId: 'test-plan' } as EforgeEvent;
       await sleep(TEST_INTERVAL_MS * 3);
-      yield { type: 'build:implement:complete', planId: 'test-plan' } as EforgeEvent;
+      yield { type: 'plan:build:implement:complete', planId: 'test-plan' } as EforgeEvent;
     }
 
     const wrapped = withPeriodicFileCheck(slowInner(), ctx, TEST_INTERVAL_MS);
@@ -208,7 +208,7 @@ describe('withPeriodicFileCheck', () => {
 
     // Should only have inner events, no files_changed and no errors
     const types = collected.map((e) => e.type);
-    expect(types).toEqual(['build:implement:start', 'build:implement:complete']);
+    expect(types).toEqual(['plan:build:implement:start', 'plan:build:implement:complete']);
   });
 
   it('calls iterator.return() on early termination via break', async () => {
@@ -217,7 +217,7 @@ describe('withPeriodicFileCheck', () => {
     async function* neverEnding(): AsyncGenerator<EforgeEvent> {
       let i = 0;
       while (true) {
-        yield { type: 'build:implement:progress', planId: 'test-plan', message: `step ${i++}` } as EforgeEvent;
+        yield { type: 'plan:build:implement:progress', planId: 'test-plan', message: `step ${i++}` } as EforgeEvent;
       }
     }
 

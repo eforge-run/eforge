@@ -117,7 +117,7 @@ export async function* withPeriodicFileCheck(
           if (files.length > 0 && !arraysEqual(files, lastFiles)) {
             lastFiles = files;
             const diffs = await captureFileDiffs(ctx.worktreePath, ctx.orchConfig.baseBranch);
-            yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files, diffs, baseBranch: ctx.orchConfig.baseBranch };
+            yield { timestamp: new Date().toISOString(), type: 'plan:build:files_changed', planId: ctx.planId, files, diffs, baseBranch: ctx.orchConfig.baseBranch };
           }
         } catch {
           // Non-critical — skip silently
@@ -149,7 +149,7 @@ export async function* emitFilesChanged(ctx: BuildStageContext): AsyncGenerator<
     const files = stdout.trim().split('\n').filter(Boolean);
     if (files.length > 0) {
       const diffs = await captureFileDiffs(ctx.worktreePath, ctx.orchConfig.baseBranch);
-      yield { timestamp: new Date().toISOString(), type: 'build:files_changed', planId: ctx.planId, files, diffs, baseBranch: ctx.orchConfig.baseBranch };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:files_changed', planId: ctx.planId, files, diffs, baseBranch: ctx.orchConfig.baseBranch };
     }
   } catch {
     // Non-critical - skip silently

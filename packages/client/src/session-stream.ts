@@ -315,7 +315,7 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       if (parsed.type === 'phase:start') {
         phaseCount += 1;
       }
-      if (parsed.type === 'build:files_changed') {
+      if (parsed.type === 'plan:build:files_changed') {
         const files = (parsed as { files?: unknown }).files;
         if (Array.isArray(files)) {
           filesChanged += files.length;

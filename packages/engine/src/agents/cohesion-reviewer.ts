@@ -36,16 +36,16 @@ export interface CohesionReviewerOptions extends SdkPassthroughConfig {
  * cohesion evaluator to accept/reject.
  *
  * Yields:
- * - `plan:cohesion:start` at the beginning
+ * - `planning:cohesion:start` at the beginning
  * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
- * - `plan:cohesion:complete` with parsed ReviewIssue[] at the end
+ * - `planning:cohesion:complete` with parsed ReviewIssue[] at the end
  */
 export async function* runCohesionReview(
   options: CohesionReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
   const { backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController } = options;
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:cohesion:start' };
+  yield { timestamp: new Date().toISOString(), type: 'planning:cohesion:start' };
 
   const prompt = await loadPrompt('cohesion-reviewer', {
     source_content: sourceContent,
@@ -71,5 +71,5 @@ export async function* runCohesionReview(
 
   const issues = parseReviewIssues(fullText);
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:cohesion:complete', issues };
+  yield { timestamp: new Date().toISOString(), type: 'planning:cohesion:complete', issues };
 }

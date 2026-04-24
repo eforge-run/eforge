@@ -66,7 +66,7 @@ async function* runBuilderAttempt(
       ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
     }), ctx)) {
       implTracker.handleEvent(event);
-      if (event.type === 'build:failed') implSpan.error('Implementation failed');
+      if (event.type === 'plan:build:failed') implSpan.error('Implementation failed');
       yield event;
     }
     implTracker.cleanup();
@@ -101,7 +101,7 @@ async function* runEvaluatorAttempt(
       preImplementCommit: ctx.preImplementCommit,
     })) {
       evalTracker.handleEvent(event);
-      if (event.type === 'build:failed') evalSpan.error('Evaluation failed');
+      if (event.type === 'plan:build:failed') evalSpan.error('Evaluation failed');
       yield event;
     }
     evalTracker.cleanup();
@@ -142,7 +142,7 @@ async function* reviewStageInner(
     })) {
       reviewTracker.handleEvent(event);
       yield event;
-      if (event.type === 'build:review:complete') ctx.reviewIssues = event.issues;
+      if (event.type === 'plan:build:review:complete') ctx.reviewIssues = event.issues;
     }
     reviewTracker.cleanup();
     reviewSpan.end();
@@ -224,7 +224,7 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
     }), ctx)) {
       tracker.handleEvent(event);
       yield event;
-      if (event.type === 'build:test:complete') {
+      if (event.type === 'plan:build:test:complete') {
         ctx.reviewIssues = event.productionIssues.map(testIssueToReviewIssue);
       }
     }
@@ -282,7 +282,7 @@ registerBuildStage({
       builderPolicy,
       initialInput,
     )) {
-      if (event.type === 'build:failed') {
+      if (event.type === 'plan:build:failed') {
         yield event;
         ctx.buildFailed = true;
         return;

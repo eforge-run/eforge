@@ -18,7 +18,7 @@ describe('toBuildFailedEvent', () => {
 
     const event = toBuildFailedEvent(planId, err);
 
-    expect(event.type).toBe('build:failed');
+    expect(event.type).toBe('plan:build:failed');
     expect(event.planId).toBe(planId);
     expect(event.error).toBe(err.message);
     expect(event.terminalSubtype).toBe('error_max_turns');
@@ -30,7 +30,7 @@ describe('toBuildFailedEvent', () => {
 
     const event = toBuildFailedEvent(planId, err);
 
-    expect(event.type).toBe('build:failed');
+    expect(event.type).toBe('plan:build:failed');
     expect(event.planId).toBe(planId);
     expect(event.terminalSubtype).toBe('error_max_budget_usd');
   });
@@ -41,7 +41,7 @@ describe('toBuildFailedEvent', () => {
 
     const event = toBuildFailedEvent(planId, err);
 
-    expect(event.type).toBe('build:failed');
+    expect(event.type).toBe('plan:build:failed');
     expect(event.planId).toBe(planId);
     expect(event.error).toBe('Something went wrong');
     expect(event.terminalSubtype).toBeUndefined();
@@ -53,7 +53,7 @@ describe('toBuildFailedEvent', () => {
 
     const event = toBuildFailedEvent(planId, thrown);
 
-    expect(event.type).toBe('build:failed');
+    expect(event.type).toBe('plan:build:failed');
     expect(event.planId).toBe(planId);
     expect(event.error).toBe('string error value');
     expect(event.terminalSubtype).toBeUndefined();
@@ -65,7 +65,7 @@ describe('toBuildFailedEvent', () => {
 
     const event = toBuildFailedEvent(planId, thrown);
 
-    expect(event.type).toBe('build:failed');
+    expect(event.type).toBe('plan:build:failed');
     expect(event.planId).toBe(planId);
     expect(event.error).toBe(String(thrown));
     expect(event.terminalSubtype).toBeUndefined();

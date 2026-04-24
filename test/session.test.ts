@@ -20,7 +20,7 @@ describe('withSessionId', () => {
   it('auto-derives sessionId from first phase:start runId and stamps all events', async () => {
     const events: EforgeEvent[] = [
       { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' },
-      { type: 'plan:start', source: 'test.md' },
+      { type: 'planning:start', source: 'test.md' },
       { type: 'phase:end', runId: 'run-1', result: { status: 'completed', summary: 'done' }, timestamp: '2024-01-01T00:01:00Z' },
     ];
 
@@ -37,7 +37,7 @@ describe('withSessionId', () => {
   it('uses pre-set sessionId when provided (stamping-only, no envelope)', async () => {
     const events: EforgeEvent[] = [
       { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' },
-      { type: 'plan:start', source: 'test.md' },
+      { type: 'planning:start', source: 'test.md' },
       { type: 'phase:end', runId: 'run-1', result: { status: 'completed', summary: 'done' }, timestamp: '2024-01-01T00:01:00Z' },
     ];
 
@@ -67,7 +67,7 @@ describe('withSessionId', () => {
   it('preserves each event\'s existing sessionId when events carry heterogeneous sessionIds', async () => {
     const events: EforgeEvent[] = [
       { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z', sessionId: 'session-A' },
-      { type: 'plan:start', source: 'test.md', sessionId: 'session-B' },
+      { type: 'planning:start', source: 'test.md', sessionId: 'session-B' },
       { type: 'phase:end', runId: 'run-1', result: { status: 'completed', summary: 'done' }, timestamp: '2024-01-01T00:01:00Z', sessionId: 'session-A' },
     ];
 
@@ -96,7 +96,7 @@ describe('runSession', () => {
   it('emits session:start before first event and session:end after last', async () => {
     const events: EforgeEvent[] = [
       { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' },
-      { type: 'plan:start', source: 'test.md' },
+      { type: 'planning:start', source: 'test.md' },
       { type: 'phase:end', runId: 'run-1', result: { status: 'completed', summary: 'done' }, timestamp: '2024-01-01T00:01:00Z' },
     ];
 
@@ -130,7 +130,7 @@ describe('runSession', () => {
   it('emits session:end with completed result when generator returns early (plan:skip)', async () => {
     async function* skipStream(): AsyncGenerator<EforgeEvent> {
       yield { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' } as EforgeEvent;
-      yield { type: 'plan:skip', reason: 'already done' } as EforgeEvent;
+      yield { type: 'planning:skip', reason: 'already done' } as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-1', result: { status: 'completed', summary: 'skipped' }, timestamp: '2024-01-01T00:01:00Z' } as EforgeEvent;
       // Generator returns early — no build phase
       return;
@@ -162,7 +162,7 @@ describe('runSession', () => {
   it('emits session:end with failed result when upstream throws', async () => {
     async function* throwingStream(): AsyncGenerator<EforgeEvent> {
       yield { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' } as EforgeEvent;
-      yield { type: 'plan:start', source: 'test.md' } as EforgeEvent;
+      yield { type: 'planning:start', source: 'test.md' } as EforgeEvent;
       throw new Error('upstream explosion');
     }
 

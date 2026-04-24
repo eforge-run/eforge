@@ -99,9 +99,9 @@ describe('prdValidate phase error propagation', () => {
     expect(gaps).toHaveLength(1);
     expect(gaps[0].explanation).toContain('unresolved template variables');
 
-    const progress = events.find((e) => e.type === 'plan:progress');
+    const progress = events.find((e) => e.type === 'planning:progress');
     expect(progress).toBeDefined();
-    expect((progress as Extract<EforgeEvent, { type: 'plan:progress' }>).message)
+    expect((progress as Extract<EforgeEvent, { type: 'planning:progress' }>).message)
       .toContain('PRD validation failed');
 
     expect(ctx.state.status).toBe('failed');

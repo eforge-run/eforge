@@ -45,16 +45,16 @@ function formatIssuesForPrompt(issues: ReviewIssue[]): string {
  * Run the review fixer agent as a one-shot coding agent.
  *
  * Yields:
- * - `build:review:fix:start` at the beginning
+ * - `plan:build:review:fix:start` at the beginning
  * - agent lifecycle events
- * - `build:review:fix:complete` at the end
+ * - `plan:build:review:fix:complete` at the end
  */
 export async function* runReviewFixer(
   options: ReviewFixerOptions,
 ): AsyncGenerator<EforgeEvent> {
   const { backend, planId, cwd, issues, verbose, abortController } = options;
 
-  yield { timestamp: new Date().toISOString(), type: 'build:review:fix:start', planId, issueCount: issues.length };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:start', planId, issueCount: issues.length };
 
   const issuesText = formatIssuesForPrompt(issues);
   const prompt = await loadPrompt('review-fixer', {
@@ -84,5 +84,5 @@ export async function* runReviewFixer(
     // Other fixer failures are non-fatal
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'build:review:fix:complete', planId };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:fix:complete', planId };
 }

@@ -203,7 +203,7 @@ export function openDatabase(dbPath: string): MonitorDB {
       `SELECT session_id as sessionId FROM runs ORDER BY started_at DESC LIMIT 1`,
     ),
     getSessionMetadataEvents: db.prepare(
-      `SELECT e.type, e.data, r.session_id as sessionId FROM events e JOIN runs r ON e.run_id = r.id WHERE e.type IN ('plan:profile', 'plan:complete', 'agent:start') ORDER BY e.id`,
+      `SELECT e.type, e.data, r.session_id as sessionId FROM events e JOIN runs r ON e.run_id = r.id WHERE e.type IN ('plan:profile', 'planning:complete', 'agent:start') ORDER BY e.id`,
     ),
     insertFileDiff: db.prepare(
       `INSERT INTO file_diffs (run_id, plan_id, file_path, diff_text, timestamp) VALUES (?, ?, ?, ?, ?)`,
@@ -334,7 +334,7 @@ export function openDatabase(dbPath: string): MonitorDB {
             if (backend) {
               meta.backend = backend;
             }
-          } else if (row.type === 'plan:complete') {
+          } else if (row.type === 'planning:complete') {
             const plans = data.plans as unknown[] | undefined;
             if (Array.isArray(plans)) {
               meta.planCount = plans.length;

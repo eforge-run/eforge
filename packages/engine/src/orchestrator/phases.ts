@@ -101,7 +101,7 @@ export function propagateFailure(
         transitionPlan(state, dep, 'blocked', { error: `Blocked by failed dependency: ${failedPlanId}` });
         events.push({
           timestamp: new Date().toISOString(),
-          type: 'build:failed',
+          type: 'plan:build:failed',
           planId: dep,
           error: `Blocked by failed dependency: ${failedPlanId}`,
         });
@@ -265,7 +265,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         // Delegate to injected plan runner
         let buildFailedError: string | undefined;
         for await (const event of planRunner(planId, worktreePath, plan)) {
-          if (event.type === 'build:failed' && event.planId === planId) {
+          if (event.type === 'plan:build:failed' && event.planId === planId) {
             buildFailedError = event.error;
           }
           // Record agent:start events into per-plan and shared trackers
@@ -317,7 +317,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
       if (running.has(planId)) continue;
       if (!isReady(planId)) continue;
 
-      eventQueue.push({ timestamp: new Date().toISOString(), type: 'schedule:ready', planId, reason });
+      eventQueue.push({ timestamp: new Date().toISOString(), type: 'plan:schedule:ready', planId, reason });
       launchPlan(planId);
     }
   };
@@ -382,7 +382,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
           ctx.failedMerges.add(planId);
           transitionPlan(state, planId, 'failed', { error: skipReason });
           saveState(stateDir, state);
-          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId, error: skipReason };
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId, error: skipReason };
 
           const failureEvents = propagateFailure(state, planId, config.plans);
           saveState(stateDir, state);
@@ -390,7 +390,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
           continue;
         }
 
-        yield { timestamp: new Date().toISOString(), type: 'merge:start', planId };
+        yield { timestamp: new Date().toISOString(), type: 'plan:merge:start', planId };
 
         try {
           const plan = planMap.get(planId)!;
@@ -408,7 +408,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
           ctx.recentlyMergedIds.push(planId);
           saveState(stateDir, state);
 
-          yield { timestamp: new Date().toISOString(), type: 'merge:complete', planId, commitSha };
+          yield { timestamp: new Date().toISOString(), type: 'plan:merge:complete', planId, commitSha };
         } catch (err) {
           ctx.failedMerges.add(planId);
           transitionPlan(state, planId, 'failed', { error: `Merge failed: ${(err as Error).message}` });
@@ -416,7 +416,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
 
           yield {
             timestamp: new Date().toISOString(),
-            type: 'build:failed',
+            type: 'plan:build:failed',
             planId,
             error: `Merge failed: ${(err as Error).message}`,
           };
@@ -583,7 +583,7 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
       if (event.type === 'prd_validation:complete' && !event.passed) {
         // Viability gate: if completionPercent is defined and below threshold, fail immediately
         if (event.completionPercent !== undefined && event.completionPercent < ctx.minCompletionPercent) {
-          yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `PRD completion ${event.completionPercent}% is below viability threshold (${ctx.minCompletionPercent}%) - skipping gap closing` };
+          yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `PRD completion ${event.completionPercent}% is below viability threshold (${ctx.minCompletionPercent}%) - skipping gap closing` };
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
           saveState(stateDir, state);
@@ -617,7 +617,7 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     // synthetic terminal event if the validator already yielded one before
     // throwing; downstream consumers assume a single terminal per phase.
     const message = err instanceof Error ? err.message : String(err);
-    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `PRD validation failed: ${message}` };
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `PRD validation failed: ${message}` };
     if (!terminalEmitted) {
       yield {
         timestamp: new Date().toISOString(),
@@ -651,7 +651,7 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         if (dirtyFiles.length > 0) {
           const preview = dirtyFiles.slice(0, 10).join('\n');
           const suffix = dirtyFiles.length > 10 ? `\n... and ${dirtyFiles.length - 10} more` : '';
-          yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Dirty working tree detected in repoRoot (${dirtyFiles.length} files). Attempting auto-recovery.\n${preview}${suffix}` };
+          yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Dirty working tree detected in repoRoot (${dirtyFiles.length} files). Attempting auto-recovery.\n${preview}${suffix}` };
 
           // Auto-recover: discard modifications and remove untracked files
           await exec('git', ['checkout', '--', '.'], { cwd: ctx.repoRoot });
@@ -665,7 +665,7 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
             throw new Error(`Failed to clean dirty working tree in repoRoot. Remaining files (${remainingFiles.length}):\n${remainingPreview}`);
           }
 
-          yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Dirty working tree auto-recovery succeeded.' };
+          yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Dirty working tree auto-recovery succeeded.' };
         }
       }
 
@@ -677,7 +677,7 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
             yield event;
           }
         } catch (cleanupErr) {
-          yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Feature branch cleanup failed (non-fatal): ${(cleanupErr as Error).message}` };
+          yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Feature branch cleanup failed (non-fatal): ${(cleanupErr as Error).message}` };
         }
       }
 

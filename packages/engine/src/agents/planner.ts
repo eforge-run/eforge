@@ -162,8 +162,8 @@ export async function* runPlanner(
 
   const sourceLabel = extractPlanTitle(source)
     ?? (source.includes('\n') ? source.split('\n')[0].slice(0, 80) : undefined);
-  yield { timestamp: new Date().toISOString(), type: 'plan:start', source, ...(sourceLabel && { label: sourceLabel }) };
-  yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Loading planner prompt...' };
+  yield { timestamp: new Date().toISOString(), type: 'planning:start', source, ...(sourceLabel && { label: sourceLabel }) };
+  yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Loading planner prompt...' };
 
   // Track clarification Q&A across iterations
   const allClarifications: Array<{ questions: ClarificationQuestion[]; answers: Record<string, string> }> = [];
@@ -249,9 +249,9 @@ ${existingPlans}`;
     const prompt = await buildPrompt();
 
     if (iteration === 1) {
-      yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Starting planner agent...' };
+      yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Starting planner agent...' };
     } else {
-      yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: 'Planner restarted with prior clarifications' };
+      yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: 'Planner restarted with prior clarifications' };
     }
 
     let needsRestart = false;
@@ -265,17 +265,17 @@ ${existingPlans}`;
           const skipReason = parseSkipBlock(event.content);
           if (skipReason) {
             skipEmitted = true;
-            yield { timestamp: new Date().toISOString(), type: 'plan:skip', reason: skipReason };
+            yield { timestamp: new Date().toISOString(), type: 'planning:skip', reason: skipReason };
           }
         }
 
         const questions = parseClarificationBlocks(event.content);
         if (questions.length > 0 && !options.auto) {
-          yield { timestamp: new Date().toISOString(), type: 'plan:clarification', questions };
+          yield { timestamp: new Date().toISOString(), type: 'planning:clarification', questions };
 
           if (options.onClarification) {
             const answers = await options.onClarification(questions);
-            yield { timestamp: new Date().toISOString(), type: 'plan:clarification:answer', answers };
+            yield { timestamp: new Date().toISOString(), type: 'planning:clarification:answer', answers };
             allClarifications.push({ questions, answers });
             // Restart agent with answers baked into prompt
             needsRestart = true;
@@ -303,7 +303,7 @@ ${existingPlans}`;
     const planSetPayload = captured.planSet;
     yield {
       timestamp: new Date().toISOString(),
-      type: 'plan:submission',
+      type: 'planning:submission',
       planCount: planSetPayload.plans.length,
       totalBodySize: planSetPayload.plans.reduce((sum: number, p) => sum + p.body.length, 0),
       hasMigrations: planSetPayload.plans.some(p => p.frontmatter.migrations && p.frontmatter.migrations.length > 0),
@@ -319,7 +319,7 @@ ${existingPlans}`;
       plans.push(await parsePlanFile(filePath));
     }
 
-    yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
+    yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans };
     return;
   }
 
@@ -328,7 +328,7 @@ ${existingPlans}`;
     const architecturePayload = captured.architecture;
     yield {
       timestamp: new Date().toISOString(),
-      type: 'plan:submission',
+      type: 'planning:submission',
       planCount: architecturePayload.modules.length,
       totalBodySize: architecturePayload.architecture.length,
       hasMigrations: false,

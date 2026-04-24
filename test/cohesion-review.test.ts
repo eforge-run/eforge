@@ -18,8 +18,8 @@ describe('runCohesionReview wiring', () => {
       cwd: '/tmp',
     }));
 
-    expect(findEvent(events, 'plan:cohesion:start')).toBeDefined();
-    const complete = findEvent(events, 'plan:cohesion:complete');
+    expect(findEvent(events, 'planning:cohesion:start')).toBeDefined();
+    const complete = findEvent(events, 'planning:cohesion:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toHaveLength(0);
     // agent:result should always be yielded
@@ -43,7 +43,7 @@ describe('runCohesionReview wiring', () => {
       cwd: '/tmp',
     }));
 
-    const complete = findEvent(events, 'plan:cohesion:complete');
+    const complete = findEvent(events, 'planning:cohesion:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toHaveLength(3);
     expect(complete!.issues[0]).toMatchObject({
@@ -75,7 +75,7 @@ describe('runCohesionReview wiring', () => {
       cwd: '/tmp',
     }));
 
-    const complete = findEvent(events, 'plan:cohesion:complete');
+    const complete = findEvent(events, 'planning:cohesion:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toHaveLength(0);
   });
@@ -168,8 +168,8 @@ describe('runCohesionEvaluate wiring', () => {
       cwd: '/tmp',
     }));
 
-    expect(findEvent(events, 'plan:cohesion:evaluate:start')).toBeDefined();
-    const complete = findEvent(events, 'plan:cohesion:evaluate:complete');
+    expect(findEvent(events, 'planning:cohesion:evaluate:start')).toBeDefined();
+    const complete = findEvent(events, 'planning:cohesion:evaluate:complete');
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(1);
     expect(complete!.rejected).toBe(0);
@@ -221,7 +221,7 @@ describe('runCohesionEvaluate wiring', () => {
       cwd: '/tmp',
     }));
 
-    const complete = findEvent(events, 'plan:cohesion:evaluate:complete');
+    const complete = findEvent(events, 'planning:cohesion:evaluate:complete');
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(2);
     expect(complete!.rejected).toBe(2); // reject + review both count as rejected
@@ -254,7 +254,7 @@ describe('runCohesionEvaluate wiring', () => {
     expect(thrown).toBeDefined();
     expect(thrown!.message).toBe('Evaluate crash');
 
-    const complete = findEvent(events, 'plan:cohesion:evaluate:complete');
+    const complete = findEvent(events, 'planning:cohesion:evaluate:complete');
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(0);
     expect(complete!.rejected).toBe(0);
@@ -270,7 +270,7 @@ describe('runCohesionEvaluate wiring', () => {
       cwd: '/tmp',
     }));
 
-    const complete = findEvent(events, 'plan:cohesion:evaluate:complete');
+    const complete = findEvent(events, 'planning:cohesion:evaluate:complete');
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(0);
     expect(complete!.rejected).toBe(0);

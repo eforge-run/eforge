@@ -92,16 +92,16 @@ describe('Planner submission tool: plan set', () => {
     }));
 
     // Should yield plan:submission event
-    const submissionEvents = events.filter(e => e.type === 'plan:submission');
+    const submissionEvents = events.filter(e => e.type === 'planning:submission');
     expect(submissionEvents).toHaveLength(1);
-    const submission = submissionEvents[0] as EforgeEvent & { type: 'plan:submission' };
+    const submission = submissionEvents[0] as EforgeEvent & { type: 'planning:submission' };
     expect(submission.planCount).toBe(1);
     expect(submission.hasMigrations).toBe(false);
 
     // Should yield plan:complete
-    const completeEvents = events.filter(e => e.type === 'plan:complete');
+    const completeEvents = events.filter(e => e.type === 'planning:complete');
     expect(completeEvents).toHaveLength(1);
-    const complete = completeEvents[0] as EforgeEvent & { type: 'plan:complete' };
+    const complete = completeEvents[0] as EforgeEvent & { type: 'planning:complete' };
     expect(complete.plans).toHaveLength(1);
     expect(complete.plans[0].id).toBe('plan-01-widgets');
     expect(complete.plans[0].name).toBe('Widget Feature');
@@ -162,14 +162,14 @@ describe('Planner submission tool: skip behavior preserved', () => {
       scope: 'excursion',
     }));
 
-    const skipEvents = events.filter(e => e.type === 'plan:skip');
+    const skipEvents = events.filter(e => e.type === 'planning:skip');
     expect(skipEvents).toHaveLength(1);
-    const skip = skipEvents[0] as EforgeEvent & { type: 'plan:skip' };
+    const skip = skipEvents[0] as EforgeEvent & { type: 'planning:skip' };
     expect(skip.reason).toContain('already implemented');
 
     // Should NOT yield plan:error or plan:complete
-    expect(events.filter(e => e.type === 'plan:error')).toHaveLength(0);
-    expect(events.filter(e => e.type === 'plan:complete')).toHaveLength(0);
+    expect(events.filter(e => e.type === 'planning:error')).toHaveLength(0);
+    expect(events.filter(e => e.type === 'planning:complete')).toHaveLength(0);
   });
 });
 
@@ -197,9 +197,9 @@ describe('Planner submission tool: architecture', () => {
     }));
 
     // Should yield plan:submission event
-    const submissionEvents = events.filter(e => e.type === 'plan:submission');
+    const submissionEvents = events.filter(e => e.type === 'planning:submission');
     expect(submissionEvents).toHaveLength(1);
-    const submission = submissionEvents[0] as EforgeEvent & { type: 'plan:submission' };
+    const submission = submissionEvents[0] as EforgeEvent & { type: 'planning:submission' };
     expect(submission.planCount).toBe(2); // 2 modules
     expect(submission.hasMigrations).toBe(false);
 
@@ -270,9 +270,9 @@ describe('Planner submission tool: plan:submission event metadata', () => {
       scope: 'excursion',
     }));
 
-    const submissionEvents = events.filter(e => e.type === 'plan:submission');
+    const submissionEvents = events.filter(e => e.type === 'planning:submission');
     expect(submissionEvents).toHaveLength(1);
-    const submission = submissionEvents[0] as EforgeEvent & { type: 'plan:submission' };
+    const submission = submissionEvents[0] as EforgeEvent & { type: 'planning:submission' };
     expect(submission.planCount).toBe(2);
     expect(submission.totalBodySize).toBe(
       payload.plans[0].body.length + payload.plans[1].body.length,

@@ -137,7 +137,7 @@ describe('file_diffs DB operations', () => {
       });
       db.insertEvent({
         runId,
-        type: 'build:start',
+        type: 'plan:build:start',
         planId: `plan-${i}`,
         data: '{}',
         timestamp: `2025-01-0${i}T00:00:00Z`,

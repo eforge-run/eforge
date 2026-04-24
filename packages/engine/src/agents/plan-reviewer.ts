@@ -33,16 +33,16 @@ export interface PlanReviewerOptions extends SdkPassthroughConfig {
  * any fixes unstaged for the plan evaluator to accept/reject.
  *
  * Yields:
- * - `plan:review:start` at the beginning
+ * - `planning:review:start` at the beginning
  * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
- * - `plan:review:complete` with parsed ReviewIssue[] at the end
+ * - `planning:review:complete` with parsed ReviewIssue[] at the end
  */
 export async function* runPlanReview(
   options: PlanReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
   const { backend, sourceContent, planSetName, cwd, verbose, abortController } = options;
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:review:start' };
+  yield { timestamp: new Date().toISOString(), type: 'planning:review:start' };
 
   const prompt = await loadPrompt('plan-reviewer', {
     source_content: sourceContent,
@@ -67,5 +67,5 @@ export async function* runPlanReview(
 
   const issues = parseReviewIssues(fullText);
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:review:complete', issues };
+  yield { timestamp: new Date().toISOString(), type: 'planning:review:complete', issues };
 }

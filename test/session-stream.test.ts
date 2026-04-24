@@ -93,8 +93,8 @@ describe('subscribeToSession', () => {
         Connection: 'keep-alive',
       });
       writeSseEvent(res, { type: 'phase:start', timestamp: ts(), runId: 'r1', planSet: 'p', command: 'build' }, 1);
-      writeSseEvent(res, { type: 'build:files_changed', timestamp: ts(), planId: 'plan-a', files: ['a.ts', 'b.ts'] }, 2);
-      writeSseEvent(res, { type: 'build:failed', timestamp: ts(), planId: 'plan-a', error: 'boom' }, 3);
+      writeSseEvent(res, { type: 'plan:build:files_changed', timestamp: ts(), planId: 'plan-a', files: ['a.ts', 'b.ts'] }, 2);
+      writeSseEvent(res, { type: 'plan:build:failed', timestamp: ts(), planId: 'plan-a', error: 'boom' }, 3);
       writeSseEvent(res, {
         type: 'session:end',
         sessionId: 'sess-1',
@@ -118,8 +118,8 @@ describe('subscribeToSession', () => {
       expect(events).toHaveLength(4);
       expect(events.map((e) => e.type)).toEqual([
         'phase:start',
-        'build:files_changed',
-        'build:failed',
+        'plan:build:files_changed',
+        'plan:build:failed',
         'session:end',
       ]);
       expect(summary.status).toBe('completed');

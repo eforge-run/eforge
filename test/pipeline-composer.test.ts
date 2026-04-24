@@ -47,7 +47,7 @@ describe('composePipeline', () => {
     const agentResults = filterEvents(events, 'agent:result');
     expect(agentResults).toHaveLength(1);
 
-    const pipeline = findEvent(events, 'plan:pipeline');
+    const pipeline = findEvent(events, 'planning:pipeline');
     expect(pipeline).toBeDefined();
     expect(pipeline!.scope).toBe('errand');
     expect(pipeline!.defaultBuild).toEqual(['implement', 'test-write']);
@@ -69,7 +69,7 @@ describe('composePipeline', () => {
     }));
 
     expect(filterEvents(events, 'agent:result')).toHaveLength(2);
-    expect(findEvent(events, 'plan:pipeline')).toBeDefined();
+    expect(findEvent(events, 'planning:pipeline')).toBeDefined();
 
     expect(backend.prompts).toHaveLength(2);
     const retryPrompt = backend.prompts[1];

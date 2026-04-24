@@ -30,7 +30,7 @@ describe('eforgeReducer', () => {
     const modified: RunState = {
       ...initialRunState,
       tokensIn: 100,
-      events: [{ event: { type: 'plan:start', source: 'test' }, eventId: '1' }],
+      events: [{ event: { type: 'planning:start', source: 'test' }, eventId: '1' }],
     };
     const result = eforgeReducer(modified, { type: 'RESET' });
     expect(result.tokensIn).toBe(0);
@@ -101,7 +101,7 @@ describe('eforgeReducer', () => {
 
   it('initializes planStatuses from plan:complete', () => {
     const event: EforgeEvent = {
-      type: 'plan:complete',
+      type: 'planning:complete',
       plans: [
         { id: 'plan-a', description: 'First plan', dependsOn: [] },
         { id: 'plan-b', description: 'Second plan', dependsOn: ['plan-a'] },
@@ -161,13 +161,13 @@ describe('eforgeReducer', () => {
 
   it('tracks plan statuses through build lifecycle', () => {
     const events: Array<{ event: EforgeEvent; eventId: string }> = [
-      { event: { type: 'build:start', planId: 'plan-01' }, eventId: '1' },
-      { event: { type: 'build:implement:start', planId: 'plan-01' }, eventId: '2' },
-      { event: { type: 'build:implement:complete', planId: 'plan-01' }, eventId: '3' },
-      { event: { type: 'build:review:start', planId: 'plan-01' }, eventId: '4' },
-      { event: { type: 'build:review:complete', planId: 'plan-01', issues: [] }, eventId: '5' },
-      { event: { type: 'build:evaluate:start', planId: 'plan-01' }, eventId: '6' },
-      { event: { type: 'build:complete', planId: 'plan-01' }, eventId: '7' },
+      { event: { type: 'plan:build:start', planId: 'plan-01' }, eventId: '1' },
+      { event: { type: 'plan:build:implement:start', planId: 'plan-01' }, eventId: '2' },
+      { event: { type: 'plan:build:implement:complete', planId: 'plan-01' }, eventId: '3' },
+      { event: { type: 'plan:build:review:start', planId: 'plan-01' }, eventId: '4' },
+      { event: { type: 'plan:build:review:complete', planId: 'plan-01', issues: [] }, eventId: '5' },
+      { event: { type: 'plan:build:evaluate:start', planId: 'plan-01' }, eventId: '6' },
+      { event: { type: 'plan:build:complete', planId: 'plan-01' }, eventId: '7' },
     ];
 
     // Check intermediate states
@@ -194,7 +194,7 @@ describe('eforgeReducer', () => {
   it('tracks failed plan status', () => {
     const state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'build:failed', planId: 'plan-01', error: 'oops' },
+      event: { type: 'plan:build:failed', planId: 'plan-01', error: 'oops' },
       eventId: '1',
     });
     expect(state.planStatuses['plan-01']).toBe('failed');
@@ -203,7 +203,7 @@ describe('eforgeReducer', () => {
   it('handles events without planId (no status update)', () => {
     const state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'plan:start', source: 'test.md' },
+      event: { type: 'planning:start', source: 'test.md' },
       eventId: '1',
     });
     expect(Object.keys(state.planStatuses)).toHaveLength(0);
@@ -241,7 +241,7 @@ describe('eforgeReducer', () => {
 
   it('processes plan:warning event without throwing and records it', () => {
     const event: EforgeEvent = {
-      type: 'plan:warning',
+      type: 'planning:warning',
       planId: 'plan-01',
       message: '[eforge] Plan file /path/to/plan.md: malformed agents block will be ignored',
       source: 'parsePlanFile',
@@ -254,14 +254,14 @@ describe('eforgeReducer', () => {
     });
     // Event is recorded in state
     expect(state.events).toHaveLength(1);
-    expect(state.events[0].event.type).toBe('plan:warning');
+    expect(state.events[0].event.type).toBe('planning:warning');
     // State is otherwise unmodified
     expect(state.isComplete).toBe(false);
   });
 
   it('processes plan:warning event without planId', () => {
     const event: EforgeEvent = {
-      type: 'plan:warning',
+      type: 'planning:warning',
       message: '[eforge] Plan orchestration warning: malformed agents block will be ignored',
       source: 'parseOrchestrationConfig',
       timestamp: '2024-01-01T00:00:00Z',
@@ -272,13 +272,13 @@ describe('eforgeReducer', () => {
       eventId: 'pw-2',
     });
     expect(state.events).toHaveLength(1);
-    expect(state.events[0].event.type).toBe('plan:warning');
+    expect(state.events[0].event.type).toBe('planning:warning');
   });
 
   it('populates fileChanges on build:files_changed', () => {
     const state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'build:files_changed', planId: 'plan-01', files: ['src/a.ts', 'src/b.ts'] },
+      event: { type: 'plan:build:files_changed', planId: 'plan-01', files: ['src/a.ts', 'src/b.ts'] },
       eventId: '1',
     });
     expect(state.fileChanges.get('plan-01')).toEqual(['src/a.ts', 'src/b.ts']);
@@ -287,12 +287,12 @@ describe('eforgeReducer', () => {
   it('handles multiple build:files_changed for different plans', () => {
     let state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'build:files_changed', planId: 'plan-01', files: ['src/a.ts'] },
+      event: { type: 'plan:build:files_changed', planId: 'plan-01', files: ['src/a.ts'] },
       eventId: '1',
     });
     state = eforgeReducer(state, {
       type: 'ADD_EVENT',
-      event: { type: 'build:files_changed', planId: 'plan-02', files: ['src/b.ts'] },
+      event: { type: 'plan:build:files_changed', planId: 'plan-02', files: ['src/b.ts'] },
       eventId: '2',
     });
     expect(state.fileChanges.get('plan-01')).toEqual(['src/a.ts']);
@@ -302,12 +302,12 @@ describe('eforgeReducer', () => {
   it('is idempotent for duplicate build:files_changed events', () => {
     let state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'build:files_changed', planId: 'plan-01', files: ['src/a.ts'] },
+      event: { type: 'plan:build:files_changed', planId: 'plan-01', files: ['src/a.ts'] },
       eventId: '1',
     });
     state = eforgeReducer(state, {
       type: 'ADD_EVENT',
-      event: { type: 'build:files_changed', planId: 'plan-01', files: ['src/a.ts', 'src/b.ts'] },
+      event: { type: 'plan:build:files_changed', planId: 'plan-01', files: ['src/a.ts', 'src/b.ts'] },
       eventId: '2',
     });
     // Latest event overwrites
@@ -318,14 +318,14 @@ describe('eforgeReducer', () => {
   it('marks plan as complete on merge:complete', () => {
     let state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'plan:complete', plans: [{ id: 'plan-01', name: 'Plan 1', branch: 'b', dependsOn: [], body: '', filePath: '' }] },
+      event: { type: 'planning:complete', plans: [{ id: 'plan-01', name: 'Plan 1', branch: 'b', dependsOn: [], body: '', filePath: '' }] },
       eventId: '1',
     });
     expect(state.planStatuses['plan-01']).toBe('plan');
 
     state = eforgeReducer(state, {
       type: 'ADD_EVENT',
-      event: { type: 'merge:complete', planId: 'plan-01' },
+      event: { type: 'plan:merge:complete', planId: 'plan-01' },
       eventId: '2',
     });
     expect(state.planStatuses['plan-01']).toBe('complete');

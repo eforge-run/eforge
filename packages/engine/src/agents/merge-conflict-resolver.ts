@@ -20,7 +20,7 @@ export interface MergeConflictResolverOptions extends SdkPassthroughConfig {
 export async function* runMergeConflictResolver(
   options: MergeConflictResolverOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { timestamp: new Date().toISOString(), type: 'merge:resolve:start', planId: options.conflict.branch };
+  yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:start', planId: options.conflict.branch };
 
   const prompt = await loadPrompt('merge-conflict-resolver', {
     branch: options.conflict.branch,
@@ -53,9 +53,9 @@ export async function* runMergeConflictResolver(
     // Re-throw abort errors so the orchestrator can respect cancellation
     if (err instanceof Error && err.name === 'AbortError') throw err;
     // Other resolver failures are non-fatal — fall through to resolved: false
-    yield { timestamp: new Date().toISOString(), type: 'merge:resolve:complete', planId: options.conflict.branch, resolved: false };
+    yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:complete', planId: options.conflict.branch, resolved: false };
     return;
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'merge:resolve:complete', planId: options.conflict.branch, resolved: true };
+  yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:complete', planId: options.conflict.branch, resolved: true };
 }

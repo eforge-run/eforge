@@ -73,17 +73,17 @@ async function* runPlannerAttempt(
       tracker.handleEvent(event);
 
       // Track skip — halts further compile stages.
-      if (event.type === 'plan:skip') {
+      if (event.type === 'planning:skip') {
         ctx.skipped = true;
       }
 
-      // Suppress planner's plan:complete in expedition mode (compilation emits the real one).
-      if (event.type === 'plan:complete' && ctx.expeditionModules.length > 0) {
+      // Suppress planner's planning:complete in expedition mode (compilation emits the real one).
+      if (event.type === 'planning:complete' && ctx.expeditionModules.length > 0) {
         continue;
       }
 
       // Track final plans for review phase and inject pipeline into orchestration.yaml.
-      if (event.type === 'plan:complete') {
+      if (event.type === 'planning:complete') {
         const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
 
         // Both injectPipelineIntoOrchestrationYaml() and parseOrchestrationConfig() read
@@ -95,9 +95,9 @@ async function* runPlannerAttempt(
           await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch);
 
           const orchConfig = await parseOrchestrationConfig(orchYamlPath);
-          // Yield plan:warning events for any orchestration config warnings
+          // Yield planning:warning events for any orchestration config warnings
           for (const warning of orchConfig.warnings ?? []) {
-            yield { timestamp: new Date().toISOString(), type: 'plan:warning', message: warning, source: 'parseOrchestrationConfig' };
+            yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'parseOrchestrationConfig' };
           }
           const enrichedPlans = backfillDependsOn(event.plans, orchConfig);
           ctx.plans = enrichedPlans;
@@ -205,7 +205,7 @@ registerCompileStage({
     abortController: ctx.abortController,
     ...composerConfig,
   })) {
-    if (event.type === 'plan:pipeline') {
+    if (event.type === 'planning:pipeline') {
       // Update the context pipeline from the composer result
       ctx.pipeline = {
         scope: event.scope as 'errand' | 'excursion' | 'expedition',
@@ -220,7 +220,7 @@ registerCompileStage({
 
   // Guard: if the composer replaced the compile pipeline without 'planner', delegate.
   if (!ctx.pipeline.compile.includes('planner')) {
-    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Pipeline composer selected [${ctx.pipeline.compile.join(', ')}] — delegating to new compile stages.` };
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Pipeline composer selected [${ctx.pipeline.compile.join(', ')}] — delegating to new compile stages.` };
     return;
   }
 
@@ -300,7 +300,7 @@ registerCompileStage({
     });
   } catch (err) {
     // Plan review failure is non-fatal - plan artifacts are already committed
-    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Plan review skipped: ${(err as Error).message}` };
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Plan review skipped: ${(err as Error).message}` };
   }
 });
 
@@ -352,7 +352,7 @@ registerCompileStage({
       },
     });
   } catch (err) {
-    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Architecture review skipped: ${(err as Error).message}` };
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Architecture review skipped: ${(err as Error).message}` };
   }
 });
 
@@ -464,7 +464,7 @@ registerCompileStage({
       },
     });
   } catch (err) {
-    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Cohesion review skipped: ${(err as Error).message}` };
   }
 });
 
@@ -490,7 +490,7 @@ registerCompileStage({
   await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch);
 
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:complete', plans };
-  yield { timestamp: new Date().toISOString(), type: 'plan:complete', plans };
+  yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans };
 
   // Update context plans for downstream stages
   ctx.plans = plans;

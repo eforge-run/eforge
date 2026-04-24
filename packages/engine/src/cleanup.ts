@@ -58,7 +58,7 @@ export async function* cleanupPlanFiles(cwd: string, planSet: string, outputDir:
 
   } catch (err) {
     // Non-fatal — ensure cleanup:complete always pairs with cleanup:start
-    yield { timestamp: new Date().toISOString(), type: 'plan:progress', message: `Cleanup failed (non-fatal): ${(err as Error).message}` };
+    yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `Cleanup failed (non-fatal): ${(err as Error).message}` };
   }
 
   yield { timestamp: new Date().toISOString(), type: 'cleanup:complete', planSet };

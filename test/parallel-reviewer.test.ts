@@ -80,12 +80,12 @@ describe('runReviewFixer', () => {
       }),
     );
 
-    const fixStart = findEvent(events, 'build:review:fix:start');
+    const fixStart = findEvent(events, 'plan:build:review:fix:start');
     expect(fixStart).toBeDefined();
     expect(fixStart!.planId).toBe('plan-01');
     expect(fixStart!.issueCount).toBe(1);
 
-    const fixComplete = findEvent(events, 'build:review:fix:complete');
+    const fixComplete = findEvent(events, 'plan:build:review:fix:complete');
     expect(fixComplete).toBeDefined();
     expect(fixComplete!.planId).toBe('plan-01');
   });
@@ -137,7 +137,7 @@ describe('runReviewFixer', () => {
     );
 
     // Should still emit fix:start and fix:complete
-    expect(findEvent(events, 'build:review:fix:start')).toBeDefined();
-    expect(findEvent(events, 'build:review:fix:complete')).toBeDefined();
+    expect(findEvent(events, 'plan:build:review:fix:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:review:fix:complete')).toBeDefined();
   });
 });

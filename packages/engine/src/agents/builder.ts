@@ -100,7 +100,7 @@ export async function* builderImplement(
   plan: PlanFile,
   options: BuilderOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { timestamp: new Date().toISOString(), type: 'build:implement:start', planId: plan.id };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:start', planId: plan.id };
 
   const parallelLanes = options.parallelStages
     ? formatBuilderParallelNotice(options.parallelStages)
@@ -150,12 +150,12 @@ ${completedDiff}
     }
   } catch (err) {
     const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
-    yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) };
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) };
     return;
   }
 
-  yield { timestamp: new Date().toISOString(), type: 'build:implement:progress', planId: plan.id, message: 'Implementation complete' };
-  yield { timestamp: new Date().toISOString(), type: 'build:implement:complete', planId: plan.id };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:progress', planId: plan.id, message: 'Implementation complete' };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: plan.id };
 }
 
 /**
@@ -167,7 +167,7 @@ export async function* builderEvaluate(
   plan: PlanFile,
   options: BuilderOptions,
 ): AsyncGenerator<EforgeEvent> {
-  yield { timestamp: new Date().toISOString(), type: 'build:evaluate:start', planId: plan.id };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:evaluate:start', planId: plan.id };
 
   let continuationContextText = '';
   if (options.evaluatorContinuationContext) {
@@ -212,7 +212,7 @@ Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again 
     // Continuation is owned entirely by the policy — this agent no longer
     // re-throws max-turn errors for the pipeline to catch.
     const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
-    yield { timestamp: new Date().toISOString(), type: 'build:failed', planId: plan.id, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) };
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) };
     return;
   }
 
@@ -220,6 +220,6 @@ Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again 
   const accepted = verdicts.filter((v) => v.action === 'accept').length;
   const rejected = verdicts.filter((v) => v.action === 'reject' || v.action === 'review').length;
 
-  yield { timestamp: new Date().toISOString(), type: 'build:evaluate:complete', planId: plan.id, accepted, rejected, verdicts: verdicts.map(v => ({ file: v.file, action: v.action, reason: v.reason })) };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:evaluate:complete', planId: plan.id, accepted, rejected, verdicts: verdicts.map(v => ({ file: v.file, action: v.action, reason: v.reason })) };
 }
 

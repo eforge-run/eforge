@@ -148,15 +148,15 @@ export function renderEvent(event: EforgeEvent): void {
     }
 
     // Planning
-    case 'plan:start':
+    case 'planning:start':
       startSpinner('plan', `Planning from ${chalk.cyan(event.label ?? event.source)}...`);
       break;
 
-    case 'plan:skip':
+    case 'planning:skip':
       console.log(chalk.dim(`  Skipped: ${event.reason}`));
       break;
 
-    case 'plan:clarification': {
+    case 'planning:clarification': {
       const spinner = spinners.get('plan');
       if (spinner) spinner.stop();
       console.log('');
@@ -169,23 +169,23 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'plan:clarification:answer':
+    case 'planning:clarification:answer':
       startSpinner('plan', 'Continuing planning...');
       break;
 
-    case 'plan:progress': {
+    case 'planning:progress': {
       const spinner = spinners.get('plan');
       if (spinner) spinner.text = event.message;
       break;
     }
 
-    case 'plan:continuation': {
+    case 'planning:continuation': {
       const s = spinners.get('plan');
       if (s) s.text = `Planning - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
       break;
     }
 
-    case 'plan:complete':
+    case 'planning:complete':
       if (event.plans.length === 0) {
         succeedSpinner('plan', 'Nothing to plan \u2014 source is fully implemented');
       } else {
@@ -197,11 +197,11 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     // Plan review (after planning phase)
-    case 'plan:review:start':
+    case 'planning:review:start':
       startSpinner('plan-review', 'Reviewing plan files...');
       break;
 
-    case 'plan:review:complete': {
+    case 'planning:review:complete': {
       if (event.issues.length === 0) {
         succeedSpinner('plan-review', 'Plan review complete \u2014 no issues found');
       } else {
@@ -210,17 +210,17 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'plan:evaluate:start':
+    case 'planning:evaluate:start':
       startSpinner('plan-evaluate', 'Evaluating plan review fixes...');
       break;
 
-    case 'plan:evaluate:continuation': {
+    case 'planning:evaluate:continuation': {
       const s = spinners.get('plan-evaluate');
       if (s) s.text = `Evaluating plan review fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
       break;
     }
 
-    case 'plan:evaluate:complete':
+    case 'planning:evaluate:complete':
       if (event.accepted === 0 && event.rejected === 0) {
         succeedSpinner('plan-evaluate', 'Plan evaluation: no fixes to evaluate');
       } else {
@@ -232,11 +232,11 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     // Architecture review (expedition architecture validation)
-    case 'plan:architecture:review:start':
+    case 'planning:architecture:review:start':
       startSpinner('architecture-review', 'Reviewing architecture...');
       break;
 
-    case 'plan:architecture:review:complete': {
+    case 'planning:architecture:review:complete': {
       if (event.issues.length === 0) {
         succeedSpinner('architecture-review', 'Architecture review complete \u2014 no issues found');
       } else {
@@ -245,17 +245,17 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'plan:architecture:evaluate:start':
+    case 'planning:architecture:evaluate:start':
       startSpinner('architecture-evaluate', 'Evaluating architecture review fixes...');
       break;
 
-    case 'plan:architecture:evaluate:continuation': {
+    case 'planning:architecture:evaluate:continuation': {
       const s = spinners.get('architecture-evaluate');
       if (s) s.text = `Evaluating architecture review fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
       break;
     }
 
-    case 'plan:architecture:evaluate:complete':
+    case 'planning:architecture:evaluate:complete':
       if (event.accepted === 0 && event.rejected === 0) {
         succeedSpinner('architecture-evaluate', 'Architecture evaluation: no fixes to evaluate');
       } else {
@@ -267,11 +267,11 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     // Cohesion review (expedition cross-module validation)
-    case 'plan:cohesion:start':
+    case 'planning:cohesion:start':
       startSpinner('cohesion-review', 'Reviewing cross-module cohesion...');
       break;
 
-    case 'plan:cohesion:complete': {
+    case 'planning:cohesion:complete': {
       if (event.issues.length === 0) {
         succeedSpinner('cohesion-review', 'Cohesion review complete \u2014 no issues found');
       } else {
@@ -280,17 +280,17 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'plan:cohesion:evaluate:start':
+    case 'planning:cohesion:evaluate:start':
       startSpinner('cohesion-evaluate', 'Evaluating cohesion review fixes...');
       break;
 
-    case 'plan:cohesion:evaluate:continuation': {
+    case 'planning:cohesion:evaluate:continuation': {
       const s = spinners.get('cohesion-evaluate');
       if (s) s.text = `Evaluating cohesion review fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
       break;
     }
 
-    case 'plan:cohesion:evaluate:complete':
+    case 'planning:cohesion:evaluate:complete':
       if (event.accepted === 0 && event.rejected === 0) {
         succeedSpinner('cohesion-evaluate', 'Cohesion evaluation: no fixes to evaluate');
       } else {
@@ -302,41 +302,47 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     // Building (per-plan)
-    case 'build:start':
+    case 'plan:build:start':
       startSpinner(`build:${event.planId}`, `${chalk.cyan(event.planId)} \u2014 starting...`);
       break;
 
-    case 'build:implement:start': {
+    case 'plan:build:implement:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 implementing...`;
       break;
     }
 
-    case 'build:implement:progress': {
+    case 'plan:build:implement:progress': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 ${event.message}`;
       break;
     }
 
-    case 'build:implement:continuation': {
+    case 'plan:build:progress': {
+      const s = spinners.get(`build:${event.planId}`);
+      if (s) s.text = `${chalk.cyan(event.planId)} \u2014 ${event.message}`;
+      break;
+    }
+
+    case 'plan:build:implement:continuation': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 continuing (attempt ${event.attempt}/${event.maxContinuations})`;
       break;
     }
 
-    case 'build:implement:complete': {
+    case 'plan:build:implement:complete': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 implementation complete`;
       break;
     }
 
-    case 'build:review:start': {
+    case 'plan:build:review:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 reviewing...`;
       break;
     }
 
-    case 'build:review:complete': {
+    case 'plan:build:review:complete': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 review complete`;
       if (event.issues.length > 0) {
@@ -345,17 +351,17 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'build:review:parallel:start': {
+    case 'plan:build:review:parallel:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 reviewing: ${event.perspectives.join(', ')}`;
       break;
     }
 
-    case 'build:review:parallel:perspective:start':
+    case 'plan:build:review:parallel:perspective:start':
       // No-op — spinner already shows perspectives
       break;
 
-    case 'build:review:parallel:perspective:complete': {
+    case 'plan:build:review:parallel:perspective:complete': {
       const pIssues = event.issues;
       if (pIssues.length > 0) {
         console.log(chalk.dim(`  ${chalk.cyan(event.planId)} ${event.perspective}: ${pIssues.length} issue(s)`));
@@ -363,31 +369,31 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'build:review:fix:start': {
+    case 'plan:build:review:fix:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 applying fixes (${event.issueCount} issues)`;
       break;
     }
 
-    case 'build:review:fix:complete': {
+    case 'plan:build:review:fix:complete': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 fixes applied`;
       break;
     }
 
-    case 'build:evaluate:start': {
+    case 'plan:build:evaluate:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 evaluating fixes...`;
       break;
     }
 
-    case 'build:evaluate:continuation': {
+    case 'plan:build:evaluate:continuation': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 evaluating fixes - continuing (attempt ${event.attempt}/${event.maxContinuations})`;
       break;
     }
 
-    case 'build:evaluate:complete': {
+    case 'plan:build:evaluate:complete': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} \u2014 evaluation complete`;
       console.log(
@@ -396,13 +402,13 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'build:doc-update:start': {
+    case 'plan:build:doc-update:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} — updating docs...`;
       break;
     }
 
-    case 'build:doc-update:complete': {
+    case 'plan:build:doc-update:complete': {
       if (event.docsUpdated > 0) {
         const s = spinners.get(`build:${event.planId}`);
         if (s) s.text = `${chalk.cyan(event.planId)} — ${event.docsUpdated} doc(s) updated`;
@@ -410,13 +416,13 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'build:test:write:start': {
+    case 'plan:build:test:write:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} — writing tests...`;
       break;
     }
 
-    case 'build:test:write:complete': {
+    case 'plan:build:test:write:complete': {
       if (event.testsWritten > 0) {
         const s = spinners.get(`build:${event.planId}`);
         if (s) s.text = `${chalk.cyan(event.planId)} — ${event.testsWritten} test file(s) written`;
@@ -424,13 +430,13 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'build:test:start': {
+    case 'plan:build:test:start': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) s.text = `${chalk.cyan(event.planId)} — running tests...`;
       break;
     }
 
-    case 'build:test:complete': {
+    case 'plan:build:test:complete': {
       const s = spinners.get(`build:${event.planId}`);
       if (s) {
         const parts = [`${event.passed} passed`];
@@ -442,15 +448,15 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     }
 
-    case 'build:files_changed':
+    case 'plan:build:files_changed':
       console.log(chalk.dim(`  ${chalk.cyan(event.planId)} — ${event.files.length} file(s) changed`));
       break;
 
-    case 'build:complete':
+    case 'plan:build:complete':
       succeedSpinner(`build:${event.planId}`, `${chalk.cyan(event.planId)} \u2014 complete`);
       break;
 
-    case 'build:failed':
+    case 'plan:build:failed':
       failSpinner(`build:${event.planId}`, `${chalk.cyan(event.planId)} \u2014 ${chalk.red(event.error)}`);
       break;
 
@@ -463,15 +469,15 @@ export function renderEvent(event: EforgeEvent): void {
       );
       break;
 
-    case 'schedule:ready':
+    case 'plan:schedule:ready':
       console.log(chalk.magenta(`  \u25b8 Ready: ${chalk.cyan(event.planId)}`) + chalk.dim(` (${event.reason})`));
       break;
 
-    case 'merge:start':
+    case 'plan:merge:start':
       startSpinner(`merge:${event.planId}`, `Merging ${chalk.cyan(event.planId)}...`);
       break;
 
-    case 'merge:complete':
+    case 'plan:merge:complete':
       succeedSpinner(`merge:${event.planId}`, `Merged ${chalk.cyan(event.planId)}`);
       break;
 
@@ -638,7 +644,7 @@ export function renderEvent(event: EforgeEvent): void {
       succeedSpinner('cleanup', `Plan files removed for ${chalk.cyan(event.planSet)}`);
       break;
 
-    case 'plan:pipeline': {
+    case 'planning:pipeline': {
       const scopeColors: Record<string, (s: string) => string> = {
         errand: chalk.green,
         excursion: chalk.yellow,
@@ -654,7 +660,7 @@ export function renderEvent(event: EforgeEvent): void {
       console.error(`[eforge] config warning: ${event.message}`);
       break;
 
-    case 'plan:warning':
+    case 'planning:warning':
       console.error(`[eforge] plan warning${event.planId ? ` (${event.planId})` : ''}: ${event.message}`);
       break;
 
@@ -670,10 +676,10 @@ export function renderEvent(event: EforgeEvent): void {
       break;
 
     // Merge conflict resolution
-    case 'merge:resolve:start':
+    case 'plan:merge:resolve:start':
       console.log(chalk.yellow(`  ⚡ Resolving merge conflicts for ${event.planId}...`));
       break;
-    case 'merge:resolve:complete':
+    case 'plan:merge:resolve:complete':
       if (event.resolved) {
         console.log(chalk.green(`  ✓ Merge conflicts resolved for ${event.planId}`));
       } else {
@@ -790,10 +796,10 @@ export function renderEvent(event: EforgeEvent): void {
       succeedSpinner('gap-close', 'Gap closing complete');
       break;
 
-    case 'plan:submission':
+    case 'planning:submission':
       break;
 
-    case 'plan:error':
+    case 'planning:error':
       failSpinner('plan', `Planning failed: ${event.reason}`);
       break;
 

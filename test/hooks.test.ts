@@ -9,22 +9,22 @@ import { collectEvents } from './test-events.js';
 
 describe('compilePattern', () => {
   it('matches exact event type', () => {
-    const regex = compilePattern('build:start');
-    expect(regex.test('build:start')).toBe(true);
-    expect(regex.test('build:complete')).toBe(false);
+    const regex = compilePattern('plan:build:start');
+    expect(regex.test('plan:build:start')).toBe(true);
+    expect(regex.test('plan:build:complete')).toBe(false);
   });
 
   it('wildcard matches any characters including colon', () => {
-    const regex = compilePattern('build:*');
-    expect(regex.test('build:start')).toBe(true);
-    expect(regex.test('build:implement:start')).toBe(true);
-    expect(regex.test('plan:start')).toBe(false);
+    const regex = compilePattern('plan:build:*');
+    expect(regex.test('plan:build:start')).toBe(true);
+    expect(regex.test('plan:build:implement:start')).toBe(true);
+    expect(regex.test('planning:start')).toBe(false);
   });
 
   it('single star matches everything', () => {
     const regex = compilePattern('*');
     expect(regex.test('anything:here')).toBe(true);
-    expect(regex.test('build:implement:start')).toBe(true);
+    expect(regex.test('plan:build:implement:start')).toBe(true);
     expect(regex.test('')).toBe(true);
   });
 
@@ -36,19 +36,19 @@ describe('compilePattern', () => {
 
   it('handles multiple wildcards', () => {
     const regex = compilePattern('*:start');
-    expect(regex.test('build:start')).toBe(true);
-    expect(regex.test('plan:start')).toBe(true);
-    expect(regex.test('build:complete')).toBe(false);
+    expect(regex.test('plan:build:start')).toBe(true);
+    expect(regex.test('planning:start')).toBe(true);
+    expect(regex.test('plan:build:complete')).toBe(false);
   });
 });
 
 describe('matchesPattern', () => {
-  it('build:* matches build:start', () => {
-    expect(matchesPattern('build:*', 'build:start')).toBe(true);
+  it('plan:build:* matches plan:build:start', () => {
+    expect(matchesPattern('plan:build:*', 'plan:build:start')).toBe(true);
   });
 
-  it('build:* does not match plan:start', () => {
-    expect(matchesPattern('build:*', 'plan:start')).toBe(false);
+  it('plan:build:* does not match planning:start', () => {
+    expect(matchesPattern('plan:build:*', 'planning:start')).toBe(false);
   });
 
   it('* matches anything', () => {
@@ -65,8 +65,8 @@ describe('withHooks', () => {
 
   const sampleEvents: EforgeEvent[] = [
     { type: 'phase:start', runId: '1', planSet: 'test', command: 'compile', timestamp: new Date().toISOString() },
-    { type: 'plan:start', source: 'test.md' },
-    { type: 'plan:complete', plans: [] },
+    { type: 'planning:start', source: 'test.md' },
+    { type: 'planning:complete', plans: [] },
     { type: 'phase:end', runId: '1', result: { status: 'completed', summary: 'done' }, timestamp: new Date().toISOString() },
   ];
 
@@ -164,7 +164,7 @@ describe('withHooks', () => {
     try {
       const hooks: HookConfig[] = [
         {
-          event: 'plan:start',
+          event: 'planning:start',
           command: `echo "RUNID=$EFORGE_RUN_ID" > "${outFile}"`,
           timeout: 5000,
         },
@@ -172,7 +172,7 @@ describe('withHooks', () => {
 
       const events: EforgeEvent[] = [
         { type: 'phase:start', runId: 'test-run-42', planSet: 'test', command: 'compile', timestamp: new Date().toISOString() },
-        { type: 'plan:start', source: 'test.md' },
+        { type: 'planning:start', source: 'test.md' },
       ];
 
       await collectEvents(withHooks(asyncIterableFrom(events), hooks, tmpDir));

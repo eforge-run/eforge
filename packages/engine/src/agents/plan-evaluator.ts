@@ -75,8 +75,8 @@ export type ArchitectureEvaluatorOptions = PlanEvaluatorOptions;
 // Mode-specific configuration
 const MODE_CONFIG = {
   plan: {
-    startEvent: 'plan:evaluate:start' as const,
-    completeEvent: 'plan:evaluate:complete' as const,
+    startEvent: 'planning:evaluate:start' as const,
+    completeEvent: 'planning:evaluate:complete' as const,
     promptName: 'plan-evaluator',
     role: 'plan-evaluator' as const,
     promptVars: {
@@ -93,8 +93,8 @@ const MODE_CONFIG = {
     },
   },
   cohesion: {
-    startEvent: 'plan:cohesion:evaluate:start' as const,
-    completeEvent: 'plan:cohesion:evaluate:complete' as const,
+    startEvent: 'planning:cohesion:evaluate:start' as const,
+    completeEvent: 'planning:cohesion:evaluate:complete' as const,
     promptName: 'plan-evaluator',
     role: 'cohesion-evaluator' as const,
     promptVars: {
@@ -110,8 +110,8 @@ const MODE_CONFIG = {
     },
   },
   architecture: {
-    startEvent: 'plan:architecture:evaluate:start' as const,
-    completeEvent: 'plan:architecture:evaluate:complete' as const,
+    startEvent: 'planning:architecture:evaluate:start' as const,
+    completeEvent: 'planning:architecture:evaluate:complete' as const,
     promptName: 'plan-evaluator',
     role: 'architecture-evaluator' as const,
     promptVars: {
@@ -196,9 +196,9 @@ Do NOT run \`git reset --soft HEAD~1\` again - the staged vs unstaged comparison
  * verdicts, and commits the final result.
  *
  * Yields:
- * - `plan:evaluate:start` at the beginning
+ * - `planning:evaluate:start` at the beginning
  * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
- * - `plan:evaluate:complete` with accepted/rejected counts at the end
+ * - `planning:evaluate:complete` with accepted/rejected counts at the end
  */
 export async function* runPlanEvaluate(
   options: PlanEvaluatorOptions,
@@ -212,9 +212,9 @@ export async function* runPlanEvaluate(
  * verdicts, and commits the final result.
  *
  * Yields:
- * - `plan:cohesion:evaluate:start` at the beginning
+ * - `planning:cohesion:evaluate:start` at the beginning
  * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
- * - `plan:cohesion:evaluate:complete` with accepted/rejected counts at the end
+ * - `planning:cohesion:evaluate:complete` with accepted/rejected counts at the end
  */
 export async function* runCohesionEvaluate(
   options: CohesionEvaluatorOptions,
@@ -228,9 +228,9 @@ export async function* runCohesionEvaluate(
  * verdicts, and commits the final result.
  *
  * Yields:
- * - `plan:architecture:evaluate:start` at the beginning
+ * - `planning:architecture:evaluate:start` at the beginning
  * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
- * - `plan:architecture:evaluate:complete` with accepted/rejected counts at the end
+ * - `planning:architecture:evaluate:complete` with accepted/rejected counts at the end
  */
 export async function* runArchitectureEvaluate(
   options: ArchitectureEvaluatorOptions,

@@ -210,8 +210,8 @@ async function runForProfile(
   }
 
   // Extract the composer's final composition event for the record.
-  const pipelineEvent = composerEvents.find((e) => e.type === 'plan:pipeline') as
-    | { type: 'plan:pipeline'; scope: string; compile: unknown[]; defaultBuild: unknown[]; defaultReview: unknown; rationale: string }
+  const pipelineEvent = composerEvents.find((e) => e.type === 'planning:pipeline') as
+    | { type: 'planning:pipeline'; scope: string; compile: unknown[]; defaultBuild: unknown[]; defaultReview: unknown; rationale: string }
     | undefined;
 
   const record = {

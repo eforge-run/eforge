@@ -130,7 +130,7 @@ describe('DEFAULT_RETRY_POLICIES — planner policy', () => {
 
   it('shouldRetry returns false when plan:skip was emitted', () => {
     const events: EforgeEvent[] = [
-      { timestamp: ts(), type: 'plan:skip', reason: 'already implemented' },
+      { timestamp: ts(), type: 'planning:skip', reason: 'already implemented' },
     ];
     const info = makeAttemptInfo({
       prevInput: {} as unknown,
@@ -278,7 +278,7 @@ describe('isDroppedSubmission', () => {
 
   it('returns false when plan:skip was emitted', () => {
     const events: EforgeEvent[] = [
-      { timestamp: ts(), type: 'plan:skip', reason: 'already done' },
+      { timestamp: ts(), type: 'planning:skip', reason: 'already done' },
     ];
     expect(isDroppedSubmission(events)).toBe(false);
   });
@@ -309,10 +309,10 @@ function makeEvaluatorPolicy(override?: Partial<RetryPolicy<EvaluatorContinuatio
 describe('withRetry — retry-then-success', () => {
   it('yields all first-attempt events, emits agent:retry, yields all second-attempt events, and returns the final result', async () => {
     const firstEvents: EforgeEvent[] = [
-      { timestamp: ts(), type: 'build:evaluate:start', planId: 'p1' },
+      { timestamp: ts(), type: 'plan:build:evaluate:start', planId: 'p1' },
     ];
     const secondEvents: EforgeEvent[] = [
-      { timestamp: ts(), type: 'build:evaluate:complete', planId: 'p1', accepted: 1, rejected: 0 },
+      { timestamp: ts(), type: 'plan:build:evaluate:complete', planId: 'p1', accepted: 1, rejected: 0 },
     ];
 
     const agent = makeMultiAttemptAgent([
@@ -339,7 +339,7 @@ describe('withRetry — retry-then-success', () => {
     }
 
     // First-attempt events came through.
-    expect(out.filter((e) => e.type === 'build:evaluate:start')).toHaveLength(1);
+    expect(out.filter((e) => e.type === 'plan:build:evaluate:start')).toHaveLength(1);
     // agent:retry fired with the expected shape.
     const retryEvt = out.find((e) => e.type === 'agent:retry') as
       | Extract<EforgeEvent, { type: 'agent:retry' }>
@@ -351,9 +351,9 @@ describe('withRetry — retry-then-success', () => {
     expect(retryEvt!.subtype).toBe('error_max_turns');
     expect(retryEvt!.label).toBe('evaluator-continuation');
     // Policy onRetry emitted the domain continuation event.
-    expect(out.filter((e) => e.type === 'build:evaluate:continuation')).toHaveLength(1);
+    expect(out.filter((e) => e.type === 'plan:build:evaluate:continuation')).toHaveLength(1);
     // Second-attempt events came through.
-    expect(out.filter((e) => e.type === 'build:evaluate:complete')).toHaveLength(1);
+    expect(out.filter((e) => e.type === 'plan:build:evaluate:complete')).toHaveLength(1);
   });
 });
 
@@ -430,7 +430,7 @@ describe('withRetry — evaluator abort-success on clean worktree', () => {
     let callCount = 0;
     const agent = async function* (_input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent, undefined> {
       callCount++;
-      yield { timestamp: ts(), type: 'build:evaluate:start', planId: 'p1' };
+      yield { timestamp: ts(), type: 'plan:build:evaluate:start', planId: 'p1' };
       throw new AgentTerminalError('error_max_turns', 'turns exhausted');
     };
 
@@ -456,7 +456,7 @@ describe('withRetry — evaluator abort-success on clean worktree', () => {
     // No agent:retry event when we abort-success.
     expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
     // First-attempt events came through.
-    expect(out.filter((e) => e.type === 'build:evaluate:start')).toHaveLength(1);
+    expect(out.filter((e) => e.type === 'plan:build:evaluate:start')).toHaveLength(1);
   });
 });
 
@@ -515,12 +515,12 @@ describe('withRetry — stream-based terminal via build:failed with terminalSubt
     // First attempt yields build:failed (without throwing); second attempt succeeds.
     const firstAttempt: (input: unknown) => AsyncGenerator<EforgeEvent, undefined> =
       async function* () {
-        yield { timestamp: ts(), type: 'build:evaluate:start', planId: 'p1' };
-        yield { timestamp: ts(), type: 'build:failed', planId: 'p1', error: 'maxed out', terminalSubtype: 'error_max_turns' };
+        yield { timestamp: ts(), type: 'plan:build:evaluate:start', planId: 'p1' };
+        yield { timestamp: ts(), type: 'plan:build:failed', planId: 'p1', error: 'maxed out', terminalSubtype: 'error_max_turns' };
       };
     const secondAttempt: (input: unknown) => AsyncGenerator<EforgeEvent, undefined> =
       async function* () {
-        yield { timestamp: ts(), type: 'build:evaluate:complete', planId: 'p1', accepted: 1, rejected: 0 };
+        yield { timestamp: ts(), type: 'plan:build:evaluate:complete', planId: 'p1', accepted: 1, rejected: 0 };
       };
 
     const agent = makeMultiAttemptAgent([firstAttempt, secondAttempt]);
@@ -540,22 +540,22 @@ describe('withRetry — stream-based terminal via build:failed with terminalSubt
     }
 
     // The held-back build:failed was not propagated because retry succeeded.
-    expect(out.find((e) => e.type === 'build:failed')).toBeUndefined();
+    expect(out.find((e) => e.type === 'plan:build:failed')).toBeUndefined();
     // agent:retry fired with the stream-detected subtype.
     const retry = out.find((e) => e.type === 'agent:retry');
     expect(retry).toBeDefined();
     // Second attempt completed normally.
-    expect(out.filter((e) => e.type === 'build:evaluate:complete')).toHaveLength(1);
+    expect(out.filter((e) => e.type === 'plan:build:evaluate:complete')).toHaveLength(1);
   });
 
   it('yields the held-back build:failed when retries are exhausted', async () => {
     const firstAttempt: (input: unknown) => AsyncGenerator<EforgeEvent, undefined> =
       async function* () {
-        yield { timestamp: ts(), type: 'build:failed', planId: 'p1', error: 'maxed out 1', terminalSubtype: 'error_max_turns' };
+        yield { timestamp: ts(), type: 'plan:build:failed', planId: 'p1', error: 'maxed out 1', terminalSubtype: 'error_max_turns' };
       };
     const secondAttempt: (input: unknown) => AsyncGenerator<EforgeEvent, undefined> =
       async function* () {
-        yield { timestamp: ts(), type: 'build:failed', planId: 'p1', error: 'maxed out 2', terminalSubtype: 'error_max_turns' };
+        yield { timestamp: ts(), type: 'plan:build:failed', planId: 'p1', error: 'maxed out 2', terminalSubtype: 'error_max_turns' };
       };
 
     const agent = makeMultiAttemptAgent([firstAttempt, secondAttempt]);
@@ -575,7 +575,7 @@ describe('withRetry — stream-based terminal via build:failed with terminalSubt
     }
 
     // Final held-back build:failed surfaces after exhaustion.
-    const failures = out.filter((e) => e.type === 'build:failed') as Array<Extract<EforgeEvent, { type: 'build:failed' }>>;
+    const failures = out.filter((e) => e.type === 'plan:build:failed') as Array<Extract<EforgeEvent, { type: 'plan:build:failed' }>>;
     expect(failures).toHaveLength(1);
     expect(failures[0].error).toBe('maxed out 2');
   });
@@ -633,7 +633,7 @@ describe('withRetry + StubBackend + builderEvaluate', () => {
 
     // First attempt's terminal build:failed was held back (retry consumed it)
     // and not re-yielded because retry succeeded.
-    expect(out.find((e) => e.type === 'build:failed')).toBeUndefined();
+    expect(out.find((e) => e.type === 'plan:build:failed')).toBeUndefined();
 
     // agent:retry was emitted between attempts.
     const retryEvt = out.find((e) => e.type === 'agent:retry') as
@@ -648,9 +648,9 @@ describe('withRetry + StubBackend + builderEvaluate', () => {
     // Second attempt ran to completion — builderEvaluate emits two
     // build:evaluate:start events (one per attempt) and at least one
     // completion-style event from the second successful attempt.
-    const starts = out.filter((e) => e.type === 'build:evaluate:start');
+    const starts = out.filter((e) => e.type === 'plan:build:evaluate:start');
     expect(starts.length).toBeGreaterThanOrEqual(2);
-    const completes = out.filter((e) => e.type === 'build:evaluate:complete');
+    const completes = out.filter((e) => e.type === 'plan:build:evaluate:complete');
     expect(completes.length).toBe(1);
 
     // Backend was called exactly twice (once per attempt).
@@ -686,8 +686,8 @@ describe('withRetry + StubBackend + builderEvaluate', () => {
 
     // Only the held-back build:failed from the LAST attempt is yielded.
     const failures = out.filter(
-      (e) => e.type === 'build:failed',
-    ) as Array<Extract<EforgeEvent, { type: 'build:failed' }>>;
+      (e) => e.type === 'plan:build:failed',
+    ) as Array<Extract<EforgeEvent, { type: 'plan:build:failed' }>>;
     expect(failures).toHaveLength(1);
     expect(failures[0].error).toContain('second attempt max turns');
     expect(failures[0].terminalSubtype).toBe('error_max_turns');
@@ -729,7 +729,7 @@ describe('withRetry + StubBackend + builderEvaluate', () => {
     expect(out.find((e) => e.type === 'agent:retry')).toBeUndefined();
     // Held-back terminal build:failed was dropped (abort-success treats the
     // state as success).
-    expect(out.find((e) => e.type === 'build:failed')).toBeUndefined();
+    expect(out.find((e) => e.type === 'plan:build:failed')).toBeUndefined();
   });
 });
 

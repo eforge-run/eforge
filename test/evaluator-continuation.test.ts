@@ -48,7 +48,7 @@ describe('builderEvaluate', () => {
       cwd: '/tmp',
     }));
 
-    const failed = findEvent(events, 'build:failed');
+    const failed = findEvent(events, 'plan:build:failed');
     expect(failed).toBeDefined();
     expect(failed!.terminalSubtype).toBe('error_max_turns');
   });
@@ -64,7 +64,7 @@ describe('builderEvaluate', () => {
       cwd: '/tmp',
     }));
 
-    const failed = findEvent(events, 'build:failed');
+    const failed = findEvent(events, 'plan:build:failed');
     expect(failed).toBeDefined();
     expect(failed!.error).toContain('some_other_error');
   });
@@ -119,9 +119,9 @@ describe('builderEvaluate', () => {
       cwd: '/tmp',
     }));
 
-    expect(findEvent(events, 'build:evaluate:start')).toBeDefined();
-    expect(findEvent(events, 'build:evaluate:complete')).toBeDefined();
-    expect(findEvent(events, 'build:failed')).toBeUndefined();
+    expect(findEvent(events, 'plan:build:evaluate:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:evaluate:complete')).toBeDefined();
+    expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
   });
 });
 
@@ -244,17 +244,17 @@ describe('continuation event types', () => {
     // These are compile-time checks - if the types don't exist, this file won't compile.
     // We verify at runtime by constructing objects that match each type.
     const events: EforgeEvent[] = [
-      { timestamp: new Date().toISOString(), type: 'build:evaluate:continuation', planId: 'p1', attempt: 1, maxContinuations: 2 },
-      { timestamp: new Date().toISOString(), type: 'plan:evaluate:continuation', attempt: 1, maxContinuations: 2 },
-      { timestamp: new Date().toISOString(), type: 'plan:architecture:evaluate:continuation', attempt: 1, maxContinuations: 2 },
-      { timestamp: new Date().toISOString(), type: 'plan:cohesion:evaluate:continuation', attempt: 1, maxContinuations: 2 },
+      { timestamp: new Date().toISOString(), type: 'plan:build:evaluate:continuation', planId: 'p1', attempt: 1, maxContinuations: 2 },
+      { timestamp: new Date().toISOString(), type: 'planning:evaluate:continuation', attempt: 1, maxContinuations: 2 },
+      { timestamp: new Date().toISOString(), type: 'planning:architecture:evaluate:continuation', attempt: 1, maxContinuations: 2 },
+      { timestamp: new Date().toISOString(), type: 'planning:cohesion:evaluate:continuation', attempt: 1, maxContinuations: 2 },
     ];
     expect(events).toHaveLength(4);
     expect(events.map(e => e.type)).toEqual([
-      'build:evaluate:continuation',
-      'plan:evaluate:continuation',
-      'plan:architecture:evaluate:continuation',
-      'plan:cohesion:evaluate:continuation',
+      'plan:build:evaluate:continuation',
+      'planning:evaluate:continuation',
+      'planning:architecture:evaluate:continuation',
+      'planning:cohesion:evaluate:continuation',
     ]);
   });
 });

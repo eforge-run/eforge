@@ -134,16 +134,16 @@ function mapSeverity(raw: string): ReviewIssue['severity'] | undefined {
  * Run the reviewer agent as a one-shot query.
  *
  * Yields:
- * - `build:review:start` at the beginning
+ * - `plan:build:review:start` at the beginning
  * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
- * - `build:review:complete` with parsed ReviewIssue[] at the end
+ * - `plan:build:review:complete` with parsed ReviewIssue[] at the end
  */
 export async function* runReview(
   options: ReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
   const { backend, planContent, baseBranch, planId, cwd, verbose, abortController } = options;
 
-  yield { timestamp: new Date().toISOString(), type: 'build:review:start', planId };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:start', planId };
 
   const prompt = await composeReviewPrompt(planContent, baseBranch, options.promptAppend);
 
@@ -164,5 +164,5 @@ export async function* runReview(
 
   const issues = parseReviewIssues(fullText);
 
-  yield { timestamp: new Date().toISOString(), type: 'build:review:complete', planId, issues };
+  yield { timestamp: new Date().toISOString(), type: 'plan:build:review:complete', planId, issues };
 }

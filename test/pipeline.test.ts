@@ -182,11 +182,11 @@ describe('runCompilePipeline', () => {
 
     registerCompileStage(testDescriptor('test-stage-a', 'compile'), async function* () {
       order.push('a');
-      yield { type: 'plan:progress', message: 'stage-a' };
+      yield { type: 'planning:progress', message: 'stage-a' };
     });
     registerCompileStage(testDescriptor('test-stage-b', 'compile'), async function* () {
       order.push('b');
-      yield { type: 'plan:progress', message: 'stage-b' };
+      yield { type: 'planning:progress', message: 'stage-b' };
     });
 
     const pipeline: PipelineComposition = {
@@ -199,8 +199,8 @@ describe('runCompilePipeline', () => {
 
     expect(order).toEqual(['a', 'b']);
     expect(events).toHaveLength(2);
-    expect(events[0]).toEqual({ type: 'plan:progress', message: 'stage-a' });
-    expect(events[1]).toEqual({ type: 'plan:progress', message: 'stage-b' });
+    expect(events[0]).toEqual({ type: 'planning:progress', message: 'stage-a' });
+    expect(events[1]).toEqual({ type: 'planning:progress', message: 'stage-b' });
   });
 
   it('yields zero events with empty compile list', async () => {
@@ -221,11 +221,11 @@ describe('runCompilePipeline', () => {
     registerCompileStage(testDescriptor('test-skip-planner', 'compile'), async function* (ctx) {
       stagesRun.push('planner');
       ctx.skipped = true;
-      yield { type: 'plan:skip', reason: 'Already done' };
+      yield { type: 'planning:skip', reason: 'Already done' };
     });
     registerCompileStage(testDescriptor('test-skip-review', 'compile'), async function* () {
       stagesRun.push('review');
-      yield { type: 'plan:progress', message: 'review' };
+      yield { type: 'planning:progress', message: 'review' };
     });
 
     const pipeline: PipelineComposition = {
@@ -238,7 +238,7 @@ describe('runCompilePipeline', () => {
 
     expect(stagesRun).toEqual(['planner']);
     expect(events).toHaveLength(1);
-    expect(events[0]).toEqual({ type: 'plan:skip', reason: 'Already done' });
+    expect(events[0]).toEqual({ type: 'planning:skip', reason: 'Already done' });
   });
 
   it('throws for unknown stage name in compile list', async () => {
@@ -257,7 +257,7 @@ describe('runCompilePipeline', () => {
 
     registerCompileStage(testDescriptor('test-planner-only', 'compile'), async function* () {
       stagesRun.push('planner');
-      yield { type: 'plan:progress', message: 'planned' };
+      yield { type: 'planning:progress', message: 'planned' };
     });
 
     const pipeline: PipelineComposition = {
@@ -279,12 +279,12 @@ describe('runCompilePipeline', () => {
     registerCompileStage(testDescriptor('test-mutator', 'compile'), async function* (ctx) {
       stagesRun.push('mutator');
       ctx.pipeline = { ...ctx.pipeline, compile: ['test-stage-x'] };
-      yield { type: 'plan:progress', message: 'mutated' };
+      yield { type: 'planning:progress', message: 'mutated' };
     });
 
     registerCompileStage(testDescriptor('test-stage-x', 'compile'), async function* () {
       stagesRun.push('stage-x');
-      yield { type: 'plan:progress', message: 'stage-x ran' };
+      yield { type: 'planning:progress', message: 'stage-x ran' };
     });
 
     const pipeline: PipelineComposition = {
@@ -306,17 +306,17 @@ describe('runCompilePipeline', () => {
     registerCompileStage(testDescriptor('test-replacer', 'compile'), async function* (ctx) {
       stagesRun.push('replacer');
       ctx.pipeline = { ...ctx.pipeline, compile: ['test-new-stage'] };
-      yield { type: 'plan:progress', message: 'replaced' };
+      yield { type: 'planning:progress', message: 'replaced' };
     });
 
     registerCompileStage(testDescriptor('test-old-next', 'compile'), async function* () {
       stagesRun.push('old-next');
-      yield { type: 'plan:progress', message: 'should not run' };
+      yield { type: 'planning:progress', message: 'should not run' };
     });
 
     registerCompileStage(testDescriptor('test-new-stage', 'compile'), async function* () {
       stagesRun.push('new-stage');
-      yield { type: 'plan:progress', message: 'new stage ran' };
+      yield { type: 'planning:progress', message: 'new stage ran' };
     });
 
     const pipeline: PipelineComposition = {
@@ -345,11 +345,11 @@ describe('runCompilePipeline', () => {
       runCount++;
       // Simulate composer shrinking the list before running the agent body
       ctx.pipeline = { ...ctx.pipeline, compile: ['test-shrink-planner'] };
-      yield { type: 'plan:progress', message: `planner ran ${runCount}` };
+      yield { type: 'planning:progress', message: `planner ran ${runCount}` };
     });
 
     registerCompileStage(testDescriptor('test-shrink-review', 'compile'), async function* () {
-      yield { type: 'plan:progress', message: 'review ran' };
+      yield { type: 'planning:progress', message: 'review ran' };
     });
 
     const pipeline: PipelineComposition = {
@@ -371,11 +371,11 @@ describe('runCompilePipeline', () => {
     registerCompileStage(testDescriptor('test-same-replace', 'compile'), async function* (ctx) {
       runCount++;
       ctx.pipeline = { ...ctx.pipeline, compile: ['test-same-replace', 'test-after'] };
-      yield { type: 'plan:progress', message: `ran ${runCount}` };
+      yield { type: 'planning:progress', message: `ran ${runCount}` };
     });
 
     registerCompileStage(testDescriptor('test-after', 'compile'), async function* () {
-      yield { type: 'plan:progress', message: 'after' };
+      yield { type: 'planning:progress', message: 'after' };
     });
 
     const pipeline: PipelineComposition = {
@@ -481,15 +481,15 @@ describe('plannerStage expedition wiring', () => {
 describe('runBuildPipeline', () => {
   it('emits build:start and build:complete around stages', async () => {
     registerBuildStage(testDescriptor('test-impl', 'build'), async function* (ctx) {
-      yield { type: 'build:implement:start', planId: ctx.planId };
-      yield { type: 'build:implement:complete', planId: ctx.planId };
+      yield { type: 'plan:build:implement:start', planId: ctx.planId };
+      yield { type: 'plan:build:implement:complete', planId: ctx.planId };
     });
 
     const ctx = makeBuildCtx({ build: ['test-impl'] });
     const events = await collect(runBuildPipeline(ctx));
 
-    expect(events[0]).toMatchObject({ type: 'build:start', planId: 'plan-01' });
-    expect(events[events.length - 1]).toMatchObject({ type: 'build:complete', planId: 'plan-01' });
+    expect(events[0]).toMatchObject({ type: 'plan:build:start', planId: 'plan-01' });
+    expect(events[events.length - 1]).toMatchObject({ type: 'plan:build:complete', planId: 'plan-01' });
   });
 
   it('calls all four default build stages in order', async () => {
@@ -497,15 +497,15 @@ describe('runBuildPipeline', () => {
 
     registerBuildStage(testDescriptor('test-b-impl', 'build'), async function* () {
       order.push('implement');
-      yield { type: 'plan:progress', message: 'impl' };
+      yield { type: 'planning:progress', message: 'impl' };
     });
     registerBuildStage(testDescriptor('test-b-review', 'build'), async function* () {
       order.push('review');
-      yield { type: 'plan:progress', message: 'review' };
+      yield { type: 'planning:progress', message: 'review' };
     });
     registerBuildStage(testDescriptor('test-b-eval', 'build'), async function* () {
       order.push('evaluate');
-      yield { type: 'plan:progress', message: 'eval' };
+      yield { type: 'planning:progress', message: 'eval' };
     });
 
     const ctx = makeBuildCtx({ build: ['test-b-impl', 'test-b-review', 'test-b-eval'] });
@@ -514,8 +514,8 @@ describe('runBuildPipeline', () => {
     expect(order).toEqual(['implement', 'review', 'evaluate']);
     // build:start + 3 stage events + build:complete = 5
     expect(events).toHaveLength(5);
-    expect(events[0].type).toBe('build:start');
-    expect(events[events.length - 1].type).toBe('build:complete');
+    expect(events[0].type).toBe('plan:build:start');
+    expect(events[events.length - 1].type).toBe('plan:build:complete');
   });
 
   it('throws for unknown stage name in build list', async () => {
@@ -526,19 +526,19 @@ describe('runBuildPipeline', () => {
 
   it('with custom profile build stages (implement + validate)', async () => {
     registerBuildStage(testDescriptor('test-custom-impl', 'build'), async function* (ctx) {
-      yield { type: 'build:implement:start', planId: ctx.planId };
+      yield { type: 'plan:build:implement:start', planId: ctx.planId };
     });
     registerBuildStage(testDescriptor('test-custom-validate', 'build'), async function* () {
-      yield { type: 'plan:progress', message: 'validate' };
+      yield { type: 'planning:progress', message: 'validate' };
     });
 
     const ctx = makeBuildCtx({ build: ['test-custom-impl', 'test-custom-validate'] });
     const events = await collect(runBuildPipeline(ctx));
 
-    expect(events[0].type).toBe('build:start');
-    expect(events[1]).toMatchObject({ type: 'build:implement:start', planId: 'plan-01' });
-    expect(events[2]).toMatchObject({ type: 'plan:progress', message: 'validate' });
-    expect(events[3]).toMatchObject({ type: 'build:complete', planId: 'plan-01' });
+    expect(events[0].type).toBe('plan:build:start');
+    expect(events[1]).toMatchObject({ type: 'plan:build:implement:start', planId: 'plan-01' });
+    expect(events[2]).toMatchObject({ type: 'planning:progress', message: 'validate' });
+    expect(events[3]).toMatchObject({ type: 'plan:build:complete', planId: 'plan-01' });
   });
 });
 
@@ -559,13 +559,13 @@ describe('PipelineContext mutable state', () => {
 
     registerCompileStage(testDescriptor('test-set-plans', 'compile'), async function* (ctx) {
       ctx.plans = [testPlan];
-      yield { type: 'plan:progress', message: 'set-plans' };
+      yield { type: 'planning:progress', message: 'set-plans' };
     });
 
     let readPlans: PlanFile[] = [];
     registerCompileStage(testDescriptor('test-read-plans', 'compile'), async function* (ctx) {
       readPlans = ctx.plans;
-      yield { type: 'plan:progress', message: 'read-plans' };
+      yield { type: 'planning:progress', message: 'read-plans' };
     });
 
     const pipeline: PipelineComposition = {
@@ -725,11 +725,11 @@ describe('runBuildPipeline parallel stage groups', () => {
 
     registerBuildStage(testDescriptor('test-par-a', 'build'), async function* (ctx) {
       stagesRun.push('a');
-      yield { type: 'plan:progress', message: 'par-a' };
+      yield { type: 'planning:progress', message: 'par-a' };
     });
     registerBuildStage(testDescriptor('test-par-b', 'build'), async function* (ctx) {
       stagesRun.push('b');
-      yield { type: 'plan:progress', message: 'par-b' };
+      yield { type: 'planning:progress', message: 'par-b' };
     });
 
     const ctx = makeBuildCtx({ build: [['test-par-a', 'test-par-b']] });
@@ -740,10 +740,10 @@ describe('runBuildPipeline parallel stage groups', () => {
     expect(stagesRun).toContain('b');
 
     // build:start + 2 stage events + auto-commit progress event + build:complete
-    const progressEvents = events.filter((e) => e.type === 'plan:progress');
+    const progressEvents = events.filter((e) => e.type === 'planning:progress');
     expect(progressEvents.length).toBeGreaterThanOrEqual(2);
-    expect(events[0]).toMatchObject({ type: 'build:start', planId: 'plan-01' });
-    expect(events[events.length - 1]).toMatchObject({ type: 'build:complete', planId: 'plan-01' });
+    expect(events[0]).toMatchObject({ type: 'plan:build:start', planId: 'plan-01' });
+    expect(events[events.length - 1]).toMatchObject({ type: 'plan:build:complete', planId: 'plan-01' });
   });
 
   it('mixed config [["a", "b"], "c"] runs a+b in parallel then c sequentially', async () => {
@@ -751,15 +751,15 @@ describe('runBuildPipeline parallel stage groups', () => {
 
     registerBuildStage(testDescriptor('test-mix-a', 'build'), async function* () {
       order.push('a');
-      yield { type: 'plan:progress', message: 'mix-a' };
+      yield { type: 'planning:progress', message: 'mix-a' };
     });
     registerBuildStage(testDescriptor('test-mix-b', 'build'), async function* () {
       order.push('b');
-      yield { type: 'plan:progress', message: 'mix-b' };
+      yield { type: 'planning:progress', message: 'mix-b' };
     });
     registerBuildStage(testDescriptor('test-mix-c', 'build'), async function* () {
       order.push('c');
-      yield { type: 'plan:progress', message: 'mix-c' };
+      yield { type: 'planning:progress', message: 'mix-c' };
     });
 
     const ctx = makeBuildCtx({ build: [['test-mix-a', 'test-mix-b'], 'test-mix-c'] });
@@ -770,10 +770,10 @@ describe('runBuildPipeline parallel stage groups', () => {
     expect(order).toContain('b');
     expect(order.indexOf('c')).toBeGreaterThanOrEqual(2); // c is always after a and b
 
-    const progressEvents = events.filter((e) => e.type === 'plan:progress');
+    const progressEvents = events.filter((e) => e.type === 'planning:progress');
     expect(progressEvents.length).toBeGreaterThanOrEqual(3);
-    expect(events[0].type).toBe('build:start');
-    expect(events[events.length - 1].type).toBe('build:complete');
+    expect(events[0].type).toBe('plan:build:start');
+    expect(events[events.length - 1].type).toBe('plan:build:complete');
   });
 
   it('buildFailed set during parallel group stops pipeline after group completes', async () => {
@@ -782,15 +782,15 @@ describe('runBuildPipeline parallel stage groups', () => {
     registerBuildStage(testDescriptor('test-fail-par-a', 'build'), async function* (ctx) {
       stagesRun.push('a');
       ctx.buildFailed = true;
-      yield { type: 'plan:progress', message: 'fail-par-a' };
+      yield { type: 'planning:progress', message: 'fail-par-a' };
     });
     registerBuildStage(testDescriptor('test-fail-par-b', 'build'), async function* () {
       stagesRun.push('b');
-      yield { type: 'plan:progress', message: 'fail-par-b' };
+      yield { type: 'planning:progress', message: 'fail-par-b' };
     });
     registerBuildStage(testDescriptor('test-fail-after', 'build'), async function* () {
       stagesRun.push('after');
-      yield { type: 'plan:progress', message: 'after' };
+      yield { type: 'planning:progress', message: 'after' };
     });
 
     const ctx = makeBuildCtx({ build: [['test-fail-par-a', 'test-fail-par-b'], 'test-fail-after'] });
@@ -802,7 +802,7 @@ describe('runBuildPipeline parallel stage groups', () => {
     expect(stagesRun).not.toContain('after');
 
     // No build:complete because pipeline was stopped
-    expect(events.find((e) => e.type === 'build:complete')).toBeUndefined();
+    expect(events.find((e) => e.type === 'plan:build:complete')).toBeUndefined();
   });
 });
 
@@ -1020,7 +1020,7 @@ describe('plannerStage missing orchestration.yaml', () => {
       testDescriptor('test-missing-orch-planner', 'compile'),
       async function* () {
         yield {
-          type: 'plan:complete' as const,
+          type: 'planning:complete' as const,
           plans: testPlans,
         };
       },
@@ -1035,7 +1035,7 @@ describe('plannerStage missing orchestration.yaml', () => {
     const events = await collect(runCompilePipeline(ctx));
 
     // Should emit the plan:complete event without throwing
-    const planComplete = events.find((e) => e.type === 'plan:complete');
+    const planComplete = events.find((e) => e.type === 'planning:complete');
     expect(planComplete).toBeDefined();
     // Plans should be the original unenriched plans (no dependsOn backfill)
     expect((planComplete as any).plans).toEqual(testPlans);

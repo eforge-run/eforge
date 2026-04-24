@@ -135,11 +135,11 @@ describe('runTestWriter wiring', () => {
       planContent: 'Test plan content',
     }));
 
-    const start = findEvent(events, 'build:test:write:start');
+    const start = findEvent(events, 'plan:build:test:write:start');
     expect(start).toBeDefined();
     expect(start!.planId).toBe('plan-1');
 
-    const complete = findEvent(events, 'build:test:write:complete');
+    const complete = findEvent(events, 'plan:build:test:write:complete');
     expect(complete).toBeDefined();
     expect(complete!.planId).toBe('plan-1');
     expect(complete!.testsWritten).toBe(3);
@@ -157,7 +157,7 @@ describe('runTestWriter wiring', () => {
       planContent: 'Test plan content',
     }));
 
-    const complete = findEvent(events, 'build:test:write:complete');
+    const complete = findEvent(events, 'plan:build:test:write:complete');
     expect(complete).toBeDefined();
     expect(complete!.testsWritten).toBe(0);
   });
@@ -172,7 +172,7 @@ describe('runTestWriter wiring', () => {
       planContent: 'Test plan content',
     }));
 
-    const complete = findEvent(events, 'build:test:write:complete');
+    const complete = findEvent(events, 'plan:build:test:write:complete');
     expect(complete).toBeDefined();
     expect(complete!.testsWritten).toBe(0);
   });
@@ -200,11 +200,11 @@ describe('runTester wiring', () => {
       planContent: 'Test plan content',
     }));
 
-    const start = findEvent(events, 'build:test:start');
+    const start = findEvent(events, 'plan:build:test:start');
     expect(start).toBeDefined();
     expect(start!.planId).toBe('plan-1');
 
-    const complete = findEvent(events, 'build:test:complete');
+    const complete = findEvent(events, 'plan:build:test:complete');
     expect(complete).toBeDefined();
     expect(complete!.passed).toBe(4);
     expect(complete!.failed).toBe(1);
@@ -225,7 +225,7 @@ describe('runTester wiring', () => {
       planContent: 'Test plan content',
     }));
 
-    const complete = findEvent(events, 'build:test:complete');
+    const complete = findEvent(events, 'plan:build:test:complete');
     expect(complete).toBeDefined();
     expect(complete!.passed).toBe(5);
     expect(complete!.failed).toBe(0);
@@ -243,7 +243,7 @@ describe('runTester wiring', () => {
       planContent: 'Test plan content',
     }));
 
-    const complete = findEvent(events, 'build:test:complete');
+    const complete = findEvent(events, 'plan:build:test:complete');
     expect(complete).toBeDefined();
     expect(complete!.passed).toBe(0);
     expect(complete!.failed).toBe(0);

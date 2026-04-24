@@ -154,74 +154,75 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
 
   // Config and plan warnings (emitted when config or plan files contain invalid/unexpected fields)
   | { type: 'config:warning'; message: string; source: string; details?: string }
-  | { type: 'plan:warning'; planId?: string; message: string; source: string; details?: string }
+  | { type: 'planning:warning'; planId?: string; message: string; source: string; details?: string }
 
-  // Planning
-  | { type: 'plan:start'; source: string; label?: string }
-  | { type: 'plan:skip'; reason: string }
-  | { type: 'plan:submission'; planCount: number; totalBodySize: number; hasMigrations: boolean }
-  | { type: 'plan:error'; reason: string }
-  | { type: 'plan:clarification'; questions: ClarificationQuestion[] }
-  | { type: 'plan:clarification:answer'; answers: Record<string, string> }
-  | { type: 'plan:progress'; message: string }
-  | { type: 'plan:continuation'; attempt: number; maxContinuations: number; reason?: 'max_turns' | 'dropped_submission' }
-  | { type: 'plan:pipeline'; scope: string; compile: string[]; defaultBuild: BuildStageSpec[]; defaultReview: ReviewProfileConfig; rationale: string }
-  | { type: 'plan:complete'; plans: PlanFile[] }
+  // Planning (compile-phase activity — fires once per planning phase, not per plan)
+  | { type: 'planning:start'; source: string; label?: string }
+  | { type: 'planning:skip'; reason: string }
+  | { type: 'planning:submission'; planCount: number; totalBodySize: number; hasMigrations: boolean }
+  | { type: 'planning:error'; reason: string }
+  | { type: 'planning:clarification'; questions: ClarificationQuestion[] }
+  | { type: 'planning:clarification:answer'; answers: Record<string, string> }
+  | { type: 'planning:progress'; message: string }
+  | { type: 'planning:continuation'; attempt: number; maxContinuations: number; reason?: 'max_turns' | 'dropped_submission' }
+  | { type: 'planning:pipeline'; scope: string; compile: string[]; defaultBuild: BuildStageSpec[]; defaultReview: ReviewProfileConfig; rationale: string }
+  | { type: 'planning:complete'; plans: PlanFile[] }
 
-  // Plan review (after planning phase)
-  | { type: 'plan:review:start' }
-  | { type: 'plan:review:complete'; issues: ReviewIssue[] }
-  | { type: 'plan:evaluate:start' }
-  | { type: 'plan:evaluate:continuation'; attempt: number; maxContinuations: number }
-  | { type: 'plan:evaluate:complete'; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
+  // Planning review (after planning phase — fires once per planning phase)
+  | { type: 'planning:review:start' }
+  | { type: 'planning:review:complete'; issues: ReviewIssue[] }
+  | { type: 'planning:evaluate:start' }
+  | { type: 'planning:evaluate:continuation'; attempt: number; maxContinuations: number }
+  | { type: 'planning:evaluate:complete'; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
 
-  // Architecture review (expedition architecture validation)
-  | { type: 'plan:architecture:review:start' }
-  | { type: 'plan:architecture:review:complete'; issues: ReviewIssue[] }
-  | { type: 'plan:architecture:evaluate:start' }
-  | { type: 'plan:architecture:evaluate:continuation'; attempt: number; maxContinuations: number }
-  | { type: 'plan:architecture:evaluate:complete'; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
+  // Architecture review (expedition architecture validation — fires once per planning phase)
+  | { type: 'planning:architecture:review:start' }
+  | { type: 'planning:architecture:review:complete'; issues: ReviewIssue[] }
+  | { type: 'planning:architecture:evaluate:start' }
+  | { type: 'planning:architecture:evaluate:continuation'; attempt: number; maxContinuations: number }
+  | { type: 'planning:architecture:evaluate:complete'; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
 
-  // Cohesion review (expedition cross-module validation)
-  | { type: 'plan:cohesion:start' }
-  | { type: 'plan:cohesion:complete'; issues: ReviewIssue[] }
-  | { type: 'plan:cohesion:evaluate:start' }
-  | { type: 'plan:cohesion:evaluate:continuation'; attempt: number; maxContinuations: number }
-  | { type: 'plan:cohesion:evaluate:complete'; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
+  // Cohesion review (expedition cross-module validation — fires once per planning phase)
+  | { type: 'planning:cohesion:start' }
+  | { type: 'planning:cohesion:complete'; issues: ReviewIssue[] }
+  | { type: 'planning:cohesion:evaluate:start' }
+  | { type: 'planning:cohesion:evaluate:continuation'; attempt: number; maxContinuations: number }
+  | { type: 'planning:cohesion:evaluate:complete'; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
 
-  // Building (per-plan)
-  | { type: 'build:start'; planId: string }
-  | { type: 'build:implement:start'; planId: string }
-  | { type: 'build:implement:progress'; planId: string; message: string }
-  | { type: 'build:implement:continuation'; planId: string; attempt: number; maxContinuations: number }
-  | { type: 'build:implement:complete'; planId: string }
-  | { type: 'build:files_changed'; planId: string; files: string[]; diffs?: Array<{ path: string; diff: string }>; baseBranch?: string }
-  | { type: 'build:review:start'; planId: string }
-  | { type: 'build:review:complete'; planId: string; issues: ReviewIssue[] }
-  | { type: 'build:review:parallel:start'; planId: string; perspectives: ReviewPerspective[] }
-  | { type: 'build:review:parallel:perspective:start'; planId: string; perspective: ReviewPerspective }
-  | { type: 'build:review:parallel:perspective:complete'; planId: string; perspective: ReviewPerspective; issues: ReviewIssue[] }
-  | { type: 'build:review:fix:start'; planId: string; issueCount: number }
-  | { type: 'build:review:fix:complete'; planId: string }
-  | { type: 'build:evaluate:start'; planId: string }
-  | { type: 'build:evaluate:continuation'; planId: string; attempt: number; maxContinuations: number }
-  | { type: 'build:evaluate:complete'; planId: string; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
-  | { type: 'build:doc-update:start'; planId: string }
-  | { type: 'build:doc-update:complete'; planId: string; docsUpdated: number }
-  | { type: 'build:test:write:start'; planId: string }
-  | { type: 'build:test:write:complete'; planId: string; testsWritten: number }
-  | { type: 'build:test:start'; planId: string }
-  | { type: 'build:test:complete'; planId: string; passed: number; failed: number; testBugsFixed: number; productionIssues: TestIssue[] }
-  | { type: 'build:complete'; planId: string }
-  | { type: 'build:failed'; planId: string; error: string; terminalSubtype?: AgentTerminalSubtype }
+  // Building (per-plan — all carry planId)
+  | { type: 'plan:build:start'; planId: string }
+  | { type: 'plan:build:implement:start'; planId: string }
+  | { type: 'plan:build:implement:progress'; planId: string; message: string }
+  | { type: 'plan:build:implement:continuation'; planId: string; attempt: number; maxContinuations: number }
+  | { type: 'plan:build:implement:complete'; planId: string }
+  | { type: 'plan:build:files_changed'; planId: string; files: string[]; diffs?: Array<{ path: string; diff: string }>; baseBranch?: string }
+  | { type: 'plan:build:review:start'; planId: string }
+  | { type: 'plan:build:review:complete'; planId: string; issues: ReviewIssue[] }
+  | { type: 'plan:build:review:parallel:start'; planId: string; perspectives: ReviewPerspective[] }
+  | { type: 'plan:build:review:parallel:perspective:start'; planId: string; perspective: ReviewPerspective }
+  | { type: 'plan:build:review:parallel:perspective:complete'; planId: string; perspective: ReviewPerspective; issues: ReviewIssue[] }
+  | { type: 'plan:build:review:fix:start'; planId: string; issueCount: number }
+  | { type: 'plan:build:review:fix:complete'; planId: string }
+  | { type: 'plan:build:evaluate:start'; planId: string }
+  | { type: 'plan:build:evaluate:continuation'; planId: string; attempt: number; maxContinuations: number }
+  | { type: 'plan:build:evaluate:complete'; planId: string; accepted: number; rejected: number; verdicts?: Array<{ file: string; action: 'accept' | 'reject' | 'review'; reason: string }> }
+  | { type: 'plan:build:doc-update:start'; planId: string }
+  | { type: 'plan:build:doc-update:complete'; planId: string; docsUpdated: number }
+  | { type: 'plan:build:test:write:start'; planId: string }
+  | { type: 'plan:build:test:write:complete'; planId: string; testsWritten: number }
+  | { type: 'plan:build:test:start'; planId: string }
+  | { type: 'plan:build:test:complete'; planId: string; passed: number; failed: number; testBugsFixed: number; productionIssues: TestIssue[] }
+  | { type: 'plan:build:complete'; planId: string }
+  | { type: 'plan:build:failed'; planId: string; error: string; terminalSubtype?: AgentTerminalSubtype }
+  | { type: 'plan:build:progress'; planId: string; message: string }
 
   // Orchestration
   | { type: 'schedule:start'; planIds: string[] }
-  | { type: 'schedule:ready'; planId: string; reason: string }
-  | { type: 'merge:start'; planId: string }
-  | { type: 'merge:complete'; planId: string; commitSha?: string }
-  | { type: 'merge:resolve:start'; planId: string }
-  | { type: 'merge:resolve:complete'; planId: string; resolved: boolean }
+  | { type: 'plan:schedule:ready'; planId: string; reason: string }
+  | { type: 'plan:merge:start'; planId: string }
+  | { type: 'plan:merge:complete'; planId: string; commitSha?: string }
+  | { type: 'plan:merge:resolve:start'; planId: string }
+  | { type: 'plan:merge:resolve:complete'; planId: string; resolved: boolean }
   | { type: 'merge:finalize:start'; featureBranch: string; baseBranch: string }
   | { type: 'merge:finalize:complete'; featureBranch: string; baseBranch: string; commitSha?: string }
   | { type: 'merge:finalize:skipped'; featureBranch: string; baseBranch: string; reason: string }
@@ -260,8 +261,8 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'agent:result'; planId?: string; agent: AgentRole; result: AgentResultData }
 
   // Generic retry notification emitted by the shared retry wrapper (in addition to
-  // any agent-specific continuation event such as plan:continuation,
-  // build:implement:continuation, or build:evaluate:continuation).
+  // any agent-specific continuation event such as planning:continuation,
+  // plan:build:implement:continuation, or plan:build:evaluate:continuation).
   | { type: 'agent:retry'; agent: AgentRole; attempt: number; maxAttempts: number; subtype: AgentTerminalSubtype; label: string; planId?: string }
 
   // Validation (post-merge)

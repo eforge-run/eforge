@@ -90,7 +90,7 @@ describe('propagateFailure', () => {
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['b'].error).toContain('a');
     expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: 'build:failed', planId: 'b' });
+    expect(events[0]).toMatchObject({ type: 'plan:build:failed', planId: 'b' });
   });
 
   it('blocks transitive chain A→B→C', () => {
@@ -394,7 +394,7 @@ describe('executePlans - build:failed handling', () => {
     // Stub PlanRunner: plan-a yields build:failed, plan-b yields nothing
     const planRunner: PlanRunner = async function* (planId) {
       if (planId === 'plan-a') {
-        yield { type: 'build:failed', planId: 'plan-a', error: 'JSON parse error', timestamp: new Date().toISOString() } as EforgeEvent;
+        yield { type: 'plan:build:failed', planId: 'plan-a', error: 'JSON parse error', timestamp: new Date().toISOString() } as EforgeEvent;
       }
     };
 
@@ -441,10 +441,10 @@ describe('executePlans - build:failed handling', () => {
     // plan-b should be blocked (transitive dependent of failed plan-a)
     expect(state.plans['plan-b'].status).toBe('blocked');
     // No merge events should have been emitted
-    expect(events.some((e) => e.type === 'merge:start')).toBe(false);
-    expect(events.some((e) => e.type === 'merge:complete')).toBe(false);
+    expect(events.some((e) => e.type === 'plan:merge:start')).toBe(false);
+    expect(events.some((e) => e.type === 'plan:merge:complete')).toBe(false);
     // A build:failed event for plan-a should be present
-    expect(events.some((e) => e.type === 'build:failed' && e.planId === 'plan-a')).toBe(true);
+    expect(events.some((e) => e.type === 'plan:build:failed' && e.planId === 'plan-a')).toBe(true);
     // Overall build status should be failed
     expect(state.status).toBe('failed');
   });
@@ -463,7 +463,7 @@ describe('executePlans - build:failed handling', () => {
     const state = initializeState(stateDir, config, '/tmp/repo').state;
 
     const planRunner: PlanRunner = async function* () {
-      yield { type: 'build:failed', planId: 'plan-a', error: 'max turns', timestamp: new Date().toISOString() } as EforgeEvent;
+      yield { type: 'plan:build:failed', planId: 'plan-a', error: 'max turns', timestamp: new Date().toISOString() } as EforgeEvent;
     };
 
     const stubWorktreeManager = {

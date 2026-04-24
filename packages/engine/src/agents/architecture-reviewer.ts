@@ -36,16 +36,16 @@ export interface ArchitectureReviewerOptions extends SdkPassthroughConfig {
  * the architecture evaluator to accept/reject.
  *
  * Yields:
- * - `plan:architecture:review:start` at the beginning
+ * - `planning:architecture:review:start` at the beginning
  * - `agent:message`, `agent:tool_use`, `agent:tool_result` events (when verbose)
- * - `plan:architecture:review:complete` with parsed ReviewIssue[] at the end
+ * - `planning:architecture:review:complete` with parsed ReviewIssue[] at the end
  */
 export async function* runArchitectureReview(
   options: ArchitectureReviewerOptions,
 ): AsyncGenerator<EforgeEvent> {
   const { backend, sourceContent, planSetName, architectureContent, cwd, verbose, abortController } = options;
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:architecture:review:start' };
+  yield { timestamp: new Date().toISOString(), type: 'planning:architecture:review:start' };
 
   const prompt = await loadPrompt('architecture-reviewer', {
     source_content: sourceContent,
@@ -71,5 +71,5 @@ export async function* runArchitectureReview(
 
   const issues = parseReviewIssues(fullText);
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:architecture:review:complete', issues };
+  yield { timestamp: new Date().toISOString(), type: 'planning:architecture:review:complete', issues };
 }

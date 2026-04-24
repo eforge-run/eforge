@@ -35,11 +35,11 @@ describe('builderImplement without continuation', () => {
       cwd,
     }));
 
-    expect(findEvent(events, 'build:implement:start')).toBeDefined();
-    expect(findEvent(events, 'build:implement:complete')).toBeDefined();
-    expect(findEvent(events, 'build:failed')).toBeUndefined();
+    expect(findEvent(events, 'plan:build:implement:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:implement:complete')).toBeDefined();
+    expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
     // No continuation events
-    const continuations = filterEvents(events, 'build:implement:continuation' as EforgeEvent['type']);
+    const continuations = filterEvents(events, 'plan:build:implement:continuation' as EforgeEvent['type']);
     expect(continuations).toHaveLength(0);
   });
 
@@ -55,12 +55,12 @@ describe('builderImplement without continuation', () => {
       cwd,
     }));
 
-    expect(findEvent(events, 'build:implement:start')).toBeDefined();
-    const failed = findEvent(events, 'build:failed');
+    expect(findEvent(events, 'plan:build:implement:start')).toBeDefined();
+    const failed = findEvent(events, 'plan:build:failed');
     expect(failed).toBeDefined();
     expect(failed!.error).toContain('error_max_turns');
     expect(failed!.terminalSubtype).toBe('error_max_turns');
-    expect(findEvent(events, 'build:implement:complete')).toBeUndefined();
+    expect(findEvent(events, 'plan:build:implement:complete')).toBeUndefined();
   });
 
   it('emits build:failed on non-max_turns errors', async () => {
@@ -75,7 +75,7 @@ describe('builderImplement without continuation', () => {
       cwd,
     }));
 
-    const failed = findEvent(events, 'build:failed');
+    const failed = findEvent(events, 'plan:build:failed');
     expect(failed).toBeDefined();
     expect(failed!.error).toContain('some_other_error');
     expect(failed!.error).not.toContain('error_max_turns');
@@ -236,12 +236,12 @@ describe('build:implement:continuation event type', () => {
   it('is a valid EforgeEvent', () => {
     // Type-check: this should compile without errors
     const event: EforgeEvent = {
-      type: 'build:implement:continuation',
+      type: 'plan:build:implement:continuation',
       planId: 'plan-01',
       attempt: 1,
       maxContinuations: 3,
     };
-    expect(event.type).toBe('build:implement:continuation');
+    expect(event.type).toBe('plan:build:implement:continuation');
     expect(event.attempt).toBe(1);
     expect(event.maxContinuations).toBe(3);
   });

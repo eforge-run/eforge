@@ -25,11 +25,11 @@ describe('runMergeConflictResolver wiring', () => {
       conflict,
     }));
 
-    const start = findEvent(events, 'merge:resolve:start');
+    const start = findEvent(events, 'plan:merge:resolve:start');
     expect(start).toBeDefined();
     expect(start!.planId).toBe('feature/plan-01');
 
-    const complete = findEvent(events, 'merge:resolve:complete');
+    const complete = findEvent(events, 'plan:merge:resolve:complete');
     expect(complete).toBeDefined();
     expect(complete!.planId).toBe('feature/plan-01');
     expect(complete!.resolved).toBe(true);
@@ -50,7 +50,7 @@ describe('runMergeConflictResolver wiring', () => {
       conflict,
     }));
 
-    const complete = findEvent(events, 'merge:resolve:complete');
+    const complete = findEvent(events, 'plan:merge:resolve:complete');
     expect(complete).toBeDefined();
     expect(complete!.resolved).toBe(false);
   });
@@ -143,7 +143,7 @@ describe('runMergeConflictResolver wiring', () => {
     }));
 
     // Should complete successfully
-    const complete = findEvent(events, 'merge:resolve:complete');
+    const complete = findEvent(events, 'plan:merge:resolve:complete');
     expect(complete).toBeDefined();
     expect(complete!.resolved).toBe(true);
 

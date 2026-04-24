@@ -520,7 +520,7 @@ export class EforgeEngine {
       const orchConfig = await parseOrchestrationConfig(configPath);
       // Emit any orchestration config warnings as plan:warning events
       for (const warning of orchConfig.warnings ?? []) {
-        yield { timestamp: new Date().toISOString(), type: 'plan:warning', message: warning, source: 'parseOrchestrationConfig' };
+        yield { timestamp: new Date().toISOString(), type: 'planning:warning', message: warning, source: 'parseOrchestrationConfig' };
       }
 
       // Pre-load plan files for the runner
@@ -530,7 +530,7 @@ export class EforgeEngine {
         const planFile = await parsePlanFile(resolve(planDir, `${plan.id}.md`));
         // Emit any plan file warnings as plan:warning events
         for (const warning of planFile.warnings ?? []) {
-          yield { timestamp: new Date().toISOString(), type: 'plan:warning', planId: plan.id, message: warning, source: 'parsePlanFile' };
+          yield { timestamp: new Date().toISOString(), type: 'planning:warning', planId: plan.id, message: warning, source: 'parsePlanFile' };
         }
         planFileMap.set(plan.id, planFile);
       }
@@ -550,7 +550,7 @@ export class EforgeEngine {
       ): AsyncGenerator<EforgeEvent> {
         const planFile = planFileMap.get(planId);
         if (!planFile) {
-          yield { timestamp: new Date().toISOString(), type: 'build:failed', planId, error: `Plan file not found: ${planId}` };
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId, error: `Plan file not found: ${planId}` };
           return;
         }
 
@@ -637,7 +637,7 @@ export class EforgeEngine {
           })) {
             resolverTracker.handleEvent(event);
             mergeEventSink(event);
-            if (event.type === 'merge:resolve:complete') {
+            if (event.type === 'plan:merge:resolve:complete') {
               resolved = event.resolved;
             }
           }
@@ -785,7 +785,7 @@ export class EforgeEngine {
           yield mergeEvents.shift()!;
         }
         yield event;
-        if (event.type === 'build:failed') {
+        if (event.type === 'plan:build:failed') {
           status = 'failed';
           summary = event.error.startsWith('Merge failed')
             ? `Merge failed for ${event.planId}`
@@ -969,7 +969,7 @@ export class EforgeEngine {
         if (event.type === 'phase:end' && event.result.status === 'failed') {
           compileFailed = true;
         }
-        if (event.type === 'plan:skip') {
+        if (event.type === 'planning:skip') {
           planSkipped = true;
           skipReason = event.reason;
         }

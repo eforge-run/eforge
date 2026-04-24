@@ -154,7 +154,7 @@ describe('prdValidate viability gate', () => {
     // Gap closer should NOT have been invoked
     expect(events.some((e) => e.type === 'gap_close:start')).toBe(false);
     // Should emit a progress message about viability
-    const progress = events.find((e) => e.type === 'plan:progress' && 'message' in e && (e as { message: string }).message.includes('viability'));
+    const progress = events.find((e) => e.type === 'planning:progress' && 'message' in e && (e as { message: string }).message.includes('viability'));
     expect(progress).toBeDefined();
   });
 

@@ -40,12 +40,12 @@ describe('runPlanner wiring', () => {
 
     expect(thrown).toBeInstanceOf(PlannerSubmissionError);
     expect((thrown as Error).message).toContain('submit_plan_set');
-    expect(findEvent(events, 'plan:start')).toBeDefined();
-    expect(findEvent(events, 'plan:complete')).toBeUndefined();
+    expect(findEvent(events, 'planning:start')).toBeDefined();
+    expect(findEvent(events, 'planning:complete')).toBeUndefined();
     // agent:result should have been yielded before the throw
     expect(findEvent(events, 'agent:result')).toBeDefined();
     // No plan:error events are yielded any more — the terminal is always thrown.
-    expect(events.filter(e => e.type === 'plan:error')).toHaveLength(0);
+    expect(events.filter(e => e.type === 'planning:error')).toHaveLength(0);
   });
 
   it('emits plan:skip when agent output contains a skip block', async () => {
@@ -59,13 +59,13 @@ describe('runPlanner wiring', () => {
       cwd,
     }));
 
-    const skip = findEvent(events, 'plan:skip');
+    const skip = findEvent(events, 'planning:skip');
     expect(skip).toBeDefined();
     expect(skip!.reason).toBe('Already implemented in a previous PR.');
 
     // Skip should short-circuit — no plan:complete or plan scanning
-    expect(findEvent(events, 'plan:complete')).toBeUndefined();
-    const progressEvents = filterEvents(events, 'plan:progress');
+    expect(findEvent(events, 'planning:complete')).toBeUndefined();
+    const progressEvents = filterEvents(events, 'planning:progress');
     expect(progressEvents.every(e => e.message !== 'Scanning plan files...')).toBe(true);
   });
 
@@ -100,8 +100,8 @@ describe('runPlanner wiring', () => {
     expect(clarificationCalls[0][0].id).toBe('q1');
 
     // Clarification events emitted
-    expect(findEvent(events, 'plan:clarification')).toBeDefined();
-    expect(findEvent(events, 'plan:clarification:answer')).toBeDefined();
+    expect(findEvent(events, 'planning:clarification')).toBeDefined();
+    expect(findEvent(events, 'planning:clarification:answer')).toBeDefined();
 
     // Backend was called twice (first run + restart)
     expect(backend.prompts).toHaveLength(2);
@@ -138,7 +138,7 @@ describe('runPlanner wiring', () => {
     expect(backend.prompts[2]).toContain('Postgres');
     expect(backend.prompts[2]).toContain('Drizzle');
 
-    const clarifications = filterEvents(events, 'plan:clarification');
+    const clarifications = filterEvents(events, 'planning:clarification');
     expect(clarifications).toHaveLength(2);
   });
 
@@ -254,7 +254,7 @@ describe('runPlanner wiring', () => {
       scope: 'excursion',
     }));
 
-    const complete = findEvent(events, 'plan:complete');
+    const complete = findEvent(events, 'planning:complete');
     expect(complete).toBeDefined();
     expect(complete!.plans).toHaveLength(1);
     expect(complete!.plans[0].id).toBe('feature');
@@ -362,9 +362,9 @@ describe('runReview wiring', () => {
       cwd: '/tmp',
     }));
 
-    expect(findEvent(events, 'build:review:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:review:start')).toBeDefined();
 
-    const complete = findEvent(events, 'build:review:complete');
+    const complete = findEvent(events, 'plan:build:review:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toHaveLength(2);
     expect(complete!.issues[0]).toMatchObject({
@@ -388,7 +388,7 @@ describe('runReview wiring', () => {
       cwd: '/tmp',
     }));
 
-    const complete = findEvent(events, 'build:review:complete');
+    const complete = findEvent(events, 'plan:build:review:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toHaveLength(0);
   });
@@ -405,9 +405,9 @@ describe('builderImplement wiring', () => {
       { backend, cwd: '/tmp' },
     ));
 
-    expect(findEvent(events, 'build:implement:start')).toBeDefined();
-    expect(findEvent(events, 'build:implement:complete')).toBeDefined();
-    expect(findEvent(events, 'build:failed')).toBeUndefined();
+    expect(findEvent(events, 'plan:build:implement:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:implement:complete')).toBeDefined();
+    expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
   });
 
   it('emits build:failed when backend throws', async () => {
@@ -418,11 +418,11 @@ describe('builderImplement wiring', () => {
       { backend, cwd: '/tmp' },
     ));
 
-    const failed = findEvent(events, 'build:failed');
+    const failed = findEvent(events, 'plan:build:failed');
     expect(failed).toBeDefined();
     expect(failed!.error).toContain('Agent timeout');
     // Should NOT emit implement:complete on failure
-    expect(findEvent(events, 'build:implement:complete')).toBeUndefined();
+    expect(findEvent(events, 'plan:build:implement:complete')).toBeUndefined();
   });
 });
 
@@ -442,7 +442,7 @@ describe('builderEvaluate wiring', () => {
       { backend, cwd: '/tmp' },
     ));
 
-    const complete = findEvent(events, 'build:evaluate:complete');
+    const complete = findEvent(events, 'plan:build:evaluate:complete');
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(2);
     expect(complete!.rejected).toBe(2); // reject + review both count as rejected
@@ -467,8 +467,8 @@ describe('builderEvaluate wiring', () => {
       { backend, cwd: '/tmp' },
     ));
 
-    expect(findEvent(events, 'build:failed')).toBeDefined();
-    expect(findEvent(events, 'build:evaluate:complete')).toBeUndefined();
+    expect(findEvent(events, 'plan:build:failed')).toBeDefined();
+    expect(findEvent(events, 'plan:build:evaluate:complete')).toBeUndefined();
   });
 });
 
@@ -489,8 +489,8 @@ describe('runPlanReview wiring', () => {
       cwd: '/tmp',
     }));
 
-    expect(findEvent(events, 'plan:review:start')).toBeDefined();
-    const complete = findEvent(events, 'plan:review:complete');
+    expect(findEvent(events, 'planning:review:start')).toBeDefined();
+    const complete = findEvent(events, 'planning:review:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toHaveLength(1);
     expect(complete!.issues[0].category).toBe('scope');
@@ -515,8 +515,8 @@ describe('runPlanEvaluate wiring', () => {
       cwd: '/tmp',
     }));
 
-    expect(findEvent(events, 'plan:evaluate:start')).toBeDefined();
-    const complete = findEvent(events, 'plan:evaluate:complete');
+    expect(findEvent(events, 'planning:evaluate:start')).toBeDefined();
+    const complete = findEvent(events, 'planning:evaluate:complete');
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(1);
     expect(complete!.rejected).toBe(1);
@@ -550,7 +550,7 @@ describe('runPlanEvaluate wiring', () => {
     expect(thrown).toBeDefined();
     expect(thrown!.message).toBe('Evaluate crash');
 
-    const complete = findEvent(events, 'plan:evaluate:complete');
+    const complete = findEvent(events, 'planning:evaluate:complete');
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(0);
     expect(complete!.rejected).toBe(0);
@@ -695,8 +695,8 @@ describe('runArchitectureReview wiring', () => {
       cwd: '/tmp',
     }));
 
-    expect(findEvent(events, 'plan:architecture:review:start')).toBeDefined();
-    const complete = findEvent(events, 'plan:architecture:review:complete');
+    expect(findEvent(events, 'planning:architecture:review:start')).toBeDefined();
+    const complete = findEvent(events, 'planning:architecture:review:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toHaveLength(1);
     expect(complete!.issues[0].category).toBe('completeness');
@@ -716,7 +716,7 @@ describe('runArchitectureReview wiring', () => {
       cwd: '/tmp',
     }));
 
-    const complete = findEvent(events, 'plan:architecture:review:complete');
+    const complete = findEvent(events, 'planning:architecture:review:complete');
     expect(complete).toBeDefined();
     expect(complete!.issues).toHaveLength(0);
   });
@@ -741,8 +741,8 @@ describe('runArchitectureEvaluate wiring', () => {
       cwd: '/tmp',
     }));
 
-    expect(findEvent(events, 'plan:architecture:evaluate:start')).toBeDefined();
-    const complete = findEvent(events, 'plan:architecture:evaluate:complete');
+    expect(findEvent(events, 'planning:architecture:evaluate:start')).toBeDefined();
+    const complete = findEvent(events, 'planning:architecture:evaluate:complete');
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(2);
     expect(complete!.rejected).toBe(1);
@@ -774,7 +774,7 @@ describe('runArchitectureEvaluate wiring', () => {
     expect(thrown).toBeDefined();
     expect(thrown!.message).toBe('Architecture evaluate crash');
 
-    const complete = findEvent(events, 'plan:architecture:evaluate:complete');
+    const complete = findEvent(events, 'planning:architecture:evaluate:complete');
     expect(complete).toBeDefined();
     expect(complete!.accepted).toBe(0);
     expect(complete!.rejected).toBe(0);

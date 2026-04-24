@@ -182,7 +182,7 @@ function processEvent(
     state.totalCost += event.result.totalCostUsd || 0;
   }
 
-  if (event.type === 'plan:complete' && 'plans' in event) {
+  if (event.type === 'planning:complete' && 'plans' in event) {
     const plans = (event as { plans: Array<{ id: string }> }).plans;
     for (const plan of plans) {
       state.planStatuses[plan.id] = 'plan';
@@ -192,46 +192,46 @@ function processEvent(
   const planId = 'planId' in event ? (event as { planId?: string }).planId : undefined;
   if (planId) {
     switch (event.type) {
-      case 'build:start':
-      case 'build:implement:start':
+      case 'plan:build:start':
+      case 'plan:build:implement:start':
         state.planStatuses[planId] = 'implement';
         break;
-      case 'build:doc-update:start':
-      case 'build:doc-update:complete':
+      case 'plan:build:doc-update:start':
+      case 'plan:build:doc-update:complete':
         // Doc-update runs in parallel with implement — don't advance stage
         break;
-      case 'build:implement:complete':
+      case 'plan:build:implement:complete':
         // Don't advance — next stage (test or review) will set the status
         break;
-      case 'build:test:write:start':
-      case 'build:test:start':
+      case 'plan:build:test:write:start':
+      case 'plan:build:test:start':
         state.planStatuses[planId] = 'test';
         break;
-      case 'build:test:write:complete':
-      case 'build:test:complete':
+      case 'plan:build:test:write:complete':
+      case 'plan:build:test:complete':
         // Don't advance stage — next stage (review/evaluate) will set it
         break;
-      case 'build:review:start':
+      case 'plan:build:review:start':
         state.planStatuses[planId] = 'review';
         break;
-      case 'build:review:complete':
-      case 'build:evaluate:start':
+      case 'plan:build:review:complete':
+      case 'plan:build:evaluate:start':
         state.planStatuses[planId] = 'evaluate';
         break;
-      case 'build:complete':
+      case 'plan:build:complete':
         state.planStatuses[planId] = 'complete';
         break;
-      case 'build:failed':
+      case 'plan:build:failed':
         state.planStatuses[planId] = 'failed';
         break;
     }
   }
 
-  if (event.type === 'build:review:complete' && 'planId' in event && 'issues' in event) {
+  if (event.type === 'plan:build:review:complete' && 'planId' in event && 'issues' in event) {
     state.reviewIssues[(event as { planId: string }).planId] = (event as { issues: ReviewIssue[] }).issues;
   }
 
-  if (event.type === 'build:test:complete' && 'planId' in event && 'productionIssues' in event) {
+  if (event.type === 'plan:build:test:complete' && 'planId' in event && 'productionIssues' in event) {
     const issues = (event as { productionIssues: { severity: string; category: string; file: string; description: string }[] }).productionIssues;
     if (issues.length > 0) {
       state.reviewIssues[(event as { planId: string }).planId] = issues.map((i) => ({
@@ -243,11 +243,11 @@ function processEvent(
     }
   }
 
-  if (event.type === 'build:files_changed' && 'files' in event) {
+  if (event.type === 'plan:build:files_changed' && 'files' in event) {
     state.fileChanges.set(event.planId, event.files);
   }
 
-  if (event.type === 'merge:complete' && planId) {
+  if (event.type === 'plan:merge:complete' && planId) {
     state.planStatuses[planId] = 'complete';
     const commitSha = 'commitSha' in event ? (event as { commitSha?: string }).commitSha : undefined;
     if (commitSha) {
@@ -366,7 +366,7 @@ function processEvent(
     }
   }
 
-  if (event.type === 'config:warning' || event.type === 'plan:warning') {
+  if (event.type === 'config:warning' || event.type === 'planning:warning') {
     // Warnings flow through the event stream; visual surfacing is optional
     console.log('[eforge] warning:', (event as { message: string }).message);
   }

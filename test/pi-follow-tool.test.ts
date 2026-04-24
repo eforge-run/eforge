@@ -130,7 +130,7 @@ describe('Pi eforge_follow tool', () => {
       writeSse(res, { type: 'agent:tool_call', timestamp: ts(), agent: 'builder' }, 2);
       writeSse(res, { type: 'phase:end', timestamp: ts(), phase: 'plan' }, 3);
       writeSse(res, {
-        type: 'build:files_changed',
+        type: 'plan:build:files_changed',
         timestamp: ts(),
         planId: 'plan-a',
         files: ['a.ts', 'b.ts', 'c.ts'],

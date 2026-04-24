@@ -65,7 +65,7 @@ export function eventToProgress(
       const label = phase ?? 'unknown';
       return { message: `Phase: ${label} complete`, counters };
     }
-    case 'build:files_changed': {
+    case 'plan:build:files_changed': {
       const files = (event as { files?: unknown }).files;
       const delta = Array.isArray(files) ? files.length : 0;
       const nextCounters: FollowCounters = {
@@ -86,7 +86,7 @@ export function eventToProgress(
         ?? 'review issue') as string;
       return { message: `Issue (${severity}): ${summary}`, counters };
     }
-    case 'build:failed': {
+    case 'plan:build:failed': {
       const planId = (event as { planId?: unknown }).planId as string | undefined;
       const error = (event as { error?: unknown }).error as string | undefined;
       const label = planId ? `${planId}: ${error ?? 'failed'}` : (error ?? 'failed');

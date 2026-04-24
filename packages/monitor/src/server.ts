@@ -293,7 +293,7 @@ export async function startServer(
 
   async function serveOrchestration(_req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
     const sessionId = resolveSessionId(id);
-    const events = db.getEventsByTypeForSession(sessionId, 'plan:complete');
+    const events = db.getEventsByTypeForSession(sessionId, 'planning:complete');
     if (events.length === 0) {
       res.writeHead(200, {
         'Content-Type': 'application/json',
@@ -475,8 +475,8 @@ export async function startServer(
   async function servePlans(_req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
     const sessionId = resolveSessionId(id);
 
-    // Compiled plans from plan:complete event
-    const planEvents = db.getEventsByTypeForSession(sessionId, 'plan:complete');
+    // Compiled plans from planning:complete event
+    const planEvents = db.getEventsByTypeForSession(sessionId, 'planning:complete');
     let compiledPlans: PlanResponse[] = [];
 
     if (planEvents.length > 0) {
@@ -1219,9 +1219,9 @@ export async function startServer(
       }));
 
       // Extract plan progress from build events
-      const buildStartEvents = db.getEventsByTypeForSession(sessionId, 'build:start');
-      const buildCompleteEvents = db.getEventsByTypeForSession(sessionId, 'build:complete');
-      const buildFailedEvents = db.getEventsByTypeForSession(sessionId, 'build:failed');
+      const buildStartEvents = db.getEventsByTypeForSession(sessionId, 'plan:build:start');
+      const buildCompleteEvents = db.getEventsByTypeForSession(sessionId, 'plan:build:complete');
+      const buildFailedEvents = db.getEventsByTypeForSession(sessionId, 'plan:build:failed');
 
       const planStatusMap = new Map<string, { id: string; status: string; branch: string | null; dependsOn: string[] }>();
       for (const evt of buildStartEvents) {

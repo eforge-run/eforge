@@ -16,8 +16,8 @@ describe('runDocUpdater wiring', () => {
       planContent: '# Test plan content',
     }));
 
-    const startEvent = findEvent(events, 'build:doc-update:start');
-    const completeEvent = findEvent(events, 'build:doc-update:complete');
+    const startEvent = findEvent(events, 'plan:build:doc-update:start');
+    const completeEvent = findEvent(events, 'plan:build:doc-update:complete');
 
     expect(startEvent).toBeDefined();
     expect(startEvent!.planId).toBe('plan-01');
@@ -73,7 +73,7 @@ describe('runDocUpdater wiring', () => {
       planContent: '# Plan',
     }));
 
-    const complete = findEvent(events, 'build:doc-update:complete');
+    const complete = findEvent(events, 'plan:build:doc-update:complete');
     expect(complete!.docsUpdated).toBe(3);
   });
 
@@ -89,7 +89,7 @@ describe('runDocUpdater wiring', () => {
       planContent: '# Plan',
     }));
 
-    const complete = findEvent(events, 'build:doc-update:complete');
+    const complete = findEvent(events, 'plan:build:doc-update:complete');
     expect(complete!.docsUpdated).toBe(0);
   });
 
@@ -105,7 +105,7 @@ describe('runDocUpdater wiring', () => {
       planContent: '# Plan',
     }));
 
-    const complete = findEvent(events, 'build:doc-update:complete');
+    const complete = findEvent(events, 'plan:build:doc-update:complete');
     expect(complete!.docsUpdated).toBe(0);
   });
 
@@ -165,8 +165,8 @@ describe('runDocUpdater wiring', () => {
     }));
 
     // Should still have start and complete
-    const startEvent = findEvent(events, 'build:doc-update:start');
-    const completeEvent = findEvent(events, 'build:doc-update:complete');
+    const startEvent = findEvent(events, 'plan:build:doc-update:start');
+    const completeEvent = findEvent(events, 'plan:build:doc-update:complete');
     expect(startEvent).toBeDefined();
     expect(completeEvent).toBeDefined();
     expect(completeEvent!.docsUpdated).toBe(0);

@@ -30,8 +30,8 @@ function makeOptions(backend: StubBackend, overrides?: Partial<GapCloserContext>
     prdContent: PRD_CONTENT,
     pipelineContext: makePipelineContext(),
     runBuildPipeline: async function* () {
-      yield { timestamp: new Date().toISOString(), type: 'build:start', planId: 'gap-close' } as EforgeEvent;
-      yield { timestamp: new Date().toISOString(), type: 'build:complete', planId: 'gap-close' } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:start', planId: 'gap-close' } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:complete', planId: 'gap-close' } as EforgeEvent;
     },
     ...overrides,
   };
@@ -67,8 +67,8 @@ describe('runGapCloser two-stage flow', () => {
     let capturedCtx: BuildStageContext | undefined;
     const runBuildPipeline = async function* (ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
       capturedCtx = ctx;
-      yield { timestamp: new Date().toISOString(), type: 'build:start', planId: ctx.planId } as EforgeEvent;
-      yield { timestamp: new Date().toISOString(), type: 'build:complete', planId: ctx.planId } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:start', planId: ctx.planId } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:complete', planId: ctx.planId } as EforgeEvent;
     };
 
     await collectEvents(runGapCloser(makeOptions(backend, { runBuildPipeline })));
@@ -98,7 +98,7 @@ describe('runGapCloser two-stage flow', () => {
     expect((complete as { passed?: boolean }).passed).toBe(false);
 
     // runBuildPipeline should NOT have been called
-    const buildStarts = filterEvents(events, 'build:start');
+    const buildStarts = filterEvents(events, 'plan:build:start');
     expect(buildStarts).toHaveLength(0);
   });
 
@@ -160,7 +160,7 @@ describe('runGapCloser two-stage flow', () => {
     const backend = new StubBackend([{ text: '## Overview\nFix\n\n## Files\n- src/a.ts: change' }]);
 
     const runBuildPipeline = async function* (): AsyncGenerator<EforgeEvent> {
-      yield { timestamp: new Date().toISOString(), type: 'build:start', planId: 'gap-close' } as EforgeEvent;
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:start', planId: 'gap-close' } as EforgeEvent;
       throw new Error('Build pipeline exploded');
     };
 

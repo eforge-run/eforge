@@ -9,7 +9,7 @@ import type { EforgeEvent } from '../events.js';
 import { AgentTerminalError } from '../backend.js';
 
 /**
- * Build a `build:failed` event from a thrown value.
+ * Build a `plan:build:failed` event from a thrown value.
  * - AgentTerminalError: includes `terminalSubtype` from the error's subtype field.
  * - plain Error: uses `err.message`, no `terminalSubtype`.
  * - non-Error throw: stringifies the value, no `terminalSubtype`.
@@ -19,7 +19,7 @@ export function toBuildFailedEvent(planId: string, err: unknown): EforgeEvent {
   const message = err instanceof Error ? err.message : String(err);
   return {
     timestamp: new Date().toISOString(),
-    type: 'build:failed',
+    type: 'plan:build:failed',
     planId,
     error: message,
     ...(terminalSubtype && { terminalSubtype }),

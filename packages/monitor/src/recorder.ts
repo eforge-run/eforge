@@ -85,7 +85,7 @@ export async function* withRecording(
     if (activeRunId && event.type !== 'session:start') {
       // Extract diffs from build:files_changed events into file_diffs table
       let serializedData: string;
-      if (event.type === 'build:files_changed' && event.diffs && event.diffs.length > 0) {
+      if (event.type === 'plan:build:files_changed' && event.diffs && event.diffs.length > 0) {
         db.insertFileDiffs(activeRunId, event.planId, event.diffs, event.timestamp);
         // Strip diffs from the event before serializing to events table
         const { diffs: _diffs, ...eventWithoutDiffs } = event;

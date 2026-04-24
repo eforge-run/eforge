@@ -15,8 +15,8 @@ describe('withRunId', () => {
     async function* events(): AsyncGenerator<EforgeEvent> {
       yield { type: 'session:start', sessionId: 's1', timestamp: '2024-01-01T00:00:00Z' } as unknown as EforgeEvent;
       yield { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' } as unknown as EforgeEvent;
-      yield { type: 'plan:start', source: 'test.md' } as unknown as EforgeEvent;
-      yield { type: 'plan:complete', plans: [] } as unknown as EforgeEvent;
+      yield { type: 'planning:start', source: 'test.md' } as unknown as EforgeEvent;
+      yield { type: 'planning:complete', plans: [] } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-1', result: { status: 'completed' }, timestamp: '2024-01-01T00:01:00Z' } as unknown as EforgeEvent;
       yield { type: 'session:end', sessionId: 's1', result: { status: 'completed', summary: 'Done' }, timestamp: '2024-01-01T00:01:00Z' } as unknown as EforgeEvent;
     }
@@ -83,9 +83,9 @@ describe('withRunId', () => {
       // Session B: phase:start (interleaved)
       yield { type: 'phase:start', runId: 'run-B', planSet: 'prd-b', command: 'compile', timestamp: '2024-01-01T00:00:01Z' } as unknown as EforgeEvent;
       // Session A: plan:start (pre-stamped with run-A)
-      yield { type: 'plan:start', source: 'a.md', runId: 'run-A' } as unknown as EforgeEvent;
+      yield { type: 'planning:start', source: 'a.md', runId: 'run-A' } as unknown as EforgeEvent;
       // Session B: plan:start (pre-stamped with run-B)
-      yield { type: 'plan:start', source: 'b.md', runId: 'run-B' } as unknown as EforgeEvent;
+      yield { type: 'planning:start', source: 'b.md', runId: 'run-B' } as unknown as EforgeEvent;
       // Session A: phase:end
       yield { type: 'phase:end', runId: 'run-A', result: { status: 'completed' }, timestamp: '2024-01-01T00:01:00Z' } as unknown as EforgeEvent;
       // Session B: phase:end
@@ -126,12 +126,12 @@ describe('withRunId', () => {
       yield { type: 'session:start', sessionId: 's1', timestamp: '2024-01-01T00:00:00Z' } as unknown as EforgeEvent;
       // Compile phase
       yield { type: 'phase:start', runId: 'run-compile', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' } as unknown as EforgeEvent;
-      yield { type: 'plan:start', source: 'test.md' } as unknown as EforgeEvent;
+      yield { type: 'planning:start', source: 'test.md' } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-compile', result: { status: 'completed' }, timestamp: '2024-01-01T00:00:30Z' } as unknown as EforgeEvent;
       // Build phase
       yield { type: 'phase:start', runId: 'run-build', planSet: 'test', command: 'build', timestamp: '2024-01-01T00:00:31Z' } as unknown as EforgeEvent;
-      yield { type: 'build:start', planId: 'plan-01' } as unknown as EforgeEvent;
-      yield { type: 'build:complete', planId: 'plan-01' } as unknown as EforgeEvent;
+      yield { type: 'plan:build:start', planId: 'plan-01' } as unknown as EforgeEvent;
+      yield { type: 'plan:build:complete', planId: 'plan-01' } as unknown as EforgeEvent;
       yield { type: 'phase:end', runId: 'run-build', result: { status: 'completed' }, timestamp: '2024-01-01T00:01:00Z' } as unknown as EforgeEvent;
       yield { type: 'session:end', sessionId: 's1', result: { status: 'completed', summary: 'Done' }, timestamp: '2024-01-01T00:01:00Z' } as unknown as EforgeEvent;
     }

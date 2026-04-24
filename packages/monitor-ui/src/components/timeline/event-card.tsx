@@ -24,7 +24,7 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type.endsWith(':skipped')) return { cls: 'info', label: type };
   if (type.endsWith(':progress')) return { cls: 'progress', label: type };
   if (type.startsWith('agent:')) return { cls: 'agent', label: type };
-  if (type === 'plan:skip' || type === 'plan:profile' || type === 'plan:clarification') return { cls: 'info', label: type };
+  if (type === 'planning:skip' || type === 'plan:profile' || type === 'planning:clarification') return { cls: 'info', label: type };
   return { cls: 'info', label: type };
 }
 
@@ -32,41 +32,41 @@ function eventSummary(event: EforgeEvent): string {
   switch (event.type) {
     case 'phase:start': return `Run started: ${event.command} "${event.planSet}"`;
     case 'phase:end': return `Run ${event.result?.status}: ${event.result?.summary || ''}`;
-    case 'plan:start': {
+    case 'planning:start': {
       const display = event.label ?? (event.source.length > 80 ? event.source.slice(0, 77) + '...' : event.source);
       return `Planning from: ${display}`;
     }
-    case 'plan:skip': return `Skipped: ${event.reason}`;
+    case 'planning:skip': return `Skipped: ${event.reason}`;
     case 'plan:profile' as string: return `Profile: ${(event as unknown as { profileName: string; rationale: string }).profileName} — ${(event as unknown as { profileName: string; rationale: string }).rationale}`;
-    case 'plan:clarification': return `${event.questions?.length || 0} clarification question(s)`;
-    case 'plan:progress': return event.message;
-    case 'plan:complete': return `${event.plans?.length || 0} plan(s) generated`;
-    case 'plan:review:start': return 'Plan review started';
-    case 'plan:review:complete': return `Plan review: ${event.issues?.length || 0} issue(s)`;
-    case 'plan:evaluate:start': return 'Evaluating plan review fixes';
-    case 'plan:evaluate:complete': return `Accepted ${event.accepted}, rejected ${event.rejected}`;
-    case 'plan:architecture:review:start': return 'Architecture review started';
-    case 'plan:architecture:review:complete': return `Architecture review: ${event.issues?.length || 0} issue(s)`;
-    case 'plan:architecture:evaluate:start': return 'Evaluating architecture review fixes';
-    case 'plan:architecture:evaluate:complete': return `Accepted ${event.accepted}, rejected ${event.rejected}`;
-    case 'build:start': return `Building: ${event.planId}`;
-    case 'build:implement:start': return `Implementing: ${event.planId}`;
-    case 'build:implement:progress': return `[${event.planId}] ${event.message}`;
-    case 'build:implement:complete': return `Implementation complete: ${event.planId}`;
-    case 'build:review:start': return `Reviewing: ${event.planId}`;
-    case 'build:review:complete': return `[${event.planId}] Review: ${event.issues?.length || 0} issue(s)`;
-    case 'build:evaluate:start': return `Evaluating: ${event.planId}`;
-    case 'build:evaluate:complete': return `[${event.planId}] Accepted ${event.accepted}, rejected ${event.rejected}`;
-    case 'build:test:write:start': return `Writing tests: ${event.planId}`;
-    case 'build:test:write:complete': return `[${event.planId}] ${event.testsWritten} test(s) written`;
-    case 'build:test:start': return `Running tests: ${event.planId}`;
-    case 'build:test:complete': return `[${event.planId}] Tests: ${event.passed} passed, ${event.failed} failed${event.productionIssues?.length ? `, ${event.productionIssues.length} production issue(s)` : ''}`;
-    case 'build:complete': return `Build complete: ${event.planId}`;
-    case 'build:failed': return `Build FAILED: ${event.planId} — ${event.error}`;
+    case 'planning:clarification': return `${event.questions?.length || 0} clarification question(s)`;
+    case 'planning:progress': return event.message;
+    case 'planning:complete': return `${event.plans?.length || 0} plan(s) generated`;
+    case 'planning:review:start': return 'Plan review started';
+    case 'planning:review:complete': return `Plan review: ${event.issues?.length || 0} issue(s)`;
+    case 'planning:evaluate:start': return 'Evaluating plan review fixes';
+    case 'planning:evaluate:complete': return `Accepted ${event.accepted}, rejected ${event.rejected}`;
+    case 'planning:architecture:review:start': return 'Architecture review started';
+    case 'planning:architecture:review:complete': return `Architecture review: ${event.issues?.length || 0} issue(s)`;
+    case 'planning:architecture:evaluate:start': return 'Evaluating architecture review fixes';
+    case 'planning:architecture:evaluate:complete': return `Accepted ${event.accepted}, rejected ${event.rejected}`;
+    case 'plan:build:start': return `Building: ${event.planId}`;
+    case 'plan:build:implement:start': return `Implementing: ${event.planId}`;
+    case 'plan:build:implement:progress': return `[${event.planId}] ${event.message}`;
+    case 'plan:build:implement:complete': return `Implementation complete: ${event.planId}`;
+    case 'plan:build:review:start': return `Reviewing: ${event.planId}`;
+    case 'plan:build:review:complete': return `[${event.planId}] Review: ${event.issues?.length || 0} issue(s)`;
+    case 'plan:build:evaluate:start': return `Evaluating: ${event.planId}`;
+    case 'plan:build:evaluate:complete': return `[${event.planId}] Accepted ${event.accepted}, rejected ${event.rejected}`;
+    case 'plan:build:test:write:start': return `Writing tests: ${event.planId}`;
+    case 'plan:build:test:write:complete': return `[${event.planId}] ${event.testsWritten} test(s) written`;
+    case 'plan:build:test:start': return `Running tests: ${event.planId}`;
+    case 'plan:build:test:complete': return `[${event.planId}] Tests: ${event.passed} passed, ${event.failed} failed${event.productionIssues?.length ? `, ${event.productionIssues.length} production issue(s)` : ''}`;
+    case 'plan:build:complete': return `Build complete: ${event.planId}`;
+    case 'plan:build:failed': return `Build FAILED: ${event.planId} — ${event.error}`;
     case 'schedule:start': return `Scheduling: ${event.planIds?.join(', ')}`;
-    case 'schedule:ready': return `Ready: ${event.planId} (${event.reason})`;
-    case 'merge:start': return `Merging: ${event.planId}`;
-    case 'merge:complete': return `Merged: ${event.planId}`;
+    case 'plan:schedule:ready': return `Ready: ${event.planId} (${event.reason})`;
+    case 'plan:merge:start': return `Merging: ${event.planId}`;
+    case 'plan:merge:complete': return `Merged: ${event.planId}`;
     case 'merge:finalize:start': return `Finalizing: ${event.featureBranch} → ${event.baseBranch}`;
     case 'merge:finalize:complete': return `Finalized: ${event.featureBranch} → ${event.baseBranch}`;
     case 'merge:finalize:skipped': return `Finalize skipped: ${event.reason}`;
@@ -133,11 +133,11 @@ function eventDetail(event: EforgeEvent): string | null {
       }
       return parts.join('\n');
     }
-    case 'plan:clarification':
+    case 'planning:clarification':
       return event.questions?.map((q) => `Q: ${q.question}${q.context ? '\n   ' + q.context : ''}`).join('\n\n') ?? null;
-    case 'plan:review:complete':
-    case 'plan:architecture:review:complete':
-    case 'build:review:complete':
+    case 'planning:review:complete':
+    case 'planning:architecture:review:complete':
+    case 'plan:build:review:complete':
       return event.issues?.map((i) => `[${i.severity}] ${i.category} — ${i.file}${i.line ? ':' + i.line : ''}\n  ${i.description}`).join('\n\n') ?? null;
     case 'agent:message':
       return event.content;
@@ -165,11 +165,11 @@ function eventDetail(event: EforgeEvent): string | null {
       }
       return detail;
     }
-    case 'build:failed':
+    case 'plan:build:failed':
       return event.error;
     case 'enqueue:failed':
       return event.error;
-    case 'build:test:complete': {
+    case 'plan:build:test:complete': {
       const parts: string[] = [];
       parts.push(`Passed: ${event.passed}, Failed: ${event.failed}`);
       if (event.testBugsFixed > 0) parts.push(`Test bugs fixed: ${event.testBugsFixed}`);
@@ -274,7 +274,7 @@ export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
               </span>
             </>
           )}
-          {event.type === 'plan:start' && event.source.includes('\n') && (
+          {event.type === 'planning:start' && event.source.includes('\n') && (
             <>
               {' '}
               <span

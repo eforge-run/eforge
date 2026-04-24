@@ -123,7 +123,7 @@ export function isDroppedSubmission(events: readonly EforgeEvent[]): boolean {
     if (ev.type === 'agent:tool_use' && (ev.tool === 'submit_plan_set' || ev.tool === 'submit_architecture')) {
       sawSubmissionToolUse = true;
     }
-    if (ev.type === 'plan:skip') {
+    if (ev.type === 'planning:skip') {
       sawSkip = true;
     }
   }
@@ -451,7 +451,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
         info.subtype === 'error_max_turns' ? 'max_turns' : 'dropped_submission';
       return [{
         timestamp: new Date().toISOString(),
-        type: 'plan:continuation',
+        type: 'planning:continuation',
         attempt: info.attempt,
         maxContinuations: info.maxAttempts - 1,
         reason,
@@ -468,7 +468,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
       const planId = (info.prevInput as BuilderContinuationInput).planId;
       return [{
         timestamp: new Date().toISOString(),
-        type: 'build:implement:continuation',
+        type: 'plan:build:implement:continuation',
         planId,
         attempt: info.attempt,
         maxContinuations: info.maxAttempts - 1,
@@ -486,7 +486,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
       const planId = (info.prevInput as EvaluatorContinuationInput).planId ?? '';
       return [{
         timestamp: new Date().toISOString(),
-        type: 'build:evaluate:continuation',
+        type: 'plan:build:evaluate:continuation',
         planId,
         attempt: info.attempt,
         maxContinuations: info.maxAttempts - 1,
@@ -502,7 +502,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => [{
       timestamp: new Date().toISOString(),
-      type: 'plan:evaluate:continuation',
+      type: 'planning:evaluate:continuation',
       attempt: info.attempt,
       maxContinuations: info.maxAttempts - 1,
     }],
@@ -515,7 +515,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => [{
       timestamp: new Date().toISOString(),
-      type: 'plan:cohesion:evaluate:continuation',
+      type: 'planning:cohesion:evaluate:continuation',
       attempt: info.attempt,
       maxContinuations: info.maxAttempts - 1,
     }],
@@ -528,7 +528,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => [{
       timestamp: new Date().toISOString(),
-      type: 'plan:architecture:evaluate:continuation',
+      type: 'planning:architecture:evaluate:continuation',
       attempt: info.attempt,
       maxContinuations: info.maxAttempts - 1,
     }],
@@ -602,7 +602,7 @@ export async function* withRetry<Input, Result = void>(
         attemptEvents.push(ev);
 
         // Stream-based terminal detection: build:failed with terminalSubtype.
-        if (ev.type === 'build:failed' && ev.terminalSubtype) {
+        if (ev.type === 'plan:build:failed' && ev.terminalSubtype) {
           subtype = ev.terminalSubtype;
           heldBackTerminal = ev;
           // Hold back — may be replaced on retry.

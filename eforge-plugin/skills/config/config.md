@@ -151,7 +151,8 @@ agents:
   #   id: <model-id>                   # Pi: { provider: "provider-name", id: "model-name" }
   # thinking:                          # Thinking config
   #   type: adaptive                   # 'adaptive', 'enabled' (+ budgetTokens), or 'disabled'
-  # effort: high                       # 'low', 'medium', 'high', 'xhigh', 'max'
+  # effort: xhigh                      # 'low', 'medium', 'high', 'xhigh', 'max'
+  # thinkingLevel: xhigh              # Pi only: 'off', 'low', 'medium', 'high', 'xhigh'
   # --- Prompt customization ---
   # promptDir: eforge/prompts           # Directory of .md files that shadow bundled prompts
   # --- Per-role overrides ---

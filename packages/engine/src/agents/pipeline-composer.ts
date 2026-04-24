@@ -70,7 +70,7 @@ function extractJson(text: string): unknown {
  * Yields:
  * - `agent:start`, `agent:stop`, `agent:result` (always)
  * - `agent:message` events (when verbose)
- * - `plan:pipeline` event with the composition result
+ * - `planning:pipeline` event with the composition result
  */
 export async function* composePipeline(
   options: PipelineComposerOptions,
@@ -144,7 +144,7 @@ export async function* composePipeline(
 
       yield {
         timestamp: new Date().toISOString(),
-        type: 'plan:pipeline',
+        type: 'planning:pipeline',
         scope: composition.scope,
         compile: composition.compile,
         defaultBuild: composition.defaultBuild as BuildStageSpec[],

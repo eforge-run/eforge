@@ -43,10 +43,10 @@ describe('eventToProgress', () => {
     });
   });
 
-  describe('build:files_changed', () => {
+  describe('plan:build:files_changed', () => {
     it('maps build:files_changed to a "Files changed: N" message', () => {
       const event: DaemonStreamEvent = {
-        type: 'build:files_changed',
+        type: 'plan:build:files_changed',
         planId: 'plan-01',
         files: ['src/a.ts', 'src/b.ts', 'src/c.ts'],
       };
@@ -59,11 +59,11 @@ describe('eventToProgress', () => {
 
     it('accumulates filesChanged across multiple events', () => {
       const first: DaemonStreamEvent = {
-        type: 'build:files_changed',
+        type: 'plan:build:files_changed',
         files: ['a.ts', 'b.ts'],
       };
       const second: DaemonStreamEvent = {
-        type: 'build:files_changed',
+        type: 'plan:build:files_changed',
         files: ['c.ts'],
       };
       const r1 = eventToProgress(first, emptyCounters)!;
@@ -124,7 +124,7 @@ describe('eventToProgress', () => {
   describe('failure events', () => {
     it('maps build:failed to a "Build failed:" message', () => {
       const event: DaemonStreamEvent = {
-        type: 'build:failed',
+        type: 'plan:build:failed',
         planId: 'plan-03',
         error: 'compilation error',
       };

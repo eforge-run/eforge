@@ -70,22 +70,26 @@ graph TD
 
 `EforgeEvent` is a discriminated union. All event types follow a `category:action` naming pattern. Major categories:
 
-| Category | Purpose |
-|----------|---------|
-| `session:*` / `phase:*` | Lifecycle boundaries |
-| `config:*` | Config-load diagnostics (`config:warning` for malformed fields, unknown keys, stale markers) |
-| `plan:*` | Planning, plan review, architecture review, cohesion review, submission, error, and load-time `plan:warning` diagnostics |
-| `build:*` | Implementation, code review, fix, evaluate, doc-update, test |
-| `schedule:*` / `merge:*` | Orchestration scheduling and merge sequencing |
-| `expedition:*` | Expedition-specific planning phases |
-| `agent:*` | Agent lifecycle and streaming |
-| `validation:*` | Post-merge validation |
-| `queue:*` / `enqueue:*` | PRD queue operations |
-| `prd_validation:*` | PRD validation (`prd_validation:start`, `prd_validation:complete`) |
-| `gap_close:*` | PRD validation gap closing (`gap_close:start`, `gap_close:complete`) |
-| `reconciliation:*` | Reconciliation (`reconciliation:start`, `reconciliation:complete`) |
-| `cleanup:*` | Cleanup (`cleanup:start`, `cleanup:complete`) |
-| `approval:*` | Approval flow (`approval:needed`, `approval:response`) |
+Prefixes carry scope unambiguously:
+
+| Category | Scope | Purpose |
+|----------|-------|---------|
+| `session:*` | Run-wide envelope (`sessionId`) | Session lifecycle boundaries |
+| `phase:*` | Per-command (compile or build) (`runId`) | Phase lifecycle boundaries |
+| `config:*` | Run-wide | Config-load diagnostics (`config:warning` for malformed fields, unknown keys, stale markers) |
+| `planning:*` | Compile-phase activity, one set per phase (`plans: PlanFile[]`) | Planning, plan review, architecture review, cohesion review, submission, error, and load-time `planning:warning` diagnostics |
+| `plan:*` | Per-plan artifact lifecycle (`planId`) | Per-plan build (`plan:build:*`), per-plan merge (`plan:merge:*`), per-plan schedule readiness (`plan:schedule:ready`) |
+| `merge:finalize:*` | Run-wide feature-branch finalization | Final merge of the feature branch to the base branch (`merge:finalize:start`, `merge:finalize:complete`, `merge:finalize:skipped`) |
+| `schedule:start` | Run-wide (session-scoped, `planIds: string[]`) | Orchestration kickoff |
+| `expedition:*` | Wave / module orchestration (`wave` / `moduleId`) | Expedition-specific planning phases |
+| `agent:*` | Per-agent invocation (`agentId`) | Agent lifecycle and streaming |
+| `validation:*` | Run-wide | Post-merge validation |
+| `queue:*` / `enqueue:*` | Run-wide | PRD queue operations |
+| `prd_validation:*` | Run-wide | PRD validation (`prd_validation:start`, `prd_validation:complete`) |
+| `gap_close:*` | Run-wide | PRD validation gap closing (`gap_close:start`, `gap_close:complete`) |
+| `reconciliation:*` | Run-wide | Reconciliation (`reconciliation:start`, `reconciliation:complete`) |
+| `cleanup:*` | Run-wide | Cleanup (`cleanup:start`, `cleanup:complete`) |
+| `approval:*` | Run-wide | Approval flow (`approval:needed`, `approval:response`) |
 
 The CLI composes async generator middleware around the engine's event stream - transformers that stamp session/run IDs, fire hooks, and record to SQLite without altering the events themselves.
 
