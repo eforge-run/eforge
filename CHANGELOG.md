@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.6.3] - 2026-04-23
+
+### Bug Fixes
+
+- **compile**: capture planner expedition modules from structured event
+
+### Documentation
+
+- **config**: scope config.yaml skill to team-wide settings
+
 ## [0.6.2] - 2026-04-23
 
 ### Features
