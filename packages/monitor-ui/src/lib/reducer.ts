@@ -78,7 +78,7 @@ export interface RunState {
   profileInfo: ProfileInfo | null;
   endTime: number | null;
   mergeCommits: Record<string, string>;
-  backend: string | null;
+  harness: string | null;
   liveAgentUsage: Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number; turns: number }>;
   enqueueStatus: 'running' | 'complete' | 'failed' | null;
   enqueueTitle: string | null;
@@ -105,7 +105,7 @@ export const initialRunState: RunState = {
   profileInfo: null,
   endTime: null,
   mergeCommits: {},
-  backend: null,
+  harness: null,
   liveAgentUsage: {},
   enqueueStatus: null,
   enqueueTitle: null,
@@ -139,7 +139,7 @@ function processEvent(
     earlyOrchestration: OrchestrationConfig | null;
     profileInfo: ProfileInfo | null;
     mergeCommits: Record<string, string>;
-    backend: string | null;
+    harness: string | null;
     liveAgentUsage: Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number; turns: number }>;
     enqueueStatus: 'running' | 'complete' | 'failed' | null;
     enqueueTitle: string | null;
@@ -294,10 +294,10 @@ function processEvent(
 
   // Agent thread tracking
   if (event.type === 'agent:start' && 'timestamp' in event && event.timestamp) {
-    // Set session-level backend from first agent:start using the new harness field
-    if (state.backend === null) {
+    // Set session-level harness from first agent:start using the harness field
+    if (state.harness === null) {
       const harnessVal = ('harness' in event ? (event as { harness?: string }).harness : undefined);
-      state.backend = harnessVal ?? 'unknown';
+      state.harness = harnessVal ?? 'unknown';
     }
     state.agentThreads.push({
       agentId: event.agentId,
@@ -410,7 +410,7 @@ function processEvent(
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null, mergeCommits: {}, backend: null, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null, mergeCommits: {}, harness: null, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -432,7 +432,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         earlyOrchestration: null as OrchestrationConfig | null,
         profileInfo: null as ProfileInfo | null,
         mergeCommits: {} as Record<string, string>,
-        backend: null as string | null,
+        harness: null as string | null,
         liveAgentUsage: {} as Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number; turns: number }>,
         enqueueStatus: null as 'running' | 'complete' | 'failed' | null,
         enqueueTitle: null as string | null,

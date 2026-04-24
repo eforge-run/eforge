@@ -113,8 +113,8 @@ function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
                   {metadata.planCount} {metadata.planCount === 1 ? 'plan' : 'plans'}
                 </span>
               )}
-              {metadata?.backend && (
-                <span className="text-[9px] text-text-dim/50">{metadata.backend}</span>
+              {metadata?.harness && (
+                <span className="text-[9px] text-text-dim/50">{metadata.harness}</span>
               )}
             </div>
           </div>

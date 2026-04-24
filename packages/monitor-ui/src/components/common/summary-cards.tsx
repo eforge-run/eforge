@@ -20,7 +20,7 @@ interface SummaryCardsProps {
   reviewWarning: number;
   isComplete?: boolean;
   isFailed?: boolean;
-  backend?: string | null;
+  harness?: string | null;
 }
 
 function StatGroup({ children }: { children: React.ReactNode }) {
@@ -47,7 +47,7 @@ export function SummaryCards({
   reviewWarning,
   isComplete,
   isFailed,
-  backend,
+  harness,
 }: SummaryCardsProps) {
   const statusAccent = isFailed ? 'red' : isComplete ? 'green' : 'blue';
   const statusIcon = isFailed
@@ -72,7 +72,7 @@ export function SummaryCards({
         )}>
           {statusLabel}
         </span>
-        {backend && <span className="text-text-dim text-[10px]">{backend}</span>}
+        {harness && <span className="text-text-dim text-[10px]">{harness}</span>}
       </StatGroup>
 
       <Separator />
