@@ -129,7 +129,7 @@ describe('runTestWriter wiring', () => {
     }]);
 
     const events = await collectEvents(runTestWriter({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planId: 'plan-1',
       planContent: 'Test plan content',
@@ -151,7 +151,7 @@ describe('runTestWriter wiring', () => {
     }]);
 
     const events = await collectEvents(runTestWriter({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planId: 'plan-1',
       planContent: 'Test plan content',
@@ -166,7 +166,7 @@ describe('runTestWriter wiring', () => {
     const backend = new StubHarness([{ error: new Error('Test writer crashed') }]);
 
     const events = await collectEvents(runTestWriter({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planId: 'plan-1',
       planContent: 'Test plan content',
@@ -194,7 +194,7 @@ describe('runTester wiring', () => {
     }]);
 
     const events = await collectEvents(runTester({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planId: 'plan-1',
       planContent: 'Test plan content',
@@ -219,7 +219,7 @@ describe('runTester wiring', () => {
     }]);
 
     const events = await collectEvents(runTester({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planId: 'plan-1',
       planContent: 'Test plan content',
@@ -237,7 +237,7 @@ describe('runTester wiring', () => {
     const backend = new StubHarness([{ error: new Error('Tester crashed') }]);
 
     const events = await collectEvents(runTester({
-      backend,
+      harness: backend,
       cwd: '/tmp',
       planId: 'plan-1',
       planContent: 'Test plan content',

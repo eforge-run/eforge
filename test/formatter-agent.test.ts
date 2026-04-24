@@ -22,7 +22,7 @@ describe('runFormatter wiring', () => {
     const backend = new StubHarness([{ text: formattedContent }]);
 
     const { events, result } = await collectEventsAndResult(
-      runFormatter({ backend, sourceContent: 'Fix the broken widget' }),
+      runFormatter({ harness: backend, sourceContent: 'Fix the broken widget' }),
     );
 
     expect(result.body).toBe(formattedContent);
@@ -36,7 +36,7 @@ describe('runFormatter wiring', () => {
     const backend = new StubHarness([{ text: 'Formatted output.' }]);
 
     const { events } = await collectEventsAndResult(
-      runFormatter({ backend, sourceContent: 'raw input' }),
+      runFormatter({ harness: backend, sourceContent: 'raw input' }),
     );
 
     const types = events.map((e) => e.type);
@@ -53,7 +53,7 @@ describe('runFormatter wiring', () => {
     const sourceContent = 'Please add dark mode support to the app';
 
     await collectEventsAndResult(
-      runFormatter({ backend, sourceContent }),
+      runFormatter({ harness: backend, sourceContent }),
     );
 
     expect(backend.prompts).toHaveLength(1);
@@ -64,7 +64,7 @@ describe('runFormatter wiring', () => {
     const backend = new StubHarness([{ text: 'Formatted.' }]);
 
     await collectEventsAndResult(
-      runFormatter({ backend, sourceContent: 'test' }),
+      runFormatter({ harness: backend, sourceContent: 'test' }),
     );
 
     expect(backend.calls).toHaveLength(1);
@@ -76,7 +76,7 @@ describe('runFormatter wiring', () => {
     const backend = new StubHarness([{ text: 'Some output.' }]);
 
     const { events } = await collectEventsAndResult(
-      runFormatter({ backend, sourceContent: 'test' }),
+      runFormatter({ harness: backend, sourceContent: 'test' }),
     );
 
     expect(filterEvents(events, 'agent:message')).toHaveLength(0);
@@ -86,7 +86,7 @@ describe('runFormatter wiring', () => {
     const backend = new StubHarness([{ text: 'Some output.' }]);
 
     const { events } = await collectEventsAndResult(
-      runFormatter({ backend, sourceContent: 'test', verbose: true }),
+      runFormatter({ harness: backend, sourceContent: 'test', verbose: true }),
     );
 
     expect(filterEvents(events, 'agent:message').length).toBeGreaterThan(0);
@@ -96,7 +96,7 @@ describe('runFormatter wiring', () => {
     const backend = new StubHarness([{ text: 'Formatted.' }]);
 
     const { events } = await collectEventsAndResult(
-      runFormatter({ backend, sourceContent: 'test' }),
+      runFormatter({ harness: backend, sourceContent: 'test' }),
     );
 
     const start = findEvent(events, 'agent:start');

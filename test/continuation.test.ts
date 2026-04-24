@@ -31,7 +31,7 @@ describe('builderImplement without continuation', () => {
     const plan = makePlanFile();
 
     const events = await collectEvents(builderImplement(plan, {
-      backend,
+      harness: backend,
       cwd,
     }));
 
@@ -51,7 +51,7 @@ describe('builderImplement without continuation', () => {
     const plan = makePlanFile();
 
     const events = await collectEvents(builderImplement(plan, {
-      backend,
+      harness: backend,
       cwd,
     }));
 
@@ -71,7 +71,7 @@ describe('builderImplement without continuation', () => {
     const plan = makePlanFile();
 
     const events = await collectEvents(builderImplement(plan, {
-      backend,
+      harness: backend,
       cwd,
     }));
 
@@ -93,7 +93,7 @@ describe('builderImplement with continuation context', () => {
     const plan = makePlanFile();
 
     await collectEvents(builderImplement(plan, {
-      backend,
+      harness: backend,
       cwd,
       continuationContext: {
         attempt: 1,
@@ -116,7 +116,7 @@ describe('builderImplement with continuation context', () => {
     const plan = makePlanFile();
 
     await collectEvents(builderImplement(plan, {
-      backend,
+      harness: backend,
       cwd,
     }));
 

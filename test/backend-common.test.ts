@@ -7,14 +7,16 @@ describe('buildAgentStartEvent', () => {
       agentId: 'agent-1',
       agent: 'builder',
       model: 'claude-sonnet-4',
-      backend: 'claude-sdk',
+      agentRuntime: 'default',
+      harness: 'claude-sdk',
     });
 
     expect(event.type).toBe('agent:start');
     expect(event.agentId).toBe('agent-1');
     expect(event.agent).toBe('builder');
     expect(event.model).toBe('claude-sonnet-4');
-    expect(event.backend).toBe('claude-sdk');
+    expect(event.agentRuntime).toBe('default');
+    expect(event.harness).toBe('claude-sdk');
     expect(typeof event.timestamp).toBe('string');
     expect(() => new Date(event.timestamp).toISOString()).not.toThrow();
 
@@ -49,7 +51,8 @@ describe('buildAgentStartEvent', () => {
       agentId: 'agent-2',
       agent: 'planner',
       model: 'claude-opus-4',
-      backend: 'pi',
+      agentRuntime: 'my-pi',
+      harness: 'pi',
       fallbackFrom: 'balanced',
       effort: 'high',
       thinking: { type: 'enabled', budgetTokens: 10_000 },
@@ -67,7 +70,8 @@ describe('buildAgentStartEvent', () => {
       agentId: 'agent-2',
       agent: 'planner',
       model: 'claude-opus-4',
-      backend: 'pi',
+      agentRuntime: 'my-pi',
+      harness: 'pi',
       fallbackFrom: 'balanced',
       effort: 'high',
       thinking: { type: 'enabled', budgetTokens: 10_000 },
@@ -85,7 +89,8 @@ describe('buildAgentStartEvent', () => {
       agentId: 'agent-3',
       agent: 'builder',
       model: 'm',
-      backend: 'claude-sdk',
+      agentRuntime: 'default',
+      harness: 'claude-sdk',
       // Explicit undefineds simulate the common caller pattern of forwarding
       // AgentRunOptions fields directly without pre-filtering.
       fallbackFrom: undefined,

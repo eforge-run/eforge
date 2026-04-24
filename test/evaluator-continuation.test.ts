@@ -44,7 +44,7 @@ describe('builderEvaluate', () => {
     // event carrying the subtype; `withRetry` inspects the event and decides
     // whether to retry.
     const events = await collectEvents(builderEvaluate(plan, {
-      backend,
+      harness: backend,
       cwd: '/tmp',
     }));
 
@@ -60,7 +60,7 @@ describe('builderEvaluate', () => {
     const plan = makePlanFile();
 
     const events = await collectEvents(builderEvaluate(plan, {
-      backend,
+      harness: backend,
       cwd: '/tmp',
     }));
 
@@ -76,7 +76,7 @@ describe('builderEvaluate', () => {
     const plan = makePlanFile();
 
     await collectEvents(builderEvaluate(plan, {
-      backend,
+      harness: backend,
       cwd: '/tmp',
       evaluatorContinuationContext: { attempt: 1, maxContinuations: 2 },
     }));
@@ -93,7 +93,7 @@ describe('builderEvaluate', () => {
     const plan = makePlanFile();
 
     await collectEvents(builderEvaluate(plan, {
-      backend,
+      harness: backend,
       cwd: '/tmp',
     }));
 
@@ -115,7 +115,7 @@ describe('builderEvaluate', () => {
     const plan = makePlanFile();
 
     const events = await collectEvents(builderEvaluate(plan, {
-      backend,
+      harness: backend,
       cwd: '/tmp',
     }));
 
@@ -128,7 +128,7 @@ describe('builderEvaluate', () => {
 // --- Plan phase evaluator (runPlanEvaluate) continuation context ---
 
 const makePlanEvalOptions = (backend: StubHarness, overrides?: Record<string, unknown>) => ({
-  backend,
+  harness: backend,
   planSetName: 'test-set',
   sourceContent: '# Source\n\nSome PRD.',
   cwd: '/tmp',

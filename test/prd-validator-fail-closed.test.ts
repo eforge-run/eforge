@@ -5,7 +5,7 @@ import { collectEvents, findEvent } from './test-events.js';
 
 function makeOptions(backend: StubHarness) {
   return {
-    backend,
+    harness: backend,
     cwd: process.cwd(),
     prdContent: 'A PRD',
     diff: 'diff --git a/x b/x',

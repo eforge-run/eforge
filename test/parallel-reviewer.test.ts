@@ -73,7 +73,7 @@ describe('runReviewFixer', () => {
 
     const events = await collectEvents(
       runReviewFixer({
-        backend,
+        harness: backend,
         planId: 'plan-01',
         cwd: '/tmp/test',
         issues,
@@ -95,7 +95,7 @@ describe('runReviewFixer', () => {
 
     await collectEvents(
       runReviewFixer({
-        backend,
+        harness: backend,
         planId: 'plan-01',
         cwd: '/tmp/test',
         issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],
@@ -111,7 +111,7 @@ describe('runReviewFixer', () => {
 
     const events = await collectEvents(
       runReviewFixer({
-        backend,
+        harness: backend,
         planId: 'plan-01',
         cwd: '/tmp/test',
         issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],
@@ -129,7 +129,7 @@ describe('runReviewFixer', () => {
     // Should not throw — review fixer errors are non-fatal
     const events = await collectEvents(
       runReviewFixer({
-        backend,
+        harness: backend,
         planId: 'plan-01',
         cwd: '/tmp/test',
         issues: [{ severity: 'warning', category: 'bugs', file: 'a.ts', description: 'Issue' }],

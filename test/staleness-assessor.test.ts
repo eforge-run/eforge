@@ -10,7 +10,7 @@ describe('runStalenessAssessor wiring', () => {
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Add auth\n\nImplement user authentication.',
       diffSummary: 'src/utils.ts | 5 ++',
       cwd: '/tmp',
@@ -29,7 +29,7 @@ describe('runStalenessAssessor wiring', () => {
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Old feature\n\nOutdated content.',
       diffSummary: 'src/api.ts | 50 +++---',
       cwd: '/tmp',
@@ -48,7 +48,7 @@ describe('runStalenessAssessor wiring', () => {
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Feature X\n\nBuild feature X.',
       diffSummary: 'src/feature-x.ts | 200 ++++++',
       cwd: '/tmp',
@@ -66,7 +66,7 @@ describe('runStalenessAssessor wiring', () => {
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
       cwd: '/tmp',
@@ -85,7 +85,7 @@ describe('runStalenessAssessor wiring', () => {
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
       cwd: '/tmp',
@@ -104,7 +104,7 @@ describe('runStalenessAssessor wiring', () => {
     }]);
 
     const events = await collectEvents(runStalenessAssessor({
-      backend,
+      harness: backend,
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
       cwd: '/tmp',

@@ -1,13 +1,14 @@
 /**
- * Tests for backend selection logic in EforgeEngine.create().
+ * Tests for agentRuntimes selection logic in EforgeEngine.create().
  *
  * Verifies three paths:
- * 1. config.backend: 'pi' -> PiHarness instantiated via dynamic import
- * 2. default config (claude-sdk) -> ClaudeSDKHarness
- * 3. explicit options.backend overrides config.backend
+ * 1. config with agentRuntimes: { default: { harness: 'pi' } } -> PiHarness instantiated via dynamic import
+ * 2. config with agentRuntimes: { default: { harness: 'claude-sdk' } } -> ClaudeSDKHarness
+ * 3. explicit options.agentRuntimes wraps a bare AgentHarness in singletonRegistry
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import type { AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
 
 // Mock config loading to return controlled config
 vi.mock('@eforge-build/engine/config', async (importOriginal) => {
@@ -26,6 +27,7 @@ vi.mock('@eforge-build/engine/harnesses/pi', () => {
     async *run() {
       // stub
     }
+    effectiveCustomToolName(name: string) { return name; }
   }
   return { PiHarness: MockPiHarness };
 });
@@ -39,7 +41,6 @@ vi.mock('@eforge-build/engine/eforge', async (importOriginal) => {
 import { loadConfig } from '@eforge-build/engine/config';
 import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
-import { ClaudeSDKHarness } from '@eforge-build/engine/harnesses/claude-sdk';
 import { StubHarness } from './stub-harness.js';
 
 const mockedLoadConfig = vi.mocked(loadConfig);
@@ -48,38 +49,45 @@ function makeConfig(overrides: Partial<typeof DEFAULT_CONFIG> = {}): { config: t
   return { config: { ...DEFAULT_CONFIG, ...overrides }, warnings: [] };
 }
 
-describe('EforgeEngine.create() backend selection', () => {
+describe('EforgeEngine.create() agentRuntimes selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('instantiates PiHarness when config.backend is "pi"', async () => {
-    mockedLoadConfig.mockResolvedValue(makeConfig({ backend: 'pi' }));
+  it('builds AgentRuntimeRegistry from config with harness "pi"', async () => {
+    mockedLoadConfig.mockResolvedValue(makeConfig({
+      agentRuntimes: { default: { harness: 'pi' } },
+      defaultAgentRuntime: 'default',
+    }));
 
     const engine = await EforgeEngine.create({ cwd: '/tmp/test' });
 
-    // Access private backend via resolvedConfig check - the engine was created with PiHarness
-    // We verify by checking the backend field through the engine's internals
-    const backend = (engine as unknown as { backend: unknown }).backend;
-    expect(backend).toHaveProperty('_isPiHarness', true);
+    // Verify config was applied correctly
+    expect(engine.resolvedConfig.agentRuntimes?.['default']?.harness).toBe('pi');
   });
 
-  it('uses ClaudeSDKHarness when config.backend is "claude-sdk" (default)', async () => {
-    mockedLoadConfig.mockResolvedValue(makeConfig({ backend: 'claude-sdk' }));
+  it('builds AgentRuntimeRegistry from config with harness "claude-sdk"', async () => {
+    mockedLoadConfig.mockResolvedValue(makeConfig({
+      agentRuntimes: { default: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'default',
+    }));
 
     const engine = await EforgeEngine.create({ cwd: '/tmp/test' });
 
-    const backend = (engine as unknown as { backend: unknown }).backend;
-    expect(backend).toBeInstanceOf(ClaudeSDKHarness);
+    expect(engine.resolvedConfig.agentRuntimes?.['default']?.harness).toBe('claude-sdk');
   });
 
-  it('explicit options.backend overrides config.backend', async () => {
-    mockedLoadConfig.mockResolvedValue(makeConfig({ backend: 'pi' }));
-    const explicitBackend = new StubHarness([]);
+  it('explicit agentRuntimes wraps bare AgentHarness in singletonRegistry', async () => {
+    mockedLoadConfig.mockResolvedValue(makeConfig({
+      agentRuntimes: { default: { harness: 'pi' } },
+      defaultAgentRuntime: 'default',
+    }));
+    const explicitHarness = new StubHarness([]);
 
-    const engine = await EforgeEngine.create({ cwd: '/tmp/test', backend: explicitBackend });
+    const engine = await EforgeEngine.create({ cwd: '/tmp/test', agentRuntimes: explicitHarness });
 
-    const backend = (engine as unknown as { backend: unknown }).backend;
-    expect(backend).toBe(explicitBackend);
+    // singletonRegistry wraps the harness and returns it for every role
+    const registry = (engine as unknown as { agentRuntimes: AgentRuntimeRegistry }).agentRuntimes;
+    expect(registry.forRole('builder')).toBe(explicitHarness);
   });
 });

@@ -52,7 +52,8 @@ describe('watchQueue', () => {
     const engine = await EforgeEngine.create({
       cwd,
       config: {
-        backend: 'claude-sdk',
+        agentRuntimes: { default: { harness: 'claude-sdk' } },
+        defaultAgentRuntime: 'default',
         prdQueue: { dir: 'eforge/queue' },
         plugins: { enabled: false },
       },

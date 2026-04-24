@@ -39,7 +39,7 @@ describe('composePipeline', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(composePipeline({
-      backend,
+      harness: backend,
       source: '# PRD\nAdd a /health endpoint.',
       cwd,
     }));
@@ -63,7 +63,7 @@ describe('composePipeline', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(composePipeline({
-      backend,
+      harness: backend,
       source: '# PRD\nAdd a /health endpoint.',
       cwd,
     }));
@@ -91,7 +91,7 @@ describe('composePipeline', () => {
     const cwd = makeTempDir();
 
     await expect(collectEvents(composePipeline({
-      backend,
+      harness: backend,
       source: '# PRD',
       cwd,
     }))).rejects.toThrow(/failed after 3 attempts/);

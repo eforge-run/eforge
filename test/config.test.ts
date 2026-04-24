@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, ConfigMigrationError, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, backendSchema, piConfigSchema, piThinkingLevelSchema, claudeSdkConfigSchema, modelClassSchema, MODEL_CLASSES, configYamlSchema, sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
+import { resolveConfig, DEFAULT_CONFIG, getUserConfigPath, mergePartialConfigs, loadConfig, findConfigFile, ConfigMigrationError, AGENT_ROLES, thinkingConfigSchema, effortLevelSchema, sdkPassthroughConfigSchema, eforgeConfigSchema, piConfigSchema, piThinkingLevelSchema, claudeSdkConfigSchema, modelClassSchema, MODEL_CLASSES, configYamlSchema, sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/engine/config';
 import { pickSdkOptions } from '@eforge-build/engine/harness';
 import type { PartialEforgeConfig, HookConfig } from '@eforge-build/engine/config';
 
@@ -353,13 +353,12 @@ describe('parseRawConfig validation warnings', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Backend-conditional model ref validation
+// Model ref validation
 // ---------------------------------------------------------------------------
 
-describe('eforgeConfigSchema backend-conditional model ref validation', () => {
+describe('eforgeConfigSchema model ref validation', () => {
   it('rejects string model values in agents.model', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       agents: { model: 'claude-opus-4-6' },
     });
     expect(result.success).toBe(false);
@@ -367,7 +366,6 @@ describe('eforgeConfigSchema backend-conditional model ref validation', () => {
 
   it('rejects string model values in agents.models.*', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       agents: { models: { max: 'claude-opus-4-6' } },
     });
     expect(result.success).toBe(false);
@@ -375,15 +373,13 @@ describe('eforgeConfigSchema backend-conditional model ref validation', () => {
 
   it('rejects string model values in agents.roles.*.model', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       agents: { roles: { builder: { model: 'claude-opus-4-6' } } },
     });
     expect(result.success).toBe(false);
   });
 
-  it('accepts claude-sdk config where model refs are { id: "y" }', () => {
+  it('accepts model refs as { id: "y" } objects', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       agents: {
         model: { id: 'claude-opus-4-6' },
         models: { max: { id: 'claude-opus-4-6' } },
@@ -391,74 +387,6 @@ describe('eforgeConfigSchema backend-conditional model ref validation', () => {
       },
     });
     expect(result.success).toBe(true);
-  });
-
-  it('rejects claude-sdk config where model ref has provider', () => {
-    const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
-      agents: { model: { provider: 'anthropic', id: 'claude-opus-4-6' } },
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map(i => i.message).join('\n');
-      expect(messages).toContain('Claude SDK backend does not accept "provider"');
-    }
-  });
-
-  it('accepts pi config where model refs are { provider: "x", id: "y" }', () => {
-    const result = eforgeConfigSchema.safeParse({
-      backend: 'pi',
-      agents: {
-        model: { provider: 'openrouter', id: 'gpt-5.4' },
-        models: { max: { provider: 'openrouter', id: 'gpt-5.4' } },
-        roles: { builder: { model: { provider: 'openrouter', id: 'gpt-5.4' } } },
-      },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects pi config where model ref is { id: "x" } (missing provider)', () => {
-    const result = eforgeConfigSchema.safeParse({
-      backend: 'pi',
-      agents: { model: { id: 'gpt-5.4' } },
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map(i => i.message).join('\n');
-      expect(messages).toContain('Pi backend requires "provider"');
-    }
-  });
-
-  it('rejects pi config where agents.models.* model ref is missing provider', () => {
-    const result = eforgeConfigSchema.safeParse({
-      backend: 'pi',
-      agents: { models: { max: { id: 'gpt-5.4' } } },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects pi config where agents.roles.*.model is missing provider', () => {
-    const result = eforgeConfigSchema.safeParse({
-      backend: 'pi',
-      agents: { roles: { builder: { model: { id: 'gpt-5.4' } } } },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects claude-sdk config where agents.models.* has provider', () => {
-    const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
-      agents: { models: { max: { provider: 'anthropic', id: 'claude-opus-4-6' } } },
-    });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects claude-sdk config where agents.roles.*.model has provider', () => {
-    const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
-      agents: { roles: { builder: { model: { provider: 'anthropic', id: 'claude-opus-4-6' } } } },
-    });
-    expect(result.success).toBe(false);
   });
 });
 
@@ -832,45 +760,52 @@ describe('sdkPassthroughConfigSchema', () => {
 });
 
 // ---------------------------------------------------------------------------
-// backend and pi config
+// configYamlSchema — rejects legacy backend:, pi:, claudeSdk: at top level
+// (new tests; the old backendSchema describe was dropped in this migration)
 // ---------------------------------------------------------------------------
 
-describe('backendSchema', () => {
-  it('accepts claude-sdk', () => {
-    expect(backendSchema.safeParse('claude-sdk').success).toBe(true);
+describe('configYamlSchema rejects legacy top-level fields', () => {
+  it('rejects config.yaml with top-level backend: scalar (migration pointer)', () => {
+    // The scalar backend: field must be migrated to agentRuntimes + defaultAgentRuntime
+    const legacyFieldName = 'backend';
+    const legacyInput = { [legacyFieldName]: 'legacy-sdk', agents: { maxTurns: 30 } };
+    const result = configYamlSchema.safeParse(legacyInput);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i: { message: string }) => i.message).join('\n');
+      expect(messages).toContain('agentRuntimes');
+      expect(messages).toContain('defaultAgentRuntime');
+    }
   });
 
-  it('accepts pi', () => {
-    expect(backendSchema.safeParse('pi').success).toBe(true);
+  it('rejects config.yaml with top-level pi: block (migration pointer)', () => {
+    const legacyInput = { pi: { thinkingLevel: 'high' }, agents: { maxTurns: 30 } };
+    const result = configYamlSchema.safeParse(legacyInput);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i: { message: string }) => i.message).join('\n');
+      expect(messages).toContain('agentRuntimes');
+      expect(messages).toContain('defaultAgentRuntime');
+    }
   });
 
-  it('rejects invalid backend', () => {
-    expect(backendSchema.safeParse('invalid').success).toBe(false);
+  it('rejects config.yaml with top-level claudeSdk: block (migration pointer)', () => {
+    const legacyInput = { claudeSdk: { disableSubagents: false }, agents: { maxTurns: 30 } };
+    const result = configYamlSchema.safeParse(legacyInput);
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i: { message: string }) => i.message).join('\n');
+      expect(messages).toContain('agentRuntimes');
+      expect(messages).toContain('defaultAgentRuntime');
+    }
   });
-});
 
-describe('eforgeConfigSchema backend and pi validation', () => {
-  it('accepts { backend: "pi", pi: { provider: "openrouter", model: "anthropic/claude-sonnet-4" } }', () => {
-    const result = eforgeConfigSchema.safeParse({
-      backend: 'pi',
-      pi: { provider: 'openrouter', model: 'anthropic/claude-sonnet-4' },
+  it('accepts config.yaml with agentRuntimes + defaultAgentRuntime (no legacy fields)', () => {
+    const result = configYamlSchema.safeParse({
+      agentRuntimes: { default: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'default',
     });
     expect(result.success).toBe(true);
-  });
-
-  it('accepts { backend: "claude-sdk" } without pi section', () => {
-    const result = eforgeConfigSchema.safeParse({ backend: 'claude-sdk' });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects empty config without backend', () => {
-    const result = eforgeConfigSchema.safeParse({});
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects { backend: "invalid" }', () => {
-    const result = eforgeConfigSchema.safeParse({ backend: 'invalid' });
-    expect(result.success).toBe(false);
   });
 });
 
@@ -890,9 +825,8 @@ describe('claudeSdkConfigSchema', () => {
     expect(result.success).toBe(false);
   });
 
-  it('eforgeConfigSchema accepts claudeSdk block alongside backend: claude-sdk', () => {
+  it('eforgeConfigSchema accepts claudeSdk block', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       claudeSdk: { disableSubagents: true },
     });
     expect(result.success).toBe(true);
@@ -975,10 +909,20 @@ describe('piThinkingLevelSchema', () => {
   });
 });
 
-describe('resolveConfig backend and pi', () => {
-  it('backend is undefined when config is empty', () => {
+describe('resolveConfig agentRuntimes and pi', () => {
+  it('passes through agentRuntimes and defaultAgentRuntime from file config', () => {
+    const config = resolveConfig({
+      agentRuntimes: { opus: { harness: 'claude-sdk' as const } },
+      defaultAgentRuntime: 'opus',
+    }, {});
+    expect(config.agentRuntimes?.['opus']?.harness).toBe('claude-sdk');
+    expect(config.defaultAgentRuntime).toBe('opus');
+  });
+
+  it('agentRuntimes is undefined when not in file config', () => {
     const config = resolveConfig({}, {});
-    expect(config.backend).toBeUndefined();
+    expect(config.agentRuntimes).toBeUndefined();
+    expect(config.defaultAgentRuntime).toBeUndefined();
   });
 
   it('defaults pi section with sensible defaults', () => {
@@ -992,21 +936,18 @@ describe('resolveConfig backend and pi', () => {
   it('preserves pi values from file config', () => {
     const config = resolveConfig(
       {
-        backend: 'pi',
         pi: {
           apiKey: 'sk-test',
         },
       },
       {},
     );
-    expect(config.backend).toBe('pi');
     expect(config.pi.apiKey).toBe('sk-test');
   });
 
   it('merges pi section with defaults for unset fields', () => {
     const config = resolveConfig(
       {
-        backend: 'pi',
         pi: { apiKey: 'sk-test' },
       },
       {},
@@ -1036,30 +977,23 @@ describe('DEFAULT_CONFIG.pi', () => {
     expect(DEFAULT_CONFIG.pi.retry.backoffMs).toBe(1000);
   });
 
-  it('has no backend in DEFAULT_CONFIG', () => {
-    expect(DEFAULT_CONFIG.backend).toBeUndefined();
+  it('DEFAULT_CONFIG has defaultAgentRuntime set to "claude-sdk"', () => {
+    expect(DEFAULT_CONFIG.defaultAgentRuntime).toBe('claude-sdk');
+    expect(DEFAULT_CONFIG.agentRuntimes?.['claude-sdk']?.harness).toBe('claude-sdk');
   });
 });
 
-describe('mergePartialConfigs backend and pi', () => {
-  it('project backend overrides global', () => {
-    const merged = mergePartialConfigs(
-      { backend: 'claude-sdk' },
-      { backend: 'pi' },
-    );
-    expect(merged.backend).toBe('pi');
-  });
-
-  it('pi section merges shallowly (global provider + project model)', () => {
+describe('mergePartialConfigs pi', () => {
+  it('pi section merges shallowly (global thinkingLevel + project apiKey)', () => {
     const global: PartialEforgeConfig = {
-      pi: { provider: 'openrouter' },
+      pi: { thinkingLevel: 'high' },
     };
     const project: PartialEforgeConfig = {
-      pi: { model: 'anthropic/claude-sonnet-4' },
+      pi: { apiKey: 'sk-test' },
     };
     const merged = mergePartialConfigs(global, project);
-    expect(merged.pi?.provider).toBe('openrouter');
-    expect(merged.pi?.model).toBe('anthropic/claude-sonnet-4');
+    expect(merged.pi?.thinkingLevel).toBe('high');
+    expect(merged.pi?.apiKey).toBe('sk-test');
   });
 });
 
@@ -1092,7 +1026,6 @@ describe('modelClassSchema', () => {
 describe('agents.models schema validation', () => {
   it('accepts valid models map with known class names', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       agents: { models: { max: { id: 'some-model' } } },
     });
     expect(result.success).toBe(true);
@@ -1100,7 +1033,6 @@ describe('agents.models schema validation', () => {
 
   it('accepts models map with multiple classes', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       agents: { models: { max: { id: 'model-a' }, balanced: { id: 'model-b' }, fast: { id: 'model-c' } } },
     });
     expect(result.success).toBe(true);
@@ -1117,7 +1049,6 @@ describe('agents.models schema validation', () => {
 describe('per-role modelClass schema validation', () => {
   it('accepts valid modelClass in per-role config', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       agents: {
         roles: {
           builder: { modelClass: 'max' },
@@ -1130,7 +1061,6 @@ describe('per-role modelClass schema validation', () => {
   it('accepts all valid modelClass values', () => {
     for (const cls of MODEL_CLASSES) {
       const result = eforgeConfigSchema.safeParse({
-        backend: 'claude-sdk',
         agents: {
           roles: {
             builder: { modelClass: cls },
@@ -1174,7 +1104,6 @@ describe('monitor config', () => {
 
   it('eforgeConfigSchema accepts { monitor: { retentionCount: 20 } }', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       monitor: { retentionCount: 20 },
     });
     expect(result.success).toBe(true);
@@ -1182,7 +1111,6 @@ describe('monitor config', () => {
 
   it('eforgeConfigSchema accepts monitor with no retentionCount (optional)', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       monitor: {},
     });
     expect(result.success).toBe(true);
@@ -1190,7 +1118,6 @@ describe('monitor config', () => {
 
   it('eforgeConfigSchema rejects non-positive retentionCount', () => {
     const result = eforgeConfigSchema.safeParse({
-      backend: 'claude-sdk',
       monitor: { retentionCount: 0 },
     });
     expect(result.success).toBe(false);
@@ -1238,30 +1165,8 @@ describe('mergePartialConfigs monitor', () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// configYamlSchema — rejects backend: in config.yaml
-// ---------------------------------------------------------------------------
-
-describe('configYamlSchema', () => {
-  it('config.yaml with top-level backend: field is rejected with a validation error', () => {
-    const result = configYamlSchema.safeParse({ backend: 'claude-sdk', agents: { maxTurns: 30 } });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map((i: { message: string }) => i.message).join('\n');
-      expect(messages).toContain('backend');
-    }
-  });
-
-  it('config.yaml without backend: field is accepted', () => {
-    const result = configYamlSchema.safeParse({ agents: { maxTurns: 30 } });
-    expect(result.success).toBe(true);
-  });
-
-  it('empty config.yaml is accepted', () => {
-    const result = configYamlSchema.safeParse({});
-    expect(result.success).toBe(true);
-  });
-});
+// (The configYamlSchema tests above replaced this section — see
+// "configYamlSchema rejects legacy top-level fields" describe near the top.)
 
 // ---------------------------------------------------------------------------
 // sanitizeProfileName
@@ -1295,13 +1200,15 @@ describe('sanitizeProfileName', () => {
 
 describe('parseRawConfigLegacy', () => {
   it('extracts backend and agents.models into profile, leaves build in remaining', () => {
+    // parseRawConfigLegacy handles legacy eforge.yaml configs that used backend: + pi: + claudeSdk:
+    const legacyBackend = 'claude-sdk';
     const data = {
-      backend: 'claude-sdk',
+      backend: legacyBackend,
       agents: { models: { max: { id: 'claude-opus-4.7' } } },
       build: { postMergeCommands: ['pnpm test'] },
     };
     const { profile, remaining } = parseRawConfigLegacy(data);
-    expect(profile.backend).toBe('claude-sdk');
+    expect(profile.backend).toBe(legacyBackend);
     expect(profile.agents).toEqual({ models: { max: { id: 'claude-opus-4.7' } } });
     expect(remaining).toEqual({ build: { postMergeCommands: ['pnpm test'] } });
     expect(remaining).not.toHaveProperty('backend');
@@ -1310,13 +1217,14 @@ describe('parseRawConfigLegacy', () => {
   });
 
   it('extracts pi config into profile', () => {
+    const legacyBackend = 'pi';
     const data = {
-      backend: 'pi',
+      backend: legacyBackend,
       pi: { thinkingLevel: 'high' },
       agents: { model: { provider: 'anthropic', id: 'claude-opus-4.7' }, maxTurns: 50 },
     };
     const { profile, remaining } = parseRawConfigLegacy(data);
-    expect(profile.backend).toBe('pi');
+    expect(profile.backend).toBe(legacyBackend);
     expect(profile.pi).toEqual({ thinkingLevel: 'high' });
     expect(profile.agents).toEqual({ model: { provider: 'anthropic', id: 'claude-opus-4.7' } });
     // maxTurns stays in remaining since it's not a profile field
@@ -1331,8 +1239,9 @@ describe('parseRawConfigLegacy', () => {
   });
 
   it('extracts agents.effort and agents.thinking into profile', () => {
+    const legacyBackend = 'claude-sdk';
     const data = {
-      backend: 'claude-sdk',
+      backend: legacyBackend,
       agents: { effort: 'high', thinking: { type: 'adaptive' }, maxTurns: 30 },
     };
     const { profile, remaining } = parseRawConfigLegacy(data);

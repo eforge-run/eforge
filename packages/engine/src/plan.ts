@@ -131,8 +131,12 @@ export function indexModulesToExpeditionModules(
 /**
  * Parse a plan file (.md) with YAML frontmatter into a PlanFile.
  * Format: ---\n<yaml>\n---\n<markdown body>
+ *
+ * When `agentRuntimes` is provided, validates that every `agents.<role>.agentRuntime`
+ * reference names an entry declared in `agentRuntimes`. Throws if a dangling reference
+ * is found, with the plan file path, role name, and referenced runtime name in the message.
  */
-export async function parsePlanFile(mdPath: string): Promise<PlanFile> {
+export async function parsePlanFile(mdPath: string, agentRuntimes?: Record<string, unknown>): Promise<PlanFile> {
   const absPath = resolve(mdPath);
   const raw = await readFile(absPath, 'utf-8');
 
@@ -161,6 +165,20 @@ export async function parsePlanFile(mdPath: string): Promise<PlanFile> {
       agents = agentsResult.data as PlanFile['agents'];
     } else {
       planWarnings.push(`[eforge] Plan file ${absPath}: malformed 'agents' block will be ignored: ${z.prettifyError(agentsResult.error)}`);
+    }
+  }
+
+  // Validate agentRuntime references when agentRuntimes map is provided.
+  if (agentRuntimes && agents) {
+    for (const [roleName, roleConfig] of Object.entries(agents)) {
+      const agentRuntime = (roleConfig as { agentRuntime?: string }).agentRuntime;
+      if (agentRuntime !== undefined && !(agentRuntime in agentRuntimes)) {
+        const declared = Object.keys(agentRuntimes).join(', ') || '(none)';
+        throw new Error(
+          `Plan file ${absPath}: role "${roleName}" references agentRuntime "${agentRuntime}" ` +
+          `which is not declared in agentRuntimes. Declared: ${declared}.`,
+        );
+      }
     }
   }
 

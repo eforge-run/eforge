@@ -23,7 +23,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'Add user profile page',
         queueItems: [{ id: 'prd-auth-system', title: 'Auth System', scopeSummary: 'Implements auth' }],
         runningBuilds: [],
@@ -38,7 +38,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'Independent change',
         queueItems: [],
         runningBuilds: [],
@@ -53,7 +53,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'Some PRD',
         queueItems: [{ id: 'prd-1', title: 'First', scopeSummary: 'Something' }],
         runningBuilds: [],
@@ -68,7 +68,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'Depends on setup',
         queueItems: [{ id: 'prd-setup', title: 'Setup', scopeSummary: 'Initial setup' }],
         runningBuilds: [],
@@ -83,7 +83,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { result } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'Some PRD',
         queueItems: [],
         runningBuilds: [],
@@ -98,7 +98,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'test',
         queueItems: [],
         runningBuilds: [],
@@ -115,7 +115,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'test',
         queueItems: [],
         runningBuilds: [],
@@ -136,7 +136,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'test',
         queueItems: [],
         runningBuilds: [],
@@ -153,7 +153,7 @@ describe('runDependencyDetector wiring', () => {
 
     await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'test',
         queueItems: [],
         runningBuilds: [],
@@ -173,7 +173,7 @@ describe('runDependencyDetector wiring', () => {
 
     await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent,
         queueItems,
         runningBuilds,
@@ -191,7 +191,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'test',
         queueItems: [],
         runningBuilds: [],
@@ -206,7 +206,7 @@ describe('runDependencyDetector wiring', () => {
 
     const { events } = await collectEventsAndResult(
       runDependencyDetector({
-        backend,
+        harness: backend,
         prdContent: 'test',
         queueItems: [],
         runningBuilds: [],

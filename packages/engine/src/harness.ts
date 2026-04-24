@@ -231,7 +231,7 @@ export class AgentTerminalError extends Error {
   readonly subtype: AgentTerminalSubtype;
 
   constructor(subtype: AgentTerminalSubtype, detail: string) {
-    super(`${subtype}: ${detail}`);
+    super(detail);
     this.name = 'AgentTerminalError';
     this.subtype = subtype;
   }

@@ -20,7 +20,7 @@ describe('runPlanner with continuation context', () => {
     // Planner throws PlannerSubmissionError because no submit tool was called,
     // but the prompt has already been captured by the stub.
     await expect(collectEvents(runPlanner('Build a widget', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       continuationContext: {
@@ -51,7 +51,7 @@ describe('runPlanner without continuation context', () => {
 
     // Planner throws PlannerSubmissionError because no submit tool was called.
     await expect(collectEvents(runPlanner('Build a widget', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
     }))).rejects.toThrow(PlannerSubmissionError);
@@ -116,7 +116,7 @@ describe('Continuation context coexists with prior clarifications', () => {
     // (no submit tool call). Both prompts are captured before the throw.
     try {
       await collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: false,
         continuationContext: {
@@ -156,7 +156,7 @@ describe('StubHarness error_max_turns propagation', () => {
 
     await expect(
       collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
       })),
@@ -176,7 +176,7 @@ describe('runPlanner throws PlannerSubmissionError on dropped submission', () =>
     let thrown: unknown;
     try {
       await collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
         scope: 'excursion',
@@ -203,7 +203,7 @@ describe('continuationContext threads reason into prompt', () => {
 
     try {
       await collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
         scope: 'excursion',
@@ -233,7 +233,7 @@ describe('continuationContext threads reason into prompt', () => {
 
     try {
       await collectEvents(runPlanner('Build a widget', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
         scope: 'excursion',

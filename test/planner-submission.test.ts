@@ -85,7 +85,7 @@ describe('Planner submission tool: plan set', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Build widgets', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'excursion',
@@ -131,14 +131,14 @@ describe('Planner submission tool: no submission and no skip', () => {
     const cwd = makeTempDir();
 
     await expect(collectEvents(runPlanner('Build widgets', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'excursion',
     }))).rejects.toThrow(PlannerSubmissionError);
 
     await expect(collectEvents(runPlanner('Build widgets', {
-      backend: new StubHarness([{ text: 'I generated some plans.' }]),
+      harness: new StubHarness([{ text: 'I generated some plans.' }]),
       cwd: makeTempDir(),
       auto: true,
       scope: 'excursion',
@@ -156,7 +156,7 @@ describe('Planner submission tool: skip behavior preserved', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Build widgets', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'excursion',
@@ -190,7 +190,7 @@ describe('Planner submission tool: architecture', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Build modular system', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'expedition',
@@ -264,7 +264,7 @@ describe('Planner submission tool: plan:submission event metadata', () => {
     const cwd = makeTempDir();
 
     const events = await collectEvents(runPlanner('Build widgets', {
-      backend,
+      harness: backend,
       cwd,
       auto: true,
       scope: 'excursion',
@@ -316,7 +316,7 @@ describe('Planner submission tool: validation error formatting', () => {
     const events: EforgeEvent[] = [];
     await expect((async () => {
       for await (const ev of runPlanner('Build widgets', {
-        backend,
+        harness: backend,
         cwd,
         auto: true,
         scope: 'excursion',

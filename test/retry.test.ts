@@ -613,7 +613,7 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
     // retry proceeds (rather than short-circuiting to abort-success).
     const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
       yield* builderEvaluate(plan, {
-        backend,
+        harness: backend,
         cwd: input.worktreePath,
       });
     };
@@ -666,7 +666,7 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
 
     const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
       yield* builderEvaluate(plan, {
-        backend,
+        harness: backend,
         cwd: input.worktreePath,
       });
     };
@@ -704,7 +704,7 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
 
     const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
       yield* builderEvaluate(plan, {
-        backend,
+        harness: backend,
         cwd: input.worktreePath,
       });
     };

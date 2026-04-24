@@ -37,7 +37,8 @@ async function createTestEngine(configOverrides: Record<string, unknown> = {}): 
   const engine = await EforgeEngine.create({
     cwd,
     config: {
-      backend: 'claude-sdk',
+      agentRuntimes: { default: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'default',
       maxConcurrentBuilds: 1,
       prdQueue: { dir: 'eforge/queue', watchPollIntervalMs: 50 },
       plugins: { enabled: false },

@@ -20,7 +20,7 @@ describe('runMergeConflictResolver wiring', () => {
     const conflict = makeConflict();
 
     const events = await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -45,7 +45,7 @@ describe('runMergeConflictResolver wiring', () => {
     const conflict = makeConflict();
 
     const events = await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -63,7 +63,7 @@ describe('runMergeConflictResolver wiring', () => {
 
     await expect(
       collectEvents(runMergeConflictResolver({
-        backend,
+        harness: backend,
         cwd: '/tmp/test-repo',
         conflict,
       })),
@@ -75,7 +75,7 @@ describe('runMergeConflictResolver wiring', () => {
     const conflict = makeConflict();
 
     await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -97,7 +97,7 @@ describe('runMergeConflictResolver wiring', () => {
     });
 
     await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -119,7 +119,7 @@ describe('runMergeConflictResolver wiring', () => {
     });
 
     await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));
@@ -137,7 +137,7 @@ describe('runMergeConflictResolver wiring', () => {
     const conflict = makeConflict(); // no planName, planSummary, etc.
 
     const events = await collectEvents(runMergeConflictResolver({
-      backend,
+      harness: backend,
       cwd: '/tmp/test-repo',
       conflict,
     }));

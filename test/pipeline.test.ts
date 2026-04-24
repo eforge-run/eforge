@@ -9,7 +9,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import type { EforgeEvent, PlanFile, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
-import type { AgentHarness } from '@eforge-build/engine/harness';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import { DEFAULT_CONFIG, DEFAULT_REVIEW } from '@eforge-build/engine/config';
 
@@ -39,6 +38,7 @@ import {
   type StageDescriptor,
 } from '@eforge-build/engine/pipeline';
 import { StubHarness } from './stub-harness.js';
+import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -62,7 +62,7 @@ async function collect(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]>
 /** Create a minimal PipelineContext for testing. */
 function makePipelineCtx(overrides: Partial<PipelineContext> = {}): PipelineContext {
   return {
-    backend: {} as AgentHarness,
+    agentRuntimes: singletonRegistry({} as AgentHarness),
     config: DEFAULT_CONFIG,
     pipeline: TEST_PIPELINE,
     tracing: createNoopTracingContext(),
@@ -98,7 +98,7 @@ function makeBuildCtx(overrides: Partial<BuildStageContext> = {}): BuildStageCon
   };
 
   return {
-    backend: {} as AgentHarness,
+    agentRuntimes: singletonRegistry({} as AgentHarness),
     config: DEFAULT_CONFIG,
     pipeline: overrides?.pipeline ?? TEST_PIPELINE,
     tracing: createNoopTracingContext(),
@@ -451,7 +451,7 @@ describe('plannerStage expedition wiring', () => {
       plannerSubmitArchResponse(),
     ]);
 
-    const ctx = makePipelineCtx({ backend, cwd: makeTempDir(), auto: true });
+    const ctx = makePipelineCtx({ agentRuntimes: singletonRegistry(backend), cwd: makeTempDir(), auto: true });
     const plannerStageFn = getCompileStage('planner');
 
     await collect(plannerStageFn(ctx));
@@ -467,7 +467,7 @@ describe('plannerStage expedition wiring', () => {
       plannerSubmitArchResponse(),
     ]);
 
-    const ctx = makePipelineCtx({ backend, cwd: makeTempDir(), auto: true });
+    const ctx = makePipelineCtx({ agentRuntimes: singletonRegistry(backend), cwd: makeTempDir(), auto: true });
     const plannerStageFn = getCompileStage('planner');
 
     await expect(collect(plannerStageFn(ctx))).rejects.toThrow(/compile-expedition/);

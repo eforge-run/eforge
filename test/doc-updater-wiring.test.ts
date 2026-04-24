@@ -10,7 +10,7 @@ describe('runDocUpdater wiring', () => {
     }]);
 
     const events = await collectEvents(runDocUpdater({
-      backend,
+      harness: backend,
       cwd: '/tmp/test',
       planId: 'plan-01',
       planContent: '# Test plan content',
@@ -34,7 +34,7 @@ describe('runDocUpdater wiring', () => {
     const backend = new StubHarness([{ text: '<doc-update-summary count="0"></doc-update-summary>' }]);
 
     await collectEvents(runDocUpdater({
-      backend,
+      harness: backend,
       cwd: '/tmp/test',
       planId: 'plan-42',
       planContent: 'Some plan body here',
@@ -50,7 +50,7 @@ describe('runDocUpdater wiring', () => {
     const backend = new StubHarness([{ text: '' }]);
 
     await collectEvents(runDocUpdater({
-      backend,
+      harness: backend,
       cwd: '/tmp/test',
       planId: 'plan-01',
       planContent: '# Plan',
@@ -67,7 +67,7 @@ describe('runDocUpdater wiring', () => {
     }]);
 
     const events = await collectEvents(runDocUpdater({
-      backend,
+      harness: backend,
       cwd: '/tmp/test',
       planId: 'plan-01',
       planContent: '# Plan',
@@ -83,7 +83,7 @@ describe('runDocUpdater wiring', () => {
     }]);
 
     const events = await collectEvents(runDocUpdater({
-      backend,
+      harness: backend,
       cwd: '/tmp/test',
       planId: 'plan-01',
       planContent: '# Plan',
@@ -99,7 +99,7 @@ describe('runDocUpdater wiring', () => {
     }]);
 
     const events = await collectEvents(runDocUpdater({
-      backend,
+      harness: backend,
       cwd: '/tmp/test',
       planId: 'plan-01',
       planContent: '# Plan',
@@ -119,7 +119,7 @@ describe('runDocUpdater wiring', () => {
 
     // Non-verbose: should still yield agent:result, agent:tool_use, agent:tool_result, agent:start, agent:stop
     const events = await collectEvents(runDocUpdater({
-      backend,
+      harness: backend,
       cwd: '/tmp/test',
       planId: 'plan-01',
       planContent: '# Plan',
@@ -141,7 +141,7 @@ describe('runDocUpdater wiring', () => {
     const backend = new StubHarness([{ text: 'Some output' }]);
 
     const events = await collectEvents(runDocUpdater({
-      backend,
+      harness: backend,
       cwd: '/tmp/test',
       planId: 'plan-01',
       planContent: '# Plan',
@@ -158,7 +158,7 @@ describe('runDocUpdater wiring', () => {
     }]);
 
     const events = await collectEvents(runDocUpdater({
-      backend,
+      harness: backend,
       cwd: '/tmp/test',
       planId: 'plan-01',
       planContent: '# Plan',
@@ -181,7 +181,7 @@ describe('runDocUpdater wiring', () => {
 
     await expect(
       collectEvents(runDocUpdater({
-        backend,
+        harness: backend,
         cwd: '/tmp/test',
         planId: 'plan-01',
         planContent: '# Plan',

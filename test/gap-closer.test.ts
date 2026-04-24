@@ -13,7 +13,7 @@ const PRD_CONTENT = '# Feature PRD\n\n## Requirements\n\n- Must support dark mod
 
 function makePipelineContext() {
   return {
-    config: { agents: { maxTurns: 30 }, backend: 'claude-sdk' } as never,
+    config: { agents: { maxTurns: 30 }, agentRuntimes: { default: { harness: 'claude-sdk' } }, defaultAgentRuntime: 'default' } as never,
     pipeline: { compile: [], build: [] } as never,
     tracing: { createSpan: () => ({ setInput: () => {}, end: () => {}, error: () => {} }) } as never,
     planSetName: 'test-set',
@@ -24,7 +24,7 @@ function makePipelineContext() {
 
 function makeOptions(backend: StubHarness, overrides?: Partial<GapCloserContext>): GapCloserContext {
   return {
-    backend,
+    harness: backend,
     cwd: '/tmp',
     gaps: GAPS,
     prdContent: PRD_CONTENT,

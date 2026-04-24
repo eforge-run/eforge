@@ -11,7 +11,7 @@ describe('runCohesionReview wiring', () => {
     const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-expedition',
       architectureContent: '# Architecture\nModular design.',
@@ -36,7 +36,7 @@ describe('runCohesionReview wiring', () => {
     }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-expedition',
       architectureContent: '# Architecture',
@@ -68,7 +68,7 @@ describe('runCohesionReview wiring', () => {
     const backend = new StubHarness([{ text: 'Everything looks good. No cross-module issues found.' }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD content',
       planSetName: 'my-expedition',
       architectureContent: '# Architecture',
@@ -84,7 +84,7 @@ describe('runCohesionReview wiring', () => {
     const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
 
     await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD',
       planSetName: 'test',
       architectureContent: '',
@@ -99,7 +99,7 @@ describe('runCohesionReview wiring', () => {
     const backend = new StubHarness([{ text: 'Some output.' }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD',
       planSetName: 'test',
       architectureContent: '',
@@ -113,7 +113,7 @@ describe('runCohesionReview wiring', () => {
     const backend = new StubHarness([{ text: 'Some output.' }]);
 
     const events = await collectEvents(runCohesionReview({
-      backend,
+      harness: backend,
       sourceContent: 'PRD',
       planSetName: 'test',
       architectureContent: '',
@@ -130,7 +130,7 @@ describe('runCohesionReview wiring', () => {
     let thrown: Error | undefined;
     try {
       await collectEvents(runCohesionReview({
-        backend,
+        harness: backend,
         sourceContent: 'PRD',
         planSetName: 'test',
         architectureContent: '',
@@ -162,7 +162,7 @@ describe('runCohesionEvaluate wiring', () => {
     }]);
 
     const events = await collectEvents(runCohesionEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-expedition',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -215,7 +215,7 @@ describe('runCohesionEvaluate wiring', () => {
     }]);
 
     const events = await collectEvents(runCohesionEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-expedition',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -240,7 +240,7 @@ describe('runCohesionEvaluate wiring', () => {
     const events: EforgeEvent[] = [];
     try {
       for await (const event of runCohesionEvaluate({
-        backend,
+        harness: backend,
         planSetName: 'my-expedition',
         sourceContent: 'PRD content',
         cwd: '/tmp',
@@ -264,7 +264,7 @@ describe('runCohesionEvaluate wiring', () => {
     const backend = new StubHarness([{ text: 'No fixes to evaluate.' }]);
 
     const events = await collectEvents(runCohesionEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'my-expedition',
       sourceContent: 'PRD content',
       cwd: '/tmp',
@@ -280,7 +280,7 @@ describe('runCohesionEvaluate wiring', () => {
     const backend = new StubHarness([{ text: '<evaluation></evaluation>' }]);
 
     await collectEvents(runCohesionEvaluate({
-      backend,
+      harness: backend,
       planSetName: 'test',
       sourceContent: 'PRD',
       cwd: '/tmp',
