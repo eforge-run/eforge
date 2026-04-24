@@ -6,7 +6,7 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   test: {
-    include: ['test/**/*.test.ts'],
+    include: ['test/**/*.test.ts', 'packages/engine/test/**/*.test.ts'],
     server: {
       deps: {
         inline: [/^@eforge-build\//, /^@modelcontextprotocol\//],

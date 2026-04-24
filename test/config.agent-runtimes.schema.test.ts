@@ -168,13 +168,5 @@ describe('eforgeConfigSchema agentRuntimes cross-field validation', () => {
     }
   });
 
-  it('rejects config with legacy backend scalar via configYamlSchema (must migrate to agentRuntimes)', () => {
-    const result = configYamlSchema.safeParse({ backend: 'pi' });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/agentRuntimes/);
-      expect(messages).toMatch(/defaultAgentRuntime/);
-    }
-  });
+  // Legacy backend scalar rejection is covered by packages/engine/test/config.legacy-rejection.test.ts
 });

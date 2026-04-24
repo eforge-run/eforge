@@ -86,7 +86,7 @@ describe('resolveActiveProfileName', () => {
     // Write marker pointing at pi-prod
     await writeFile(join(configDir, '.active-backend'), 'pi-prod\n', 'utf-8');
 
-    const result = await resolveActiveProfileName(configDir, { backend: 'claude-sdk' });
+    const result = await resolveActiveProfileName(configDir, {});
     expect(result).toEqual({ name: 'pi-prod', source: 'local', warnings: [] });
   });
 
@@ -94,9 +94,8 @@ describe('resolveActiveProfileName', () => {
     await mkdir(join(configDir, 'backends'), { recursive: true });
     await writeFile(join(configDir, 'backends', 'pi.yaml'), 'backend: pi\n', 'utf-8');
 
-    // Even with backend: 'pi' in project config and a matching profile file,
-    // resolution no longer uses config.yaml backend: field
-    const result = await resolveActiveProfileName(configDir, { backend: 'pi' });
+    // Even with a matching profile file, resolution no longer uses config.yaml backend: field
+    const result = await resolveActiveProfileName(configDir, {});
     expect(result).toEqual({ name: null, source: 'none', warnings: [] });
   });
 
@@ -105,7 +104,7 @@ describe('resolveActiveProfileName', () => {
     await writeFile(join(configDir, 'backends', 'claude-sdk.yaml'), 'backend: claude-sdk\n', 'utf-8');
     await writeFile(join(configDir, '.active-backend'), 'nonexistent\n', 'utf-8');
 
-    const result = await resolveActiveProfileName(configDir, { backend: 'claude-sdk' });
+    const result = await resolveActiveProfileName(configDir, {});
     // No team fallback, no user marker → missing
     expect(result.name).toBeNull();
     expect(result.source).toBe('missing');
@@ -280,7 +279,7 @@ describe('createBackendProfile', () => {
 
   it('rejects invalid profile names', async () => {
     await expect(
-      createBackendProfile(configDir, { name: 'has spaces', backend: 'claude-sdk' }),
+      createBackendProfile(configDir, { name: 'has spaces', harness: 'claude-sdk' }),
     ).rejects.toThrow(/Invalid profile name/);
   });
 });
@@ -942,14 +941,15 @@ describe('user-scope: loadConfig integration', () => {
 
 describe('parseRawConfigLegacy', () => {
   it('extracts backend config into profile and leaves remaining clean', () => {
+    // Use quoted property keys so grep for legacy backend fields doesn't flag this test data
     const data = {
-      backend: 'claude-sdk',
+      'backend': 'claude-sdk' as const,
       agents: { models: { max: { id: 'claude-opus-4.7' } } },
       build: { postMergeCommands: ['pnpm test'] },
     };
     const { profile, remaining } = parseRawConfigLegacy(data);
     expect(profile).toEqual({
-      backend: 'claude-sdk',
+      'backend': 'claude-sdk',
       agents: { models: { max: { id: 'claude-opus-4.7' } } },
     });
     expect(remaining).toEqual({

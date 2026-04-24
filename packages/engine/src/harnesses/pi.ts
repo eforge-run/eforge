@@ -281,8 +281,7 @@ export class PiHarness implements AgentHarness {
         agentId,
         agent,
         model: 'unknown',
-        agentRuntime: options.agentRuntimeName ?? 'pi',
-        harness: 'pi',
+        backend: 'pi',
         fallbackFrom: options.fallbackFrom,
         effort: options.effort,
         thinking: options.thinking,
@@ -303,8 +302,7 @@ export class PiHarness implements AgentHarness {
         agentId,
         agent,
         model: options.model.id,
-        agentRuntime: options.agentRuntimeName ?? 'pi',
-        harness: 'pi',
+        backend: 'pi',
         fallbackFrom: options.fallbackFrom,
         effort: options.effort,
         thinking: options.thinking,
@@ -326,8 +324,7 @@ export class PiHarness implements AgentHarness {
       agentId,
       agent,
       model: options.model.id,
-      agentRuntime: options.agentRuntimeName ?? 'pi',
-      harness: 'pi',
+      backend: 'pi',
       fallbackFrom: options.fallbackFrom,
       effort: options.effort,
       thinking: options.thinking,
@@ -710,7 +707,7 @@ export class PiHarness implements AgentHarness {
         const sessionState = session.state as { systemPrompt?: string; tools?: Array<{ name: string; description?: string; parameters?: unknown }> };
         const sessionTools = Array.isArray(sessionState.tools) ? sessionState.tools : [];
         const debugPayload: HarnessDebugPayload = {
-          harness: 'pi',
+          backend: 'pi',
           agent,
           userPrompt: options.prompt,
           systemPrompt: sessionState.systemPrompt ?? '',

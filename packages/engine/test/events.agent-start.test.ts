@@ -4,7 +4,7 @@
  */
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
-import { StubHarness } from '../../test/stub-harness.js';
+import { StubHarness } from '../../../test/stub-harness.js';
 
 async function collectStartEvents(harness: StubHarness, agentRuntimeName: string): Promise<EforgeEvent[]> {
   const events: EforgeEvent[] = [];

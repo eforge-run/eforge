@@ -644,7 +644,7 @@ describe('PiHarness + runPlanner integration: submission tool reaches Pi session
     ['expedition' as const, 'submit_architecture'],
   ])('scope=%s registers %s on the Pi session', async (scope, expectedTool) => {
     const { runPlanner } = await import('@eforge-build/engine/agents/planner');
-    const { PlannerSubmissionError } = await import('@eforge-build/engine/backend');
+    const { PlannerSubmissionError } = await import('@eforge-build/engine/harness');
     const backend = makeBackend();
     setMcpTools(backend, []);
 
@@ -658,7 +658,7 @@ describe('PiHarness + runPlanner integration: submission tool reaches Pi session
         name: 'widgets',
         auto: true,
         scope,
-        backend,
+        harness: backend,
         model: { provider: 'anthropic', id: 'claude-opus-4-7' },
       })) {
         // Drain events; we only care about the session wiring assertion below.
