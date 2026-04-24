@@ -178,7 +178,7 @@ describe('buildAgentRuntimeRegistry — Pi lazy-load', () => {
     await expect(buildAgentRuntimeRegistry(config, {})).resolves.toBeDefined();
   });
 
-  it('throws a descriptive error when Pi entries exist but Pi deps are missing', async () => {
+  it('succeeds and lazily loads Pi when Pi entries are configured and Pi SDK is installed', async () => {
     const config = resolveConfig({
       agentRuntimes: {
         piRuntime: { harness: 'pi' },
@@ -186,10 +186,12 @@ describe('buildAgentRuntimeRegistry — Pi lazy-load', () => {
       defaultAgentRuntime: 'piRuntime',
     });
 
-    // Pi SDK deps (@mariozechner/pi-ai) are not installed in this test env.
-    // The registry factory should throw with a clear error message.
-    await expect(buildAgentRuntimeRegistry(config, {})).rejects.toThrow(
-      /Failed to load Pi backend/,
-    );
+    // Pi SDK deps (@mariozechner/pi-ai) ARE installed in this environment.
+    // The registry factory should succeed and produce a usable registry.
+    const registry = await buildAgentRuntimeRegistry(config, {});
+    expect(registry).toBeDefined();
+    expect(registry.configured()).toContain('piRuntime');
+    // forRole must not throw — the Pi backend instance is created lazily
+    expect(() => registry.byName('piRuntime')).not.toThrow();
   });
 });

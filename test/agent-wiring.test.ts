@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { PlannerSubmissionError } from '@eforge-build/engine/backend';
+import type { AgentBackend } from '@eforge-build/engine/backend';
 import { StubBackend } from './stub-backend.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -16,6 +17,7 @@ import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
 import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig, AGENT_ROLE_DEFAULTS } from '@eforge-build/engine/pipeline';
 import { DEFAULT_CONFIG, resolveConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
+import { singletonRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
 
 // --- Planner ---
 
@@ -1353,5 +1355,120 @@ describe('DEFAULT_RETRY_POLICIES registration (pipeline-facing)', () => {
     expect(DEFAULT_RETRY_POLICIES['plan-evaluator']!.maxAttempts).toBe(2);
     expect(DEFAULT_RETRY_POLICIES['cohesion-evaluator']!.maxAttempts).toBe(2);
     expect(DEFAULT_RETRY_POLICIES['architecture-evaluator']!.maxAttempts).toBe(2);
+  });
+});
+
+// --- AgentRuntimeRegistry dual-stub dispatch ---
+
+describe('AgentRuntimeRegistry dual-stub dispatch', () => {
+  /**
+   * Build a minimal AgentRuntimeRegistry where specific roles map to specific
+   * stubs, and a fallback stub is used for all other roles.
+   *
+   * This helper lets tests verify that stage wiring dispatches the correct
+   * harness per role without needing a full config + buildAgentRuntimeRegistry.
+   */
+  function makeRoleMappedRegistry(
+    roleMap: Map<string, AgentBackend>,
+    fallback: AgentBackend,
+  ): AgentRuntimeRegistry {
+    return {
+      forRole(role) { return roleMap.get(role) ?? fallback; },
+      byName(name) { return roleMap.get(name) ?? fallback; },
+      nameForRole(role) { return roleMap.has(role) ? role : 'default'; },
+      configured() { return [...roleMap.keys()]; },
+    };
+  }
+
+  it('dispatches planner role to plannerStub and reviewer to reviewerStub', () => {
+    const plannerStub = new StubBackend([]);
+    const reviewerStub = new StubBackend([]);
+
+    const registry = makeRoleMappedRegistry(
+      new Map<string, AgentBackend>([
+        ['planner', plannerStub],
+        ['reviewer', reviewerStub],
+      ]),
+      plannerStub,
+    );
+
+    // Each role resolves to its mapped stub
+    expect(registry.forRole('planner')).toBe(plannerStub);
+    expect(registry.forRole('reviewer')).toBe(reviewerStub);
+    // Cross-checks: stubs are distinct
+    expect(registry.forRole('planner')).not.toBe(reviewerStub);
+    expect(registry.forRole('reviewer')).not.toBe(plannerStub);
+  });
+
+  it('two singletonRegistry instances are distinct registries dispatching to their own stub', () => {
+    const stubA = new StubBackend([]);
+    const stubB = new StubBackend([]);
+
+    const registryA = singletonRegistry(stubA);
+    const registryB = singletonRegistry(stubB);
+
+    // Each singleton registry dispatches every role to its own stub
+    expect(registryA.forRole('planner')).toBe(stubA);
+    expect(registryA.forRole('builder')).toBe(stubA);
+    expect(registryB.forRole('planner')).toBe(stubB);
+    expect(registryB.forRole('builder')).toBe(stubB);
+
+    // The two registries dispatch to different stubs for the same role
+    expect(registryA.forRole('planner')).not.toBe(registryB.forRole('planner'));
+    expect(registryA.forRole('builder')).not.toBe(registryB.forRole('builder'));
+  });
+
+  it('forRole reference equality holds across multiple calls (consistent dispatch)', () => {
+    const builderStub = new StubBackend([]);
+    const plannerStub = new StubBackend([]);
+
+    const registry = makeRoleMappedRegistry(
+      new Map<string, AgentBackend>([
+        ['builder', builderStub],
+        ['planner', plannerStub],
+      ]),
+      builderStub,
+    );
+
+    // Same role resolved twice yields the same reference
+    expect(registry.forRole('builder')).toBe(registry.forRole('builder'));
+    expect(registry.forRole('planner')).toBe(registry.forRole('planner'));
+    // Different roles remain distinct
+    expect(registry.forRole('builder')).not.toBe(registry.forRole('planner'));
+  });
+
+  it('builder and planner stubs do not accumulate calls from each other', async () => {
+    const builderStub = new StubBackend([{ text: 'Build done.' }]);
+    const plannerStub = new StubBackend([{ text: 'Plan done.' }]);
+
+    const registry = makeRoleMappedRegistry(
+      new Map<string, AgentBackend>([
+        ['builder', builderStub],
+        ['planner', plannerStub],
+      ]),
+      builderStub,
+    );
+
+    const builderBackend = registry.forRole('builder');
+    const plannerBackend = registry.forRole('planner');
+
+    // Drive the builder stub via a direct run call
+    await collectEvents(builderBackend.run(
+      { prompt: 'build something', cwd: '/tmp', maxTurns: 1, tools: 'none' },
+      'builder',
+    ));
+
+    // Builder stub accumulated one call, planner stub accumulated zero
+    expect(builderStub.prompts).toHaveLength(1);
+    expect(plannerStub.prompts).toHaveLength(0);
+
+    // Drive the planner stub
+    await collectEvents(plannerBackend.run(
+      { prompt: 'plan something', cwd: '/tmp', maxTurns: 1, tools: 'none' },
+      'planner',
+    ));
+
+    expect(plannerStub.prompts).toHaveLength(1);
+    expect(builderStub.prompts).toHaveLength(1); // unchanged
   });
 });
