@@ -330,9 +330,10 @@ export function openDatabase(dbPath: string): MonitorDB {
               meta.baseProfile = profileName;
             }
           } else if (row.type === 'agent:start' && meta.backend === null) {
-            const backend = data.backend as string | undefined;
-            if (backend) {
-              meta.backend = backend;
+            // Use new harness field; fall back to legacy backend field for stored events
+            const harness = (data.harness as string | undefined) ?? (data.backend as string | undefined);
+            if (harness) {
+              meta.backend = harness;
             }
           } else if (row.type === 'planning:complete') {
             const plans = data.plans as unknown[] | undefined;

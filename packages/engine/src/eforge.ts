@@ -1692,7 +1692,6 @@ export class EforgeEngine {
  */
 function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): EforgeConfig {
   return {
-    backend: overrides.backend ?? base.backend,
     maxConcurrentBuilds: overrides.maxConcurrentBuilds ?? base.maxConcurrentBuilds,
     langfuse: overrides.langfuse ? { ...base.langfuse, ...overrides.langfuse } : base.langfuse,
     agents: overrides.agents ? { ...base.agents, ...overrides.agents } : base.agents,
@@ -1705,6 +1704,8 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     pi: overrides.pi ? { ...base.pi, ...overrides.pi } : base.pi,
     claudeSdk: overrides.claudeSdk ? { ...base.claudeSdk, ...overrides.claudeSdk } : base.claudeSdk,
     hooks: overrides.hooks ?? base.hooks,
+    agentRuntimes: overrides.agentRuntimes ?? base.agentRuntimes,
+    defaultAgentRuntime: overrides.defaultAgentRuntime ?? base.defaultAgentRuntime,
   };
 }
 

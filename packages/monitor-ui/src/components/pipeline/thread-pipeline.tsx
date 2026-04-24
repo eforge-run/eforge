@@ -858,7 +858,13 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
                   </TooltipTrigger>
                   <TooltipContent side="top">
                     <div className="font-medium">{thread.agent}</div>
-                    {thread.model && <div className="opacity-50 text-[10px]">{thread.model}</div>}
+                    {(thread.agentRuntime || thread.harness || thread.model) && (
+                      <div className="opacity-50 text-[10px]">
+                        {thread.agentRuntime
+                          ? `${thread.agent} → ${thread.agentRuntime}${thread.harness || thread.model ? ` (${[thread.harness, thread.model].filter(Boolean).join(', ')})` : ''}`
+                          : thread.model}
+                      </div>
+                    )}
                     <div className={thread.effortSource === 'planner' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
                       effort: {thread.effort
                         ? (thread.effortClamped && thread.effortOriginal

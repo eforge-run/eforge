@@ -114,7 +114,7 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'backend' | 'monitor'> },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agentRuntimes' | 'defaultAgentRuntime'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -790,8 +790,8 @@ export async function startServer(
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
       }
-      if (options.config && !options.config.backend) {
-        sendJsonError(res, 422, 'No backend configured. Set backend: claude-sdk or backend: pi in eforge/config.yaml');
+      if (options.config && (!options.config.agentRuntimes || Object.keys(options.config.agentRuntimes).length === 0)) {
+        sendJsonError(res, 422, 'No agentRuntimes configured. Add agentRuntimes and defaultAgentRuntime to eforge/config.yaml');
         return;
       }
       try {
@@ -1035,7 +1035,7 @@ export async function startServer(
         try {
           const result = await createBackendProfile(configDir, {
             name: body.name,
-            backend: body.backend,
+            harness: body.backend as 'claude-sdk' | 'pi',
             pi: body.pi as PartialEforgeConfig['pi'],
             agents: body.agents as PartialEforgeConfig['agents'],
             overwrite: body.overwrite === true,

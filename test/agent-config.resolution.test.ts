@@ -7,27 +7,23 @@ import { resolveConfig, DEFAULT_CONFIG } from '@eforge-build/engine/config';
 // ---------------------------------------------------------------------------
 
 describe('resolveAgentRuntimeForRole', () => {
-  describe('legacy fallback (no agentRuntimes)', () => {
-    it('synthesizes entry from config.backend when agentRuntimes is absent', () => {
-      const config = resolveConfig({ backend: 'claude-sdk' }, {});
-      const result = resolveAgentRuntimeForRole('builder', config);
-      expect(result).toEqual({ agentRuntimeName: 'claude-sdk', harness: 'claude-sdk' });
+  describe('throws when agentRuntimes is absent or empty', () => {
+    it('throws when agentRuntimes is absent', () => {
+      const config = { ...DEFAULT_CONFIG, agentRuntimes: undefined, defaultAgentRuntime: undefined };
+      expect(() => resolveAgentRuntimeForRole('builder', config)).toThrow(
+        '"agentRuntimes" is not declared in config',
+      );
     });
 
-    it('synthesizes entry from config.backend pi', () => {
-      const config = resolveConfig({ backend: 'pi' }, {});
-      const result = resolveAgentRuntimeForRole('planner', config);
-      expect(result).toEqual({ agentRuntimeName: 'pi', harness: 'pi' });
+    it('throws when agentRuntimes is empty object', () => {
+      const config = { ...DEFAULT_CONFIG, agentRuntimes: {}, defaultAgentRuntime: undefined };
+      expect(() => resolveAgentRuntimeForRole('builder', config)).toThrow(
+        '"agentRuntimes" is not declared in config',
+      );
     });
 
-    it('defaults to claude-sdk when config.backend is undefined', () => {
+    it('DEFAULT_CONFIG has agentRuntimes and resolves to claude-sdk', () => {
       const result = resolveAgentRuntimeForRole('builder', DEFAULT_CONFIG);
-      expect(result).toEqual({ agentRuntimeName: 'claude-sdk', harness: 'claude-sdk' });
-    });
-
-    it('defaults to claude-sdk when agentRuntimes is empty object', () => {
-      const config = { ...DEFAULT_CONFIG, agentRuntimes: {} };
-      const result = resolveAgentRuntimeForRole('builder', config);
       expect(result).toEqual({ agentRuntimeName: 'claude-sdk', harness: 'claude-sdk' });
     });
   });
@@ -106,9 +102,8 @@ describe('resolveAgentRuntimeForRole', () => {
 // ---------------------------------------------------------------------------
 
 describe('resolveAgentConfig new fields', () => {
-  it('populates agentRuntimeName and harness from legacy fallback', () => {
-    const config = resolveConfig({ backend: 'claude-sdk' }, {});
-    const result = resolveAgentConfig('builder', config);
+  it('populates agentRuntimeName and harness from DEFAULT_CONFIG agentRuntimes', () => {
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
     expect(result.agentRuntimeName).toBe('claude-sdk');
     expect(result.harness).toBe('claude-sdk');
   });
@@ -138,7 +133,7 @@ describe('resolveAgentConfig new fields', () => {
     expect(planner.harness).toBe('claude-sdk');
   });
 
-  it('DEFAULT_CONFIG resolves every role to claude-sdk harness via fallback', () => {
+  it('DEFAULT_CONFIG resolves every role to claude-sdk harness via agentRuntimes default', () => {
     const roles = [
       'planner', 'builder', 'reviewer', 'evaluator', 'review-fixer',
     ] as const;

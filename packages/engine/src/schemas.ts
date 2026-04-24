@@ -168,7 +168,8 @@ export const agentTuningSchema = z.object({
   effort: effortLevelForTuningSchema.optional(),
   thinking: thinkingForTuningSchema.optional(),
   rationale: z.string().optional().describe('Why this tuning was chosen'),
-}).describe('Per-agent effort/thinking tuning');
+  agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this role (overrides config-level role and default)'),
+}).describe('Per-agent effort/thinking/runtime tuning');
 
 const planAgentsSchema = z.object({
   builder: agentTuningSchema.optional(),

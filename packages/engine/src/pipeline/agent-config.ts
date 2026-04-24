@@ -260,27 +260,42 @@ function applyThinkingCoercion(result: ResolvedAgentConfig): void {
  * Resolve the agentRuntime name and harness kind for a given role.
  *
  * Precedence (highest → lowest):
- *   1. Plan-entry agentRuntime override (accepted but unused until plan-04 wires plan input)
+ *   1. Plan-file agentRuntime override (planEntry.agents[role].agentRuntime)
  *   2. Per-role agentRuntime (config.agents.roles[role].agentRuntime)
  *   3. defaultAgentRuntime
  *
- * Legacy fallback: if config.agentRuntimes is absent or empty, synthesize a single
- * implicit entry keyed by the legacy config.backend scalar.
+ * Requires config.agentRuntimes + config.defaultAgentRuntime to be present.
+ * Throws when a plan-file references an undeclared runtime name (includes plan file path in error).
  */
 export function resolveAgentRuntimeForRole(
   role: AgentRole,
   config: EforgeConfig,
-  _planEntry?: { agentRuntime?: string },
+  planEntry?: { agents?: Record<string, { agentRuntime?: string; [key: string]: unknown }>; filePath?: string },
 ): { agentRuntimeName: string; harness: 'claude-sdk' | 'pi' } {
   const agentRuntimes = config.agentRuntimes;
 
-  // Legacy fallback: no agentRuntimes declared — synthesize from config.backend
   if (!agentRuntimes || Object.keys(agentRuntimes).length === 0) {
-    const backend = config.backend ?? 'claude-sdk';
-    return { agentRuntimeName: backend, harness: backend };
+    throw new Error(
+      `Role "${role}" could not resolve an agentRuntime: "agentRuntimes" is not declared in config. ` +
+      `Add "agentRuntimes" and "defaultAgentRuntime" to eforge/config.yaml or the active profile.`,
+    );
   }
 
-  // New path: resolve from role > defaultAgentRuntime
+  // Plan-file override takes top precedence
+  const planAgentRuntime = planEntry?.agents?.[role]?.agentRuntime;
+  if (planAgentRuntime !== undefined) {
+    const entry = agentRuntimes[planAgentRuntime];
+    if (!entry) {
+      const planDesc = planEntry?.filePath ? `plan file ${planEntry.filePath}` : 'plan entry';
+      throw new Error(
+        `${planDesc}: role "${role}" references agentRuntime "${planAgentRuntime}" which is not declared in agentRuntimes. ` +
+        `Declared: ${Object.keys(agentRuntimes).join(', ')}.`,
+      );
+    }
+    return { agentRuntimeName: planAgentRuntime, harness: entry.harness };
+  }
+
+  // Config-level role override
   const roleConfig = config.agents.roles?.[role];
   const runtimeName = roleConfig?.agentRuntime ?? config.defaultAgentRuntime;
 
@@ -319,10 +334,9 @@ export function resolveAgentRuntimeForRole(
 export function resolveAgentConfig(
   role: AgentRole,
   config: EforgeConfig,
-  planEntry?: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string }> },
+  planEntry?: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string; agentRuntime?: string }>; filePath?: string },
 ): ResolvedAgentConfig {
-  // planEntry.agentRuntime wiring deferred to plan-04; pass undefined for now
-  const { agentRuntimeName, harness } = resolveAgentRuntimeForRole(role, config, undefined);
+  const { agentRuntimeName, harness } = resolveAgentRuntimeForRole(role, config, planEntry);
   const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
   const { fields, effortSource, thinkingSource } = resolveSdkPassthrough(role, config, planEntry, builtinRoleDefaults);
   const { model, fallbackFrom, provenance: modelProvenance } = resolveModel(role, config, harness, builtinRoleDefaults);

@@ -46,7 +46,7 @@ export interface PlanFile {
   dependsOn: string[];
   branch: string;
   migrations?: Array<{ timestamp: string; description: string }>;
-  agents?: Record<string, { effort?: string; thinking?: object; rationale?: string }>;
+  agents?: Record<string, { effort?: string; thinking?: object; rationale?: string; agentRuntime?: string }>;
   body: string;
   filePath: string;
   /** Parsing warnings collected when the plan file was read (e.g. malformed agents block). */
@@ -60,7 +60,7 @@ export interface OrchestrationConfig {
   mode: (typeof ORCHESTRATION_MODES)[number];
   baseBranch: string;
   pipeline: PipelineComposition;
-  plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string; build: BuildStageSpec[]; review: ReviewProfileConfig; maxContinuations?: number; agents?: Record<string, { effort?: string; thinking?: object; rationale?: string }> }>;
+  plans: Array<{ id: string; name: string; dependsOn: string[]; branch: string; build: BuildStageSpec[]; review: ReviewProfileConfig; maxContinuations?: number; agents?: Record<string, { effort?: string; thinking?: object; rationale?: string; agentRuntime?: string }> }>;
   validate?: string[];
   /** Parsing warnings collected when the orchestration config was read. */
   warnings?: string[];
@@ -237,7 +237,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'expedition:compile:complete'; plans: PlanFile[] }
 
   // Agent lifecycle (emitted by backend for every agent invocation)
-  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; model: string; backend: string; fallbackFrom?: string; effort?: string; thinking?: object; effortClamped?: boolean; effortOriginal?: string; effortSource?: 'planner' | 'role-config' | 'global-config' | 'default'; thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default'; thinkingCoerced?: boolean; thinkingOriginal?: object }
+  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; model: string; agentRuntime: string; harness: 'claude-sdk' | 'pi'; fallbackFrom?: string; effort?: string; thinking?: object; effortClamped?: boolean; effortOriginal?: string; effortSource?: 'planner' | 'role-config' | 'global-config' | 'default'; thinkingSource?: 'planner' | 'role-config' | 'global-config' | 'default'; thinkingCoerced?: boolean; thinkingOriginal?: object }
   | { type: 'agent:warning'; planId?: string; agentId: string; agent: AgentRole; code: string; message: string }
   | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string }
   /**

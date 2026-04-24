@@ -36,7 +36,7 @@ export interface SdkPassthroughConfig {
 }
 
 /** Keys that are part of SdkPassthroughConfig but should NOT be forwarded to the backend SDK. */
-const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource', 'thinkingCoerced', 'thinkingOriginal']);
+const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource', 'thinkingCoerced', 'thinkingOriginal', 'agentRuntimeName']);
 
 /**
  * Strip `undefined` values from an SdkPassthroughConfig so the SDK
@@ -124,6 +124,12 @@ export interface AgentRunOptions {
   thinkingCoerced?: boolean;
   /** The original thinking config before coercion was applied. */
   thinkingOriginal?: ThinkingConfig;
+  /**
+   * The resolved agentRuntime config name (e.g. "opus"). Injected by the
+   * AgentRuntimeRegistry wrapper so harnesses can include it in agent:start events.
+   * Not forwarded to the underlying SDK.
+   */
+  agentRuntimeName?: string;
 }
 
 /**
@@ -162,8 +168,8 @@ export interface AgentHarness {
  * framing on top; for those cases, use native SDK debug facilities.
  */
 export interface HarnessDebugPayload {
-  /** Which backend produced this payload. */
-  backend: 'claude-sdk' | 'pi';
+  /** Which harness produced this payload. */
+  harness: 'claude-sdk' | 'pi';
   /** The agent role this payload is for (e.g. `'pipeline-composer'`). */
   agent: AgentRole;
   /** The user prompt string passed into the run. */

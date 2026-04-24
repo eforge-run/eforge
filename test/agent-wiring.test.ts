@@ -958,6 +958,8 @@ describe('formatStageRegistry', () => {
 describe('resolveAgentConfig per-plan override', () => {
   function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
     return resolveConfig({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'main',
       agents: {
         ...overrides,
       },
@@ -1122,6 +1124,8 @@ describe('resolveAgentConfig per-plan override', () => {
 describe('resolveAgentConfig per-role effort defaults', () => {
   function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
     return resolveConfig({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'main',
       agents: {
         ...overrides,
       },
@@ -1193,6 +1197,8 @@ describe('resolveAgentConfig per-role effort defaults', () => {
 describe('resolveAgentConfig thinking coercion', () => {
   function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
     return resolveConfig({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'main',
       agents: {
         ...overrides,
       },

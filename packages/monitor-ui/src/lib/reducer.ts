@@ -46,6 +46,10 @@ export interface AgentThread {
   costUsd: number | null;
   numTurns: number | null;
   model: string;
+  /** The resolved agentRuntime config name (e.g. "opus"). */
+  agentRuntime?: string;
+  /** The harness kind for this runtime entry. */
+  harness?: string;
   effort?: string;
   thinking?: string;
   effortClamped?: boolean;
@@ -290,9 +294,10 @@ function processEvent(
 
   // Agent thread tracking
   if (event.type === 'agent:start' && 'timestamp' in event && event.timestamp) {
-    // Set session-level backend from first agent:start (remove fallback after 2026-04-29)
+    // Set session-level backend from first agent:start using the new harness field
     if (state.backend === null) {
-      state.backend = ('backend' in event ? (event as { backend?: string }).backend : undefined) ?? 'unknown';
+      const harnessVal = ('harness' in event ? (event as { harness?: string }).harness : undefined);
+      state.backend = harnessVal ?? 'unknown';
     }
     state.agentThreads.push({
       agentId: event.agentId,
@@ -307,8 +312,9 @@ function processEvent(
       cacheRead: null,
       costUsd: null,
       numTurns: null,
-      // Capture model from agent:start (remove fallback after 2026-04-29)
       model: ('model' in event ? (event as { model?: string }).model : undefined) ?? 'unknown',
+      agentRuntime: 'agentRuntime' in event ? (event as { agentRuntime?: string }).agentRuntime : undefined,
+      harness: 'harness' in event ? (event as { harness?: string }).harness : undefined,
       effort: 'effort' in event ? (event as { effort?: string }).effort : undefined,
       thinking: 'thinking' in event ? formatThinking((event as { thinking?: unknown }).thinking) : undefined,
       effortClamped: 'effortClamped' in event ? (event as { effortClamped?: boolean }).effortClamped : undefined,

@@ -114,7 +114,8 @@ export class ClaudeSDKHarness implements AgentHarness {
       agentId,
       agent,
       model: options.model?.id ?? 'default',
-      backend: 'claude-sdk',
+      agentRuntime: options.agentRuntimeName ?? 'claude-sdk',
+      harness: 'claude-sdk',
       fallbackFrom: options.fallbackFrom,
       effort: options.effort,
       thinking: options.thinking,
@@ -173,7 +174,7 @@ export class ClaudeSDKHarness implements AgentHarness {
       // `tools === 'coding'`; that extra framing is not visible here.
       if (this.onDebugPayload) {
         const debugPayload: HarnessDebugPayload = {
-          backend: 'claude-sdk',
+          harness: 'claude-sdk',
           agent,
           userPrompt: options.prompt,
           systemPrompt: '', // eforge never sets systemPrompt; SDK coerces undefined to ""

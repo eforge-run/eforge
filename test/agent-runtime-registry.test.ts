@@ -129,15 +129,19 @@ describe('buildAgentRuntimeRegistry', () => {
     expect(() => registry.byName('nonexistent')).toThrow(/nonexistent/);
   });
 
-  it('legacy config (no agentRuntimes) synthesizes claude-sdk entry', async () => {
-    // DEFAULT_CONFIG has no backend, defaults to 'claude-sdk'
-    const config = resolveConfig({ backend: 'claude-sdk' });
-
-    const registry = await buildAgentRuntimeRegistry(config, {});
+  it('DEFAULT_CONFIG has agentRuntimes and builds registry successfully', async () => {
+    const registry = await buildAgentRuntimeRegistry(DEFAULT_CONFIG, {});
 
     // Should succeed without throwing
     const backend = registry.forRole('builder');
     expect(backend).toBeDefined();
+  });
+
+  it('throws when agentRuntimes is absent', async () => {
+    const config = { ...DEFAULT_CONFIG, agentRuntimes: undefined, defaultAgentRuntime: undefined };
+    await expect(buildAgentRuntimeRegistry(config, {})).rejects.toThrow(
+      '"agentRuntimes" is not declared or is empty',
+    );
   });
 
   it('configured() lists declared runtime names', async () => {

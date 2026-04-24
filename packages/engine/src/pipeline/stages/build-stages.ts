@@ -123,7 +123,7 @@ async function* reviewStageInner(
 ): AsyncGenerator<EforgeEvent> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
-  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.planEntry);
+  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.planFile);
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
   const reviewTracker = createToolTracker(reviewSpan);
@@ -158,7 +158,7 @@ async function* evaluateStageInner(
 ): AsyncGenerator<EforgeEvent> {
   if (!(await hasUnstagedChanges(ctx.worktreePath))) return;
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
-  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.planEntry);
+  const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.planFile);
   const initialInput: EvaluatorContinuationInput = {
     worktreePath: ctx.worktreePath,
     planId: ctx.planId,
@@ -180,7 +180,7 @@ async function* evaluateStageInner(
 
 async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
   if (ctx.reviewIssues.length === 0) return;
-  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planEntry);
+  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile);
   const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
   const fixTracker = createToolTracker(fixSpan);
@@ -208,7 +208,7 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
 }
 
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
-  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.planEntry);
+  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.planFile);
   const span = ctx.tracing.createSpan('tester', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -258,7 +258,7 @@ registerBuildStage({
   }
 
   // Resolve maxContinuations: per-plan > global config > default (3)
-  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.planEntry);
+  const agentConfig = resolveAgentConfig('builder', ctx.config, ctx.planFile);
   const maxContinuations = ctx.planEntry?.maxContinuations ?? ctx.config.agents.maxContinuations;
   const parallelStages = ctx.build.filter((spec): spec is string[] => Array.isArray(spec));
   const verificationScope = hasTestStages(ctx.build) ? 'build-only' : 'full';
@@ -377,7 +377,7 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* docUpdateStage(ctx) {
-  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.planEntry);
+  const agentConfig = resolveAgentConfig('doc-updater', ctx.config, ctx.planFile);
   const docSpan = ctx.tracing.createSpan('doc-updater', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -413,7 +413,7 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* testWriteStage(ctx) {
-  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.planEntry);
+  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.planFile);
   const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);

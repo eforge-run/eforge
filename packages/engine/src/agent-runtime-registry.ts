@@ -8,7 +8,7 @@
 
 import type { AgentRole } from './events.js';
 import type { EforgeConfig, AgentRuntimeEntry, PiConfig } from './config.js';
-import type { AgentHarness } from './harness.js';
+import type { AgentHarness, AgentRunOptions } from './harness.js';
 import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeSDKHarness } from './harnesses/claude-sdk.js';
@@ -66,18 +66,18 @@ export function singletonRegistry(harness: AgentHarness): AgentRuntimeRegistry {
 // ---------------------------------------------------------------------------
 
 /**
- * Build the effective entry map from config.
- *
- * For legacy configs (no agentRuntimes declared), synthesises a single implicit
- * entry keyed by the legacy `config.backend` scalar so the registry still works.
+ * Wrap a harness instance so every `run()` call automatically receives the
+ * runtime name (from the `agentRuntimes` map key) in `options.agentRuntimeName`.
+ * This lets harnesses emit `agentRuntime: name` in `agent:start` events without
+ * requiring every agent function to be aware of the runtime name.
  */
-function getEffectiveEntries(config: EforgeConfig): Record<string, AgentRuntimeEntry> {
-  if (config.agentRuntimes && Object.keys(config.agentRuntimes).length > 0) {
-    return config.agentRuntimes;
-  }
-  // Legacy fallback: synthesise a single entry from config.backend
-  const harness = (config.backend ?? 'claude-sdk') as 'claude-sdk' | 'pi';
-  return { [harness]: { harness } };
+function wrapWithRuntimeName(harness: AgentHarness, runtimeName: string): AgentHarness {
+  return {
+    effectiveCustomToolName(name: string) { return harness.effectiveCustomToolName(name); },
+    async *run(options: AgentRunOptions, agent: AgentRole, planId?: string) {
+      yield* harness.run({ ...options, agentRuntimeName: runtimeName }, agent, planId);
+    },
+  };
 }
 
 /**
@@ -124,7 +124,13 @@ export async function buildAgentRuntimeRegistry(
   config: EforgeConfig,
   globalOptions: RegistryGlobalOptions = {},
 ): Promise<AgentRuntimeRegistry> {
-  const entries = getEffectiveEntries(config);
+  if (!config.agentRuntimes || Object.keys(config.agentRuntimes).length === 0) {
+    throw new Error(
+      'buildAgentRuntimeRegistry: "agentRuntimes" is not declared or is empty in config. ' +
+      'Add "agentRuntimes" and "defaultAgentRuntime" to eforge/config.yaml or the active profile.',
+    );
+  }
+  const entries = config.agentRuntimes;
 
   // Lazily import Pi module only when at least one Pi entry is configured.
   let PiHarnessCtor: (typeof import('./harnesses/pi.js'))['PiHarness'] | undefined;
@@ -153,10 +159,12 @@ export async function buildAgentRuntimeRegistry(
       );
     }
 
+    let harness: AgentHarness;
+
     if (entry.harness === 'pi') {
       if (!PiHarnessCtor) throw new Error('Internal: Pi module not loaded despite pi entry');
       const piCfg = mergepiConfig(config.pi, entry.pi);
-      return new PiHarnessCtor({
+      harness = new PiHarnessCtor({
         mcpServers: globalOptions.mcpServers,
         piConfig: piCfg,
         bare: config.agents.bare,
@@ -167,16 +175,19 @@ export async function buildAgentRuntimeRegistry(
           paths: piCfg.extensions.paths,
         },
       });
+    } else {
+      // claude-sdk entry
+      harness = new ClaudeSDKHarness({
+        mcpServers: globalOptions.mcpServers,
+        plugins: globalOptions.plugins,
+        settingSources: globalOptions.settingSources ?? config.agents.settingSources as SettingSource[] | undefined,
+        bare: config.agents.bare,
+        disableSubagents: entry.claudeSdk?.disableSubagents ?? config.claudeSdk.disableSubagents,
+      });
     }
 
-    // claude-sdk entry
-    return new ClaudeSDKHarness({
-      mcpServers: globalOptions.mcpServers,
-      plugins: globalOptions.plugins,
-      settingSources: globalOptions.settingSources ?? config.agents.settingSources as SettingSource[] | undefined,
-      bare: config.agents.bare,
-      disableSubagents: entry.claudeSdk?.disableSubagents ?? config.claudeSdk.disableSubagents,
-    });
+    // Wrap so every run() call receives agentRuntimeName for agent:start events.
+    return wrapWithRuntimeName(harness, name);
   }
 
   const registry: AgentRuntimeRegistry = {

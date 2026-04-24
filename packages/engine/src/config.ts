@@ -110,8 +110,6 @@ const pluginConfigSchema = z.object({
 
 const SETTING_SOURCES = ['user', 'project', 'local'] as const;
 
-export const backendSchema = z.enum(['claude-sdk', 'pi']).describe('Backend provider for agent execution');
-
 export const harnessSchema = z.enum(['claude-sdk', 'pi']).describe('Harness kind for agent runtime entry');
 
 export const piThinkingLevelSchema = z.enum(['off', 'low', 'medium', 'high', 'xhigh']).describe('Pi-native thinking level');
@@ -160,7 +158,6 @@ export const agentRuntimeEntrySchema = z.object({
 
 /** Base object schema without refinements — .partial() is derived from this. */
 const eforgeConfigBaseSchema = z.object({
-  backend: backendSchema,
   maxConcurrentBuilds: z.number().int().positive().optional(),
   langfuse: z.object({
     enabled: z.boolean().optional(),
@@ -315,7 +312,6 @@ export interface ClaudeSdkConfig {
 }
 
 export interface EforgeConfig {
-  backend?: 'claude-sdk' | 'pi';
   maxConcurrentBuilds: number;
   langfuse: { enabled: boolean; publicKey?: string; secretKey?: string; host: string };
   agents: {
@@ -352,16 +348,20 @@ const partialEforgeConfigSchema = eforgeConfigBaseSchema.partial();
 export type PartialEforgeConfig = z.output<typeof partialEforgeConfigSchema>;
 
 /**
- * Schema for config.yaml validation — rejects `backend:` which now belongs in profile files.
- * Uses passthrough to detect the `backend` key and superRefine to produce a validation error.
+ * Schema for config.yaml validation — `backend:`, `pi:`, and `claudeSdk:` at the top level
+ * are rejected (they must migrate to agentRuntimes + defaultAgentRuntime).
+ * Uses passthrough to detect these legacy keys via superRefine.
  */
-export const configYamlSchema = eforgeConfigBaseSchema.omit({ backend: true }).partial().passthrough().superRefine((data, ctx) => {
-  if (data && typeof data === 'object' && 'backend' in (data as Record<string, unknown>)) {
-    ctx.addIssue({
-      code: 'custom',
-      message: '"backend:" is no longer valid in config.yaml. Backend configuration now lives in named profiles under eforge/backends/. Run eforge init --migrate to extract it.',
-      path: ['backend'],
-    });
+export const configYamlSchema = eforgeConfigBaseSchema.partial().passthrough().superRefine((data, ctx) => {
+  const legacyFields = ['backend', 'pi', 'claudeSdk'] as const;
+  for (const field of legacyFields) {
+    if (data && typeof data === 'object' && field in (data as Record<string, unknown>)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: `"${field}:" is no longer valid in config.yaml. Use agentRuntimes + defaultAgentRuntime instead.`,
+        path: [field],
+      });
+    }
   }
 });
 
@@ -393,6 +393,8 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   }),
   claudeSdk: Object.freeze({ disableSubagents: false }),
   hooks: Object.freeze([]),
+  agentRuntimes: Object.freeze({ 'claude-sdk': Object.freeze({ harness: 'claude-sdk' as const }) }) as Record<string, AgentRuntimeEntry>,
+  defaultAgentRuntime: 'claude-sdk',
 });
 
 /**
@@ -435,7 +437,6 @@ export function resolveConfig(
   const langfuseEnabled = !!(langfusePublicKey && langfuseSecretKey);
 
   return Object.freeze({
-    backend: fileConfig.backend,
     maxConcurrentBuilds: fileConfig.maxConcurrentBuilds ?? DEFAULT_CONFIG.maxConcurrentBuilds,
     langfuse: Object.freeze({
       enabled: langfuseEnabled,
@@ -530,13 +531,28 @@ export class ConfigMigrationError extends Error {
  *                 `'profile'` for profile file parsing — keeps `backend:`.
  */
 export function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): { config: PartialEforgeConfig; warnings: string[] } {
-  // Config.yaml context: reject backend: field (hard break — must migrate)
-  if (context === 'config' && data.backend !== undefined) {
-    throw new ConfigMigrationError(
-      '"backend:" is no longer valid in config.yaml. ' +
-      'Backend configuration now lives in named profiles under eforge/backends/. ' +
-      'Run eforge init --migrate to extract it.',
-    );
+  // Config.yaml context: reject legacy top-level fields that must migrate to agentRuntimes.
+  if (context === 'config') {
+    const offending: string[] = [];
+    if (data.backend !== undefined) offending.push('backend');
+    if (data.pi !== undefined) offending.push('pi');
+    if (data.claudeSdk !== undefined) offending.push('claudeSdk');
+
+    if (offending.length > 0) {
+      const fieldList = offending.map((f) => `"${f}:"`).join(', ');
+      const backendValue = typeof data.backend === 'string' ? data.backend : 'claude-sdk';
+      const harnessValue = backendValue === 'pi' ? 'pi' : 'claude-sdk';
+      const exampleName = harnessValue === 'pi' ? 'my-pi' : 'main';
+      throw new ConfigMigrationError(
+        `Legacy field(s) ${fieldList} are no longer valid in config.yaml. ` +
+        `Use agentRuntimes + defaultAgentRuntime instead. Example:\n\n` +
+        `  agentRuntimes:\n` +
+        `    ${exampleName}:\n` +
+        `      harness: ${harnessValue}\n` +
+        `  defaultAgentRuntime: ${exampleName}\n\n` +
+        `Offending field(s): ${offending.join(', ')}`,
+      );
+    }
   }
 
   const result = partialEforgeConfigSchema.safeParse(data);
@@ -556,13 +572,8 @@ export function parseRawConfig(data: Record<string, unknown>, context: 'config' 
  */
 function parseRawConfigFallback(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
   const result: PartialEforgeConfig = {};
-  // Handle top-level scalar fields — backend: only allowed in profile context
-  if (context === 'profile' && data.backend !== undefined) {
-    const backendResult = backendSchema.safeParse(data.backend);
-    if (backendResult.success) {
-      (result as Record<string, unknown>).backend = backendResult.data;
-    }
-  }
+  // Suppress unused-parameter warning: context is retained for future profile-specific handling
+  void context;
   if (data.maxConcurrentBuilds !== undefined) {
     const mcbSchema = z.number().int().positive();
     const mcbResult = mcbSchema.safeParse(data.maxConcurrentBuilds);
@@ -589,7 +600,6 @@ function parseRawConfigFallback(data: Record<string, unknown>, context: 'config'
  */
 function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfig {
   const out: PartialEforgeConfig = {};
-  if (config.backend !== undefined) out.backend = config.backend;
   if (config.maxConcurrentBuilds !== undefined) out.maxConcurrentBuilds = config.maxConcurrentBuilds;
   if (config.langfuse !== undefined) out.langfuse = config.langfuse;
   if (config.agents !== undefined) out.agents = config.agents;
@@ -629,9 +639,6 @@ export function mergePartialConfigs(
   const result: PartialEforgeConfig = {};
 
   // Scalar fields: project wins
-  if (project.backend !== undefined || global.backend !== undefined) {
-    result.backend = project.backend ?? global.backend;
-  }
   if (project.maxConcurrentBuilds !== undefined || global.maxConcurrentBuilds !== undefined) {
     result.maxConcurrentBuilds = project.maxConcurrentBuilds ?? global.maxConcurrentBuilds;
   }
@@ -995,8 +1002,8 @@ export async function loadBackendProfile(
  */
 export async function listBackendProfiles(
   configDir: string,
-): Promise<Array<{ name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' }>> {
-  type ProfileEntry = { name: string; backend: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' };
+): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' }>> {
+  type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' };
 
   async function scanDir(dir: string, scope: 'project' | 'user'): Promise<ProfileEntry[]> {
     let entries: string[];
@@ -1010,20 +1017,23 @@ export async function listBackendProfiles(
       if (extname(entry) !== '.yaml') continue;
       const name = basename(entry, '.yaml');
       const path = resolve(dir, entry);
-      let backend: 'claude-sdk' | 'pi' | undefined;
+      let harness: 'claude-sdk' | 'pi' | undefined;
       try {
         const raw = await readFile(path, 'utf-8');
         const data = parseYaml(raw);
         if (data && typeof data === 'object') {
-          const parsed = backendSchema.safeParse((data as Record<string, unknown>).backend);
+          // Support both new `harness:` key and legacy `backend:` key in profile files.
+          const raw_data = data as Record<string, unknown>;
+          const harnessVal = raw_data.harness ?? raw_data.backend;
+          const parsed = harnessSchema.safeParse(harnessVal);
           if (parsed.success) {
-            backend = parsed.data;
+            harness = parsed.data;
           }
         }
       } catch {
-        // unreadable — still include the entry with backend=undefined
+        // unreadable — still include the entry with harness=undefined
       }
-      out.push({ name, backend, path, scope });
+      out.push({ name, harness, path, scope });
     }
     return out;
   }
@@ -1117,14 +1127,14 @@ export async function createBackendProfile(
   configDir: string,
   input: {
     name: string;
-    backend: 'claude-sdk' | 'pi';
+    harness: 'claude-sdk' | 'pi';
     pi?: PartialEforgeConfig['pi'];
     agents?: PartialEforgeConfig['agents'];
     overwrite?: boolean;
     scope?: 'project' | 'user';
   },
 ): Promise<{ path: string }> {
-  const { name, backend, pi, agents, overwrite, scope: inputScope } = input;
+  const { name, harness, pi, agents, overwrite, scope: inputScope } = input;
   const scope = inputScope ?? 'project';
   if (!name || typeof name !== 'string' || !/^[A-Za-z0-9._-]+$/.test(name)) {
     throw new Error(
@@ -1140,10 +1150,13 @@ export async function createBackendProfile(
     }
   }
 
-  // Build the partial config
-  const partial: PartialEforgeConfig = { backend };
-  if (pi !== undefined) (partial as Record<string, unknown>).pi = pi;
-  if (agents !== undefined) (partial as Record<string, unknown>).agents = agents;
+  // Build the partial config using the new agentRuntimes format.
+  const runtimeEntry: AgentRuntimeEntry = { harness, ...(pi && { pi }) };
+  const partial: PartialEforgeConfig = {
+    agentRuntimes: { main: runtimeEntry },
+    defaultAgentRuntime: 'main',
+  };
+  if (agents !== undefined) partial.agents = agents as PartialEforgeConfig['agents'];
 
   // Validate against the partial schema first
   const partialResult = partialEforgeConfigSchema.safeParse(partial);
