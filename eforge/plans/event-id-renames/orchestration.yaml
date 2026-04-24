@@ -1,0 +1,85 @@
+name: event-id-renames
+description: "Rename EforgeEvent variants so prefixes unambiguously indicate
+  scope: build:* → plan:build:*, per-plan merge:* → plan:merge:*, planning-phase
+  plan:* → planning:*, and per-plan schedule:ready → plan:schedule:ready. Add
+  plan:build:progress to replace the cross-namespace plan:progress leak from the
+  build pipeline. Clean break with no compat shims."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-event-id-renames
+    name: Rename Event IDs Across Engine, Consumers, and Tests
+    depends_on: []
+    branch: event-id-renames/rename
+    agents:
+      builder:
+        effort: xhigh
+        rationale: Coordinated discriminated-union rename across ~25 emitter sites,
+          multiple consumer subsystems (CLI display, monitor-ui reducer, monitor
+          server, recorder), and tests. The builder must apply every rename
+          consistently and resist the temptation to add aliases or compat shims.
+          Type errors are the verification net but only catch missed sites - the
+          builder still needs to reason about scope semantics (e.g. not renaming
+          merge:finalize:*, splitting schedule:* by scope, introducing
+          plan:build:progress).
+      reviewer:
+        effort: high
+        rationale: "Reviewer must verify exhaustive coverage of the rename table (24
+          build:* + 4 merge:* + 1 schedule:ready + ~25 planning:* renames) and
+          confirm no bare build: or per-plan merge: strings survived in any
+          layer (events.ts union, emitters, switch cases, test assertions,
+          monitor queries, SSE recorders, hook config docs)."
+      evaluator:
+        effort: high
+        rationale: Evaluator must confirm DAEMON_API_VERSION was bumped (HTTP contract
+          change) and that no compat aliases were introduced - the user
+          explicitly asked for a clean break.
+    build: &a1
+      - implement
+      - - review-cycle
+        - doc-update
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+        - consistency
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This is a mechanical but wide-reaching rename touching a single
+    type-definition source of truth plus ~25 emitter sites across 9 engine files
+    and multiple consumers (CLI display, monitor UI reducer, event-card, monitor
+    server, recorder) and tests. It is clearly one coordinated refactor - not 4+
+    independent subsystems - and the TypeScript compiler plus existing tests
+    provide strong correctness guarantees, so excursion is the right scope
+    (expedition would over-fragment a refactor that must land atomically to
+    type-check). A single planner session can enumerate all touched files and
+    sequence the rename into a small number of coherent plans (events.ts first,
+    then emitters, then consumers, then tests + API version bump), so delegated
+    module planning is not warranted. Compile uses planner + plan-review-cycle
+    because the rename table is large and a plan-quality gate catches missed
+    rename targets (e.g. the cross-namespace leak fix at runners.ts:221 and the
+    plan:build:progress addition) before build. For defaultBuild, implement runs
+    first (this is a type-driven refactor where nearly every consumer must
+    change in lockstep), then review-cycle runs in parallel with doc-update
+    since neither declares the other as a predecessor - doc-update is justified
+    because event names are part of the SSE/HTTP contract and the
+    DAEMON_API_VERSION bump implies user-facing documentation may reference
+    event names. Review is single-perspective (no security/data risk;
+    correctness and consistency of the rename are the only real concerns) with
+    maxRounds=2 and standard strictness - strict would be overkill for a rename,
+    lenient would risk letting stragglers through. No test-write/test stages:
+    the PRD explicitly calls out that existing tests assert on event strings and
+    will surface misses via pnpm test, so the acceptance criteria already cover
+    test coverage without synthesizing new tests."
