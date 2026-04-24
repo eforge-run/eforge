@@ -16,7 +16,7 @@ hooks:
   - event: "agent:tool_use"
     command: "~/.config/eforge/hooks/log-event.sh"
     timeout: 5000
-  - event: "build:*"
+  - event: "plan:build:*"
     command: "~/.config/eforge/hooks/build-notify.sh"
     timeout: 3000
 ```
@@ -28,8 +28,8 @@ Patterns use glob-style matching where `*` matches any characters:
 | Pattern | Matches |
 |---------|---------|
 | `session:start` | Exact match |
-| `build:*` | `build:start`, `build:complete`, `build:failed`, etc. |
-| `*:complete` | `plan:complete`, `build:complete`, `wave:complete`, etc. |
+| `plan:build:*` | `plan:build:start`, `plan:build:complete`, `plan:build:failed`, etc. |
+| `*:complete` | `planning:complete`, `plan:build:complete`, `wave:complete`, etc. |
 | `agent:*` | All agent-level events |
 
 ### Timeout
@@ -44,7 +44,7 @@ Every hook receives these environment variables:
 |----------|-------------|
 | `EFORGE_SESSION_ID` | Session identifier - stable across compile+build per PRD. In queue mode, each PRD gets its own session ID. Use this for session tracking. |
 | `EFORGE_RUN_ID` | Per-phase run identifier. Changes between compile and build phases. |
-| `EFORGE_EVENT_TYPE` | Event type string (e.g., `build:start`, `agent:tool_use`) |
+| `EFORGE_EVENT_TYPE` | Event type string (e.g., `plan:build:start`, `agent:tool_use`) |
 | `EFORGE_CWD` | Working directory for the eforge run |
 | `EFORGE_GIT_REMOTE` | Git origin remote URL (empty if not a git repo or no origin) |
 
