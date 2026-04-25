@@ -1,0 +1,69 @@
+name: add-a-tier-layer-above-agent-roles
+description: "Introduce an `AgentTier` layer (planning, implementation, review,
+  evaluation) above per-role agent config so users configure 4 tiers instead of
+  23 roles, with per-role escape hatches preserved. Purely additive: existing
+  configs keep working unchanged."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-tier-layer
+    name: Add tier layer above agent roles
+    depends_on: []
+    branch: add-a-tier-layer-above-agent-roles/tier-layer
+    agents:
+      builder:
+        effort: high
+        rationale: Resolution-chain ordering and merge wiring are tightly specified in
+          the source. The builder must coordinate changes across schema,
+          resolver, event payload, and UI consumer in lockstep without breaking
+          backward compatibility.
+      reviewer:
+        effort: high
+        rationale: "Backward compatibility is a hard contract (acceptance criterion 4 +
+          9). Reviewer must verify resolution precedence is exactly: plan > role
+          > tier > global > builtin-role > builtin-tier, and that the
+          role-default slimming preserves existing behavior."
+    build: &a1
+      - implement
+      - review-cycle
+      - - doc-update
+        - test-write
+    review: &a2
+      strategy: single
+      perspectives:
+        - correctness
+        - cohesion
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "This PRD is a focused, additive change to the agent configuration
+    resolution chain spanning a handful of related files (agent-config.ts,
+    config.ts, events.ts, monitor-ui stage hover, and tests). It is not 4+
+    independent subsystems - it's a single coherent feature (tier layer) with a
+    shared type/schema/resolution contract that cuts across consumers, which is
+    the classic 'type/interface refactor' negative signal for expedition. A
+    single planner session can easily enumerate all plans, file changes, and
+    cross-cutting dependencies, so excursion is correct. Compile uses planner +
+    plan-review-cycle because resolution-precedence logic is subtle (six-level
+    chain, provenance fields, backward-compat) and a plan quality gate de-risks
+    the build. Default build runs implement first, then review-cycle (the PRD
+    explicitly calls out backward-compat and additive-only constraints, plus new
+    tests - quality matters), followed by doc-update and test-write in parallel
+    since both depend only on implement and are independent of each other.
+    Review strategy is single with correctness and cohesion perspectives at
+    standard strictness and 2 rounds: the change is internal engine plumbing (no
+    security/data risk) but touches a stable user-visible contract (tier names,
+    schema additions) where cohesion across config.ts, agent-config.ts,
+    events.ts, and the monitor UI matters. autoAcceptBelow=suggestion keeps
+    cosmetic noise out of the loop while still surfacing warnings."
