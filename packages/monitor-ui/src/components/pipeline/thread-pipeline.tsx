@@ -50,6 +50,21 @@ const pillClass =
 const prdPillClass = `${pillClass} bg-yellow/15 text-yellow/70 hover:bg-yellow/25 hover:text-yellow/90`;
 const planPillClass = `${pillClass} bg-cyan/15 text-cyan/70 hover:bg-cyan/25 hover:text-cyan/90`;
 
+const DEPTH_BAR_BG = [
+  'bg-cyan/40', 'bg-blue/40', 'bg-purple/40',
+  'bg-green/40', 'bg-yellow/40', 'bg-orange/40', 'bg-pink/40',
+];
+const DEPTH_PILL_CLASS = [
+  `${pillClass} bg-cyan/15 text-cyan/70 hover:bg-cyan/25 hover:text-cyan/90`,
+  `${pillClass} bg-blue/15 text-blue/70 hover:bg-blue/25 hover:text-blue/90`,
+  `${pillClass} bg-purple/15 text-purple/70 hover:bg-purple/25 hover:text-purple/90`,
+  `${pillClass} bg-green/15 text-green/70 hover:bg-green/25 hover:text-green/90`,
+  `${pillClass} bg-yellow/15 text-yellow/70 hover:bg-yellow/25 hover:text-yellow/90`,
+  `${pillClass} bg-orange/15 text-orange/70 hover:bg-orange/25 hover:text-orange/90`,
+  `${pillClass} bg-pink/15 text-pink/70 hover:bg-pink/25 hover:text-pink/90`,
+];
+const planPillClassFor = (d: number) => DEPTH_PILL_CLASS[d % DEPTH_PILL_CLASS.length];
+
 function abbreviatePlanId(id: string): string {
   if (id === 'gap-close') return 'Gap Close';
   const match = id.match(/^plan-(\d+)/);
@@ -456,9 +471,6 @@ function computeDepthMap(plans: OrchestrationConfig['plans']): Map<string, numbe
   return depthMap;
 }
 
-/** Width in pixels per depth level for indentation */
-const DEPTH_LEVEL_WIDTH = 20;
-
 // --- Main component ---
 
 interface ThreadPipelineProps {
@@ -691,6 +703,17 @@ function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
   );
 }
 
+function DepthBars({ depth }: { depth: number }) {
+  if (depth <= 0) return null;
+  return (
+    <div className="flex items-stretch gap-1 self-stretch">
+      {Array.from({ length: depth }).map((_, i) => (
+        <div key={i} className={`w-0.5 self-stretch rounded-sm ${DEPTH_BAR_BG[i % DEPTH_BAR_BG.length]}`} />
+      ))}
+    </div>
+  );
+}
+
 function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, events, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
@@ -732,65 +755,74 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
   const leftLabel = (() => {
     if (prdSource) {
       return (
-        <div className={`w-[100px] shrink-0 mt-0.5`} style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className={prdPillClass}
-                onClick={() => openContentPreview(prdSource.label, prdSource.content)}
-              >
-                PRD
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="left">{prdSource.label}</TooltipContent>
-          </Tooltip>
+        <div className="w-[100px] shrink-0 flex items-stretch gap-1.5">
+          <DepthBars depth={depth ?? 0} />
+          <div className="flex-1 min-w-0 mt-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={prdPillClass}
+                  onClick={() => openContentPreview(prdSource.label, prdSource.content)}
+                >
+                  PRD
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">{prdSource.label}</TooltipContent>
+            </Tooltip>
+          </div>
         </div>
       );
     }
     if (planArtifact) {
       return (
-        <div className="w-[100px] shrink-0 mt-0.5" style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
+        <div className="w-[100px] shrink-0 flex items-stretch gap-1.5">
+          <DepthBars depth={depth ?? 0} />
+          <div className="flex-1 min-w-0 mt-0.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={planPillClassFor(depth ?? 0)}
+                  onClick={() => openContentPreview(planArtifact.name || planId, planArtifact.body)}
+                >
+                  {abbreviatePlanId(planId)}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                {planTooltipText.map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        </div>
+      );
+    }
+    // Fallback: pill label (e.g. gap-close or plans without artifacts)
+    return (
+      <div className="w-[100px] shrink-0 flex items-stretch gap-1.5">
+        <DepthBars depth={depth ?? 0} />
+        <div className="flex-1 min-w-0 mt-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
-                className={planPillClass}
-                onClick={() => openContentPreview(planArtifact.name || planId, planArtifact.body)}
+                className={planPillClassFor(depth ?? 0)}
+                onClick={disablePreview ? undefined : () => openPreview(planId)}
               >
                 {abbreviatePlanId(planId)}
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="left">
-              {planTooltipText.map((line, i) => (
-                <div key={i}>{line}</div>
-              ))}
-            </TooltipContent>
+            <TooltipContent side="left">{planId}</TooltipContent>
           </Tooltip>
         </div>
-      );
-    }
-    // Fallback: pill label (e.g. gap-close or plans without artifacts)
-    return (
-      <div className="w-[100px] shrink-0 mt-0.5" style={{ paddingLeft: (depth ?? 0) * DEPTH_LEVEL_WIDTH }}>
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className={planPillClass}
-              onClick={disablePreview ? undefined : () => openPreview(planId)}
-            >
-              {abbreviatePlanId(planId)}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent side="left">{planId}</TooltipContent>
-        </Tooltip>
       </div>
     );
   })();
