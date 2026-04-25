@@ -3,7 +3,7 @@
 ## When to use which hook
 
 - `useEforgeEvents(sessionId)` — subscribe to a single session's live event stream. Use for per-session dashboards, pipeline views, timelines.
-- `useApi(endpoint)` — one-shot typed fetch for resource data (queue list, backend list, runs). Use when the data is not session-scoped or is a snapshot.
+- `useApi(endpoint)` — one-shot typed fetch for resource data (queue list, profile list, runs). Use when the data is not session-scoped or is a snapshot.
 
 ## Transport details
 
@@ -15,4 +15,4 @@ live events over SSE. `subscribeToSession` handles reconnect with exponential
 backoff, `Last-Event-ID` replay, and abort via `AbortSignal`.
 
 `useApi` is a thin wrapper around `fetch` — use it for one-shot resource
-endpoints that return JSON snapshots (queue, backends, run list).
+endpoints that return JSON snapshots (queue, profiles, run list).

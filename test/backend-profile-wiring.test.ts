@@ -116,9 +116,9 @@ describe('eforge-plugin/skills/profile/profile.md', () => {
     expect(raw).toMatch(/action:\s*["']use["']/);
   });
 
-  it('includes a Related Skills table that mentions /eforge:profile:new', () => {
+  it('includes a Related Skills table that mentions /eforge:profile-new', () => {
     expect(raw).toMatch(/##\s+Related Skills/);
-    expect(raw).toContain('/eforge:profile:new');
+    expect(raw).toContain('/eforge:profile-new');
   });
 });
 
@@ -196,16 +196,16 @@ describe('packages/pi-eforge/skills/eforge-profile-new/SKILL.md', () => {
 // ---------------------------------------------------------------------------
 
 describe('init skill updates (plugin + Pi parity)', () => {
-  it('plugin /eforge:init mentions `eforge/.active-profile` and suggests /eforge:profile:new', () => {
+  it('plugin /eforge:init mentions `eforge/.active-profile` and suggests /eforge:profile-new', () => {
     const raw = readRepoFile('eforge-plugin/skills/init/init.md');
     expect(raw).toContain('eforge/.active-profile');
-    expect(raw).toContain('/eforge:profile:new');
+    expect(raw).toContain('/eforge:profile-new');
   });
 
-  it('Pi eforge-init skill mentions `eforge/.active-profile` and suggests /eforge:profile:new', () => {
+  it('Pi eforge-init skill mentions `eforge/.active-profile` and suggests /eforge:profile-new', () => {
     const raw = readRepoFile('packages/pi-eforge/skills/eforge-init/SKILL.md');
     expect(raw).toContain('eforge/.active-profile');
-    expect(raw).toContain('/eforge:profile:new');
+    expect(raw).toContain('/eforge:profile-new');
   });
 });
 
@@ -428,7 +428,7 @@ describe('Pi extension native command modules (plan-02-native-pi-ux)', () => {
 
     const backendNewSkill = readRepoFile('packages/pi-eforge/skills/eforge-profile-new/SKILL.md');
     expect(backendNewSkill.toLowerCase()).toContain('fallback');
-    expect(backendNewSkill).toContain('/eforge:profile:new');
+    expect(backendNewSkill).toContain('/eforge:profile-new');
 
     const configSkill = readRepoFile('packages/pi-eforge/skills/eforge-config/SKILL.md');
     expect(configSkill.toLowerCase()).toContain('fallback');
@@ -646,12 +646,12 @@ describe('docs/architecture.md - native command mentions (plan-02-native-pi-ux)'
     expect(piSection.toLowerCase()).toContain('native');
   });
 
-  it('Pi Package section mentions overlay commands for backend management', () => {
+  it('Pi Package section mentions overlay commands for profile management', () => {
     const piStart = raw.indexOf('### Pi Package');
     const nextSection = raw.indexOf('\n## ', piStart);
     const piSection = raw.slice(piStart, nextSection > -1 ? nextSection : undefined);
-    expect(piSection).toContain('/eforge:backend');
-    expect(piSection).toContain('/eforge:backend:new');
+    expect(piSection).toContain('/eforge:profile');
+    expect(piSection).toContain('/eforge:profile-new');
   });
 
   it('Pi Package section mentions overlay commands for config', () => {
@@ -674,9 +674,9 @@ describe('docs/architecture.md - native command mentions (plan-02-native-pi-ux)'
 describe('packages/pi-eforge/README.md - native command UX (plan-02-native-pi-ux)', () => {
   const raw = readRepoFile('packages/pi-eforge/README.md');
 
-  it('mentions native commands for backend management', () => {
-    expect(raw).toContain('/eforge:backend');
-    expect(raw).toContain('/eforge:backend:new');
+  it('mentions native commands for agent runtime profile management', () => {
+    expect(raw).toContain('/eforge:profile');
+    expect(raw).toContain('/eforge:profile-new');
   });
 
   it('mentions native config command', () => {

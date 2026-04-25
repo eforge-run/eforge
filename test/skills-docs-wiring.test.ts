@@ -199,8 +199,8 @@ describe('eforge-plugin/skills/init/init.md - user-scope one-liner', () => {
     expect(raw).toContain('~/.config/eforge/profiles/');
   });
 
-  it('mentions scope in the context of /eforge:profile:new', () => {
-    expect(raw).toContain('/eforge:profile:new');
+  it('mentions scope in the context of /eforge:profile-new', () => {
+    expect(raw).toContain('/eforge:profile-new');
     expect(raw).toMatch(/scope/i);
   });
 });
@@ -216,8 +216,8 @@ describe('packages/pi-eforge/skills/eforge-init/SKILL.md - user-scope one-liner'
     expect(raw).toContain('~/.config/eforge/profiles/');
   });
 
-  it('mentions scope in the context of /eforge:profile:new', () => {
-    expect(raw).toContain('/eforge:profile:new');
+  it('mentions scope in the context of /eforge:profile-new', () => {
+    expect(raw).toContain('/eforge:profile-new');
     expect(raw).toMatch(/scope/i);
   });
 });

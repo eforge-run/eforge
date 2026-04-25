@@ -23,16 +23,16 @@ Then, in your project:
 ## What this package provides
 
 - Native Pi tools for eforge daemon operations
-- Native Pi commands for backend management (`/eforge:backend`, `/eforge:backend:new`) and config viewing (`/eforge:config`) with interactive overlay UX
+- Native Pi commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX
 - Slash commands for build operations (`/eforge:build`, `/eforge:init`, `/eforge:status`, `/eforge:restart`, `/eforge:update`)
 - The `/eforge:plan` skill for structured handoff planning before build execution
-- Ambient status display showing active backend, queue count, and build progress
+- Ambient status display showing active profile, queue count, and build progress
 
 ## Requirements
 
 - Node.js 22+
 - [Pi](https://github.com/nicories/pi-mono)
-- An LLM provider credential supported by your chosen eforge backend
+- An LLM provider credential supported by your chosen eforge harness
 
 ## Relationship to the `@eforge-build/eforge` npm package
 

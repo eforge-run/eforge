@@ -72,7 +72,7 @@ For a deeper look at the engine internals, see the [architecture docs](docs/arch
 
 ## Install
 
-**Prerequisites:** Node.js 22+, [Claude Code](https://claude.ai/code) or [Pi](https://github.com/nicories/pi-mono), and an LLM provider credential - Anthropic API key or [Claude subscription](https://claude.ai/upgrade) for the `claude-sdk` backend, or a provider-specific API key or OAuth token for the `pi` backend
+**Prerequisites:** Node.js 22+, [Claude Code](https://claude.ai/code) or [Pi](https://github.com/nicories/pi-mono), and an LLM provider credential - Anthropic API key or [Claude subscription](https://claude.ai/upgrade) for the `claude-sdk` harness, or a provider-specific API key or OAuth token for the `pi` harness
 
 Claude Code plugin:
 
@@ -97,9 +97,9 @@ pi install -l npm:@eforge-build/pi-eforge
 
 The main `@eforge-build/eforge` npm package is the standalone CLI and daemon runtime. The Pi integration is published separately as `@eforge-build/pi-eforge`.
 
-The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. In Claude Code it presents a form to choose your backend (`claude-sdk` or `pi`); in Pi it defaults to `backend: pi`. For further customization, run `/eforge:config --edit`.
+The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. In Claude Code it presents a form to choose your harness (`claude-sdk` or `pi`); in Pi it defaults to the `pi` harness. For further customization, run `/eforge:config --edit`.
 
-The Pi package also provides native interactive commands for backend profile management (`/eforge:backend`, `/eforge:backend:new`) and config viewing (`/eforge:config`) with interactive overlay UX. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations — exploring scope, code impact, architecture, design decisions, documentation, and risks — before handing off to `/eforge:build`.
+The Pi package also provides native interactive commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations — exploring scope, code impact, architecture, design decisions, documentation, and risks — before handing off to `/eforge:build`.
 
 Standalone CLI:
 
@@ -110,11 +110,25 @@ npx @eforge-build/eforge build plans/my-feature-prd.md
 
 Or install globally: `npm install -g @eforge-build/eforge`
 
-For standalone use, create `eforge/config.yaml` with at minimum `backend: claude-sdk` (or `backend: pi` for the Pi multi-provider backend).
+For standalone use, create `eforge/config.yaml` with at minimum an `agentRuntimes:` entry and a `defaultAgentRuntime:` key:
+
+```yaml
+# Claude Agent SDK harness (Claude Max or API key):
+agentRuntimes:
+  claude-sdk:
+    harness: claude-sdk
+defaultAgentRuntime: claude-sdk
+
+# Pi harness (OpenAI Codex, OpenRouter, local models, and more):
+# agentRuntimes:
+#   pi:
+#     harness: pi
+# defaultAgentRuntime: pi
+```
 
 ## Configuration
 
-Configured via `eforge/config.yaml` (searched upward from cwd), a global config at `~/.config/eforge/config.yaml`, environment variables, and auto-discovered files. Backend profiles, custom workflow profiles, hooks, MCP servers, and plugins are all configurable. Backend profiles can be scoped to a project (`eforge/backends/`) or to the user (`~/.config/eforge/backends/`) for reuse across projects. See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
+Configured via `eforge/config.yaml` (searched upward from cwd), a global config at `~/.config/eforge/config.yaml`, environment variables, and auto-discovered files. Agent runtime profiles, custom workflow profiles, hooks, MCP servers, and plugins are all configurable. Agent runtime profiles can be scoped to a project (`eforge/profiles/`) or to the user (`~/.config/eforge/profiles/`) for reuse across projects. See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
 
 ## Development
 
@@ -144,14 +158,14 @@ See [eforge-build/eval](https://github.com/eforge-build/eval) for the end-to-end
 
 eforge is licensed under [Apache-2.0](LICENSE).
 
-### Third-party backend licenses
+### Third-party harness licenses
 
-eforge's backend abstraction allows different AI providers. Each backend carries its own license terms:
+eforge's harness abstraction allows different AI providers. Each harness carries its own license terms:
 
-- **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`) is proprietary software owned by Anthropic PBC. By using eforge with this backend, you agree to Anthropic's [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) (API users) or [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) (Free/Pro/Max users), plus the [Acceptable Use Policy](https://www.anthropic.com/legal/aup). See [Anthropic's legal page](https://code.claude.com/docs/en/legal-and-compliance) for details.
+- **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`) is proprietary software owned by Anthropic PBC. By using eforge with this harness, you agree to Anthropic's [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) (API users) or [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) (Free/Pro/Max users), plus the [Acceptable Use Policy](https://www.anthropic.com/legal/aup). See [Anthropic's legal page](https://code.claude.com/docs/en/legal-and-compliance) for details.
 
   **Note:** If you are building a product or service on top of eforge, Anthropic requires API key authentication through [Claude Console](https://platform.claude.com/) - OAuth tokens from Free, Pro, or Max plans may not be used for third-party products.
 
-- **Pi backend** (`@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`, `@mariozechner/pi-coding-agent`) - a fully open-source backend alternative supporting 20+ LLM providers (OpenAI, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, and more). All three packages are [MIT licensed](https://github.com/nicories/pi-mono/blob/main/LICENSE) from the [pi-mono](https://github.com/nicories/pi-mono) monorepo.
+- **Pi harness** (`@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`, `@mariozechner/pi-coding-agent`) - a fully open-source harness alternative supporting 20+ LLM providers (OpenAI, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, and more). All three packages are [MIT licensed](https://github.com/nicories/pi-mono/blob/main/LICENSE) from the [pi-mono](https://github.com/nicories/pi-mono) monorepo.
 
 eforge's Apache 2.0 license applies to eforge's own source code. It does not extend to or override the license terms of its dependencies.
