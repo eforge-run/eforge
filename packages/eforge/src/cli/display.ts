@@ -815,6 +815,21 @@ export function renderEvent(event: EforgeEvent): void {
       );
       break;
 
+    case 'recovery:start':
+      startSpinner('recovery', `Analysing failed build for PRD ${chalk.cyan(event.prdId)}...`);
+      break;
+
+    case 'recovery:summary':
+      break;
+
+    case 'recovery:complete':
+      succeedSpinner('recovery', `Recovery analysis complete: ${chalk.bold(event.verdict.verdict.toUpperCase())}`);
+      break;
+
+    case 'recovery:error':
+      console.log(chalk.yellow(`  ⚠ Recovery parse failed — writing manual verdict sidecar: ${event.error}`));
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

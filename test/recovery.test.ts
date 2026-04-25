@@ -18,6 +18,7 @@ import { recoveryVerdictSchema, getRecoveryVerdictSchemaYaml } from '@eforge-bui
 import { runRecoveryAnalyst } from '@eforge-build/engine/agents/recovery-analyst';
 import { writeRecoverySidecar } from '@eforge-build/engine/recovery/sidecar';
 import { buildFailureSummary } from '@eforge-build/engine/recovery/failure-summary';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -741,5 +742,216 @@ describe('runRecoveryAnalyst wiring', () => {
 
     const complete = findEvent(events, 'recovery:complete');
     expect(complete!.verdict.verdict).toBe('manual');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// EforgeEngine.recover (integration)
+// ---------------------------------------------------------------------------
+
+describe('EforgeEngine.recover', () => {
+  const makeTempDir = useTempDir('eforge-engine-recover-test-');
+
+  function seedGitRepo(dir: string): void {
+    const gitOpts = { cwd: dir };
+    execFileSync('git', ['init', '-b', 'main'], gitOpts);
+    execFileSync('git', ['config', 'user.email', 'test@example.com'], gitOpts);
+    execFileSync('git', ['config', 'user.name', 'Test'], gitOpts);
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'chore: initial commit'], gitOpts);
+    execFileSync('git', ['checkout', '-b', 'eforge/test-recovery-set'], gitOpts);
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'feat: plan-01 foundation'], gitOpts);
+    execFileSync('git', ['checkout', 'main'], gitOpts);
+  }
+
+  async function seedFixtures(dir: string): Promise<void> {
+    // Write state.json
+    await mkdir(join(dir, '.eforge'), { recursive: true });
+    const stateFixture = await readFile(
+      new URL('./fixtures/recovery/state.json', import.meta.url).pathname,
+      'utf-8',
+    );
+    await writeFile(join(dir, '.eforge', 'state.json'), stateFixture, 'utf-8');
+
+    // Write PRD file in failed dir
+    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nBuild a thing.', 'utf-8');
+  }
+
+  const SPLIT_OUTPUT = `Based on my analysis:
+
+<recovery verdict="split" confidence="medium">
+  <rationale>Foundation work is preserved; API work remains incomplete.</rationale>
+  <completedWork>
+    <item>Foundation merged</item>
+  </completedWork>
+  <remainingWork>
+    <item>API endpoints not implemented</item>
+  </remainingWork>
+  <risks>
+    <item>Type error unresolved</item>
+  </risks>
+  <suggestedSuccessorPrd># Successor PRD\n\nContinue the API work.</suggestedSuccessorPrd>
+</recovery>`;
+
+  it('throws when PRD file does not exist', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    await mkdir(join(dir, '.eforge'), { recursive: true });
+    const stateFixture = await readFile(
+      new URL('./fixtures/recovery/state.json', import.meta.url).pathname,
+      'utf-8',
+    );
+    await writeFile(join(dir, '.eforge', 'state.json'), stateFixture, 'utf-8');
+    // PRD file intentionally absent
+
+    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
+
+    await expect(
+      collectEvents(engine.recover('test-recovery-set', 'test-prd')),
+    ).rejects.toThrow();
+  });
+
+  it('writes both sidecar files for a split verdict', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    await seedFixtures(dir);
+
+    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
+
+    const events = await collectEvents(engine.recover('test-recovery-set', 'test-prd'));
+
+    const complete = findEvent(events, 'recovery:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarMdPath).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    // Both files must exist and be well-formed
+    const mdContent = await readFile(complete!.sidecarMdPath!, 'utf-8');
+    expect(mdContent.length).toBeGreaterThan(0);
+
+    const parsed = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.verdict.verdict).toBe('split');
+  });
+
+  it('produces a manual verdict sidecar on parse failure (no throw)', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    await seedFixtures(dir);
+
+    const backend = new StubHarness([{ text: 'I cannot determine the recovery path.' }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
+
+    // Should NOT throw — parse failure yields a manual verdict sidecar
+    const events = await collectEvents(engine.recover('test-recovery-set', 'test-prd'));
+
+    const complete = findEvent(events, 'recovery:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.verdict.verdict).toBe('manual');
+    expect(complete!.sidecarMdPath).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    await expect(readFile(complete!.sidecarMdPath!, 'utf-8')).resolves.toBeTruthy();
+    const json = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    expect(json.verdict.verdict).toBe('manual');
+    expect(json.schemaVersion).toBe(1);
+  });
+
+  it.each(['retry', 'split', 'abandon', 'manual'] as const)('writes sidecars for %s verdict', async (verdict) => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    await seedFixtures(dir);
+
+    let verdictOutput: string;
+    if (verdict === 'split') {
+      verdictOutput = SPLIT_OUTPUT;
+    } else if (verdict === 'retry') {
+      verdictOutput = `<recovery verdict="retry" confidence="high">
+  <rationale>Network timeout — transient failure.</rationale>
+  <completedWork></completedWork>
+  <remainingWork><item>All work remains</item></remainingWork>
+  <risks><item>Network may timeout again</item></risks>
+</recovery>`;
+    } else if (verdict === 'abandon') {
+      verdictOutput = `<recovery verdict="abandon" confidence="high">
+  <rationale>Already shipped via hotfix.</rationale>
+  <completedWork><item>Shipped via hotfix</item></completedWork>
+  <remainingWork></remainingWork>
+  <risks></risks>
+</recovery>`;
+    } else {
+      verdictOutput = `<recovery verdict="manual" confidence="low">
+  <rationale>Ambiguous error with no clear cause.</rationale>
+  <completedWork></completedWork>
+  <remainingWork><item>All work remains</item></remainingWork>
+  <risks><item>Unknown root cause</item></risks>
+</recovery>`;
+    }
+
+    const backend = new StubHarness([{ text: verdictOutput }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
+
+    const events = await collectEvents(engine.recover('test-recovery-set', 'test-prd'));
+
+    const complete = findEvent(events, 'recovery:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.verdict.verdict).toBe(verdict);
+    expect(complete!.sidecarMdPath).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    const json = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    expect(json.schemaVersion).toBe(1);
+    expect(json.verdict.verdict).toBe(verdict);
+  });
+
+  it('emits recovery:start before recovery:complete', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    await seedFixtures(dir);
+
+    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
+
+    const events = await collectEvents(engine.recover('test-recovery-set', 'test-prd'));
+
+    const start = findEvent(events, 'recovery:start');
+    expect(start).toBeDefined();
+    expect(start!.prdId).toBe('test-prd');
+    expect(start!.setName).toBe('test-recovery-set');
+
+    const complete = findEvent(events, 'recovery:complete');
+    expect(complete).toBeDefined();
+
+    const startIdx = events.indexOf(start!);
+    const completeIdx = events.indexOf(complete!);
+    expect(startIdx).toBeLessThan(completeIdx);
+  });
+
+  it('does not modify files outside the two sidecar paths', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+    await seedFixtures(dir);
+
+    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    const prdPath = join(failedDir, 'test-prd.md');
+
+    const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
+
+    // Capture PRD file content before
+    const prdContentBefore = await readFile(prdPath, 'utf-8');
+
+    await collectEvents(engine.recover('test-recovery-set', 'test-prd'));
+
+    // PRD file unchanged
+    const prdContentAfter = await readFile(prdPath, 'utf-8');
+    expect(prdContentAfter).toBe(prdContentBefore);
+
+    // state.json unchanged
+    const stateAfter = await readFile(join(dir, '.eforge', 'state.json'), 'utf-8');
+    expect(stateAfter).toContain('"status": "failed"');
   });
 });

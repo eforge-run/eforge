@@ -736,6 +736,52 @@ export function createProgram(abortController?: AbortController): Command {
       }
     });
 
+  // --- eforge:region plan-02-cli-and-engine-api ---
+  program
+    .command('recover <setName> <prdId>')
+    .description('Analyse a failed build and write recovery sidecar files')
+    .option('--cwd <cwd>', 'Working directory override')
+    .option('--verbose', 'Stream agent output')
+    .option('--no-monitor', 'Disable web monitor')
+    .action(
+      async (
+        setName: string,
+        prdId: string,
+        options: {
+          cwd?: string;
+          verbose?: boolean;
+          monitor?: boolean;
+        },
+      ) => {
+        initDisplay({ verbose: options.verbose });
+
+        const cwd = options.cwd ? resolve(options.cwd) : undefined;
+
+        const engine = await EforgeEngine.create({ ...(cwd && { cwd }) });
+
+        try {
+          await withMonitor(options.monitor === false, async (monitor) => {
+            const sessionId = randomUUID();
+
+            const recoverEvents = engine.recover(setName, prdId, {
+              verbose: options.verbose,
+              abortController,
+              ...(cwd && { cwd }),
+            });
+
+            await consumeEvents(
+              wrapEvents(runSession(recoverEvents, sessionId), monitor, engine.resolvedConfig.hooks),
+            );
+          });
+        } catch (err) {
+          const { message, exitCode } = formatCliError(err);
+          console.error(chalk.red(`Error: ${message}`));
+          process.exit(exitCode);
+        }
+      },
+    );
+  // --- eforge:endregion plan-02-cli-and-engine-api ---
+
   // MCP proxy command — runs the stdio MCP server that bridges to the daemon
   program
     .command('mcp-proxy')
