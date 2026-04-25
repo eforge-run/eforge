@@ -17,8 +17,10 @@ import { openDatabase, type MonitorDB } from './db.js';
 import { startServer, type WorkerTracker, type DaemonState } from './server.js';
 import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive } from '@eforge-build/client';
 import { registerPort, deregisterPort } from './registry.js';
-import { loadConfig } from '@eforge-build/engine/config';
+import { loadConfig, type HookConfig } from '@eforge-build/engine/config';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { withHooks } from '@eforge-build/engine/hooks';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 import { withRecording } from './recorder.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -189,6 +191,23 @@ function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string, reason: str
   }
 }
 
+/**
+ * Compose the watcher event-stream middlewares for the daemon.
+ * withRecording (inner) persists events to SQLite first; withHooks (outer)
+ * fires user-configured hooks against the same stream.
+ *
+ * Exported so the wiring can be unit-tested without spawning a real daemon.
+ */
+export function wrapWatcherEvents(
+  events: AsyncGenerator<EforgeEvent>,
+  db: MonitorDB,
+  cwd: string,
+  pid: number,
+  hooks: readonly HookConfig[],
+): AsyncGenerator<EforgeEvent> {
+  return withHooks(withRecording(events, db, cwd, pid), hooks, cwd);
+}
+
 async function main(): Promise<void> {
   process.title = 'eforge-monitor';
   const serverStartedAt = Date.now();
@@ -343,12 +362,12 @@ async function main(): Promise<void> {
       pid: null,
       sessionId: null,
     },
-    onSpawnWatcher: () => { void startWatcher(); },
+    onSpawnWatcher: () => { void startWatcher(config?.hooks ?? []); },
     onKillWatcher: () => { void stopWatcher(); },
     onShutdown: undefined as (() => void) | undefined,
   } : undefined;
 
-  async function startWatcher(): Promise<void> {
+  async function startWatcher(hooks: readonly HookConfig[] = []): Promise<void> {
     if (!daemonState) return;
     if (watcherAbort) return; // already running
 
@@ -386,15 +405,17 @@ async function main(): Promise<void> {
 
     watcherDone = (async () => {
       try {
-        const events = withRecording(
+        const events = wrapWatcherEvents(
           engine.watchQueue({ auto: true, abortController: controller }),
           db,
           cwd,
           process.pid,
+          hooks,
         );
-        // Drain the event stream; withRecording persists each event to SQLite.
+        // Drain the event stream; withRecording persists each event to SQLite
+        // and withHooks fires user-configured hooks non-blocking.
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        for await (const _event of events) { /* persisted by withRecording */ }
+        for await (const _event of events) { /* persisted by withRecording, hooks fired by withHooks */ }
       } catch (err) {
         // Only pause if this controller is still the active one — otherwise
         // a newer startWatcher() has already taken over.
@@ -476,7 +497,7 @@ async function main(): Promise<void> {
   if (persistent && daemonState && config) {
     daemonState.autoBuild = config.prdQueue.autoBuild;
     if (daemonState.autoBuild) {
-      void startWatcher();
+      void startWatcher(config.hooks);
     }
     // Enable idle auto-shutdown for persistent mode when configured (0 = disabled)
     if (config.daemon.idleShutdownMs > 0) {
