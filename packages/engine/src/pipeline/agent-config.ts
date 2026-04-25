@@ -32,6 +32,7 @@ export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
   'module-planner': 'planning',
   formatter: 'planning',
   'pipeline-composer': 'planning',
+  'dependency-detector': 'planning',
   // Implementation tier — code-writing and transformation agents
   builder: 'implementation',
   'review-fixer': 'implementation',
@@ -40,9 +41,6 @@ export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
   'doc-updater': 'implementation',
   'test-writer': 'implementation',
   tester: 'implementation',
-  'staleness-assessor': 'implementation',
-  'prd-validator': 'implementation',
-  'dependency-detector': 'implementation',
   'gap-closer': 'implementation',
   'recovery-analyst': 'implementation',
   // Review tier — inspection and feedback agents
@@ -50,6 +48,8 @@ export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
   'architecture-reviewer': 'review',
   'cohesion-reviewer': 'review',
   'plan-reviewer': 'review',
+  'staleness-assessor': 'review',
+  'prd-validator': 'review',
   // Evaluation tier — verdict and acceptance agents
   evaluator: 'evaluation',
   'architecture-evaluator': 'evaluation',
@@ -73,11 +73,15 @@ export const BUILTIN_TIER_DEFAULTS: Record<AgentTier, { effort: EffortLevel; mod
  * Per-role model class overrides for roles whose built-in class differs from their tier default.
  * Only roles that DON'T match their tier's default modelClass appear here.
  * - implementation tier defaults to `balanced`, but these roles use `max`:
+ * - planning/review tier defaults to `max`, but these roles use `balanced` (historical):
  */
 export const AGENT_ROLE_MODEL_CLASS_OVERRIDES: Partial<Record<AgentRole, ModelClass>> = {
   'merge-conflict-resolver': 'max',
   'doc-updater': 'max',
   'gap-closer': 'max',
+  'dependency-detector': 'balanced',
+  'prd-validator': 'balanced',
+  'staleness-assessor': 'balanced',
 };
 
 /**
