@@ -435,12 +435,12 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const params = new URLSearchParams();
         if (scope) params.set('scope', scope);
         const qs = params.toString();
-        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.backendList}${qs ? `?${qs}` : ''}`);
+        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.profileList}${qs ? `?${qs}` : ''}`);
         return data;
       }
 
       if (action === 'show') {
-        const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.backendShow);
+        const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.profileShow);
         return data;
       }
 
@@ -448,7 +448,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (!name) throw new Error('"name" is required when action is "use"');
         const useBody: Record<string, unknown> = { name };
         if (scope) useBody.scope = scope;
-        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.backendUse, useBody);
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, useBody);
         return data;
       }
 
@@ -462,7 +462,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (agents !== undefined) body.agents = agents;
         if (overwrite !== undefined) body.overwrite = overwrite;
         if (scope) body.scope = scope;
-        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.backendCreate, body);
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, body);
         return data;
       }
 
@@ -471,7 +471,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const body: Record<string, unknown> = {};
       if (force !== undefined) body.force = force;
       if (scope) body.scope = scope;
-      const { data } = await daemonRequest(toolCwd, 'DELETE', buildPath(API_ROUTES.backendDelete, { name }), body);
+      const { data } = await daemonRequest(toolCwd, 'DELETE', buildPath(API_ROUTES.profileDelete, { name }), body);
       return data;
     },
   });
@@ -645,14 +645,14 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (profile.agents) createBody.agents = profile.agents;
         if (profile.pi) createBody.pi = profile.pi;
 
-        await daemonRequest(toolCwd, 'POST', API_ROUTES.backendCreate, createBody);
+        await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, createBody);
 
         const yamlOut = Object.keys(remaining).length > 0
           ? stringifyYaml(remaining)
           : '';
         await writeFile(configPath, yamlOut, 'utf-8');
 
-        await daemonRequest(toolCwd, 'POST', API_ROUTES.backendUse, { name: profileName });
+        await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: profileName });
 
         return {
           status: 'migrated',
@@ -807,9 +807,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         },
       };
       if (force) createBody.overwrite = true;
-      await daemonRequest(toolCwd, 'POST', API_ROUTES.backendCreate, createBody);
+      await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, createBody);
 
-      await daemonRequest(toolCwd, 'POST', API_ROUTES.backendUse, { name: profileName });
+      await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: profileName });
 
       try {
         await mkdir(configDir, { recursive: true });

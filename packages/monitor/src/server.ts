@@ -19,7 +19,7 @@ import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
 
 // Derived prefix constants for parameterised routes (used in startsWith checks)
 const CANCEL_BASE = API_ROUTES.cancel.slice(0, API_ROUTES.cancel.indexOf('/:'));
-const BACKEND_BASE = API_ROUTES.backendDelete.slice(0, API_ROUTES.backendDelete.indexOf('/:'));
+const PROFILE_BASE = API_ROUTES.profileDelete.slice(0, API_ROUTES.profileDelete.indexOf('/:'));
 const EVENTS_BASE = API_ROUTES.events.slice(0, API_ROUTES.events.indexOf('/:'));
 const ORCHESTRATION_BASE = API_ROUTES.orchestration.slice(0, API_ROUTES.orchestration.indexOf('/:'));
 const RUN_SUMMARY_BASE = API_ROUTES.runSummary.slice(0, API_ROUTES.runSummary.indexOf('/:'));
@@ -900,8 +900,8 @@ export async function startServer(
       return;
     }
 
-    // --- Backend profile management (DAEMON_API_VERSION 2) ---
-    if (req.method === 'GET' && (url === API_ROUTES.backendList || url.startsWith(`${API_ROUTES.backendList}?`))) {
+    // --- Backend profile management ---
+    if (req.method === 'GET' && (url === API_ROUTES.profileList || url.startsWith(`${API_ROUTES.profileList}?`))) {
       try {
         const { getConfigDir, listProfiles, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
@@ -934,7 +934,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'GET' && url === API_ROUTES.backendShow) {
+    if (req.method === 'GET' && url === API_ROUTES.profileShow) {
       try {
         const { getConfigDir, loadProfile, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
@@ -974,7 +974,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url === API_ROUTES.backendUse) {
+    if (req.method === 'POST' && url === API_ROUTES.profileUse) {
       try {
         const body = await parseJsonBody(req) as { name?: unknown; scope?: unknown };
         if (!body.name || typeof body.name !== 'string') {
@@ -1006,7 +1006,7 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'POST' && url === API_ROUTES.backendCreate) {
+    if (req.method === 'POST' && url === API_ROUTES.profileCreate) {
       try {
         const body = await parseJsonBody(req) as {
           name?: unknown;
@@ -1056,8 +1056,8 @@ export async function startServer(
       return;
     }
 
-    if (req.method === 'DELETE' && url.startsWith(`${BACKEND_BASE}/`)) {
-      const name = url.slice(`${BACKEND_BASE}/`.length);
+    if (req.method === 'DELETE' && url.startsWith(`${PROFILE_BASE}/`)) {
+      const name = url.slice(`${PROFILE_BASE}/`.length);
       if (!name || !/^[A-Za-z0-9._-]+$/.test(name)) {
         sendJsonError(res, 400, 'Invalid backend profile name');
         return;

@@ -49,7 +49,7 @@ export async function handleBackendCommand(
   if (profileName) {
     try {
       await withLoader(ctx, "Switching profile...", () =>
-        daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name: profileName }),
+        daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName }),
       );
       await onStatusRefresh();
       await showInfoOverlay(
@@ -71,7 +71,7 @@ export async function handleBackendCommand(
   let listData: BackendListData;
   try {
     const result = await withLoader(ctx, "Loading profiles...", () =>
-      daemonRequest<BackendListData>(ctx.cwd, "GET", `${API_ROUTES.backendList}?scope=all`),
+      daemonRequest<BackendListData>(ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`),
     );
     listData = result.data;
   } catch (err) {
@@ -126,7 +126,7 @@ export async function handleBackendCommand(
   if (action === "switch") {
     try {
       await withLoader(ctx, "Switching profile...", () =>
-        daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name: selected }),
+        daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: selected }),
       );
       await onStatusRefresh();
       await showInfoOverlay(
@@ -346,7 +346,7 @@ export async function handleBackendNewCommand(
 
   try {
     await withLoader(ctx, "Creating profile...", () =>
-      daemonRequest(ctx.cwd, "POST", API_ROUTES.backendCreate, createBody),
+      daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody),
     );
   } catch (err) {
     await showInfoOverlay(
@@ -366,7 +366,7 @@ export async function handleBackendNewCommand(
   if (activate === "yes") {
     try {
       await withLoader(ctx, "Activating profile...", () =>
-        daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name, scope }),
+        daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name, scope }),
       );
       await onStatusRefresh();
       await showInfoOverlay(

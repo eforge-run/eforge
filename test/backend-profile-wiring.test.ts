@@ -248,19 +248,19 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
   });
 
   it('dispatches eforge_profile actions to the expected daemon endpoints', () => {
-    // After the API_ROUTES migration, the source uses API_ROUTES.* constants
-    // instead of literal path strings. Verify the constants are referenced.
-    expect(source).toContain('API_ROUTES.backendList');
-    expect(source).toContain('API_ROUTES.backendShow');
-    expect(source).toContain('API_ROUTES.backendUse');
-    expect(source).toContain('API_ROUTES.backendCreate');
-    expect(source).toContain('API_ROUTES.backendDelete');
+    // After the HTTP route rename (plan-05), the source uses the renamed API_ROUTES.*
+    // constants (profile* instead of backend*). Verify the constants are referenced.
+    expect(source).toContain('API_ROUTES.profileList');
+    expect(source).toContain('API_ROUTES.profileShow');
+    expect(source).toContain('API_ROUTES.profileUse');
+    expect(source).toContain('API_ROUTES.profileCreate');
+    expect(source).toContain('API_ROUTES.profileDelete');
     // Verify the routes resolve to the correct paths via the shared constant.
-    expect(API_ROUTES.backendList).toBe('/api/backend/list');
-    expect(API_ROUTES.backendShow).toBe('/api/backend/show');
-    expect(API_ROUTES.backendUse).toBe('/api/backend/use');
-    expect(API_ROUTES.backendCreate).toBe('/api/backend/create');
-    expect(API_ROUTES.backendDelete).toBe('/api/backend/:name');
+    expect(API_ROUTES.profileList).toBe('/api/profile/list');
+    expect(API_ROUTES.profileShow).toBe('/api/profile/show');
+    expect(API_ROUTES.profileUse).toBe('/api/profile/use');
+    expect(API_ROUTES.profileCreate).toBe('/api/profile/create');
+    expect(API_ROUTES.profileDelete).toBe('/api/profile/:name');
   });
 
   it('dispatches eforge_models actions to the expected daemon endpoints', () => {
@@ -305,12 +305,13 @@ describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index
   });
 
   it('dispatches eforge_profile to the daemon via daemonRequest', () => {
-    // After the API_ROUTES migration, the source uses API_ROUTES.* constants.
-    expect(source).toContain('API_ROUTES.backendList');
-    expect(source).toContain('API_ROUTES.backendShow');
-    expect(source).toContain('API_ROUTES.backendUse');
-    expect(source).toContain('API_ROUTES.backendCreate');
-    expect(source).toContain('API_ROUTES.backendDelete');
+    // After the HTTP route rename (plan-05), the source uses the renamed API_ROUTES.*
+    // constants (profile* instead of backend*).
+    expect(source).toContain('API_ROUTES.profileList');
+    expect(source).toContain('API_ROUTES.profileShow');
+    expect(source).toContain('API_ROUTES.profileUse');
+    expect(source).toContain('API_ROUTES.profileCreate');
+    expect(source).toContain('API_ROUTES.profileDelete');
   });
 
   it('dispatches eforge_models to the daemon via daemonRequest', () => {

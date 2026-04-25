@@ -172,7 +172,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         active: string | null;
         source: string;
         resolved: { backend?: string; name?: string } | null;
-      }>(ctx.cwd, 'GET', API_ROUTES.backendShow);
+      }>(ctx.cwd, 'GET', API_ROUTES.profileShow);
       if (data.active && data.resolved?.backend) {
         ctx.ui.setStatus('eforge', `eforge: ${data.active} (${data.resolved.backend})`);
       } else {
@@ -657,12 +657,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const params = new URLSearchParams();
         if (scope) params.set("scope", scope);
         const qs = params.toString();
-        const { data } = await daemonRequest(ctx.cwd, "GET", `${API_ROUTES.backendList}${qs ? `?${qs}` : ""}`);
+        const { data } = await daemonRequest(ctx.cwd, "GET", `${API_ROUTES.profileList}${qs ? `?${qs}` : ""}`);
         return jsonResult(data);
       }
 
       if (action === "show") {
-        const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.backendShow);
+        const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.profileShow);
         return jsonResult(data);
       }
 
@@ -675,7 +675,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const { data } = await daemonRequest(
           ctx.cwd,
           "POST",
-          API_ROUTES.backendUse,
+          API_ROUTES.profileUse,
           useBody,
         );
         if (_latestCtx) await refreshStatus(_latestCtx);
@@ -699,7 +699,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const { data } = await daemonRequest(
           ctx.cwd,
           "POST",
-          API_ROUTES.backendCreate,
+          API_ROUTES.profileCreate,
           body,
         );
         if (_latestCtx) await refreshStatus(_latestCtx);
@@ -716,7 +716,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const { data } = await daemonRequest(
         ctx.cwd,
         "DELETE",
-        buildPath(API_ROUTES.backendDelete, { name }),
+        buildPath(API_ROUTES.profileDelete, { name }),
         body,
       );
       return jsonResult(data);
@@ -1073,7 +1073,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (profile.agents) createBody.agents = profile.agents;
         if (profile.pi) createBody.pi = profile.pi;
 
-        await daemonRequest(ctx.cwd, "POST", API_ROUTES.backendCreate, createBody);
+        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
 
         // Rewrite config.yaml with remaining fields only (no backend:) before
         // activating the profile, so a failed write leaves the profile inactive
@@ -1083,7 +1083,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           : "";
         writeFileSync(configPath, yamlOut, "utf-8");
 
-        await daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name: profileName });
+        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
 
         if (_latestCtx) await refreshStatus(_latestCtx);
 
@@ -1144,10 +1144,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         },
       };
       if (params.force) createBody.overwrite = true;
-      await daemonRequest(ctx.cwd, "POST", API_ROUTES.backendCreate, createBody);
+      await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
 
       // Activate the profile
-      await daemonRequest(ctx.cwd, "POST", API_ROUTES.backendUse, { name: profileName });
+      await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
 
       // Create eforge/ directory
       try {

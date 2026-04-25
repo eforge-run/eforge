@@ -18,12 +18,12 @@ export {
 } from './api/queue.js';
 
 export {
-  apiListBackends,
-  apiShowBackend,
-  apiUseBackend,
-  apiCreateBackend,
-  apiDeleteBackend,
-} from './api/backend.js';
+  apiListProfiles,
+  apiShowProfile,
+  apiUseProfile,
+  apiCreateProfile,
+  apiDeleteProfile,
+} from './api/profile.js';
 
 export {
   apiHealth,
