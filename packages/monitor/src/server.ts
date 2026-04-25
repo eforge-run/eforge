@@ -1619,7 +1619,9 @@ function listen(server: Server, port: number, maxRetries = 10): Promise<number> 
       };
       const onListening = () => {
         server.removeListener('error', onError);
-        resolve(p);
+        const addr = server.address();
+        const actualPort = (addr && typeof addr === 'object') ? addr.port : p;
+        resolve(actualPort);
       };
       server.once('error', onError);
       server.once('listening', onListening);

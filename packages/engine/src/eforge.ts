@@ -1708,7 +1708,10 @@ export class EforgeEngine {
 
     // Get recovery-analyst harness and config
     const harness = this.agentRuntimes.forRole('recovery-analyst');
-    const agentConfig = resolveAgentConfig('recovery-analyst', this.config);
+    const agentConfig =
+      this.config.agentRuntimes && Object.keys(this.config.agentRuntimes).length > 0
+        ? resolveAgentConfig('recovery-analyst', this.config)
+        : {};
 
     // Run recovery analyst — collect verdict or error
     let verdictResult: RecoveryVerdict | null = null;
