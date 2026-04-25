@@ -842,7 +842,7 @@ describe('EforgeEngineOptions type', () => {
 
 describe('model class resolution', () => {
   it('nine roles default to balanced class, the rest default to max', async () => {
-    const { resolveAgentConfig, AGENT_MODEL_CLASSES } = await import('@eforge-build/engine/pipeline');
+    const { resolveAgentConfig, AGENT_ROLE_TIERS, BUILTIN_TIER_DEFAULTS, AGENT_ROLE_MODEL_CLASS_OVERRIDES } = await import('@eforge-build/engine/pipeline');
     const balancedRoles = [
       'builder',
       'review-fixer',
@@ -854,13 +854,15 @@ describe('model class resolution', () => {
       'dependency-detector',
       'recovery-analyst',
     ];
-    for (const role of Object.keys(AGENT_MODEL_CLASSES) as Array<keyof typeof AGENT_MODEL_CLASSES>) {
+    for (const role of Object.keys(AGENT_ROLE_TIERS) as Array<keyof typeof AGENT_ROLE_TIERS>) {
+      const tier = AGENT_ROLE_TIERS[role];
+      const effectiveClass = AGENT_ROLE_MODEL_CLASS_OVERRIDES[role] ?? BUILTIN_TIER_DEFAULTS[tier].modelClass;
       if (balancedRoles.includes(role)) {
-        expect(AGENT_MODEL_CLASSES[role]).toBe('balanced');
+        expect(effectiveClass, `${role} should be balanced`).toBe('balanced');
         const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
         expect(result.model).toEqual({ id: 'claude-sonnet-4-6' });
       } else {
-        expect(AGENT_MODEL_CLASSES[role]).toBe('max');
+        expect(effectiveClass, `${role} should be max`).toBe('max');
         const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
         expect(result.model).toEqual({ id: 'claude-opus-4-7' });
       }

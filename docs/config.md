@@ -43,7 +43,20 @@ agents:
   #     id: claude-haiku-4-5
   # promptDir: eforge/prompts  # Directory of .md files that shadow bundled prompts by name match.
   #                            # If eforge/prompts/reviewer.md exists, it replaces the bundled reviewer prompt.
-  # roles:                    # Per-agent role overrides (override global settings)
+  # tiers:                    # Per-tier overrides applied to every role in the tier
+  #   planning:               # Tiers: planning, implementation, review, evaluation
+  #     effort: high          #   - Most users only need to set tiers, not 24 individual roles
+  #     modelClass: max
+  #   implementation:
+  #     effort: medium
+  #     modelClass: balanced
+  #   review:
+  #     effort: high
+  #     modelClass: max
+  #   evaluation:
+  #     effort: low           #   Evaluators only judge fixes; low effort is sufficient
+  #     modelClass: max
+  # roles:                    # Per-agent role overrides (override tier and global settings)
   #   formatter:              # Per-role options: model, modelClass, thinking, effort, maxBudgetUsd,
   #     effort: low           #   fallbackModel, allowedTools, disallowedTools, maxTurns, promptAppend
   #   builder:                # Available roles: planner, module-planner, builder, reviewer,
@@ -56,6 +69,8 @@ agents:
   #     promptAppend: |       #   prd-validator, dependency-detector, gap-closer,
   #       ## Project Rules    #   recovery-analyst
   #       - Flag raw SQL queries
+  #   tester:                 # Per-role `tier:` reassigns a role to a different tier
+  #     tier: review          #   so it picks up the review tier's defaults instead of implementation
 
 maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (default: 2)
 

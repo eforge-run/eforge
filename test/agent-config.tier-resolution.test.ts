@@ -18,6 +18,15 @@ import {
 } from '@eforge-build/engine/pipeline/agent-config';
 import type { AgentRole } from '@eforge-build/engine/events';
 
+/**
+ * Minimal agentRuntimes config so resolveAgentConfig can resolve a harness.
+ * Include this in every resolveConfig call that doesn't already specify agentRuntimes.
+ */
+const BASE_RUNTIMES = {
+  agentRuntimes: { 'claude-sdk': { harness: 'claude-sdk' as const } },
+  defaultAgentRuntime: 'claude-sdk',
+} as const;
+
 // All 24 agent roles
 const ALL_ROLES: AgentRole[] = [
   'planner', 'builder', 'reviewer', 'review-fixer', 'evaluator', 'module-planner',
@@ -34,6 +43,7 @@ const ALL_ROLES: AgentRole[] = [
 describe('tier-only config (no per-role override)', () => {
   const config = resolveConfig(
     {
+      ...BASE_RUNTIMES,
       agents: {
         tiers: {
           planning: { effort: 'xhigh' },
@@ -71,6 +81,7 @@ describe('tier-only config (no per-role override)', () => {
 describe('tier + role override (role wins for that role)', () => {
   const config = resolveConfig(
     {
+      ...BASE_RUNTIMES,
       agents: {
         tiers: {
           planning: { effort: 'xhigh' },
@@ -103,6 +114,7 @@ describe('tier + role override (role wins for that role)', () => {
 describe('precedence: role-config > tier-config > global-config', () => {
   const config = resolveConfig(
     {
+      ...BASE_RUNTIMES,
       agents: {
         effort: 'low',                    // global (level 4)
         tiers: {
@@ -142,6 +154,7 @@ describe('precedence: role-config > tier-config > global-config', () => {
 describe('tier beats global', () => {
   const config = resolveConfig(
     {
+      ...BASE_RUNTIMES,
       agents: {
         effort: 'low',                        // global (level 4)
         tiers: {
@@ -214,6 +227,7 @@ describe('built-in tier defaults applied with no user config', () => {
 describe('role tier reassignment via agents.roles[role].tier', () => {
   const config = resolveConfig(
     {
+      ...BASE_RUNTIMES,
       agents: {
         tiers: {
           review: { effort: 'xhigh' },
@@ -374,6 +388,7 @@ describe('tier and tierSource always present on ResolvedAgentConfig', () => {
   it('role moved to different tier uses role-config tierSource', () => {
     const config = resolveConfig(
       {
+        ...BASE_RUNTIMES,
         agents: {
           roles: {
             tester: { tier: 'review' as const },
@@ -399,6 +414,7 @@ describe('source PRD example config', () => {
   // tester.tier: review
   const config = resolveConfig(
     {
+      ...BASE_RUNTIMES,
       agents: {
         tiers: {
           planning: { effort: 'high' },
