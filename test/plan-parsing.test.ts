@@ -315,7 +315,6 @@ describe('parsePlanFile agents tuning', () => {
     writeFileSync(planPath, `---
 id: plan-01-refactor
 name: Refactor Auth
-depends_on: []
 branch: refactor/main
 agents:
   builder:
@@ -341,7 +340,6 @@ agents:
     writeFileSync(planPath, `---
 id: plan-02-bad
 name: Bad Agents Plan
-depends_on: []
 branch: bad/main
 agents:
   builder:
@@ -363,7 +361,6 @@ agents:
     writeFileSync(planPath, `---
 id: plan-03-warn
 name: Warn Agents Plan
-depends_on: []
 branch: warn/main
 agents:
   builder:
@@ -388,7 +385,6 @@ agents:
     writeFileSync(planPath, `---
 id: plan-04-ok
 name: OK Agents Plan
-depends_on: []
 branch: ok/main
 agents:
   builder:
