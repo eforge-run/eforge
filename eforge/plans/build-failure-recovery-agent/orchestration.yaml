@@ -1,57 +1,78 @@
 name: build-failure-recovery-agent
-description: "Add an advisory build-failure recovery analyst: when a build
-  fails, a tools-none agent reads surviving artifacts (failed PRD, feature
-  branch, plan state, event log) and writes a structured RecoveryVerdict sidecar
-  next to the failed PRD. v1 is read-only; the daemon spawns recovery as a clean
-  subprocess via a new `eforge recover` CLI subcommand and exposes parity
-  surfaces in MCP, the Pi extension, and the monitor UI."
+description: Add an advisory build-failure recovery analyst that, when a build
+  fails, reads surviving artifacts (PRD, feature branch, plan state, event log),
+  produces a structured BuildFailureSummary, runs a closed-prompt no-tools agent
+  to emit a typed RecoveryVerdict (retry|split|abandon|manual), and writes a
+  sidecar markdown + JSON twin next to the failed PRD. Daemon spawns recovery as
+  a clean subprocess on plan:build:failed; monitor UI surfaces verdict +
+  confidence; CLI/MCP/Pi parity exposed.
 base_branch: main
 mode: excursion
 validate:
   - pnpm type-check
   - pnpm test
-  - pnpm build
 plans:
-  - id: plan-01-recovery-engine-core
-    name: "Recovery engine core: summary, agent, schema, sidecar, events"
+  - id: plan-01-engine-core
+    name: "Engine Core: Schema, Agent, Summary, Sidecar"
     depends_on: []
     branch: build-failure-recovery-agent/engine-core
     agents:
       builder:
         effort: high
-        rationale: Net-new agent role plus a forensic summary builder that has to handle
-          missing/partial inputs (failed mid-build state). Mirrors
-          staleness-assessor but introduces several new types that must line up
-          with consumers in plan-02.
-      reviewer:
-        effort: high
-        rationale: Schema and event shape are the stable contract a future auto-executor
-          will consume; getting field names and discriminants right matters.
+        rationale: Introduces a new agent role end-to-end (schema, parser, prompt, agent
+          body, summary builder, sidecar writer). Requires careful mirroring of
+          staleness-assessor patterns and integration with config + runtime
+          registry.
     build: &a1
       - implement
-      - review-cycle
-      - - doc-update
-        - test-write
+      - - review-cycle
+        - doc-update
+      - test-write
     review: &a2
-      strategy: parallel
+      strategy: single
       perspectives:
         - correctness
         - architecture
-        - consistency
+        - api-design
       maxRounds: 2
       autoAcceptBelow: suggestion
       evaluatorStrictness: standard
-  - id: plan-02-recovery-surfaces
-    name: "Recovery surfaces: CLI, MCP, daemon trigger, monitor UI, Pi parity"
+  - id: plan-02-cli-and-engine-api
+    name: CLI Subcommand + EforgeEngine.recover
     depends_on:
-      - plan-01-recovery-engine-core
-    branch: build-failure-recovery-agent/surfaces
+      - plan-01-engine-core
+    branch: build-failure-recovery-agent/cli-and-engine-api
+    agents:
+      builder:
+        effort: medium
+        rationale: Wires existing engine primitives (built in plan-01) into a public
+          engine method and CLI subcommand. Mostly glue; medium effort is
+          sufficient.
+    build: *a1
+    review: *a2
+  - id: plan-03-daemon-mcp-pi
+    name: Daemon Trigger + MCP Tool + Pi Parity
+    depends_on:
+      - plan-02-cli-and-engine-api
+    branch: build-failure-recovery-agent/daemon-mcp-pi
     agents:
       builder:
         effort: high
-        rationale: Five distinct surface integrations (CLI, MCP, daemon subprocess
-          spawn, monitor UI, Pi extension) plus a plugin version bump. Each has
-          its own conventions to follow.
+        rationale: Touches three consumer surfaces (daemon HTTP, MCP proxy, Pi
+          extension) plus a route-version bump. Cross-package coordination per
+          the AGENTS.md sync rule warrants high effort.
+    build: *a1
+    review: *a2
+  - id: plan-04-monitor-ui
+    name: "Monitor UI: Verdict Chip + Sidecar Link"
+    depends_on:
+      - plan-03-daemon-mcp-pi
+    branch: build-failure-recovery-agent/monitor-ui
+    agents:
+      builder:
+        effort: medium
+        rationale: Localized UI work in two components; shadcn/ui patterns already
+          established in the codebase.
     build: *a1
     review: *a2
 pipeline:
@@ -61,25 +82,24 @@ pipeline:
     - plan-review-cycle
   defaultBuild: *a1
   defaultReview: *a2
-  rationale: This PRD ships three tightly-coupled components (BuildFailureSummary,
-    recovery-analyst agent, daemon trigger + sidecar) plus parity surfaces (CLI,
-    MCP proxy, Pi extension, monitor UI). The pieces have sequential
-    dependencies (schema -> agent -> CLI -> daemon trigger -> UI) and share
-    types/contracts across packages, which is the textbook 'sequential
-    dependency chain' negative signal for expedition - a single planner session
-    can comfortably enumerate the plans and cross-package edits. Excursion is
-    the right scope. Compile uses planner + plan-review-cycle because the PRD
-    spans many files across packages (engine, eforge, monitor, monitor-ui,
-    pi-eforge, plugin) and the prd-completeness rule plus closed-prompts rule
-    must be reflected in the plans, so a quality gate on planning pays off.
-    Build pipeline runs implement, then review-cycle (the work touches new agent
-    wiring, schema, daemon subprocess spawning, and event types - all
-    correctness-critical), then doc-update and test-write in parallel (neither
-    conflicts with the other, both depend only on implement which has already
-    completed sequentially). Review uses the parallel strategy with correctness
-    (verdict schema, parser, sidecar formatting), architecture (engine/plugin
-    boundary, closed-prompt rule, no build-permit consumption, subprocess
-    isolation), and consistency (CLI/MCP/Pi/plugin parity per AGENTS.md sync
-    rule) perspectives. maxRounds=2 with standard strictness fits a
-    feature-scale change that is read-only and advisory (lower blast radius than
-    code-modifying agents) but still has invariants worth enforcing.
+  rationale: "This PRD touches multiple coordinated surfaces (engine recovery
+    module, schemas, agents, prompts, events, CLI, MCP proxy/factory, daemon
+    server, monitor UI, Pi extension, plugin manifest), but they form a
+    sequential dependency chain rooted in a single new agent and schema rather
+    than 4+ independently-planned subsystems. A single planner session can
+    enumerate the file changes and ordering (schema -> agent + summary + sidecar
+    -> CLI/MCP -> daemon trigger -> UI/Pi parity), so excursion is correct;
+    expedition would be over-engineered. plan-review-cycle is added because the
+    PRD has many enumerated acceptance criteria and parity-of-surface
+    requirements (CLI + MCP + Pi + plugin + UI) that benefit from a quality gate
+    before build. For build stages: implement first, then review-cycle in
+    parallel with doc-update (doc-update only depends on implement, satisfying
+    the parallel-group rule), then test-write sequentially since the PRD
+    explicitly requires `test/recovery.test.ts` covering all four verdicts and
+    schema round-trip. Review uses single strategy with
+    correctness/architecture/api-design perspectives because the PRD introduces
+    a new public schema (RecoveryVerdict), a stable JSON sidecar contract, and
+    cross-package surfaces that must stay consistent; standard strictness fits
+    feature work that is read-only and advisory (no security/data risk
+    warranting strict). maxRounds: 2 is sufficient given the closed prompt and
+    template (mirroring staleness-assessor) constrain implementation variance."
