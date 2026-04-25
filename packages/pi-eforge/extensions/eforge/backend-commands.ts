@@ -170,8 +170,8 @@ export async function handleBackendNewCommand(
 
   // Step 1: Scope picker
   const scope = await showSelectOverlay(ctx, "eforge - New Profile: Scope", [
-    { value: "project", label: "Project scope", description: "eforge/backends/ - committed with the project" },
-    { value: "user", label: "User scope", description: "~/.config/eforge/backends/ - reusable across projects" },
+    { value: "project", label: "Project scope", description: "eforge/profiles/ - committed with the project" },
+    { value: "user", label: "User scope", description: "~/.config/eforge/profiles/ - reusable across projects" },
   ]);
   if (!scope) return;
 

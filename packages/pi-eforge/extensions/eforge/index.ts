@@ -595,13 +595,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   });
 
   // ------------------------------------------------------------------
-  // Tool: eforge_backend
+  // Tool: eforge_profile
   // ------------------------------------------------------------------
   pi.registerTool({
-    name: "eforge_backend",
-    label: "eforge backend",
+    name: "eforge_profile",
+    label: "eforge profile",
     description:
-      'Manage named backend profiles in eforge/backends/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-backend to switch profiles; "create" writes a new eforge/backends/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+      'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
     parameters: Type.Object({
       action: StringEnum(["list", "show", "use", "create", "delete"] as const, {
         description:
@@ -980,7 +980,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_init",
     label: "eforge init",
     description:
-      "Initialize eforge in a project: creates a named backend profile under eforge/backends/, activates it, and writes eforge/config.yaml for team-wide settings. Backend is hardcoded to 'pi'. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.",
+      "Initialize eforge in a project: creates a named backend profile under eforge/profiles/, activates it, and writes eforge/config.yaml for team-wide settings. Backend is hardcoded to 'pi'. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.",
     parameters: Type.Object({
       force: Type.Optional(
         Type.Boolean({
@@ -1017,8 +1017,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const configDir = join(ctx.cwd, "eforge");
       const configPath = join(configDir, "config.yaml");
 
-      // Ensure .gitignore has daemon state and active-backend marker
-      ensureGitignoreEntries(ctx.cwd, [".eforge/", "eforge/.active-backend"]);
+      // Ensure .gitignore has daemon state and active-profile marker
+      ensureGitignoreEntries(ctx.cwd, [".eforge/", "eforge/.active-profile"]);
 
       // --- Migrate mode ---
       if (params.migrate) {
@@ -1091,7 +1091,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           status: "migrated",
           configPath: "eforge/config.yaml",
           profileName,
-          profilePath: `eforge/backends/${profileName}.yaml`,
+          profilePath: `eforge/profiles/${profileName}.yaml`,
           backend,
           moved: Object.keys(profile),
           kept: Object.keys(remaining),
@@ -1185,7 +1185,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         status: "initialized",
         configPath: "eforge/config.yaml",
         profileName,
-        profilePath: `eforge/backends/${profileName}.yaml`,
+        profilePath: `eforge/profiles/${profileName}.yaml`,
         backend,
       };
 
@@ -1358,7 +1358,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   });
 
   pi.registerCommand("eforge:backend:new", {
-    description: "Create a new backend profile in eforge/backends/",
+    description: "Create a new backend profile in eforge/profiles/",
     handler: async (args) => {
       await handleBackendNewCommand(pi, _latestCtx, args, async () => {
         if (_latestCtx) await refreshStatus(_latestCtx);

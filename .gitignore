@@ -9,4 +9,4 @@ tmp/
 .schaake-os-track
 .orchestration-logs/
 .claude/settings.local.json
-eforge/.active-backend
+eforge/.active-profile

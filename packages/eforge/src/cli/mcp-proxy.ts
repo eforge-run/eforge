@@ -412,10 +412,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     },
   });
 
-  // Tool: eforge_backend
+  // Tool: eforge_profile
   createDaemonTool(server, cwd, {
-    name: 'eforge_backend',
-    description: 'Manage named backend profiles in eforge/backends/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-backend to switch profiles; "create" writes a new eforge/backends/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+    name: 'eforge_profile',
+    description: 'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
     schema: {
       action: z.enum(['list', 'show', 'use', 'create', 'delete']).describe(
         "'list' enumerates profiles, 'show' returns the resolved active profile, 'use' switches the active profile, 'create' writes a new profile, 'delete' removes a profile",
@@ -578,7 +578,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_init
   createDaemonTool(server, cwd, {
     name: 'eforge_init',
-    description: 'Initialize eforge in a project: creates a named backend profile under eforge/backends/, activates it, and writes eforge/config.yaml for team-wide settings. Presents an elicitation form for backend, provider, and model selection. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.',
+    description: 'Initialize eforge in a project: creates a named backend profile under eforge/profiles/, activates it, and writes eforge/config.yaml for team-wide settings. Presents an elicitation form for backend, provider, and model selection. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.',
     schema: {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands (e.g. ["pnpm install", "pnpm test"]). Only applied when creating a new config, not when merging with existing.'),
@@ -588,8 +588,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       const configDir = join(toolCwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
 
-      // Ensure .gitignore has daemon state (.eforge/) and the per-developer active-backend marker.
-      await ensureGitignoreEntries(toolCwd, ['.eforge/', 'eforge/.active-backend']);
+      // Ensure .gitignore has daemon state (.eforge/) and the per-developer active-profile marker.
+      await ensureGitignoreEntries(toolCwd, ['.eforge/', 'eforge/.active-profile']);
 
       // --- Migrate mode ---
       if (migrate) {
@@ -658,7 +658,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           status: 'migrated',
           configPath: 'eforge/config.yaml',
           profileName,
-          profilePath: `eforge/backends/${profileName}.yaml`,
+          profilePath: `eforge/profiles/${profileName}.yaml`,
           backend,
           moved: Object.keys(profile),
           kept: Object.keys(remaining),
@@ -838,7 +838,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         status: 'initialized',
         configPath: 'eforge/config.yaml',
         profileName,
-        profilePath: `eforge/backends/${profileName}.yaml`,
+        profilePath: `eforge/profiles/${profileName}.yaml`,
         backend,
       };
 

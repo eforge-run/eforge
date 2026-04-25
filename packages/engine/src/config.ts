@@ -1,7 +1,11 @@
 import { readFile, readdir, rename, rm, unlink, writeFile, mkdir, access } from 'node:fs/promises';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { resolve, dirname, basename, extname } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
+
+const execFileAsync = promisify(execFile);
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
@@ -513,7 +517,7 @@ export function resolveConfig(
 
 /**
  * Error thrown when config.yaml contains `backend:` which must be migrated
- * to a named profile under eforge/backends/.
+ * to a named profile under eforge/profiles/.
  */
 export class ConfigMigrationError extends Error {
   constructor(message: string) {
@@ -734,7 +738,7 @@ export async function loadUserConfig(
  * merged with user-level global config (~/.config/eforge/config.yaml).
  * Returns DEFAULT_CONFIG when no config files exist.
  *
- * When an active backend profile is found (via `eforge/.active-backend`
+ * When an active profile is found (via `eforge/.active-profile`
  * marker), the profile is merged on top of the project config before
  * env-var resolution.
  *
@@ -787,7 +791,23 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
     }
   }
 
-  // Resolve and merge active backend profile, if present
+  // Auto-migrate eforge/backends/ -> eforge/profiles/ on first load after upgrade
+  if (configPath) {
+    const configDir = dirname(configPath);
+    try {
+      await migrateBackendsToProfiles(configDir);
+    } catch {
+      // best-effort: migration failure should not break config loading
+    }
+  }
+  // Auto-migrate user-scope backends/ -> profiles/ (always, independent of project config)
+  try {
+    await migrateUserBackendsToProfiles();
+  } catch {
+    // best-effort: migration failure should not break config loading
+  }
+
+  // Resolve and merge active profile, if present
   let profileConfig: PartialEforgeConfig | null = null;
   if (configPath) {
     const configDir = dirname(configPath);
@@ -795,7 +815,7 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
       const { name, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
       allWarnings.push(...warnings);
       if (name) {
-        const result = await loadBackendProfile(configDir, name);
+        const result = await loadProfile(configDir, name);
         if (result) {
           profileConfig = result.profile;
         }
@@ -811,14 +831,14 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
 }
 
 // ---------------------------------------------------------------------------
-// Backend Profile Loader
+// Profile Loader
 // ---------------------------------------------------------------------------
 
 /**
- * Source of the active backend profile resolution.
+ * Source of the active profile resolution.
  *
- * - `local`: marker file `eforge/.active-backend` selected the profile (dev-local override)
- * - `user-local`: user-scope marker `~/.config/eforge/.active-backend` selected the profile
+ * - `local`: marker file `eforge/.active-profile` selected the profile (dev-local override)
+ * - `user-local`: user-scope marker `~/.config/eforge/.active-profile` selected the profile
  * - `missing`: marker present, but the referenced profile file is missing
  *   (a one-shot stderr warning is logged; fallback to user-marker or none)
  * - `none`: no profile applied (no marker found)
@@ -826,38 +846,42 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
 export type ActiveProfileSource = 'local' | 'user-local' | 'missing' | 'none';
 
 /** Marker filename inside the eforge config directory. */
-const ACTIVE_BACKEND_MARKER = '.active-backend';
+const ACTIVE_PROFILE_MARKER = '.active-profile';
 
 /** Profile subdirectory inside the eforge config directory. */
-const BACKENDS_SUBDIR = 'backends';
+const PROFILES_SUBDIR = 'profiles';
 
 function profilePath(configDir: string, name: string): string {
-  return resolve(configDir, BACKENDS_SUBDIR, `${name}.yaml`);
+  return resolve(configDir, PROFILES_SUBDIR, `${name}.yaml`);
 }
 
-function backendsDir(configDir: string): string {
-  return resolve(configDir, BACKENDS_SUBDIR);
+function profilesDir(configDir: string): string {
+  return resolve(configDir, PROFILES_SUBDIR);
 }
 
 function markerPath(configDir: string): string {
-  return resolve(configDir, ACTIVE_BACKEND_MARKER);
+  return resolve(configDir, ACTIVE_PROFILE_MARKER);
 }
 
-/** Return the user-scope backends directory (~/.config/eforge/backends/). */
-function userBackendsDir(): string {
+/** Return the user eforge config directory (~/.config/eforge/). */
+function userEforgeConfigDir(): string {
   const base = process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config');
-  return resolve(base, 'eforge', BACKENDS_SUBDIR);
+  return resolve(base, 'eforge');
+}
+
+/** Return the user-scope profiles directory (~/.config/eforge/profiles/). */
+function userProfilesDir(): string {
+  return resolve(userEforgeConfigDir(), PROFILES_SUBDIR);
 }
 
 /** Return the path to a user-scope profile file. */
 function userProfilePath(name: string): string {
-  return resolve(userBackendsDir(), `${name}.yaml`);
+  return resolve(userProfilesDir(), `${name}.yaml`);
 }
 
-/** Return the path to the user-scope active-backend marker file. */
+/** Return the path to the user-scope active-profile marker file. */
 function userMarkerPath(): string {
-  const base = process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config');
-  return resolve(base, 'eforge', ACTIVE_BACKEND_MARKER);
+  return resolve(userEforgeConfigDir(), ACTIVE_PROFILE_MARKER);
 }
 
 /** Check whether a profile file exists in either project or user scope. */
@@ -888,6 +912,162 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 /**
+ * Auto-migrate `eforge/backends/` -> `eforge/profiles/` and
+ * `.active-backend` -> `.active-profile` on first load after upgrade.
+ *
+ * Strategy:
+ * - If only `backends/` exists: perform migration (git mv with fs.rename fallback).
+ * - If both directories exist: log a warning and leave `backends/` untouched.
+ * - If only `profiles/` or neither: do nothing.
+ * - If `profiles/` exists and `.active-backend` exists without `.active-profile`:
+ *   the directory was previously migrated but the marker rename failed — retry
+ *   the marker migration (idempotent recovery).
+ * Marker file migration is tied to directory migration.
+ */
+async function migrateBackendsToProfiles(configDir: string): Promise<void> {
+  const oldDir = resolve(configDir, 'backends');
+  const newDir = profilesDir(configDir);
+  const oldMarker = resolve(configDir, '.active-backend');
+  const newMarker = markerPath(configDir);
+
+  const [oldDirExists, newDirExists, oldMarkerExists, newMarkerExists] = await Promise.all([
+    fileExists(oldDir),
+    fileExists(newDir),
+    fileExists(oldMarker),
+    fileExists(newMarker),
+  ]);
+
+  if (!oldDirExists) {
+    // Detect orphaned marker: directory already migrated but marker rename failed previously
+    if (newDirExists && oldMarkerExists && !newMarkerExists) {
+      try {
+        await rename(oldMarker, newMarker);
+        process.stderr.write('[eforge] Migrated orphaned eforge/.active-backend -> .active-profile\n');
+      } catch {
+        process.stderr.write(
+          '[eforge] Failed to migrate orphaned eforge/.active-backend marker. ' +
+          'To fix manually, run: mv eforge/.active-backend eforge/.active-profile\n',
+        );
+      }
+    }
+    return;
+  }
+
+  if (newDirExists) {
+    // Both directories exist — warn and leave backends/ untouched for manual resolution
+    process.stderr.write(
+      '[eforge] Both eforge/backends/ and eforge/profiles/ exist. ' +
+      'Migration skipped; please resolve manually and remove eforge/backends/.\n',
+    );
+    return;
+  }
+
+  // Migrate directory: try git mv, fall back to fs.rename
+  const projectRoot = dirname(configDir);
+  let migrated = false;
+  try {
+    await execFileAsync('git', ['-C', projectRoot, 'mv', 'eforge/backends', 'eforge/profiles']);
+    migrated = true;
+  } catch {
+    // git mv failed (not a git repo, or other error) — try fs.rename
+    try {
+      await rename(oldDir, newDir);
+      migrated = true;
+    } catch {
+      process.stderr.write('[eforge] Failed to migrate eforge/backends/ to eforge/profiles/.\n');
+      return;
+    }
+  }
+
+  if (migrated) {
+    process.stderr.write('[eforge] Migrated eforge/backends/ -> eforge/profiles/\n');
+
+    // Also migrate the marker file (tied to directory migration)
+    if (oldMarkerExists) {
+      try {
+        await rename(oldMarker, newMarker);
+        process.stderr.write('[eforge] Migrated .active-backend -> .active-profile\n');
+      } catch {
+        process.stderr.write(
+          '[eforge] Failed to migrate .active-backend marker. ' +
+          'To fix manually, run: mv eforge/.active-backend eforge/.active-profile\n',
+        );
+      }
+    }
+  }
+}
+
+/**
+ * Auto-migrate user-scope `~/.config/eforge/backends/` -> `~/.config/eforge/profiles/` and
+ * `~/.config/eforge/.active-backend` -> `~/.config/eforge/.active-profile` on first load after upgrade.
+ *
+ * Strategy mirrors `migrateBackendsToProfiles` but operates on the user config directory
+ * and uses only `fs.rename` (the user config dir is not a git repo).
+ */
+async function migrateUserBackendsToProfiles(): Promise<void> {
+  const userDir = userEforgeConfigDir();
+  const oldDir = resolve(userDir, 'backends');
+  const newDir = userProfilesDir();
+  const oldMarker = resolve(userDir, '.active-backend');
+  const newMarker = userMarkerPath();
+
+  const [oldDirExists, newDirExists, oldMarkerExists, newMarkerExists] = await Promise.all([
+    fileExists(oldDir),
+    fileExists(newDir),
+    fileExists(oldMarker),
+    fileExists(newMarker),
+  ]);
+
+  if (!oldDirExists) {
+    // Detect orphaned marker: directory already migrated but marker rename failed previously
+    if (newDirExists && oldMarkerExists && !newMarkerExists) {
+      try {
+        await rename(oldMarker, newMarker);
+        process.stderr.write('[eforge] Migrated orphaned ~/.config/eforge/.active-backend -> .active-profile\n');
+      } catch {
+        process.stderr.write(
+          '[eforge] Failed to migrate orphaned ~/.config/eforge/.active-backend marker. ' +
+          'To fix manually, run: mv ~/.config/eforge/.active-backend ~/.config/eforge/.active-profile\n',
+        );
+      }
+    }
+    return;
+  }
+
+  if (newDirExists) {
+    // Both directories exist — warn and leave backends/ untouched for manual resolution
+    process.stderr.write(
+      '[eforge] Both ~/.config/eforge/backends/ and ~/.config/eforge/profiles/ exist. ' +
+      'Migration skipped; please resolve manually and remove ~/.config/eforge/backends/.\n',
+    );
+    return;
+  }
+
+  // Migrate using fs.rename (user config dir is not a git repo)
+  try {
+    await rename(oldDir, newDir);
+  } catch {
+    process.stderr.write('[eforge] Failed to migrate ~/.config/eforge/backends/ to ~/.config/eforge/profiles/.\n');
+    return;
+  }
+
+  process.stderr.write('[eforge] Migrated ~/.config/eforge/backends/ -> ~/.config/eforge/profiles/\n');
+
+  // Also migrate the marker file (tied to directory migration)
+  if (oldMarkerExists) {
+    try {
+      await rename(oldMarker, newMarker);
+      process.stderr.write('[eforge] Migrated ~/.config/eforge/.active-backend -> .active-profile\n');
+    } catch {
+      process.stderr.write(
+        '[eforge] Failed to migrate ~/.config/eforge/.active-backend marker. ' +
+        'To fix manually, run: mv ~/.config/eforge/.active-backend ~/.config/eforge/.active-profile\n',
+      );
+    }
+  }
+}
+
+/**
  * Return the directory containing `eforge/config.yaml` from the given start
  * directory, or null when no config file is found.
  */
@@ -901,9 +1081,9 @@ export async function getConfigDir(cwd?: string): Promise<string | null> {
  * Resolve the active backend profile name and how it was selected.
  *
  * Resolution precedence:
- * 1. Project marker `eforge/.active-backend` (dev-local) — wins when present and the
+ * 1. Project marker `eforge/.active-profile` (dev-local) — wins when present and the
  *    referenced profile file exists in either project or user scope.
- * 2. User marker `~/.config/eforge/.active-backend` — user-level dev-local override.
+ * 2. User marker `~/.config/eforge/.active-profile` — user-level dev-local override.
  * 3. Otherwise no profile is applied.
  *
  * Returns `{ name, source, warnings }` where `warnings` carries any diagnostic
@@ -925,7 +1105,7 @@ export async function resolveActiveProfileName(
     }
     // Marker is stale — collect warning, then attempt fallbacks
     warnings.push(
-      `[eforge] Active backend marker ${markerPath(configDir)} points at ` +
+      `[eforge] Active profile marker ${markerPath(configDir)} points at ` +
       `"${projectMarkerName}" but no profile file exists in project or user scope. ` +
       `Falling back to next available source.`,
     );
@@ -972,12 +1152,12 @@ async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | 
 }
 
 /**
- * Load and parse a backend profile file. Looks up in project scope first
- * (`eforge/backends/`), then user scope (`~/.config/eforge/backends/`).
+ * Load and parse a profile file. Looks up in project scope first
+ * (`eforge/profiles/`), then user scope (`~/.config/eforge/profiles/`).
  * Returns null when the profile file does not exist in either scope.
  * Profile files use the same partial-config schema as `config.yaml`.
  */
-export async function loadBackendProfile(
+export async function loadProfile(
   configDir: string,
   name: string,
 ): Promise<{ profile: PartialEforgeConfig; scope: 'project' | 'user' } | null> {
@@ -995,14 +1175,14 @@ export async function loadBackendProfile(
 }
 
 /**
- * List all backend profile files from both project (`eforge/backends/`) and
- * user (`~/.config/eforge/backends/`) scopes. Each entry includes the profile
+ * List all profile files from both project (`eforge/profiles/`) and
+ * user (`~/.config/eforge/profiles/`) scopes. Each entry includes the profile
  * name, its declared `backend`, the absolute file path, the scope it belongs to,
  * and `shadowedBy: 'project'` when a user-scope entry is shadowed by a
  * project-scope entry with the same name. Unreadable or non-YAML files are
  * skipped silently.
  */
-export async function listBackendProfiles(
+export async function listProfiles(
   configDir: string,
 ): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' }>> {
   type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' };
@@ -1040,8 +1220,8 @@ export async function listBackendProfiles(
     return out;
   }
 
-  const projectEntries = await scanDir(backendsDir(configDir), 'project');
-  const userEntries = await scanDir(userBackendsDir(), 'user');
+  const projectEntries = await scanDir(profilesDir(configDir), 'project');
+  const userEntries = await scanDir(userProfilesDir(), 'user');
 
   // Mark user entries that are shadowed by project entries with the same name
   const projectNames = new Set(projectEntries.map((e) => e.name));
@@ -1055,14 +1235,14 @@ export async function listBackendProfiles(
 }
 
 /**
- * Set the active backend profile by writing the marker file atomically.
+ * Set the active profile by writing the marker file atomically.
  * Validates that the profile file exists (in at least one scope) and that
  * the merged result (global + project + profile) passes `eforgeConfigSchema`.
  *
  * When `opts.scope` is `'user'`, the user-scope marker
- * (`~/.config/eforge/.active-backend`) is written instead of the project marker.
+ * (`~/.config/eforge/.active-profile`) is written instead of the project marker.
  */
-export async function setActiveBackend(
+export async function setActiveProfile(
   configDir: string,
   name: string,
   opts?: { scope?: 'project' | 'user' },
@@ -1070,12 +1250,12 @@ export async function setActiveBackend(
   const scope = opts?.scope ?? 'project';
   name = name.trim();
   if (name.length === 0) {
-    throw new Error('Backend profile name must be a non-empty string');
+    throw new Error('Profile name must be a non-empty string');
   }
 
   // Validate profile exists in at least one scope
   if (!(await profileExistsInAnyScope(configDir, name))) {
-    throw new Error(`Backend profile "${name}" not found in project or user scope`);
+    throw new Error(`Profile "${name}" not found in project or user scope`);
   }
 
   // Load project config and global config to validate the merged result
@@ -1093,9 +1273,9 @@ export async function setActiveBackend(
     // no project config
   }
 
-  const profileResult = await loadBackendProfile(configDir, name);
+  const profileResult = await loadProfile(configDir, name);
   if (!profileResult) {
-    throw new Error(`Backend profile "${name}" could not be parsed`);
+    throw new Error(`Profile "${name}" could not be parsed`);
   }
 
   const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
@@ -1104,7 +1284,7 @@ export async function setActiveBackend(
   const result = eforgeConfigSchema.safeParse(merged);
   if (!result.success) {
     throw new Error(
-      `Backend profile "${name}" produces an invalid merged config: ` +
+      `Profile "${name}" produces an invalid merged config: ` +
       z.prettifyError(result.error),
     );
   }
@@ -1122,8 +1302,8 @@ export async function setActiveBackend(
  * the merged result (global + project + profile) before writing. Refuses
  * to overwrite an existing profile unless `overwrite: true` is supplied.
  *
- * When `scope` is `'user'`, writes to the user-scope backends directory
- * (`~/.config/eforge/backends/`) instead of the project directory.
+ * When `scope` is `'user'`, writes to the user-scope profiles directory
+ * (`~/.config/eforge/profiles/`) instead of the project directory.
  */
 export async function createBackendProfile(
   configDir: string,
@@ -1144,11 +1324,11 @@ export async function createBackendProfile(
     );
   }
 
-  const targetDir = scope === 'user' ? userBackendsDir() : backendsDir(configDir);
+  const targetDir = scope === 'user' ? userProfilesDir() : profilesDir(configDir);
   const path = resolve(targetDir, `${name}.yaml`);
   if (await fileExists(path)) {
     if (!overwrite) {
-      throw new Error(`Backend profile "${name}" already exists at ${path}. Pass overwrite: true to replace it.`);
+      throw new Error(`Profile "${name}" already exists at ${path}. Pass overwrite: true to replace it.`);
     }
   }
 
@@ -1164,7 +1344,7 @@ export async function createBackendProfile(
   const partialResult = partialEforgeConfigSchema.safeParse(partial);
   if (!partialResult.success) {
     throw new Error(
-      `Backend profile "${name}" failed partial-config validation: ` +
+      `Profile "${name}" failed partial-config validation: ` +
       z.prettifyError(partialResult.error),
     );
   }
@@ -1189,7 +1369,7 @@ export async function createBackendProfile(
   const mergedResult = eforgeConfigSchema.safeParse(merged);
   if (!mergedResult.success) {
     throw new Error(
-      `Backend profile "${name}" produces an invalid merged config: ` +
+      `Profile "${name}" produces an invalid merged config: ` +
       z.prettifyError(mergedResult.error),
     );
   }
@@ -1211,13 +1391,13 @@ export async function createBackendProfile(
       const verifyResult = partialEforgeConfigSchema.safeParse(verifyData);
       if (!verifyResult.success) {
         throw new Error(
-          `Backend profile "${name}" failed round-trip validation after write: ` +
+          `Profile "${name}" failed round-trip validation after write: ` +
           z.prettifyError(verifyResult.error),
         );
       }
     }
   } catch (err) {
-    if (err instanceof Error && err.message.startsWith(`Backend profile "${name}"`)) {
+    if (err instanceof Error && err.message.startsWith(`Profile "${name}"`)) {
       throw err;
     }
     // ignore verify-read errors
@@ -1246,7 +1426,7 @@ export async function deleteBackendProfile(
 ): Promise<void> {
   name = name.trim();
   if (name.length === 0) {
-    throw new Error('Backend profile name must be a non-empty string');
+    throw new Error('Profile name must be a non-empty string');
   }
 
   const projectPath = profilePath(configDir, name);
@@ -1258,7 +1438,7 @@ export async function deleteBackendProfile(
     // Infer scope — error if ambiguous
     if (existsInProject && existsInUser) {
       throw new Error(
-        `Backend profile "${name}" exists in both project and user scope. ` +
+        `Profile "${name}" exists in both project and user scope. ` +
         `Specify scope: 'project' or 'user' to disambiguate.`,
       );
     }
@@ -1267,13 +1447,13 @@ export async function deleteBackendProfile(
     } else if (existsInUser) {
       scope = 'user';
     } else {
-      throw new Error(`Backend profile "${name}" not found in project or user scope`);
+      throw new Error(`Profile "${name}" not found in project or user scope`);
     }
   }
 
   const targetPath = scope === 'user' ? userPath : projectPath;
   if (!(await fileExists(targetPath))) {
-    throw new Error(`Backend profile "${name}" not found in ${scope} scope at ${targetPath}`);
+    throw new Error(`Profile "${name}" not found in ${scope} scope at ${targetPath}`);
   }
 
   // Determine if this profile is currently active via either marker
@@ -1282,7 +1462,7 @@ export async function deleteBackendProfile(
 
   if ((projectMarkerName === name || userMarkerName === name) && !force) {
     throw new Error(
-      `Backend profile "${name}" is currently active. ` +
+      `Profile "${name}" is currently active. ` +
       `Pass force: true to delete it.`,
     );
   }

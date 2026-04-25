@@ -19,7 +19,7 @@ import { dirname, resolve } from 'node:path';
 
 import {
   findConfigFile,
-  loadBackendProfile,
+  loadProfile,
   loadUserConfig,
   mergePartialConfigs,
   parseRawConfig,
@@ -114,7 +114,7 @@ async function loadConfigForProfile(
     resolvedName = active.name;
   }
 
-  const profileResult = await loadBackendProfile(configDir, resolvedName);
+  const profileResult = await loadProfile(configDir, resolvedName);
   if (!profileResult) {
     throw new Error(`Backend profile "${resolvedName}" not found in project or user scope.`);
   }

@@ -5,9 +5,9 @@ import { join } from 'node:path';
 import {
   loadConfig,
   resolveActiveProfileName,
-  loadBackendProfile,
-  listBackendProfiles,
-  setActiveBackend,
+  loadProfile,
+  listProfiles,
+  setActiveProfile,
   createBackendProfile,
   deleteBackendProfile,
   getConfigDir,
@@ -80,19 +80,19 @@ describe('resolveActiveProfileName', () => {
 
   it('marker present overrides config.yaml backend', async () => {
     // Create a team profile for claude-sdk
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'claude-sdk.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(configDir, 'backends', 'pi-prod.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'claude-sdk.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'pi-prod.yaml'), 'backend: pi\n', 'utf-8');
     // Write marker pointing at pi-prod
-    await writeFile(join(configDir, '.active-backend'), 'pi-prod\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'pi-prod\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
     expect(result).toEqual({ name: 'pi-prod', source: 'local', warnings: [] });
   });
 
   it('marker absent + no matching profile → source=none (backend: in config.yaml no longer used for resolution)', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'pi.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'pi.yaml'), 'backend: pi\n', 'utf-8');
 
     // Even with a matching profile file, resolution no longer uses config.yaml backend: field
     const result = await resolveActiveProfileName(configDir, {});
@@ -100,9 +100,9 @@ describe('resolveActiveProfileName', () => {
   });
 
   it('unknown profile name in marker returns warning and missing when no user marker', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'claude-sdk.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(configDir, '.active-backend'), 'nonexistent\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'claude-sdk.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'nonexistent\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
     // No team fallback, no user marker → missing
@@ -113,7 +113,7 @@ describe('resolveActiveProfileName', () => {
   });
 
   it('unknown profile name in marker with no team fallback returns name=null source=missing', async () => {
-    await writeFile(join(configDir, '.active-backend'), 'nonexistent\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'nonexistent\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
     expect(result.name).toBeNull();
@@ -123,7 +123,7 @@ describe('resolveActiveProfileName', () => {
   });
 });
 
-describe('loadBackendProfile', () => {
+describe('loadProfile', () => {
   let projectDir: string;
   let configDir: string;
 
@@ -136,18 +136,18 @@ describe('loadBackendProfile', () => {
   });
 
   it('returns null when profile file missing', async () => {
-    const result = await loadBackendProfile(configDir, 'nope');
+    const result = await loadProfile(configDir, 'nope');
     expect(result).toBeNull();
   });
 
   it('parses a valid profile file and returns scope', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
     await writeFile(
-      join(configDir, 'backends', 'pi.yaml'),
+      join(configDir, 'profiles', 'pi.yaml'),
       'backend: pi\npi:\n  thinkingLevel: high\n',
       'utf-8',
     );
-    const result = await loadBackendProfile(configDir, 'pi');
+    const result = await loadProfile(configDir, 'pi');
     expect(result).not.toBeNull();
     // profile.backend is no longer in PartialEforgeConfig; check pi-specific config instead
     expect(result?.profile.pi?.thinkingLevel).toBe('high');
@@ -155,7 +155,7 @@ describe('loadBackendProfile', () => {
   });
 });
 
-describe('listBackendProfiles', () => {
+describe('listProfiles', () => {
   let projectDir: string;
   let configDir: string;
   let userHomeDir: string;
@@ -178,18 +178,18 @@ describe('listBackendProfiles', () => {
     await rm(userHomeDir, { recursive: true, force: true });
   });
 
-  it('returns [] when no backends directory exists', async () => {
-    const result = await listBackendProfiles(configDir);
+  it('returns [] when no profiles directory exists', async () => {
+    const result = await listProfiles(configDir);
     expect(result).toEqual([]);
   });
 
   it('returns entries for each .yaml file with parsed backend and scope', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'pi-prod.yaml'), 'backend: pi\n', 'utf-8');
-    await writeFile(join(configDir, 'backends', 'claude.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(configDir, 'backends', 'README.md'), '# skip me', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'pi-prod.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'claude.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'README.md'), '# skip me', 'utf-8');
 
-    const result = await listBackendProfiles(configDir);
+    const result = await listProfiles(configDir);
     const projectEntries = result.filter((r) => r.scope === 'project');
     expect(projectEntries.length).toBe(2);
     const byName = new Map(projectEntries.map((r) => [r.name, r]));
@@ -198,7 +198,7 @@ describe('listBackendProfiles', () => {
   });
 });
 
-describe('setActiveBackend', () => {
+describe('setActiveProfile', () => {
   let projectDir: string;
   let configDir: string;
 
@@ -211,15 +211,15 @@ describe('setActiveBackend', () => {
   });
 
   it('rejects when the profile file is missing', async () => {
-    await expect(setActiveBackend(configDir, 'ghost')).rejects.toThrow(/not found/);
+    await expect(setActiveProfile(configDir, 'ghost')).rejects.toThrow(/not found/);
   });
 
   it('writes the marker when the profile exists and merged config validates', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'pi-prod.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'pi-prod.yaml'), 'backend: pi\n', 'utf-8');
 
-    await setActiveBackend(configDir, 'pi-prod');
-    const marker = await readFile(join(configDir, '.active-backend'), 'utf-8');
+    await setActiveProfile(configDir, 'pi-prod');
+    const marker = await readFile(join(configDir, '.active-profile'), 'utf-8');
     expect(marker.trim()).toBe('pi-prod');
   });
 });
@@ -297,20 +297,20 @@ describe('deleteBackendProfile', () => {
   });
 
   it('refuses to delete the currently active profile without force', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(configDir, '.active-backend'), 'active\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'active\n', 'utf-8');
     await expect(deleteBackendProfile(configDir, 'active')).rejects.toThrow(/currently active/);
   });
 
   it('with force: true removes the file and clears the marker', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(configDir, '.active-backend'), 'active\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'active\n', 'utf-8');
 
     await deleteBackendProfile(configDir, 'active', true);
-    expect(await fileExists(join(configDir, 'backends', 'active.yaml'))).toBe(false);
-    expect(await fileExists(join(configDir, '.active-backend'))).toBe(false);
+    expect(await fileExists(join(configDir, 'profiles', 'active.yaml'))).toBe(false);
+    expect(await fileExists(join(configDir, '.active-profile'))).toBe(false);
   });
 
   it('errors when the profile file does not exist', async () => {
@@ -344,7 +344,7 @@ describe('loadConfig integration with backend profiles', () => {
     }
   });
 
-  it('no backends/ dir: resolved config uses project settings without backend', async () => {
+  it('no profiles/ dir: resolved config uses project settings without backend', async () => {
     ({ projectDir, configDir } = await makeProject({
       configYaml: 'agents:\n  maxTurns: 25\n',
     }));
@@ -357,14 +357,14 @@ describe('loadConfig integration with backend profiles', () => {
     ({ projectDir, configDir } = await makeProject({
       configYaml: 'agents:\n  maxTurns: 20\n',
     }));
-    await mkdir(join(configDir, 'backends'), { recursive: true });
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
     await writeFile(
-      join(configDir, 'backends', 'pi.yaml'),
+      join(configDir, 'profiles', 'pi.yaml'),
       'backend: pi\nagents:\n  maxTurns: 40\n',
       'utf-8',
     );
     // Profile is only loaded when a marker is present (team resolution removed)
-    await writeFile(join(configDir, '.active-backend'), 'pi\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'pi\n', 'utf-8');
     const { config: cfg } = await loadConfig(projectDir);
     expect(cfg.agents.maxTurns).toBe(40);
   });
@@ -373,18 +373,18 @@ describe('loadConfig integration with backend profiles', () => {
     ({ projectDir, configDir } = await makeProject({
       configYaml: '',
     }));
-    await mkdir(join(configDir, 'backends'), { recursive: true });
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
     await writeFile(
-      join(configDir, 'backends', 'pi.yaml'),
+      join(configDir, 'profiles', 'pi.yaml'),
       'backend: pi\nagents:\n  maxTurns: 40\n',
       'utf-8',
     );
     await writeFile(
-      join(configDir, 'backends', 'local.yaml'),
+      join(configDir, 'profiles', 'local.yaml'),
       'backend: claude-sdk\nagents:\n  maxTurns: 99\n',
       'utf-8',
     );
-    await writeFile(join(configDir, '.active-backend'), 'local\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'local\n', 'utf-8');
 
     const { config: cfg } = await loadConfig(projectDir);
     // cfg.backend is no longer part of EforgeConfig; verify agents settings from the profile
@@ -418,7 +418,7 @@ describe('getConfigDir', () => {
 // User-scope backend profile tests
 // ---------------------------------------------------------------------------
 
-describe('user-scope: loadBackendProfile', () => {
+describe('user-scope: loadProfile', () => {
   let projectDir: string;
   let configDir: string;
   let userHomeDir: string;
@@ -443,25 +443,25 @@ describe('user-scope: loadBackendProfile', () => {
   });
 
   it('loads user-scope profile when no project profile exists', async () => {
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(
-      join(userEforgeDir, 'backends', 'shared.yaml'),
+      join(userEforgeDir, 'profiles', 'shared.yaml'),
       'backend: claude-sdk\n',
       'utf-8',
     );
-    const result = await loadBackendProfile(configDir, 'shared');
+    const result = await loadProfile(configDir, 'shared');
     expect(result).not.toBeNull();
     expect(result?.scope).toBe('user');
     // profile.backend is no longer in PartialEforgeConfig (backend: in profile files is a legacy harness indicator)
   });
 
   it('project profile shadows user profile on same-name collision', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'common.yaml'), 'backend: pi\n', 'utf-8');
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'common.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'common.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'common.yaml'), 'backend: claude-sdk\n', 'utf-8');
 
-    const result = await loadBackendProfile(configDir, 'common');
+    const result = await loadProfile(configDir, 'common');
     expect(result).not.toBeNull();
     expect(result?.scope).toBe('project');
     // profile.backend is no longer in PartialEforgeConfig; scope confirms project shadowing
@@ -494,10 +494,10 @@ describe('user-scope: resolveActiveProfileName', () => {
 
   it('returns source=user-local when project has no marker/config but user marker exists', async () => {
     // Create a profile file in user scope
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'default.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'default.yaml'), 'backend: claude-sdk\n', 'utf-8');
     // Write user marker
-    await writeFile(join(userEforgeDir, '.active-backend'), 'default\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-profile'), 'default\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
     expect(result).toEqual({ name: 'default', source: 'user-local', warnings: [] });
@@ -505,23 +505,23 @@ describe('user-scope: resolveActiveProfileName', () => {
 
   it('returns source=local (project) when both project and user markers exist', async () => {
     // Create profiles in both scopes
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'proj.yaml'), 'backend: pi\n', 'utf-8');
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'usr.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'usr.yaml'), 'backend: claude-sdk\n', 'utf-8');
     // Write both markers
-    await writeFile(join(configDir, '.active-backend'), 'proj\n', 'utf-8');
-    await writeFile(join(userEforgeDir, '.active-backend'), 'usr\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'proj\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-profile'), 'usr\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
     expect(result).toEqual({ name: 'proj', source: 'local', warnings: [] });
   });
 
   it('user marker wins over user config backend field', async () => {
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'marker-pick.yaml'), 'backend: pi\n', 'utf-8');
-    await writeFile(join(userEforgeDir, 'backends', 'config-pick.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(userEforgeDir, '.active-backend'), 'marker-pick\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'marker-pick.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'config-pick.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-profile'), 'marker-pick\n', 'utf-8');
 
     const result = await resolveActiveProfileName(
       configDir,
@@ -532,8 +532,8 @@ describe('user-scope: resolveActiveProfileName', () => {
   });
 
   it('returns source=none when only user config backend: is set (user-team resolution removed)', async () => {
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'team-default.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'team-default.yaml'), 'backend: claude-sdk\n', 'utf-8');
 
     // user config backend: field is no longer used for resolution
     const result = await resolveActiveProfileName(
@@ -546,16 +546,16 @@ describe('user-scope: resolveActiveProfileName', () => {
 
   it('project marker can resolve to a user-scope profile file', async () => {
     // Profile exists only in user scope but project marker points to it
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(configDir, '.active-backend'), 'shared\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'shared\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
     expect(result).toEqual({ name: 'shared', source: 'local', warnings: [] });
   });
 });
 
-describe('user-scope: listBackendProfiles', () => {
+describe('user-scope: listProfiles', () => {
   let projectDir: string;
   let configDir: string;
   let userHomeDir: string;
@@ -580,14 +580,14 @@ describe('user-scope: listBackendProfiles', () => {
   });
 
   it('returns entries from both scopes with correct scope and shadowedBy', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'shared.yaml'), 'backend: pi\n', 'utf-8');
-    await writeFile(join(configDir, 'backends', 'proj-only.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(userEforgeDir, 'backends', 'usr-only.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'shared.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'proj-only.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'usr-only.yaml'), 'backend: pi\n', 'utf-8');
 
-    const result = await listBackendProfiles(configDir);
+    const result = await listProfiles(configDir);
     const byNameAndScope = new Map(result.map((r) => [`${r.scope}:${r.name}`, r]));
 
     // Project entries
@@ -629,7 +629,7 @@ describe('user-scope: createBackendProfile', () => {
     await rm(userHomeDir, { recursive: true, force: true });
   });
 
-  it('with scope: user writes file under user config backends directory', async () => {
+  it('with scope: user writes file under user config profiles directory', async () => {
     const result = await createBackendProfile(configDir, {
       name: 'user-prof',
       harness: 'claude-sdk',
@@ -638,7 +638,7 @@ describe('user-scope: createBackendProfile', () => {
     expect(result.path).toContain(userHomeDir);
     expect(await fileExists(result.path)).toBe(true);
     // Should NOT exist in project scope
-    expect(await fileExists(join(configDir, 'backends', 'user-prof.yaml'))).toBe(false);
+    expect(await fileExists(join(configDir, 'profiles', 'user-prof.yaml'))).toBe(false);
   });
 });
 
@@ -667,10 +667,10 @@ describe('user-scope: deleteBackendProfile', () => {
   });
 
   it('throws ambiguous error when same name exists in both scopes without scope', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'dup.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'dup.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'dup.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'dup.yaml'), 'backend: pi\n', 'utf-8');
 
     await expect(deleteBackendProfile(configDir, 'dup')).rejects.toThrow(
       /both project and user scope/i,
@@ -678,18 +678,18 @@ describe('user-scope: deleteBackendProfile', () => {
   });
 
   it('deletes from specified scope when name exists in both', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'dup.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'dup.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'dup.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'dup.yaml'), 'backend: pi\n', 'utf-8');
 
     await deleteBackendProfile(configDir, 'dup', false, 'user');
-    expect(await fileExists(join(userEforgeDir, 'backends', 'dup.yaml'))).toBe(false);
-    expect(await fileExists(join(configDir, 'backends', 'dup.yaml'))).toBe(true);
+    expect(await fileExists(join(userEforgeDir, 'profiles', 'dup.yaml'))).toBe(false);
+    expect(await fileExists(join(configDir, 'profiles', 'dup.yaml'))).toBe(true);
   });
 });
 
-describe('user-scope: setActiveBackend', () => {
+describe('user-scope: setActiveProfile', () => {
   let projectDir: string;
   let configDir: string;
   let userHomeDir: string;
@@ -715,31 +715,31 @@ describe('user-scope: setActiveBackend', () => {
 
   it('with scope: user writes the user marker file, not the project marker', async () => {
     // Create profile in user scope
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'user-default.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'user-default.yaml'), 'backend: claude-sdk\n', 'utf-8');
 
-    await setActiveBackend(configDir, 'user-default', { scope: 'user' });
+    await setActiveProfile(configDir, 'user-default', { scope: 'user' });
 
-    const userMarker = await readFile(join(userEforgeDir, '.active-backend'), 'utf-8');
+    const userMarker = await readFile(join(userEforgeDir, '.active-profile'), 'utf-8');
     expect(userMarker.trim()).toBe('user-default');
     // Project marker should not exist
-    expect(await fileExists(join(configDir, '.active-backend'))).toBe(false);
+    expect(await fileExists(join(configDir, '.active-profile'))).toBe(false);
   });
 
   it('with scope: user validates profile exists in user scope', async () => {
     await expect(
-      setActiveBackend(configDir, 'nonexistent', { scope: 'user' }),
+      setActiveProfile(configDir, 'nonexistent', { scope: 'user' }),
     ).rejects.toThrow(/not found/);
   });
 
   it('with scope: user can reference a project-scope profile file', async () => {
-    // Profile exists only in project scope, but setActiveBackend with scope: user should
+    // Profile exists only in project scope, but setActiveProfile with scope: user should
     // accept it because profileExistsInAnyScope checks both directories
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'proj-only.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'proj-only.yaml'), 'backend: claude-sdk\n', 'utf-8');
 
-    await setActiveBackend(configDir, 'proj-only', { scope: 'user' });
-    const userMarker = await readFile(join(userEforgeDir, '.active-backend'), 'utf-8');
+    await setActiveProfile(configDir, 'proj-only', { scope: 'user' });
+    const userMarker = await readFile(join(userEforgeDir, '.active-profile'), 'utf-8');
     expect(userMarker.trim()).toBe('proj-only');
   });
 });
@@ -774,11 +774,11 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
 
   it('stale project marker falls through to user-local when user marker is valid', async () => {
     // Project marker points at a nonexistent profile
-    await writeFile(join(configDir, '.active-backend'), 'gone\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'gone\n', 'utf-8');
     // User marker points at a valid user-scope profile
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'fallback.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(userEforgeDir, '.active-backend'), 'fallback\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'fallback.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-profile'), 'fallback\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
     expect(result.name).toBe('fallback');
@@ -788,9 +788,9 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
   });
 
   it('stale project marker falls through to missing when no user marker exists (user-team removed)', async () => {
-    await writeFile(join(configDir, '.active-backend'), 'gone\n', 'utf-8');
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'team-default.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'gone\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'team-default.yaml'), 'backend: pi\n', 'utf-8');
 
     // user config backend: is no longer used for fallback
     const result = await resolveActiveProfileName(
@@ -806,12 +806,12 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
 
   it('user marker wins when no project marker exists (team resolution removed)', async () => {
     // Project config backend: field no longer affects resolution
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'team.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'team.yaml'), 'backend: pi\n', 'utf-8');
     // User marker exists
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'usr.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(userEforgeDir, '.active-backend'), 'usr\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'usr.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-profile'), 'usr\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, { backend: 'team' } as PartialEforgeConfig);
     expect(result).toEqual({ name: 'usr', source: 'user-local', warnings: [] });
@@ -859,19 +859,19 @@ describe('user-scope: deleteBackendProfile edge cases', () => {
   });
 
   it('force-deletes user-scope profile and clears user marker', async () => {
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(userEforgeDir, '.active-backend'), 'active\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-profile'), 'active\n', 'utf-8');
 
     await deleteBackendProfile(configDir, 'active', true, 'user');
-    expect(await fileExists(join(userEforgeDir, 'backends', 'active.yaml'))).toBe(false);
-    expect(await fileExists(join(userEforgeDir, '.active-backend'))).toBe(false);
+    expect(await fileExists(join(userEforgeDir, 'profiles', 'active.yaml'))).toBe(false);
+    expect(await fileExists(join(userEforgeDir, '.active-profile'))).toBe(false);
   });
 
   it('refuses to delete profile active via user marker without force', async () => {
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(userEforgeDir, '.active-backend'), 'active\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-profile'), 'active\n', 'utf-8');
 
     await expect(deleteBackendProfile(configDir, 'active', false, 'user')).rejects.toThrow(
       /currently active/,
@@ -879,16 +879,16 @@ describe('user-scope: deleteBackendProfile edge cases', () => {
   });
 
   it('infers user scope when profile only exists in user scope', async () => {
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'usr-only.yaml'), 'backend: pi\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'usr-only.yaml'), 'backend: pi\n', 'utf-8');
 
     await deleteBackendProfile(configDir, 'usr-only');
-    expect(await fileExists(join(userEforgeDir, 'backends', 'usr-only.yaml'))).toBe(false);
+    expect(await fileExists(join(userEforgeDir, 'profiles', 'usr-only.yaml'))).toBe(false);
   });
 
   it('errors when profile not found in specified scope even if it exists in the other', async () => {
-    await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'proj.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: claude-sdk\n', 'utf-8');
 
     await expect(deleteBackendProfile(configDir, 'proj', false, 'user')).rejects.toThrow(
       /not found in user scope/,
@@ -921,17 +921,222 @@ describe('user-scope: loadConfig integration', () => {
   });
 
   it('user-scope profile is loaded when user marker is active and no project marker exists', async () => {
-    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(
-      join(userEforgeDir, 'backends', 'user-override.yaml'),
+      join(userEforgeDir, 'profiles', 'user-override.yaml'),
       'backend: pi\nagents:\n  maxTurns: 55\n',
       'utf-8',
     );
-    await writeFile(join(userEforgeDir, '.active-backend'), 'user-override\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-profile'), 'user-override\n', 'utf-8');
 
     const { config: cfg } = await loadConfig(projectDir);
     // cfg.backend is no longer part of EforgeConfig; verify agents settings from the profile
     expect(cfg.agents.maxTurns).toBe(55);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auto-migration: eforge/backends/ -> eforge/profiles/
+// ---------------------------------------------------------------------------
+
+describe('auto-migration: backends/ to profiles/', () => {
+  let projectDir: string;
+  let configDir: string;
+  let origXdg: string | undefined;
+
+  beforeEach(async () => {
+    ({ projectDir, configDir } = await makeProject({ configYaml: 'agents:\n  maxTurns: 10\n' }));
+    origXdg = process.env.XDG_CONFIG_HOME;
+    // Use an isolated XDG home to avoid touching real user config
+    const tmpXdg = await mkdtemp(join(tmpdir(), 'eforge-xdg-'));
+    process.env.XDG_CONFIG_HOME = tmpXdg;
+  });
+
+  afterEach(async () => {
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
+    await rm(projectDir, { recursive: true, force: true });
+  });
+
+  it('migrates eforge/backends/ to eforge/profiles/ and .active-backend to .active-profile on loadConfig', async () => {
+    // Set up legacy layout: eforge/backends/a.yaml + .active-backend
+    await mkdir(join(configDir, 'backends'), { recursive: true });
+    await writeFile(join(configDir, 'backends', 'a.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, '.active-backend'), 'a\n', 'utf-8');
+
+    // Invoke loadConfig — migration runs inside
+    await loadConfig(projectDir);
+
+    // After migration: profiles/a.yaml exists, backends/ is gone
+    expect(await fileExists(join(configDir, 'profiles', 'a.yaml'))).toBe(true);
+    expect(await fileExists(join(configDir, 'backends', 'a.yaml'))).toBe(false);
+
+    // Marker migrated: .active-profile exists, .active-backend is gone
+    expect(await fileExists(join(configDir, '.active-profile'))).toBe(true);
+    const newMarker = await readFile(join(configDir, '.active-profile'), 'utf-8');
+    expect(newMarker.trim()).toBe('a');
+    expect(await fileExists(join(configDir, '.active-backend'))).toBe(false);
+  });
+
+  it('does not touch eforge/backends/ when both backends/ and profiles/ exist, logs warning', async () => {
+    // Set up both directories
+    await mkdir(join(configDir, 'backends'), { recursive: true });
+    await writeFile(join(configDir, 'backends', 'old.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'new.yaml'), 'backend: pi\n', 'utf-8');
+
+    // Invoke loadConfig — migration should skip with warning
+    await loadConfig(projectDir);
+
+    // Both directories still exist unchanged
+    expect(await fileExists(join(configDir, 'backends', 'old.yaml'))).toBe(true);
+    expect(await fileExists(join(configDir, 'profiles', 'new.yaml'))).toBe(true);
+  });
+
+  it('is idempotent: subsequent loadConfig calls do not re-migrate', async () => {
+    // Set up already-migrated layout: profiles/ only, no backends/
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'a.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'a\n', 'utf-8');
+
+    // Call loadConfig twice
+    await loadConfig(projectDir);
+    await loadConfig(projectDir);
+
+    // Still only profiles/ exists
+    expect(await fileExists(join(configDir, 'profiles', 'a.yaml'))).toBe(true);
+    expect(await fileExists(join(configDir, 'backends'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auto-migration: user-scope ~/.config/eforge/backends/ -> profiles/
+// ---------------------------------------------------------------------------
+
+describe('auto-migration: user-scope backends/ to profiles/', () => {
+  let projectDir: string;
+  let userXdgDir: string;
+  let origXdg: string | undefined;
+
+  beforeEach(async () => {
+    ({ projectDir } = await makeProject({ configYaml: 'agents:\n  maxTurns: 10\n' }));
+    userXdgDir = await mkdtemp(join(tmpdir(), 'eforge-user-xdg-'));
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = userXdgDir;
+  });
+
+  afterEach(async () => {
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(userXdgDir, { recursive: true, force: true });
+  });
+
+  it('migrates ~/.config/eforge/backends/ to ~/.config/eforge/profiles/ and .active-backend to .active-profile on loadConfig', async () => {
+    const userEforgeDir = join(userXdgDir, 'eforge');
+    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'backends', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-backend'), 'shared\n', 'utf-8');
+
+    await loadConfig(projectDir);
+
+    expect(await fileExists(join(userEforgeDir, 'profiles', 'shared.yaml'))).toBe(true);
+    expect(await fileExists(join(userEforgeDir, 'backends', 'shared.yaml'))).toBe(false);
+    expect(await fileExists(join(userEforgeDir, '.active-profile'))).toBe(true);
+    const newMarker = await readFile(join(userEforgeDir, '.active-profile'), 'utf-8');
+    expect(newMarker.trim()).toBe('shared');
+    expect(await fileExists(join(userEforgeDir, '.active-backend'))).toBe(false);
+  });
+
+  it('skips user-scope migration when both backends/ and profiles/ exist and logs warning', async () => {
+    const userEforgeDir = join(userXdgDir, 'eforge');
+    await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'backends', 'old.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'new.yaml'), 'backend: pi\n', 'utf-8');
+
+    await loadConfig(projectDir);
+
+    expect(await fileExists(join(userEforgeDir, 'backends', 'old.yaml'))).toBe(true);
+    expect(await fileExists(join(userEforgeDir, 'profiles', 'new.yaml'))).toBe(true);
+  });
+
+  it('is idempotent for user scope: subsequent loadConfig calls do not re-migrate', async () => {
+    const userEforgeDir = join(userXdgDir, 'eforge');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, '.active-profile'), 'shared\n', 'utf-8');
+
+    await loadConfig(projectDir);
+    await loadConfig(projectDir);
+
+    expect(await fileExists(join(userEforgeDir, 'profiles', 'shared.yaml'))).toBe(true);
+    expect(await fileExists(join(userEforgeDir, 'backends'))).toBe(false);
+  });
+
+  it('recovers orphaned user-scope .active-backend marker when profiles/ already exists', async () => {
+    // Simulate partial migration: directory was moved but marker rename failed
+    const userEforgeDir = join(userXdgDir, 'eforge');
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    // Old marker still present, new marker absent
+    await writeFile(join(userEforgeDir, '.active-backend'), 'shared\n', 'utf-8');
+
+    await loadConfig(projectDir);
+
+    expect(await fileExists(join(userEforgeDir, '.active-profile'))).toBe(true);
+    const newMarker = await readFile(join(userEforgeDir, '.active-profile'), 'utf-8');
+    expect(newMarker.trim()).toBe('shared');
+    expect(await fileExists(join(userEforgeDir, '.active-backend'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Auto-migration: orphaned marker recovery for project scope
+// ---------------------------------------------------------------------------
+
+describe('auto-migration: orphaned project-scope .active-backend marker recovery', () => {
+  let projectDir: string;
+  let configDir: string;
+  let userXdgDir: string;
+  let origXdg: string | undefined;
+
+  beforeEach(async () => {
+    ({ projectDir, configDir } = await makeProject({ configYaml: 'agents:\n  maxTurns: 10\n' }));
+    userXdgDir = await mkdtemp(join(tmpdir(), 'eforge-xdg-orphan-'));
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = userXdgDir;
+  });
+
+  afterEach(async () => {
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(userXdgDir, { recursive: true, force: true });
+  });
+
+  it('recovers orphaned eforge/.active-backend marker when profiles/ already exists but .active-profile is absent', async () => {
+    // Simulate partial migration: directory already moved but marker rename failed
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'a.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    // Old marker still present, new marker absent, old directory gone
+    await writeFile(join(configDir, '.active-backend'), 'a\n', 'utf-8');
+
+    await loadConfig(projectDir);
+
+    expect(await fileExists(join(configDir, '.active-profile'))).toBe(true);
+    const newMarker = await readFile(join(configDir, '.active-profile'), 'utf-8');
+    expect(newMarker.trim()).toBe('a');
+    expect(await fileExists(join(configDir, '.active-backend'))).toBe(false);
   });
 });
 

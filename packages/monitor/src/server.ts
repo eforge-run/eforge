@@ -903,7 +903,7 @@ export async function startServer(
     // --- Backend profile management (DAEMON_API_VERSION 2) ---
     if (req.method === 'GET' && (url === API_ROUTES.backendList || url.startsWith(`${API_ROUTES.backendList}?`))) {
       try {
-        const { getConfigDir, listBackendProfiles, resolveActiveProfileName, loadUserConfig } =
+        const { getConfigDir, listProfiles, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -913,7 +913,7 @@ export async function startServer(
         const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
         const params = new URLSearchParams(queryString);
         const scopeParam = params.get('scope') as 'project' | 'user' | 'all' | null;
-        let profiles = await listBackendProfiles(configDir);
+        let profiles = await listProfiles(configDir);
         if (scopeParam === 'project' || scopeParam === 'user') {
           profiles = profiles.filter((p) => p.scope === scopeParam);
         }
@@ -936,7 +936,7 @@ export async function startServer(
 
     if (req.method === 'GET' && url === API_ROUTES.backendShow) {
       try {
-        const { getConfigDir, loadBackendProfile, resolveActiveProfileName, loadUserConfig } =
+        const { getConfigDir, loadProfile, resolveActiveProfileName, loadUserConfig } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -957,7 +957,7 @@ export async function startServer(
         let backend: 'claude-sdk' | 'pi' | undefined;
         let profileScope: 'project' | 'user' | undefined;
         if (name) {
-          const result = await loadBackendProfile(configDir, name);
+          const result = await loadProfile(configDir, name);
           if (result) {
             profile = result.profile;
             profileScope = result.scope;
@@ -982,7 +982,7 @@ export async function startServer(
           return;
         }
         const scopeVal = body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
-        const { getConfigDir, setActiveBackend } =
+        const { getConfigDir, setActiveProfile } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -990,7 +990,7 @@ export async function startServer(
           return;
         }
         try {
-          await setActiveBackend(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined);
+          await setActiveProfile(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined);
           sendJson(res, { active: body.name });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Failed to set active backend';

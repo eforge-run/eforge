@@ -83,10 +83,10 @@ describe('eforge-plugin/.claude-plugin/plugin.json', () => {
 // ---------------------------------------------------------------------------
 
 describe('repo-root .gitignore', () => {
-  it('contains an `eforge/.active-backend` entry', () => {
+  it('contains an `eforge/.active-profile` entry', () => {
     const contents = readRepoFile('.gitignore');
     const lines = contents.split('\n').map((l) => l.trim());
-    expect(lines).toContain('eforge/.active-backend');
+    expect(lines).toContain('eforge/.active-profile');
   });
 });
 
@@ -216,18 +216,18 @@ describe('init skill updates (plugin + Pi parity)', () => {
 describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () => {
   const source = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
 
-  it("registers the 'eforge_backend' tool via createDaemonTool(...)", () => {
+  it("registers the 'eforge_profile' tool via createDaemonTool(...)", () => {
     // Tools are now registered via the factory; verify name appears in a createDaemonTool call.
-    expect(source).toMatch(/createDaemonTool\(server,\s*cwd,\s*\{[\s\S]*?name:\s*'eforge_backend'/);
+    expect(source).toMatch(/createDaemonTool\(server,\s*cwd,\s*\{[\s\S]*?name:\s*'eforge_profile'/);
   });
 
   it("registers the 'eforge_models' tool via createDaemonTool(...)", () => {
     expect(source).toMatch(/createDaemonTool\(server,\s*cwd,\s*\{[\s\S]*?name:\s*'eforge_models'/);
   });
 
-  it('declares the full action enum for eforge_backend (list|show|use|create|delete)', () => {
-    // Find the eforge_backend registration block and verify each action literal appears.
-    const idx = source.indexOf("name: 'eforge_backend',");
+  it('declares the full action enum for eforge_profile (list|show|use|create|delete)', () => {
+    // Find the eforge_profile registration block and verify each action literal appears.
+    const idx = source.indexOf("name: 'eforge_profile',");
     expect(idx).toBeGreaterThan(-1);
     const block = source.slice(idx, idx + 3000);
     for (const action of ['list', 'show', 'use', 'create', 'delete']) {
@@ -247,7 +247,7 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
     expect(block).toContain("'pi'");
   });
 
-  it('dispatches eforge_backend actions to the expected daemon endpoints', () => {
+  it('dispatches eforge_profile actions to the expected daemon endpoints', () => {
     // After the API_ROUTES migration, the source uses API_ROUTES.* constants
     // instead of literal path strings. Verify the constants are referenced.
     expect(source).toContain('API_ROUTES.backendList');
@@ -271,10 +271,10 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
     expect(API_ROUTES.modelList).toBe('/api/models/list');
   });
 
-  it("adds 'eforge/.active-backend' to the init tool's managed gitignore block", () => {
-    // ensureGitignoreEntries(cwd, [..., 'eforge/.active-backend']) inside eforge_init.
+  it("adds 'eforge/.active-profile' to the init tool's managed gitignore block", () => {
+    // ensureGitignoreEntries(cwd, [..., 'eforge/.active-profile']) inside eforge_init.
     expect(source).toMatch(
-      /ensureGitignoreEntries\([^)]*['"]eforge\/\.active-backend['"]/,
+      /ensureGitignoreEntries\([^)]*['"]eforge\/\.active-profile['"]/,
     );
   });
 });
@@ -286,8 +286,8 @@ describe('MCP proxy registrations (packages/eforge/src/cli/mcp-proxy.ts)', () =>
 describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index.ts)', () => {
   const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
 
-  it("registers the 'eforge_backend' tool via pi.registerTool", () => {
-    expect(source).toMatch(/name:\s*["']eforge_backend["']/);
+  it("registers the 'eforge_profile' tool via pi.registerTool", () => {
+    expect(source).toMatch(/name:\s*["']eforge_profile["']/);
   });
 
   it("registers the 'eforge_models' tool via pi.registerTool", () => {
@@ -304,7 +304,7 @@ describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index
     expect(source).toMatch(/from\s+['"]\.\/backend-commands['"]/);
   });
 
-  it('dispatches eforge_backend to the daemon via daemonRequest', () => {
+  it('dispatches eforge_profile to the daemon via daemonRequest', () => {
     // After the API_ROUTES migration, the source uses API_ROUTES.* constants.
     expect(source).toContain('API_ROUTES.backendList');
     expect(source).toContain('API_ROUTES.backendShow');
@@ -323,22 +323,22 @@ describe('Pi extension registrations (packages/pi-eforge/extensions/eforge/index
 // Scope field parity (MCP proxy + Pi extension)
 // ---------------------------------------------------------------------------
 
-describe('eforge_backend scope field parity', () => {
+describe('eforge_profile scope field parity', () => {
   const mcpSource = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
   const piSource = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
 
-  it('MCP proxy eforge_backend schema includes a scope field accepting project, user, all', () => {
-    // Find the eforge_backend registration block (now registered via createDaemonTool)
-    const idx = mcpSource.indexOf("name: 'eforge_backend',");
+  it('MCP proxy eforge_profile schema includes a scope field accepting project, user, all', () => {
+    // Find the eforge_profile registration block (now registered via createDaemonTool)
+    const idx = mcpSource.indexOf("name: 'eforge_profile',");
     expect(idx).toBeGreaterThan(-1);
     const block = mcpSource.slice(idx, idx + 3000);
     // Verify scope enum includes all three values
     expect(block).toMatch(/scope:\s*z\.enum\(\[.*'project'.*'user'.*'all'.*\]\)/s);
   });
 
-  it('Pi extension eforge_backend schema includes a scope field accepting project, user, all', () => {
-    // Find the eforge_backend registration block
-    const idx = piSource.indexOf('name: "eforge_backend"');
+  it('Pi extension eforge_profile schema includes a scope field accepting project, user, all', () => {
+    // Find the eforge_profile registration block
+    const idx = piSource.indexOf('name: "eforge_profile"');
     expect(idx).toBeGreaterThan(-1);
     const block = piSource.slice(idx - 200, idx + 3000);
     // Verify scope with Type.Union containing all three literals
@@ -353,8 +353,8 @@ describe('eforge_backend scope field parity', () => {
   });
 
   it('MCP proxy threads scope in request body for use, create, delete actions', () => {
-    // Extract the full eforge_backend tool block (now registered via createDaemonTool)
-    const idx = mcpSource.indexOf("name: 'eforge_backend',");
+    // Extract the full eforge_profile tool block (now registered via createDaemonTool)
+    const idx = mcpSource.indexOf("name: 'eforge_profile',");
     expect(idx).toBeGreaterThan(-1);
     const nextTool = mcpSource.indexOf("name: 'eforge_models',", idx + 1);
     const block = nextTool > idx ? mcpSource.slice(idx, nextTool) : mcpSource.slice(idx);
@@ -372,8 +372,8 @@ describe('eforge_backend scope field parity', () => {
   });
 
   it('Pi extension threads scope in request body for use, create, delete actions', () => {
-    // Extract the full eforge_backend tool block (from tool name to the next pi.registerTool call)
-    const idx = piSource.indexOf('name: "eforge_backend"');
+    // Extract the full eforge_profile tool block (from tool name to the next pi.registerTool call)
+    const idx = piSource.indexOf('name: "eforge_profile"');
     expect(idx).toBeGreaterThan(-1);
     const nextTool = piSource.indexOf('pi.registerTool(', idx + 1);
     const block = nextTool > idx ? piSource.slice(idx - 200, nextTool) : piSource.slice(idx - 200);
