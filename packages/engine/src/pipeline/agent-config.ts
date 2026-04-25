@@ -68,6 +68,7 @@ export const AGENT_MODEL_CLASSES: Record<AgentRole, ModelClass> = {
   'dependency-detector': 'balanced',
   'pipeline-composer': 'max',
   'gap-closer': 'max',
+  'recovery-analyst': 'balanced',
 };
 
 /** Per-backend default ModelRef objects for each model class. `undefined` means the SDK picks its own model. */

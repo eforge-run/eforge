@@ -1,0 +1,25 @@
+{
+  "setName": "test-recovery-set",
+  "status": "failed",
+  "startedAt": "2024-01-15T10:00:00.000Z",
+  "completedAt": "2024-01-15T10:45:00.000Z",
+  "baseBranch": "main",
+  "featureBranch": "eforge/test-recovery-set",
+  "worktreeBase": "/tmp/eforge-worktrees",
+  "plans": {
+    "plan-01-foundation": {
+      "status": "merged",
+      "branch": "feature/plan-01-foundation",
+      "dependsOn": [],
+      "merged": true
+    },
+    "plan-02-api": {
+      "status": "failed",
+      "branch": "feature/plan-02-api",
+      "dependsOn": ["plan-01-foundation"],
+      "merged": false,
+      "error": "Build failed: type error in src/api.ts line 42"
+    }
+  },
+  "completedPlans": ["plan-01-foundation"]
+}

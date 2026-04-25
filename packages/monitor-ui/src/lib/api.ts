@@ -1,5 +1,5 @@
 import type { RunInfo, QueueItem } from './types';
-import { API_ROUTES, buildPath } from '@eforge-build/client';
+import { API_ROUTES, buildPath, type ReadSidecarResponse } from '@eforge-build/client';
 
 export async function fetchRuns(): Promise<RunInfo[]> {
   const res = await fetch(API_ROUTES.runs);
@@ -96,6 +96,31 @@ export async function fetchProjectContext(): Promise<{ cwd: string | null; gitRe
 export async function cancelSession(sessionId: string): Promise<{ status: string; sessionId: string } | null> {
   try {
     const res = await fetch(buildPath(API_ROUTES.cancel, { sessionId }), { method: 'POST' });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Fetch the recovery sidecar JSON + markdown for a failed PRD.
+ *
+ * Returns `null` when no sidecar exists (404 — recovery not yet run or
+ * pending) or when any other error occurs. Callers should treat `null` as
+ * "recovery pending" and not block rendering.
+ *
+ * Uses `API_ROUTES.readRecoverySidecar` via query params — no literal
+ * `/api/...` strings.
+ */
+export async function fetchRecoverySidecar(
+  setName: string,
+  prdId: string,
+): Promise<ReadSidecarResponse | null> {
+  try {
+    const params = new URLSearchParams({ setName, prdId });
+    const res = await fetch(`${API_ROUTES.readRecoverySidecar}?${params.toString()}`);
+    if (res.status === 404) return null;
     if (!res.ok) return null;
     return res.json();
   } catch {

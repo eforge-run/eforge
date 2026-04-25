@@ -7,7 +7,7 @@ import { z } from 'zod/v4';
 import type { ClarificationQuestion, TestIssue, ReviewIssue } from '../events.js';
 import type { ReviewProfileConfig, BuildStageSpec } from '../config.js';
 import { buildStageSpecSchema, reviewProfileConfigSchema } from '../config.js';
-import type { stalenessVerdictSchema, evaluationEvidenceSchema, evaluationVerdictSchema } from '../schemas.js';
+import type { stalenessVerdictSchema, evaluationEvidenceSchema, evaluationVerdictSchema, recoveryVerdictSchema } from '../schemas.js';
 
 /**
  * Parse <clarification> XML blocks from assistant text into structured questions.
@@ -134,6 +134,87 @@ export function parseStalenessBlock(text: string): StalenessVerdict | null {
     verdict: verdict as 'proceed' | 'revise' | 'obsolete',
     justification,
     ...(revision !== undefined && { revision }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Recovery Verdict Parsing
+// ---------------------------------------------------------------------------
+
+const VALID_RECOVERY_VERDICTS = new Set(['retry', 'split', 'abandon', 'manual']);
+const VALID_RECOVERY_CONFIDENCES = new Set(['low', 'medium', 'high']);
+
+export type RecoveryVerdict = z.output<typeof recoveryVerdictSchema>;
+
+/**
+ * Extract a list of `<item>` elements from inside a named XML tag.
+ * Returns an empty array if the tag is absent or contains no items.
+ */
+function parseListItems(content: string, tagName: string): string[] {
+  const blockMatch = content.match(new RegExp(`<${tagName}>([\\s\\S]*?)<\\/${tagName}>`));
+  if (!blockMatch) return [];
+  const items: string[] = [];
+  const itemRegex = /<item>([\s\S]*?)<\/item>/g;
+  let itemMatch: RegExpExecArray | null;
+  while ((itemMatch = itemRegex.exec(blockMatch[1])) !== null) {
+    const item = itemMatch[1].trim();
+    if (item) items.push(item);
+  }
+  return items;
+}
+
+/**
+ * Parse a `<recovery verdict="..." confidence="...">` XML block from agent text.
+ *
+ * Expected format:
+ * ```xml
+ * <recovery verdict="split" confidence="medium">
+ *   <rationale>The plan was too large to complete in one session.</rationale>
+ *   <completedWork>
+ *     <item>Database schema implemented</item>
+ *   </completedWork>
+ *   <remainingWork>
+ *     <item>API endpoints not implemented</item>
+ *   </remainingWork>
+ *   <risks>
+ *     <item>Foundation may need updates</item>
+ *   </risks>
+ *   <suggestedSuccessorPrd>Full PRD content here</suggestedSuccessorPrd>
+ * </recovery>
+ * ```
+ *
+ * Returns null if no valid block found or attributes are invalid.
+ */
+export function parseRecoveryVerdictBlock(text: string): RecoveryVerdict | null {
+  const match = text.match(/<recovery\s+verdict="([^"]+)"\s+confidence="([^"]+)">([\s\S]*?)<\/recovery>/);
+  if (!match) return null;
+
+  const verdict = match[1].trim();
+  const confidence = match[2].trim();
+  if (!VALID_RECOVERY_VERDICTS.has(verdict) || !VALID_RECOVERY_CONFIDENCES.has(confidence)) return null;
+
+  const inner = match[3];
+
+  const rationaleMatch = inner.match(/<rationale>([\s\S]*?)<\/rationale>/);
+  if (!rationaleMatch) return null;
+  const rationale = rationaleMatch[1].trim();
+  if (!rationale) return null;
+
+  const completedWork = parseListItems(inner, 'completedWork');
+  const remainingWork = parseListItems(inner, 'remainingWork');
+  const risks = parseListItems(inner, 'risks');
+
+  const successorMatch = inner.match(/<suggestedSuccessorPrd>([\s\S]*?)<\/suggestedSuccessorPrd>/);
+  const suggestedSuccessorPrd = successorMatch ? successorMatch[1].trim() : undefined;
+
+  return {
+    verdict: verdict as 'retry' | 'split' | 'abandon' | 'manual',
+    confidence: confidence as 'low' | 'medium' | 'high',
+    rationale,
+    completedWork,
+    remainingWork,
+    risks,
+    ...(suggestedSuccessorPrd !== undefined && { suggestedSuccessorPrd }),
   };
 }
 

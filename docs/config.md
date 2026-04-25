@@ -37,7 +37,7 @@ agents:
   # models:                    # Map model classes to model refs (override backend defaults)
   #   max:                     # Used by most roles by default
   #     id: claude-opus-4-7
-  #   balanced:                # Default for builder, review-fixer, validation-fixer, test-writer, tester, staleness-assessor, prd-validator, dependency-detector
+  #   balanced:                # Default for builder, review-fixer, validation-fixer, test-writer, tester, staleness-assessor, prd-validator, dependency-detector, recovery-analyst
   #     id: claude-sonnet-4-6
   #   fast:                    # Available via per-role modelClass override
   #     id: claude-haiku-4-5
@@ -53,8 +53,8 @@ agents:
   #   staleness-assessor:     #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
   #     modelClass: fast      #   review-fixer, merge-conflict-resolver, staleness-assessor,
   #   reviewer:               #   formatter, doc-updater, test-writer, tester,
-  #     promptAppend: |       #   prd-validator, dependency-detector, gap-closer
-  #       ## Project Rules
+  #     promptAppend: |       #   prd-validator, dependency-detector, gap-closer,
+  #       ## Project Rules    #   recovery-analyst
   #       - Flag raw SQL queries
 
 maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (default: 2)
@@ -116,15 +116,15 @@ eforge uses a three-tier model class system to assign models to agent roles. Eac
 
 | Class | Default model ref (claude-sdk) | Notes |
 |-------|-------------------------------|-------|
-| `max` | `{ id: claude-opus-4-7 }` | Most capable - used by 15 of 23 roles |
-| `balanced` | `{ id: claude-sonnet-4-6 }` | Mid-tier - used by 8 of 23 roles that don't need max capability |
+| `max` | `{ id: claude-opus-4-7 }` | Most capable - used by 15 of 24 roles |
+| `balanced` | `{ id: claude-sonnet-4-6 }` | Mid-tier - used by 9 of 24 roles that don't need max capability |
 | `fast` | `{ id: claude-haiku-4-5 }` | Lightweight - available via per-role `modelClass` override |
 
 The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles) using `{ provider, id }` model refs.
 
 ### Per-Role Default Model Classes
 
-Each of the 23 agent roles has a built-in default model class:
+Each of the 24 agent roles has a built-in default model class:
 
 | Role | Default Class | Category |
 |------|--------------|----------|

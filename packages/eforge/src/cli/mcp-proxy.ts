@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, sanitizeProfileName, parseRawConfigLegacy, API_ROUTES, buildPath } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, sanitizeProfileName, parseRawConfigLegacy, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar } from '@eforge-build/client';
 import type {
   LatestRunResponse,
   EnqueueResponse,
@@ -849,6 +849,38 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       return response;
     },
   });
+
+  // --- eforge:region plan-03-daemon-mcp-pi ---
+
+  // Tool: eforge_recover
+  createDaemonTool(server, cwd, {
+    name: 'eforge_recover',
+    description: 'Trigger failure recovery analysis for a failed build plan. Spawns the recovery agent as a background subprocess and returns its sessionId and pid.',
+    schema: {
+      setName: z.string().describe('The plan set name (e.g. the orchestration set that contained the failing plan)'),
+      prdId: z.string().describe('The plan ID (prdId) that failed and needs recovery analysis'),
+    },
+    handler: async ({ setName, prdId }, { cwd: toolCwd }) => {
+      const { data } = await apiRecover({ cwd: toolCwd, body: { setName, prdId } });
+      return data;
+    },
+  });
+
+  // Tool: eforge_read_recovery_sidecar
+  createDaemonTool(server, cwd, {
+    name: 'eforge_read_recovery_sidecar',
+    description: 'Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent.',
+    schema: {
+      setName: z.string().describe('The plan set name'),
+      prdId: z.string().describe('The plan ID (prdId) whose recovery sidecar to read'),
+    },
+    handler: async ({ setName, prdId }, { cwd: toolCwd }) => {
+      const { data } = await apiReadRecoverySidecar({ cwd: toolCwd, setName, prdId });
+      return data;
+    },
+  });
+
+  // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

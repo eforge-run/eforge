@@ -1,10 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import { ChevronRight } from 'lucide-react';
-import type { QueueItem } from '@/lib/types';
+import type { QueueItem, RunInfo } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
+import { fetchRecoverySidecar } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { API_ROUTES } from '@eforge-build/client';
+import type { ReadSidecarResponse } from '@eforge-build/client';
+import {
+  RecoveryVerdictChip,
+  type RecoveryVerdictValue,
+  type RecoveryConfidenceValue,
+} from '@/components/recovery/verdict-chip';
+import { RecoverySidecarSheet } from '@/components/recovery/sidecar-sheet';
 
 const STATUS_ORDER: Record<string, number> = {
   running: 0,
@@ -56,6 +64,16 @@ interface QueueSectionProps {
 export function QueueSection({ refreshTrigger }: QueueSectionProps) {
   const [open, setOpen] = useState(true);
   const { data: items, refetch } = useApi<QueueItem[]>(API_ROUTES.queue);
+  const { data: runs } = useApi<RunInfo[]>(API_ROUTES.runs);
+
+  // --- eforge:region plan-04-monitor-ui ---
+  // Sidecar data per prdId: undefined = not yet fetched, null = fetched but
+  // no sidecar found (recovery pending), ReadSidecarResponse = sidecar present.
+  const [sidecarData, setSidecarData] = useState<Record<string, ReadSidecarResponse | null>>({});
+  // Tracks (setName/prdId) keys that have already been fetched to avoid
+  // redundant requests on the 5s polling interval.
+  const fetchedKeysRef = useRef<Set<string>>(new Set());
+  // --- eforge:endregion plan-04-monitor-ui ---
 
   // Poll every 5 seconds
   useEffect(() => {
@@ -71,6 +89,61 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
       refetch();
     }
   }, [refreshTrigger, refetch]);
+
+  // --- eforge:region plan-04-monitor-ui ---
+  // Derive the most recent run's planSet as the setName for sidecar lookups.
+  // Failed queue items don't carry setName in their payload; the daemon stores
+  // sidecars at eforge/plans/<setName>/<prdId>.recovery.json, so we need the
+  // planSet from the run that built the PRD. Using the most-recent run is
+  // the right heuristic for the typical single-active-planset scenario.
+  const activeSetName = useMemo(() => {
+    if (!runs || runs.length === 0) return null;
+    const sorted = [...runs].sort(
+      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
+    );
+    return sorted[0]?.planSet ?? null;
+  }, [runs]);
+
+  // When setName changes (new run started), clear the fetch-dedup cache so
+  // failed items are re-evaluated with the new setName.
+  const prevSetNameRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (prevSetNameRef.current !== activeSetName) {
+      fetchedKeysRef.current = new Set();
+      prevSetNameRef.current = activeSetName;
+    }
+  }, [activeSetName]);
+
+  // Fetch sidecars for failed items that haven't been fetched yet.
+  // Piggybacked on the queue polling cadence (items changes every 5s).
+  useEffect(() => {
+    if (!activeSetName || !items) return;
+    const failedItems = items.filter((i) => i.status === 'failed');
+    if (failedItems.length === 0) return;
+
+    let cancelled = false;
+
+    failedItems.forEach((item) => {
+      const key = `${activeSetName}/${item.id}`;
+      if (fetchedKeysRef.current.has(key)) return;
+      // Do NOT pre-emptively add the key — only mark done when a sidecar is
+      // actually retrieved, so null (404) results are retried on the next poll.
+
+      fetchRecoverySidecar(activeSetName, item.id).then((result) => {
+        if (cancelled) return;
+        if (result) {
+          // Sidecar found — mark as done so we don't re-fetch next poll.
+          fetchedKeysRef.current.add(key);
+        }
+        setSidecarData((prev) => ({ ...prev, [item.id]: result }));
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [items, activeSetName]);
+  // --- eforge:endregion plan-04-monitor-ui ---
 
   const pendingItems = useMemo(
     () => (items ?? []).filter((i) => i.status !== 'running'),
@@ -100,31 +173,65 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
         </span>
       </Collapsible.Trigger>
       <Collapsible.Content>
-        {sorted.map((item) => (
-          <div
-            key={item.id}
-            className="px-2.5 py-1.5 rounded-md mb-0.5"
-          >
-            <div className="flex items-center gap-2">
-              <span
-                className={cn('w-2 h-2 rounded-full flex-shrink-0', statusDotClass(item.status))}
-              />
-              <span className="text-[11px] text-foreground truncate flex-1">
-                {item.title}
-              </span>
-              {item.priority !== undefined && (
-                <span className="text-[10px] text-text-dim">
-                  p{item.priority}
+        {sorted.map((item) => {
+          // --- eforge:region plan-04-monitor-ui ---
+          const sidecar = item.status === 'failed' ? sidecarData[item.id] : undefined;
+          // RecoveryVerdictSidecar has [key: string]: unknown which causes index-signature
+          // widening on named property access. Cast through unknown to recover the typed shape.
+          type VerdictShape = { verdict: RecoveryVerdictValue; confidence: RecoveryConfidenceValue };
+          const sidecarVerdict =
+            sidecar != null
+              ? (sidecar.json.verdict as unknown as VerdictShape)
+              : null;
+          // undefined = not yet fetched; null = fetched but no sidecar (recovery pending)
+          // Both cases result in sidecarVerdict == null → show the "recovery pending" indicator.
+          const isRecoveryPending = item.status === 'failed' && sidecarVerdict == null;
+          // --- eforge:endregion plan-04-monitor-ui ---
+
+          return (
+            <div
+              key={item.id}
+              className="px-2.5 py-1.5 rounded-md mb-0.5"
+            >
+              <div className="flex items-center gap-2">
+                <span
+                  className={cn('w-2 h-2 rounded-full flex-shrink-0', statusDotClass(item.status))}
+                />
+                <span className="text-[11px] text-foreground truncate flex-1">
+                  {item.title}
                 </span>
+                {/* --- eforge:region plan-04-monitor-ui --- */}
+                {sidecarVerdict != null && (
+                  <RecoveryVerdictChip
+                    verdict={sidecarVerdict.verdict}
+                    confidence={sidecarVerdict.confidence}
+                  />
+                )}
+                {isRecoveryPending && (
+                  <span className="text-[10px] text-text-dim/60 italic">recovery pending</span>
+                )}
+                {/* --- eforge:endregion plan-04-monitor-ui --- */}
+                {item.priority !== undefined && sidecarVerdict == null && (
+                  <span className="text-[10px] text-text-dim">
+                    p{item.priority}
+                  </span>
+                )}
+              </div>
+              {/* --- eforge:region plan-04-monitor-ui --- */}
+              {sidecar != null && sidecarVerdict != null && (
+                <div className="pl-[calc(8px+0.5rem)] mt-0.5">
+                  <RecoverySidecarSheet sidecar={sidecar} prdId={item.id} />
+                </div>
+              )}
+              {/* --- eforge:endregion plan-04-monitor-ui --- */}
+              {item.dependsOn && item.dependsOn.length > 0 && (
+                <div className="pl-[calc(8px+0.5rem)] text-[11px] text-text-dim truncate">
+                  blocked by: {item.dependsOn.join(', ')}
+                </div>
               )}
             </div>
-            {item.dependsOn && item.dependsOn.length > 0 && (
-              <div className="pl-[calc(8px+0.5rem)] text-[11px] text-text-dim truncate">
-                blocked by: {item.dependsOn.join(', ')}
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </Collapsible.Content>
     </Collapsible.Root>
   );

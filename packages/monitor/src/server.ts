@@ -7,7 +7,8 @@ import {
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { resolve, dirname, extname, join, basename } from 'node:path';
+import { statSync } from 'node:fs';
+import { resolve, dirname, extname, join, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
 
@@ -26,6 +27,32 @@ const RUN_SUMMARY_BASE = API_ROUTES.runSummary.slice(0, API_ROUTES.runSummary.in
 const RUN_STATE_BASE = API_ROUTES.runState.slice(0, API_ROUTES.runState.indexOf('/:'));
 const PLANS_BASE = API_ROUTES.plans.slice(0, API_ROUTES.plans.indexOf('/:'));
 const DIFF_BASE = API_ROUTES.diff.slice(0, API_ROUTES.diff.indexOf('/:'));
+// --- eforge:region plan-03-daemon-mcp-pi ---
+const RECOVERY_SIDECAR_BASE = API_ROUTES.readRecoverySidecar;
+
+/**
+ * Validate a path segment (setName / prdId) used as a filesystem path component.
+ * Rejects values that could be used for path traversal.
+ */
+function isValidPathSegment(value: string): boolean {
+  return (
+    value.length > 0 &&
+    !value.includes('/') &&
+    !value.includes('\\') &&
+    !value.includes('..') &&
+    !value.includes('\0')
+  );
+}
+
+/**
+ * Assert that a resolved path is within the expected base directory.
+ * Returns false if the path escapes the base directory.
+ */
+function isWithinDir(resolvedPath: string, baseDir: string): boolean {
+  const base = resolve(baseDir) + sep;
+  return resolvedPath.startsWith(base);
+}
+// --- eforge:endregion plan-03-daemon-mcp-pi ---
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
@@ -86,7 +113,7 @@ export interface MonitorServer {
 }
 
 export interface WorkerTracker {
-  spawnWorker(command: string, args: string[]): { sessionId: string; pid: number };
+  spawnWorker(command: string, args: string[], onExit?: () => void): { sessionId: string; pid: number };
   cancelWorker(sessionId: string): boolean;
 }
 
@@ -114,9 +141,18 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agentRuntimes' | 'defaultAgentRuntime'> },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; failedPrdDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agentRuntimes' | 'defaultAgentRuntime'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
+
+  // --- eforge:region plan-03-daemon-mcp-pi ---
+  // Initialize to the current max event ID so recovery only triggers for events
+  // that appear after this server instance starts.
+  let lastRecoveryCheckId = db.getMaxEventId();
+  // In-memory set of in-flight recovery keys ("setName/prdId") to prevent duplicate spawns
+  // within the same poll cycle or across rapid successive ticks.
+  const inFlightRecoveries = new Set<string>();
+  // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
   // Resolve git remote once at startup
   const cwd = options?.cwd;
@@ -278,6 +314,60 @@ export async function startServer(
         // Subscriber may have disconnected
       }
     }
+
+    // --- eforge:region plan-03-daemon-mcp-pi ---
+    // Auto-trigger recovery for new plan:build:failed events (daemon mode only).
+    if (options?.workerTracker && options?.failedPrdDir) {
+      try {
+        const failedEvents = db.getNewBuildFailedEvents(lastRecoveryCheckId);
+        for (const event of failedEvents) {
+          if (event.id > lastRecoveryCheckId) {
+            lastRecoveryCheckId = event.id;
+          }
+          if (!event.planId) continue;
+          const run = db.getRun(event.runId);
+          if (!run?.planSet) continue;
+          const setName = run.planSet;
+          const prdId = event.planId;
+          // Idempotency: skip if recovery is already in-flight (in-memory check) or
+          // if the sidecar file already exists on disk (persisted check).
+          const recoveryKey = `${setName}/${prdId}`;
+          if (inFlightRecoveries.has(recoveryKey)) continue;
+          const sidecarPath = resolve(options.failedPrdDir, `${prdId}.recovery.json`);
+          try {
+            statSync(sidecarPath);
+            continue; // sidecar exists — recovery already ran
+          } catch {
+            // sidecar does not exist — proceed
+          }
+          // Mark as in-flight before spawning to guard against races within the same tick.
+          inFlightRecoveries.add(recoveryKey);
+          // Spawn recovery subprocess (does not consume a build permit)
+          try {
+            const result = options.workerTracker.spawnWorker(
+              'recover',
+              [setName, prdId],
+              () => inFlightRecoveries.delete(recoveryKey),
+            );
+            broadcast('recovery:start', JSON.stringify({
+              type: 'recovery:start',
+              setName,
+              prdId,
+              sessionId: result.sessionId,
+              pid: result.pid,
+              timestamp: new Date().toISOString(),
+            }));
+          } catch {
+            // Best-effort recovery spawn — log to stderr and continue
+            inFlightRecoveries.delete(recoveryKey);
+            process.stderr.write(`[eforge] Failed to spawn recovery for ${setName}/${prdId}\n`);
+          }
+        }
+      } catch {
+        // DB errors during recovery check — skip this tick
+      }
+    }
+    // --- eforge:endregion plan-03-daemon-mcp-pi ---
   }, POLL_INTERVAL_MS);
   pollTimer.unref();
 
@@ -832,6 +922,52 @@ export async function startServer(
       return;
     }
 
+    // --- eforge:region plan-03-daemon-mcp-pi ---
+    if (req.method === 'POST' && url === API_ROUTES.recover) {
+      if (!options?.workerTracker) {
+        sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      let body: { setName?: unknown; prdId?: unknown };
+      try {
+        body = await parseJsonBody(req) as { setName?: unknown; prdId?: unknown };
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.setName || typeof body.setName !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: setName');
+        return;
+      }
+      if (!body.prdId || typeof body.prdId !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: prdId');
+        return;
+      }
+      if (!isValidPathSegment(body.setName) || !isValidPathSegment(body.prdId)) {
+        sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
+        return;
+      }
+      const recoveryKey = `${body.setName}/${body.prdId}`;
+      if (inFlightRecoveries.has(recoveryKey)) {
+        sendJsonError(res, 409, `Recovery already in flight for ${recoveryKey}`);
+        return;
+      }
+      inFlightRecoveries.add(recoveryKey);
+      try {
+        const result = options.workerTracker.spawnWorker(
+          'recover',
+          [body.setName, body.prdId],
+          () => inFlightRecoveries.delete(recoveryKey),
+        );
+        sendJson(res, { sessionId: result.sessionId, pid: result.pid });
+      } catch (err) {
+        inFlightRecoveries.delete(recoveryKey);
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to spawn recovery worker');
+      }
+      return;
+    }
+    // --- eforge:endregion plan-03-daemon-mcp-pi ---
+
     // --- Auto-build API routes ---
     if (req.method === 'POST' && url === API_ROUTES.daemonStop) {
       if (!options?.daemonState) {
@@ -1162,6 +1298,47 @@ export async function startServer(
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to validate config');
       }
+    // --- eforge:region plan-03-daemon-mcp-pi ---
+    } else if (req.method === 'GET' && url.startsWith(RECOVERY_SIDECAR_BASE)) {
+      if (!options?.failedPrdDir) {
+        sendJsonError(res, 503, 'Failed PRD directory not configured');
+        return;
+      }
+      const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+      const params = new URLSearchParams(queryString);
+      const setName = params.get('setName');
+      const prdId = params.get('prdId');
+      if (!setName || !prdId) {
+        sendJsonError(res, 400, 'Missing required query params: setName, prdId');
+        return;
+      }
+      if (!isValidPathSegment(setName) || !isValidPathSegment(prdId)) {
+        sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
+        return;
+      }
+      const mdPath = resolve(options.failedPrdDir, `${prdId}.recovery.md`);
+      const jsonPath = resolve(options.failedPrdDir, `${prdId}.recovery.json`);
+      if (!isWithinDir(mdPath, options.failedPrdDir) || !isWithinDir(jsonPath, options.failedPrdDir)) {
+        sendJsonError(res, 400, 'Invalid setName or prdId: resolved path escapes failed PRD directory');
+        return;
+      }
+      let mdContent: string;
+      let jsonContent: string;
+      try {
+        [mdContent, jsonContent] = await Promise.all([
+          readFile(mdPath, 'utf-8'),
+          readFile(jsonPath, 'utf-8'),
+        ]);
+      } catch {
+        sendJsonError(res, 404, 'Recovery sidecar not found');
+        return;
+      }
+      try {
+        sendJson(res, { markdown: mdContent, json: JSON.parse(jsonContent) });
+      } catch (err) {
+        sendJsonError(res, 500, `Recovery sidecar JSON is malformed: ${err instanceof Error ? err.message : String(err)} (file: ${jsonPath})`);
+      }
+    // --- eforge:endregion plan-03-daemon-mcp-pi ---
     } else if (url === API_ROUTES.queue) {
       await serveQueue(req, res);
     } else if (url === API_ROUTES.sessionMetadata) {
@@ -1442,7 +1619,9 @@ function listen(server: Server, port: number, maxRetries = 10): Promise<number> 
       };
       const onListening = () => {
         server.removeListener('error', onError);
-        resolve(p);
+        const addr = server.address();
+        const actualPort = (addr && typeof addr === 'object') ? addr.port : p;
+        resolve(actualPort);
       };
       server.once('error', onError);
       server.once('listening', onListening);

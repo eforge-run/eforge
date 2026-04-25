@@ -36,6 +36,7 @@ const AGENT_COLORS: Record<AgentRole, { bg: string; border: string }> = {
   'gap-closer':            { bg: 'bg-pink/30',    border: 'border-pink/50' },
   'dependency-detector':   { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
   'pipeline-composer':     { bg: 'bg-cyan/30',    border: 'border-cyan/50' },
+  'recovery-analyst':      { bg: 'bg-orange/30',  border: 'border-orange/50' },
 };
 
 const FALLBACK_COLOR = { bg: 'bg-cyan/30', border: 'border-cyan/50' };
@@ -116,6 +117,7 @@ const AGENT_TO_STAGE: Record<AgentRole, string> = {
   'gap-closer': 'gap-close',
   'dependency-detector': 'dependency-detection',
   'pipeline-composer': 'pipeline-composition',
+  'recovery-analyst': 'recovery',
 };
 
 type StageStatus = 'pending' | 'active' | 'completed' | 'failed';

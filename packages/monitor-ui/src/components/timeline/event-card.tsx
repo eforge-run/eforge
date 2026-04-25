@@ -4,6 +4,13 @@ import { formatDuration, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { usePlanPreview } from '@/components/preview';
 import { Button } from '@/components/ui/button';
+// --- eforge:region plan-04-monitor-ui ---
+import {
+  RecoveryVerdictChip,
+  type RecoveryVerdictValue,
+  type RecoveryConfidenceValue,
+} from '@/components/recovery/verdict-chip';
+// --- eforge:endregion plan-04-monitor-ui ---
 
 interface EventCardProps {
   event: EforgeEvent;
@@ -18,6 +25,12 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
     return { cls: status === 'failed' ? 'failed' : 'complete', label: type };
   }
   if (type === 'validation:command:timeout') return { cls: 'failed', label: type };
+  // --- eforge:region plan-04-monitor-ui ---
+  if (type === 'recovery:start') return { cls: 'info', label: type };
+  if (type === 'recovery:summary') return { cls: 'info', label: type };
+  if (type === 'recovery:complete') return { cls: 'complete', label: type };
+  if (type === 'recovery:error') return { cls: 'failed', label: type };
+  // --- eforge:endregion plan-04-monitor-ui ---
   if (type.endsWith(':start')) return { cls: 'start', label: type };
   if (type.endsWith(':complete')) return { cls: 'complete', label: type };
   if (type.endsWith(':failed')) return { cls: 'failed', label: type };
@@ -105,6 +118,12 @@ function eventSummary(event: EforgeEvent): string {
     case 'enqueue:start': return `Enqueuing from: ${event.source}`;
     case 'enqueue:complete': return `Enqueued: ${event.title} → ${event.filePath}`;
     case 'enqueue:failed': return `Enqueue failed: ${event.error}`;
+    // --- eforge:region plan-04-monitor-ui ---
+    case 'recovery:start': return `Recovery started: ${event.prdId} (${event.setName})`;
+    case 'recovery:summary': return `Recovery summary: ${event.prdId}`;
+    case 'recovery:complete': return `Recovery complete: ${event.prdId}`;
+    case 'recovery:error': return `Recovery failed: ${event.prdId} — ${event.error}`;
+    // --- eforge:endregion plan-04-monitor-ui ---
     default: return event.type;
   }
 }
@@ -189,6 +208,35 @@ function eventDetail(event: EforgeEvent): string | null {
       return event.output || null;
     case 'validation:command:timeout':
       return `Command killed after ${event.timeoutMs}ms (pid ${event.pid}). The process group was terminated.`;
+    // --- eforge:region plan-04-monitor-ui ---
+    case 'recovery:complete': {
+      const v = event.verdict;
+      const parts: string[] = [`Verdict: ${v.verdict} (${v.confidence} confidence)`, `Rationale: ${v.rationale}`];
+      if (v.completedWork.length > 0) {
+        parts.push('Completed work:');
+        v.completedWork.forEach((w) => parts.push(`  • ${w}`));
+      }
+      if (v.remainingWork.length > 0) {
+        parts.push('Remaining work:');
+        v.remainingWork.forEach((w) => parts.push(`  • ${w}`));
+      }
+      if (v.risks.length > 0) {
+        parts.push('Risks:');
+        v.risks.forEach((r) => parts.push(`  • ${r}`));
+      }
+      return parts.join('\n');
+    }
+    case 'recovery:error':
+      return event.rawOutput ? `${event.error}\n\nRaw output:\n${event.rawOutput}` : event.error;
+    case 'recovery:summary': {
+      const s = event.summary;
+      const parts: string[] = [`Failing plan: ${s.failingPlan.planId}`];
+      if (s.failingPlan.errorMessage) parts.push(`Error: ${s.failingPlan.errorMessage}`);
+      parts.push(`Diff: ${s.diffStat || '(none)'}`);
+      if (s.modelsUsed.length > 0) parts.push(`Models: ${s.modelsUsed.join(', ')}`);
+      return parts.join('\n');
+    }
+    // --- eforge:endregion plan-04-monitor-ui ---
     case 'prd_validation:complete': {
       if (event.passed) return 'All PRD requirements satisfied.';
       const gapParts: string[] = [];
@@ -224,6 +272,18 @@ export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
   const typeInfo = classifyEvent(event.type, event);
   const isVerbose = event.type.startsWith('agent:');
   const planId = getEventPlanId(event);
+
+  // --- eforge:region plan-04-monitor-ui ---
+  // Narrow the event to recovery:complete so we can render a verdict chip.
+  const recoveryCompleteEvent =
+    event.type === 'recovery:complete'
+      ? (event as {
+          type: 'recovery:complete';
+          prdId: string;
+          verdict: { verdict: RecoveryVerdictValue; confidence: RecoveryConfidenceValue };
+        })
+      : null;
+  // --- eforge:endregion plan-04-monitor-ui ---
 
   // Hide verbose events when toggle is off
   if (isVerbose && !showVerbose) return null;
@@ -261,30 +321,32 @@ export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
         {typeInfo.label}
       </span>
       <div className="flex-1 min-w-0">
-        <div className="text-xs text-foreground">
-          {summary}
+        <div className="text-xs text-foreground flex items-center flex-wrap gap-1.5">
+          <span>{summary}</span>
           {planId && (
-            <>
-              {' '}
-              <span
-                className="text-blue cursor-pointer hover:underline font-mono text-[11px]"
-                onClick={() => openPreview(planId)}
-              >
-                {planId === 'gap-close' ? 'PRD Gap Close' : planId}
-              </span>
-            </>
+            <span
+              className="text-blue cursor-pointer hover:underline font-mono text-[11px]"
+              onClick={() => openPreview(planId)}
+            >
+              {planId === 'gap-close' ? 'PRD Gap Close' : planId}
+            </span>
           )}
           {event.type === 'planning:start' && event.source.includes('\n') && (
-            <>
-              {' '}
-              <span
-                className="text-blue cursor-pointer hover:underline text-[11px]"
-                onClick={() => openContentPreview(event.label ?? 'PRD Source', event.source)}
-              >
-                view source
-              </span>
-            </>
+            <span
+              className="text-blue cursor-pointer hover:underline text-[11px]"
+              onClick={() => openContentPreview(event.label ?? 'PRD Source', event.source)}
+            >
+              view source
+            </span>
           )}
+          {/* --- eforge:region plan-04-monitor-ui --- */}
+          {recoveryCompleteEvent && (
+            <RecoveryVerdictChip
+              verdict={recoveryCompleteEvent.verdict.verdict}
+              confidence={recoveryCompleteEvent.verdict.confidence}
+            />
+          )}
+          {/* --- eforge:endregion plan-04-monitor-ui --- */}
         </div>
         {detail && (
           <>

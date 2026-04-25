@@ -3,12 +3,12 @@
 import type { z } from 'zod/v4';
 import type { BuildStageSpec, ReviewProfileConfig } from './config.js';
 import type { ReviewPerspective } from './review-heuristics.js';
-import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSchema, PipelineComposition } from './schemas.js';
+import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSchema, PipelineComposition, recoveryVerdictSchema } from './schemas.js';
 import type { AgentTerminalSubtype } from './harness.js';
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
 
-export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'review-fixer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater' | 'test-writer' | 'tester' | 'prd-validator' | 'dependency-detector' | 'pipeline-composer' | 'gap-closer';
+export type AgentRole = 'planner' | 'builder' | 'reviewer' | 'review-fixer' | 'evaluator' | 'module-planner' | 'plan-reviewer' | 'plan-evaluator' | 'architecture-reviewer' | 'architecture-evaluator' | 'cohesion-reviewer' | 'cohesion-evaluator' | 'validation-fixer' | 'merge-conflict-resolver' | 'staleness-assessor' | 'formatter' | 'doc-updater' | 'test-writer' | 'tester' | 'prd-validator' | 'dependency-detector' | 'pipeline-composer' | 'gap-closer' | 'recovery-analyst';
 
 export interface PrdValidationGap {
   requirement: string;
@@ -301,11 +301,67 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'enqueue:failed'; error: string }
   | { type: 'enqueue:commit-failed'; error: string }
 
+  // Recovery analysis (post-build failure forensics)
+  | { type: 'recovery:start'; prdId: string; setName: string }
+  | { type: 'recovery:summary'; prdId: string; summary: BuildFailureSummary }
+  | { type: 'recovery:complete'; prdId: string; verdict: RecoveryVerdict; sidecarMdPath?: string; sidecarJsonPath?: string }
+  | { type: 'recovery:error'; prdId: string; error: string; rawOutput?: string }
+
   // Queue
   | QueueEvent
 );
 
 export type StalenessVerdict = 'proceed' | 'revise' | 'obsolete';
+
+// ---------------------------------------------------------------------------
+// Recovery Analysis Types
+// ---------------------------------------------------------------------------
+
+/** Typed recovery verdict from the recovery-analyst agent. */
+export type RecoveryVerdict = z.output<typeof recoveryVerdictSchema>;
+
+/** A single landed commit on the feature branch. */
+export interface LandedCommit {
+  sha: string;
+  subject: string;
+  author: string;
+  date: string;
+}
+
+/** Summary of a plan's outcome in the failed build session. */
+export interface PlanSummaryEntry {
+  planId: string;
+  status: string;
+  mergedAt?: string;
+  error?: string;
+  terminalSubtype?: string;
+}
+
+/** Details about the plan that failed. */
+export interface FailingPlanEntry {
+  planId: string;
+  agentId?: string;
+  agentRole?: string;
+  errorMessage?: string;
+  terminalSubtype?: string;
+}
+
+/**
+ * Summary of a failed build session, assembled from state.json + git on the
+ * surviving feature branch. Used as input to the recovery-analyst agent.
+ */
+export interface BuildFailureSummary {
+  prdId: string;
+  setName: string;
+  featureBranch: string;
+  baseBranch: string;
+  plans: PlanSummaryEntry[];
+  failingPlan: FailingPlanEntry;
+  landedCommits: LandedCommit[];
+  diffStat: string;
+  modelsUsed: string[];
+  failedAt: string;
+}
 
 export type QueueEvent =
   | { type: 'queue:start'; prdCount: number; dir: string }

@@ -9,7 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, watch as fsWatch, type FSWatcher } from 'node:fs';
 import { readFile, readdir, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { relative, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import type {
@@ -20,9 +20,13 @@ import type {
   EnqueueOptions,
   PlanFile,
   ClarificationQuestion,
+  RecoveryVerdict,
 } from './events.js';
 import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, QueueExecExitCode, QueueSkipReason } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
+import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
+import { buildFailureSummary } from './recovery/failure-summary.js';
+import { writeRecoverySidecar } from './recovery/sidecar.js';
 import { runFormatter } from './agents/formatter.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
 import type { EforgeConfig, PluginConfig, ReviewProfileConfig, BuildStageSpec } from './config.js';
@@ -88,6 +92,15 @@ export interface QueueOptions {
   watch?: boolean;
   /** Poll interval in milliseconds (overrides config) */
   pollIntervalMs?: number;
+}
+
+export interface RecoveryOptions {
+  /** Stream verbose agent output */
+  verbose?: boolean;
+  /** AbortController for cancellation */
+  abortController?: AbortController;
+  /** Working directory override */
+  cwd?: string;
 }
 
 /**
@@ -1657,6 +1670,100 @@ export class EforgeEngine {
       type: 'queue:complete',
       processed,
       skipped,
+    };
+  }
+
+  /**
+   * Recover: analyse a failed build, emit a typed verdict, and write sidecar files.
+   *
+   * Orchestrates: PRD file read → buildFailureSummary → recovery-analyst agent →
+   * writeRecoverySidecar. On agent parse failure, falls back to a `manual` verdict
+   * sidecar so the caller always receives an artifact.
+   *
+   * Exit semantics: throws only on infrastructural errors (PRD missing, state missing,
+   * git failure). A `manual` verdict is a success — exit 0 is correct for all verdicts.
+   */
+  async *recover(setName: string, prdId: string, options: RecoveryOptions = {}): AsyncGenerator<EforgeEvent> {
+    const cwd = options.cwd ?? this.cwd;
+    const verbose = options.verbose;
+    const abortController = options.abortController;
+
+    // Resolve PRD path in the failed queue subdirectory
+    const failedDir = resolve(cwd, this.config.prdQueue.dir, 'failed');
+    const prdPath = join(failedDir, `${prdId}.md`);
+
+    // Verify PRD file exists — throw for infrastructural absence
+    let prdContent: string;
+    try {
+      prdContent = await readFile(prdPath, 'utf-8');
+    } catch {
+      throw new Error(`recover: PRD file not found: ${prdPath}`);
+    }
+
+    // Emit recovery:start
+    yield { timestamp: new Date().toISOString(), type: 'recovery:start', prdId, setName };
+
+    // Assemble failure summary from state.json + git (may throw on missing state)
+    const summary = await buildFailureSummary({ setName, prdId, cwd });
+
+    // Get recovery-analyst harness and config
+    const harness = this.agentRuntimes.forRole('recovery-analyst');
+    const agentConfig =
+      this.config.agentRuntimes && Object.keys(this.config.agentRuntimes).length > 0
+        ? resolveAgentConfig('recovery-analyst', this.config)
+        : {};
+
+    // Run recovery analyst — collect verdict or error
+    let verdictResult: RecoveryVerdict | null = null;
+    let parseError: string | undefined;
+
+    for await (const event of runRecoveryAnalyst({
+      ...agentConfig,
+      harness,
+      prdContent,
+      summary,
+      prdId,
+      cwd,
+      verbose,
+      abortController,
+    })) {
+      if (event.type === 'recovery:complete') {
+        // Collect the verdict; we will re-emit recovery:complete with sidecar paths below
+        verdictResult = event.verdict;
+      } else if (event.type === 'recovery:error') {
+        parseError = event.error;
+        yield event;
+      } else {
+        yield event;
+      }
+    }
+
+    // Determine final verdict — fallback to manual on parse failure
+    const verdict: RecoveryVerdict = verdictResult ?? {
+      verdict: 'manual',
+      confidence: 'low',
+      rationale: `Recovery analyst output could not be parsed. ${parseError ?? 'Unknown parse error.'}`,
+      completedWork: [],
+      remainingWork: [],
+      risks: [],
+    };
+
+    // Write sidecar files (no side effects beyond these two paths)
+    const { mdPath, jsonPath } = await writeRecoverySidecar({
+      failedPrdDir: failedDir,
+      prdId,
+      summary,
+      verdict,
+    });
+
+    // Emit final recovery:complete with sidecar paths
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'recovery:complete',
+      prdId,
+      verdict,
+      sidecarMdPath: mdPath,
+      sidecarJsonPath: jsonPath,
     };
   }
 

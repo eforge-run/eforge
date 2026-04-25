@@ -841,7 +841,7 @@ describe('EforgeEngineOptions type', () => {
 // ---------------------------------------------------------------------------
 
 describe('model class resolution', () => {
-  it('eight roles default to balanced class, the rest default to max', async () => {
+  it('nine roles default to balanced class, the rest default to max', async () => {
     const { resolveAgentConfig, AGENT_MODEL_CLASSES } = await import('@eforge-build/engine/pipeline');
     const balancedRoles = [
       'builder',
@@ -852,6 +852,7 @@ describe('model class resolution', () => {
       'staleness-assessor',
       'prd-validator',
       'dependency-detector',
+      'recovery-analyst',
     ];
     for (const role of Object.keys(AGENT_MODEL_CLASSES) as Array<keyof typeof AGENT_MODEL_CLASSES>) {
       if (balancedRoles.includes(role)) {

@@ -141,6 +141,34 @@ export const stalenessVerdictSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Recovery Verdict schema
+// ---------------------------------------------------------------------------
+
+export const recoveryVerdictSchema = z.object({
+  verdict: z.enum(['retry', 'split', 'abandon', 'manual']).describe(
+    'Recovery verdict: retry = transient failure, split = partially complete (use suggestedSuccessorPrd), abandon = no longer viable, manual = human review required (safe default)',
+  ),
+  confidence: z.enum(['low', 'medium', 'high']).describe(
+    'Confidence in the verdict based on available evidence',
+  ),
+  rationale: z.string().min(1).describe(
+    'Explanation of the verdict with concrete evidence from the failure summary',
+  ),
+  completedWork: z.array(z.string()).describe(
+    'Work items that were completed before the failure (each item on its own line)',
+  ),
+  remainingWork: z.array(z.string()).describe(
+    'Work items that still need to be done (each item on its own line)',
+  ),
+  risks: z.array(z.string()).describe(
+    'Risks identified in the recovery assessment (each risk on its own line)',
+  ),
+  suggestedSuccessorPrd: z.string().optional().describe(
+    'Full successor PRD content when verdict is split — must be complete and self-contained',
+  ),
+});
+
+// ---------------------------------------------------------------------------
 // Expedition module schema
 // ---------------------------------------------------------------------------
 
@@ -322,6 +350,11 @@ export function getClarificationSchemaYaml(): string {
 /** Schema YAML for staleness verdicts (used by staleness-assessor). */
 export function getStalenessSchemaYaml(): string {
   return getSchemaYaml('staleness-verdict', stalenessVerdictSchema);
+}
+
+/** Schema YAML for recovery verdicts (used by recovery-analyst). */
+export function getRecoveryVerdictSchemaYaml(): string {
+  return getSchemaYaml('recovery-verdict', recoveryVerdictSchema);
 }
 
 /** Schema YAML for expedition modules (used by planner). */

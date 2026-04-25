@@ -1291,6 +1291,64 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
+  // --- eforge:region plan-03-daemon-mcp-pi ---
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_recover
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_recover",
+    label: "eforge recover",
+    description:
+      "Trigger failure recovery analysis for a failed build plan. Spawns the recovery agent as a background subprocess and returns its sessionId and pid.",
+    parameters: Type.Object({
+      setName: Type.String({
+        description: "The plan set name (e.g. the orchestration set that contained the failing plan)",
+      }),
+      prdId: Type.String({
+        description: "The plan ID (prdId) that failed and needs recovery analysis",
+      }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { data } = await daemonRequest(
+        ctx.cwd,
+        "POST",
+        API_ROUTES.recover,
+        { setName: params.setName, prdId: params.prdId },
+      );
+      return jsonResult(data);
+    },
+  });
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_read_recovery_sidecar
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_read_recovery_sidecar",
+    label: "eforge read recovery sidecar",
+    description:
+      "Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent.",
+    parameters: Type.Object({
+      setName: Type.String({
+        description: "The plan set name",
+      }),
+      prdId: Type.String({
+        description: "The plan ID (prdId) whose recovery sidecar to read",
+      }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const queryParams = new URLSearchParams({ setName: params.setName, prdId: params.prdId });
+      const { data } = await daemonRequest(
+        ctx.cwd,
+        "GET",
+        `${API_ROUTES.readRecoverySidecar}?${queryParams.toString()}`,
+      );
+      return jsonResult(data);
+    },
+  });
+
+  // --- eforge:endregion plan-03-daemon-mcp-pi ---
+
   // ------------------------------------------------------------------
   // Command aliases — map /eforge:* to /skill:eforge-*
   // Pi has no programmatic skill invocation API, so we delegate via
