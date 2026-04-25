@@ -41,7 +41,7 @@ import type {
   SessionSummary,
   FollowCounters,
 } from '@eforge-build/client';
-import { handleBackendCommand, handleBackendNewCommand } from './backend-commands';
+import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
 import type { UIContext } from './ui-helpers';
 
@@ -1345,22 +1345,22 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   }
 
   // ------------------------------------------------------------------
-  // Native commands - /eforge:backend, /eforge:backend:new, /eforge:config
+  // Native commands - /eforge:profile, /eforge:profile:new, /eforge:config
   // ------------------------------------------------------------------
 
-  pi.registerCommand("eforge:backend", {
-    description: "List, inspect, and switch backend profiles",
+  pi.registerCommand("eforge:profile", {
+    description: "List, inspect, and switch profiles",
     handler: async (args) => {
-      await handleBackendCommand(pi, _latestCtx, args, async () => {
+      await handleProfileCommand(pi, _latestCtx, args, async () => {
         if (_latestCtx) await refreshStatus(_latestCtx);
       });
     },
   });
 
-  pi.registerCommand("eforge:backend:new", {
-    description: "Create a new backend profile in eforge/profiles/",
+  pi.registerCommand("eforge:profile:new", {
+    description: "Create a new profile in eforge/profiles/",
     handler: async (args) => {
-      await handleBackendNewCommand(pi, _latestCtx, args, async () => {
+      await handleProfileNewCommand(pi, _latestCtx, args, async () => {
         if (_latestCtx) await refreshStatus(_latestCtx);
       });
     },

@@ -115,7 +115,7 @@ export async function handleConfigCommand(
 
   sections.push("---\n");
   sections.push("Edit `eforge/config.yaml` directly to change settings.\n");
-  sections.push("Use `/eforge:backend` to manage backend profiles.");
+  sections.push("Use `/eforge:profile` to manage profiles.");
 
   await showInfoOverlay(ctx, "eforge - Configuration", sections.join("\n"));
 }

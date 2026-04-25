@@ -1,9 +1,9 @@
 /**
- * Native Pi command handlers for backend profile management.
+ * Native Pi command handlers for profile management.
  *
  * Provides interactive overlay-based UX for listing, inspecting, and
- * switching backend profiles (/eforge:backend) and a multi-step creation
- * wizard (/eforge:backend:new). Falls back to skill forwarding when
+ * switching profiles (/eforge:profile) and a multi-step creation
+ * wizard (/eforge:profile:new). Falls back to skill forwarding when
  * the Pi UI is not available.
  */
 
@@ -15,32 +15,32 @@ import { showSelectOverlay, showSearchableSelectOverlay, showInfoOverlay, withLo
 // Inline response types for daemon API calls
 // ---------------------------------------------------------------------------
 
-interface BackendProfile {
+interface ProfileEntry {
   name: string;
-  backend?: string;
+  harness?: string;
   path: string;
   scope: "project" | "user";
   shadowedBy?: string;
 }
 
-interface BackendListData {
-  profiles: BackendProfile[];
+interface ProfileListData {
+  profiles: ProfileEntry[];
   active: string | null;
   source: string;
 }
 
 // ---------------------------------------------------------------------------
-// /eforge:backend - list, inspect, and switch profiles
+// /eforge:profile - list, inspect, and switch profiles
 // ---------------------------------------------------------------------------
 
-export async function handleBackendCommand(
+export async function handleProfileCommand(
   pi: ExtensionAPI,
   ctx: UIContext | null,
   args: string,
   onStatusRefresh: () => Promise<void>,
 ): Promise<void> {
   if (!ctx || !ctx.hasUI) {
-    pi.sendUserMessage(`/skill:eforge-backend${args ? " " + args : ""}`);
+    pi.sendUserMessage(`/skill:eforge-profile${args ? " " + args : ""}`);
     return;
   }
 
@@ -54,24 +54,24 @@ export async function handleBackendCommand(
       await onStatusRefresh();
       await showInfoOverlay(
         ctx,
-        "eforge - Backend Switched",
+        "eforge - Profile Switched",
         `Switched to profile **${profileName}**.\n\nThe next eforge build will use this profile.`,
       );
     } catch (err) {
       await showInfoOverlay(
         ctx,
         "eforge - Error",
-        `Failed to switch to profile "${profileName}":\n\n${err instanceof Error ? err.message : String(err)}\n\nUse \`/eforge:backend\` with no args to list available profiles.`,
+        `Failed to switch to profile "${profileName}":\n\n${err instanceof Error ? err.message : String(err)}\n\nUse \`/eforge:profile\` with no args to list available profiles.`,
       );
     }
     return;
   }
 
   // Inspect mode: fetch and display profile list
-  let listData: BackendListData;
+  let listData: ProfileListData;
   try {
     const result = await withLoader(ctx, "Loading profiles...", () =>
-      daemonRequest<BackendListData>(ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`),
+      daemonRequest<ProfileListData>(ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`),
     );
     listData = result.data;
   } catch (err) {
@@ -88,8 +88,8 @@ export async function handleBackendCommand(
   if (profiles.length === 0) {
     await showInfoOverlay(
       ctx,
-      "eforge - Backend Profiles",
-      "No backend profiles found.\n\nUse `/eforge:backend:new` to create one.",
+      "eforge - Profiles",
+      "No profiles found.\n\nUse `/eforge:profile:new` to create one.",
     );
     return;
   }
@@ -98,15 +98,15 @@ export async function handleBackendCommand(
   const items = profiles.map((p) => {
     const activeMarker = p.name === active ? "●" : "○";
     const scopeBadge = p.shadowedBy ? `${p.scope} (shadowed)` : p.scope;
-    const backendType = p.backend ?? "unknown";
+    const harnessType = p.harness ?? "unknown";
     return {
       value: p.name,
       label: `${activeMarker} ${p.name}`,
-      description: `${scopeBadge} - ${backendType}`,
+      description: `${scopeBadge} - ${harnessType}`,
     };
   });
 
-  const selected = await showSelectOverlay(ctx, "eforge - Backend Profiles", items);
+  const selected = await showSelectOverlay(ctx, "eforge - Profiles", items);
   if (!selected) return;
 
   // Show detail actions for the selected profile
@@ -131,7 +131,7 @@ export async function handleBackendCommand(
       await onStatusRefresh();
       await showInfoOverlay(
         ctx,
-        "eforge - Backend Switched",
+        "eforge - Profile Switched",
         `Switched to profile **${selected}**.\n\nThe next eforge build will use this profile.`,
       );
     } catch (err) {
@@ -145,17 +145,17 @@ export async function handleBackendCommand(
 }
 
 // ---------------------------------------------------------------------------
-// /eforge:backend:new - multi-step creation wizard
+// /eforge:profile:new - multi-step creation wizard
 // ---------------------------------------------------------------------------
 
-export async function handleBackendNewCommand(
+export async function handleProfileNewCommand(
   pi: ExtensionAPI,
   ctx: UIContext | null,
   args: string,
   onStatusRefresh: () => Promise<void>,
 ): Promise<void> {
   if (!ctx || !ctx.hasUI) {
-    pi.sendUserMessage(`/skill:eforge-backend-new${args ? " " + args : ""}`);
+    pi.sendUserMessage(`/skill:eforge-profile-new${args ? " " + args : ""}`);
     return;
   }
 
@@ -163,7 +163,7 @@ export async function handleBackendNewCommand(
   const name = args.trim();
   if (!name) {
     pi.sendUserMessage(
-      "Please provide a name for the new backend profile. For example: `/eforge:backend:new pi-anthropic`",
+      "Please provide a name for the new profile. For example: `/eforge:profile:new pi-anthropic`",
     );
     return;
   }
@@ -360,7 +360,7 @@ export async function handleBackendNewCommand(
   // Step 10: Offer activation
   const activate = await showSelectOverlay(ctx, "eforge - Activate Profile?", [
     { value: "yes", label: `Activate ${name}`, description: "Make this the active profile" },
-    { value: "no", label: "Not now", description: `Switch later with /eforge:backend ${name}` },
+    { value: "no", label: "Not now", description: `Switch later with /eforge:profile ${name}` },
   ]);
 
   if (activate === "yes") {
@@ -385,7 +385,7 @@ export async function handleBackendNewCommand(
     await showInfoOverlay(
       ctx,
       "eforge - Profile Created",
-      `Profile **${name}** created at ${scope} scope.\n\nSwitch to it later with \`/eforge:backend ${name}\`.`,
+      `Profile **${name}** created at ${scope} scope.\n\nSwitch to it later with \`/eforge:profile ${name}\`.`,
     );
   }
 }
