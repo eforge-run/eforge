@@ -19,6 +19,61 @@ export interface StopDaemonRequest {
   force?: boolean;
 }
 
+/** POST /api/recover */
+export interface RecoverRequest {
+  setName: string;
+  prdId: string;
+}
+
+/** Response for POST /api/recover */
+export interface RecoverResponse {
+  sessionId: string;
+  pid: number;
+}
+
+/** Query params for GET /api/recovery/sidecar */
+export interface ReadSidecarRequest {
+  setName: string;
+  prdId: string;
+}
+
+/**
+ * JSON structure written by `eforge recover` into `<prdId>.recovery.json`.
+ * Mirrors the shape produced by `writeRecoverySidecar` in the engine (schemaVersion: 1).
+ */
+export interface RecoveryVerdictSidecar {
+  schemaVersion: number;
+  generatedAt: string;
+  summary: {
+    prdId: string;
+    setName: string;
+    featureBranch: string;
+    baseBranch: string;
+    plans: Array<{ planId: string; status: string; mergedAt?: string; error?: string; terminalSubtype?: string }>;
+    failingPlan: { planId: string; agentId?: string; agentRole?: string; errorMessage?: string; terminalSubtype?: string };
+    landedCommits: Array<{ sha: string; subject: string; author: string; date: string }>;
+    diffStat: string;
+    modelsUsed: string[];
+    failedAt: string;
+  };
+  verdict: {
+    verdict: 'retry' | 'split' | 'abandon' | 'manual';
+    confidence: 'low' | 'medium' | 'high';
+    rationale: string;
+    completedWork: string[];
+    remainingWork: string[];
+    risks: string[];
+    suggestedSuccessorPrd?: string;
+  };
+  [key: string]: unknown;
+}
+
+/** Response for GET /api/recovery/sidecar */
+export interface ReadSidecarResponse {
+  markdown: string;
+  json: RecoveryVerdictSidecar;
+}
+
 /**
  * Central API route map for the eforge daemon HTTP API.
  *
@@ -59,6 +114,8 @@ export const API_ROUTES = {
   runState: '/api/run-state/:id',
   plans: '/api/plans/:runId',
   diff: '/api/diff/:sessionId/:planId',
+  recover: '/api/recover',
+  readRecoverySidecar: '/api/recovery/sidecar',
 } as const;
 
 /** Response body for GET /api/version */

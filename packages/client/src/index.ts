@@ -1,5 +1,16 @@
 export { API_ROUTES, buildPath } from './routes.js';
-export type { ApiRoute, EnqueueRequest, AutoBuildSetRequest, StopDaemonRequest, VersionResponse } from './routes.js';
+export type {
+  ApiRoute,
+  EnqueueRequest,
+  AutoBuildSetRequest,
+  StopDaemonRequest,
+  VersionResponse,
+  RecoverRequest,
+  RecoverResponse,
+  ReadSidecarRequest,
+  RecoveryVerdictSidecar,
+  ReadSidecarResponse,
+} from './routes.js';
 
 export {
   apiEnqueue,
@@ -43,6 +54,10 @@ export {
 export { apiListModelProviders, apiListModels } from './api/models.js';
 
 export { apiStopDaemon } from './api/daemon.js';
+
+export { apiRecover } from './api/recover.js';
+
+export { apiReadRecoverySidecar } from './api/recovery-sidecar.js';
 
 export {
   type LockfileData,

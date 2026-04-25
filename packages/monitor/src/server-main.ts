@@ -220,7 +220,7 @@ async function main(): Promise<void> {
 
   function createWorkerTracker(): WorkerTracker {
     return {
-      spawnWorker(command: string, args: string[]): { sessionId: string; pid: number } {
+      spawnWorker(command: string, args: string[], onExit?: () => void): { sessionId: string; pid: number } {
         const sessionId = `daemon-${Date.now()}-${randomBytes(6).toString('hex')}`;
         const commandArgs = [command, ...args];
         // Only append --no-monitor for commands that support it (build/run, not enqueue)
@@ -250,9 +250,11 @@ async function main(): Promise<void> {
 
         child.on('error', () => {
           workerProcesses.delete(sessionId);
+          onExit?.();
         });
         child.on('exit', () => {
           workerProcesses.delete(sessionId);
+          onExit?.();
         });
 
         return { sessionId, pid };

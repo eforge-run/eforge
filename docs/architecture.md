@@ -221,6 +221,8 @@ The **daemon** (`eforge daemon start`) is a long-running process that watches th
 
 **Auto-build** mode (default) automatically processes PRDs on enqueue. The daemon spawns a worker process for each build, tracking progress via SQLite. Failed builds pause auto-build until manually restarted. The daemon shuts down after a configurable idle timeout.
 
+When the daemon observes a `plan:build:failed` event, it spawns `eforge recover <setName> <prdId>` as a clean child process via the same worker-tracker path used for queue-driven builds. Recovery does not consume a build permit, runs purely advisory (the recovery-analyst agent operates with `tools: 'none'`), and writes a markdown + JSON sidecar pair next to the failed PRD. The trigger is idempotent against an existing `<prdId>.recovery.json`. Recovery can also be triggered manually via the `eforge_recover` MCP tool (Claude Code plugin) or the `recover` Pi tool, and the resulting sidecar can be read back through `eforge_read_recovery_sidecar` / `readRecoverySidecar`.
+
 ## Monitor
 
 The web monitor tracks cost, token usage, and progress in real time on a dynamically assigned port.
