@@ -72,14 +72,20 @@ export async function loadPrompt(
   }
 
   const allVars: Record<string, string> = { attribution: ATTRIBUTION, ...vars };
-  content = content.replace(/\{\{(\w+)\}\}/g, (match, key) => allVars[key] ?? match);
 
-  const unresolved = [...content.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g)].map(m => m[1]);
-  if (unresolved.length > 0) {
+  // Determine expected variables from the template *before* substitution so that
+  // any {{...}} appearing inside substituted values (e.g. plan content quoting
+  // a downstream prompt's placeholders) is treated as literal text rather than
+  // an unresolved variable.
+  const expected = [...content.matchAll(/\{\{(\w+)\}\}/g)].map(m => m[1]);
+  const missing = [...new Set(expected)].filter(name => !(name in allVars));
+  if (missing.length > 0) {
     throw new Error(
-      `loadPrompt(${filename}): unresolved template variables: ${[...new Set(unresolved)].join(', ')}`,
+      `loadPrompt(${filename}): unresolved template variables: ${missing.join(', ')}`,
     );
   }
+
+  content = content.replace(/\{\{(\w+)\}\}/g, (match, key) => allVars[key] ?? match);
 
   if (append) {
     content = content + '\n\n' + append;

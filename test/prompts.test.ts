@@ -42,4 +42,29 @@ describe('loadPrompt() throws on unresolved template variables', () => {
     expect(typeof prompt).toBe('string');
     expect(prompt).not.toMatch(/\{\{[a-zA-Z0-9_]+\}\}/);
   });
+
+  it('treats {{...}} inside substituted values as literal text', async () => {
+    // Regression: a plan body that quotes a downstream prompt's placeholders
+    // (e.g. {{summary}}, {{prdContent}}) must not trip the unresolved-variable
+    // check. The check only validates variables declared by the template
+    // itself.
+    const planContent = [
+      'The recovery-analyst prompt expects placeholders {{summary}},',
+      '{{prdContent}}, {{recovery_schema}}, and {{cwd}}.',
+    ].join('\n');
+
+    const prompt = await loadPrompt('builder', {
+      plan_id: 'plan-01-recovery-engine-core',
+      plan_name: 'Recovery engine core',
+      plan_content: planContent,
+      parallelLanes: '',
+      verification_scope: 'Run pnpm test.',
+      continuation_context: '',
+    });
+
+    expect(prompt).toContain('{{summary}}');
+    expect(prompt).toContain('{{prdContent}}');
+    expect(prompt).toContain('{{recovery_schema}}');
+    expect(prompt).toContain('{{cwd}}');
+  });
 });
