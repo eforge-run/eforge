@@ -284,6 +284,40 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
     expect(config.plans[0].review).toEqual(ERRAND_PIPELINE.defaultReview);
   });
 
+  it('preserves per-plan build/review when planner specifies them (planner-override path)', async () => {
+    const dir = makeTempDir();
+    const yamlPath = join(dir, 'orchestration.yaml');
+
+    // Plan A has planner-chosen build/review; plan B has neither (backfill path).
+    const planABuild = [['implement', 'doc-update'], 'review-cycle'];
+    const planAReview = { strategy: 'parallel' as const, perspectives: ['code', 'security'], maxRounds: 2, evaluatorStrictness: 'strict' as const };
+
+    writeFileSync(yamlPath, stringifyYaml({
+      name: 'planner-override-test',
+      description: 'Test planner per-plan build/review override',
+      created: '2026-01-01',
+      mode: 'errand',
+      base_branch: 'main',
+      plans: [
+        { id: 'plan-a', name: 'Plan A', depends_on: [], branch: 'branch-a', build: planABuild, review: planAReview },
+        { id: 'plan-b', name: 'Plan B', depends_on: ['plan-a'], branch: 'branch-b' },
+      ],
+    }));
+
+    await injectPipelineIntoOrchestrationYaml(yamlPath, ERRAND_PIPELINE);
+
+    const config = await parseOrchestrationConfig(yamlPath);
+
+    // Plan A: planner-chosen values must be preserved, not overwritten by ERRAND_PIPELINE defaults.
+    expect(config.plans[0].build).toEqual(planABuild);
+    expect(config.plans[0].review.strategy).toBe('parallel');
+    expect(config.plans[0].review.maxRounds).toBe(2);
+
+    // Plan B: no planner override, so composer defaults kick in.
+    expect(config.plans[1].build).toEqual(ERRAND_PIPELINE.defaultBuild);
+    expect(config.plans[1].review).toEqual(ERRAND_PIPELINE.defaultReview);
+  });
+
   it('preserves base_branch when baseBranch arg is omitted', async () => {
     const dir = makeTempDir();
     const yamlPath = join(dir, 'orchestration.yaml');

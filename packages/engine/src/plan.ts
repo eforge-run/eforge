@@ -695,6 +695,8 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
         name: p.name,
         depends_on: p.dependsOn,
         branch: p.branch,
+        ...(p.build ? { build: p.build } : {}),
+        ...(p.review ? { review: p.review } : {}),
         ...(planData?.frontmatter.agents ? { agents: planData.frontmatter.agents } : {}),
       };
     }),
@@ -763,9 +765,11 @@ export async function injectPipelineIntoOrchestrationYaml(
   if (baseBranch) {
     data.base_branch = baseBranch;
   }
-  // Backfill per-plan build/review from pipeline defaults. The planner's
-  // submission schema omits these (composer decisions), so writePlanSet
-  // emits orchestration.yaml without them; parseOrchestrationConfig requires them.
+  // Backfill per-plan build/review from pipeline defaults for any plan that
+  // omitted them. Planner submissions may now include per-plan build/review
+  // overrides; writePlanSet passes them through when present. This step
+  // fills in the composer defaults only for plans that omitted them, so
+  // parseOrchestrationConfig always sees both fields populated.
   if (Array.isArray(data.plans)) {
     data.plans = (data.plans as Array<Record<string, unknown>>).map((p) => ({
       ...p,

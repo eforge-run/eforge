@@ -368,6 +368,36 @@ export function getPlanFrontmatterSchemaYaml(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Pipeline Build/Review stage schemas
+// (declared here so orchestrationPlanSchema can reference them without TDZ)
+// ---------------------------------------------------------------------------
+
+/**
+ * Build stage spec for pipeline composition — mirrors buildStageSpecSchema from config.ts.
+ * Duplicated here to keep schemas.ts as a leaf-level file (no engine imports).
+ */
+const pipelineBuildStageSpecSchema = z.union([
+  z.string().describe('A single stage name'),
+  z.array(z.string()).describe('Stage names to run in parallel'),
+]).describe('A stage name or array of stage names to run in parallel');
+
+/**
+ * Review profile config for pipeline composition — mirrors reviewProfileConfigSchema from config.ts.
+ * Duplicated here to keep schemas.ts as a leaf-level file (no engine imports).
+ *
+ * Bound to `z.ZodType<ReviewProfileConfig>` so the pipeline composer output
+ * validation stays aligned with the shared TypeScript type owned by
+ * `@eforge-build/client`.
+ */
+const pipelineReviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.object({
+  strategy: z.enum(['auto', 'single', 'parallel']).describe('Review strategy'),
+  perspectives: z.array(z.string()).nonempty().describe('Review perspective names'),
+  maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles'),
+  autoAcceptBelow: z.enum(['suggestion', 'warning']).optional().describe('Auto-accept issues at or below this severity'),
+  evaluatorStrictness: z.enum(['strict', 'standard', 'lenient']).describe('How strictly the evaluator judges fixes'),
+});
+
+// ---------------------------------------------------------------------------
 // Plan Set Submission schema
 // ---------------------------------------------------------------------------
 
@@ -390,6 +420,8 @@ const orchestrationPlanSchema = z.object({
   name: z.string().min(1).describe('Human-readable plan name'),
   dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
   branch: z.string().min(1).describe('Git branch name'),
+  build: z.array(pipelineBuildStageSpecSchema).optional().describe('Per-plan build stage pipeline; if omitted, the composer\'s defaultBuild is used as a backfill'),
+  review: pipelineReviewProfileConfigSchema.optional().describe('Per-plan review configuration; if omitted, the composer\'s defaultReview is used as a backfill'),
 });
 
 export const planSetSubmissionSchema = z.object({
@@ -585,31 +617,6 @@ export function getArchitectureSubmissionSchemaYaml(): string {
 // ---------------------------------------------------------------------------
 // Pipeline Composition schema
 // ---------------------------------------------------------------------------
-
-/**
- * Build stage spec for pipeline composition — mirrors buildStageSpecSchema from config.ts.
- * Duplicated here to keep schemas.ts as a leaf-level file (no engine imports).
- */
-const pipelineBuildStageSpecSchema = z.union([
-  z.string().describe('A single stage name'),
-  z.array(z.string()).describe('Stage names to run in parallel'),
-]).describe('A stage name or array of stage names to run in parallel');
-
-/**
- * Review profile config for pipeline composition — mirrors reviewProfileConfigSchema from config.ts.
- * Duplicated here to keep schemas.ts as a leaf-level file (no engine imports).
- *
- * Bound to `z.ZodType<ReviewProfileConfig>` so the pipeline composer output
- * validation stays aligned with the shared TypeScript type owned by
- * `@eforge-build/client`.
- */
-const pipelineReviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.object({
-  strategy: z.enum(['auto', 'single', 'parallel']).describe('Review strategy'),
-  perspectives: z.array(z.string()).nonempty().describe('Review perspective names'),
-  maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles'),
-  autoAcceptBelow: z.enum(['suggestion', 'warning']).optional().describe('Auto-accept issues at or below this severity'),
-  evaluatorStrictness: z.enum(['strict', 'standard', 'lenient']).describe('How strictly the evaluator judges fixes'),
-});
 
 export const pipelineCompositionSchema = z.object({
   scope: z.enum(['errand', 'excursion', 'expedition']).describe('Orchestration scope: errand for trivial tasks, excursion for most work, expedition for 4+ independent subsystems'),
