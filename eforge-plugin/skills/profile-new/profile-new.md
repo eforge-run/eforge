@@ -85,13 +85,14 @@ Build the profile object that will go to the tool:
 {
   name: "<name>",
   backend: "<claude-sdk|pi>",
-  // For pi:
-  pi: { thinkingLevel: "<level>" }?,           // only if user set
+  // For pi: provider is REQUIRED on the runtime entry; thinkingLevel only if user set.
+  pi: { provider: "<chosen-provider>", thinkingLevel: "<level>"? },
   agents: {
     models: {
-      max:      { id: "<id>", provider: "<provider>"? },   // provider only for pi
-      balanced: { id: "<id>", provider: "<provider>"? },
-      fast:     { id: "<id>", provider: "<provider>"? },
+      max:      { id: "<id>" },
+      balanced: { id: "<id>" },
+      fast:     { id: "<id>" },
+      // provider for Pi belongs on the agentRuntime entry (pi.provider above), not on model refs
     },
     effort: "<effort>"?,                       // only if user set
   },
@@ -104,16 +105,14 @@ Show the user a rendered preview of the YAML that will land in the chosen scope 
 backend: pi
 pi:
   thinkingLevel: medium
+  provider: anthropic
 agents:
   models:
     max:
-      provider: anthropic
       id: claude-opus-4-7
     balanced:
-      provider: anthropic
       id: claude-sonnet-4-6
     fast:
-      provider: anthropic
       id: claude-haiku-4-5
   effort: high
 ```
