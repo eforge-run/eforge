@@ -27,8 +27,10 @@ describe('prompt resolution', () => {
         plan_id: 'test-id',
         plan_name: 'test-name',
         plan_content: 'test plan content',
+        shardScope: '',
         parallelLanes: '',
         verification_scope: 'Run all checks.',
+        commit_section: '## Commit\n\nAfter verification, commit all changes.',
         continuation_context: '',
       }, '## Custom Append\nThis is appended.');
 
@@ -44,16 +46,20 @@ describe('prompt resolution', () => {
         plan_id: 'id',
         plan_name: 'name',
         plan_content: 'content',
+        shardScope: '',
         parallelLanes: '',
         verification_scope: '',
+        commit_section: '## Commit\n\nAfter verification, commit all changes.',
         continuation_context: '',
       });
       const withoutAppend = await loadPrompt('builder', {
         plan_id: 'id',
         plan_name: 'name',
         plan_content: 'content',
+        shardScope: '',
         parallelLanes: '',
         verification_scope: '',
+        commit_section: '## Commit\n\nAfter verification, commit all changes.',
         continuation_context: '',
       }, undefined);
 

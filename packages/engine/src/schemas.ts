@@ -192,11 +192,27 @@ const thinkingForTuningSchema = z.union([
   z.object({ type: z.literal('disabled') }),
 ]).describe("Controls the agent's thinking/reasoning behavior");
 
+// ---------------------------------------------------------------------------
+// ShardScope schema (parallel implementation shards for mechanical refactors)
+// ---------------------------------------------------------------------------
+
+export const shardScopeSchema = z.object({
+  id: z.string().min(1).describe('Unique shard identifier within the plan'),
+  roots: z.array(z.string().min(1)).optional().describe('Directory roots claimed by this shard (matched via path prefix)'),
+  files: z.array(z.string().min(1)).optional().describe('Explicit file paths claimed by this shard'),
+}).refine(
+  (shard) => (shard.roots !== undefined && shard.roots.length > 0) || (shard.files !== undefined && shard.files.length > 0),
+  { message: 'Each shard must specify at least one of roots or files' },
+).describe('Scope definition for a single implementation shard');
+
+export type ShardScope = z.output<typeof shardScopeSchema>;
+
 export const agentTuningSchema = z.object({
   effort: effortLevelForTuningSchema.optional(),
   thinking: thinkingForTuningSchema.optional(),
   rationale: z.string().optional().describe('Why this tuning was chosen'),
   agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this role (overrides config-level role and default)'),
+  shards: z.array(shardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
 }).describe('Per-agent effort/thinking/runtime tuning');
 
 const planAgentsSchema = z.object({

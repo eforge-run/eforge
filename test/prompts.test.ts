@@ -34,8 +34,10 @@ describe('loadPrompt() throws on unresolved template variables', () => {
       plan_id: 'test-plan-01',
       plan_name: 'Test Plan',
       plan_content: 'Implement the feature.',
+      shardScope: '',
       parallelLanes: '',
       verification_scope: 'Run pnpm test.',
+      commit_section: '## Commit\n\nAfter verification, commit all changes.',
       continuation_context: '',
     });
 
@@ -57,8 +59,10 @@ describe('loadPrompt() throws on unresolved template variables', () => {
       plan_id: 'plan-01-recovery-engine-core',
       plan_name: 'Recovery engine core',
       plan_content: planContent,
+      shardScope: '',
       parallelLanes: '',
       verification_scope: 'Run pnpm test.',
+      commit_section: '## Commit\n\nAfter verification, commit all changes.',
       continuation_context: '',
     });
 

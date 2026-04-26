@@ -12,6 +12,9 @@ import { z } from 'zod/v4';
 import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client';
 import type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
+import { shardScopeSchema } from './schemas.js';
+import type { ShardScope } from './schemas.js';
+export type { ShardScope } from './schemas.js';
 
 // Re-export shared types from @eforge-build/client so engine-internal callers
 // (plan.ts, eforge.ts, pipeline.ts, compiler.ts, events.ts, agents/*) can keep
@@ -210,6 +213,7 @@ const eforgeConfigBaseSchema = z.object({
       promptAppend: z.string().optional().describe('Text appended to the agent prompt after variable substitution'),
       agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this role'),
       tier: agentTierSchema.optional().describe('Override the tier assignment for this role'),
+      shards: z.array(shardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
     }).optional()).optional().describe('Per-agent role overrides'),
     tiers: z.record(agentTierSchema, sdkPassthroughConfigSchema.extend({
       maxTurns: z.number().int().positive().optional(),
@@ -332,6 +336,8 @@ export interface ResolvedAgentConfig {
   tier: AgentTier;
   /** Provenance of the resolved tier value. */
   tierSource: 'role-config' | 'role-default';
+  /** Parallel implementation shards for the builder role. When present, the implement stage fans out. */
+  shards?: ShardScope[];
 }
 
 export interface PiConfig {

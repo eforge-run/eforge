@@ -3,7 +3,7 @@
 import type { z } from 'zod/v4';
 import type { BuildStageSpec, ReviewProfileConfig } from './config.js';
 import type { ReviewPerspective } from './review-heuristics.js';
-import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSchema, PipelineComposition, recoveryVerdictSchema } from './schemas.js';
+import type { reviewIssueSchema, expeditionModuleSchema, clarificationQuestionSchema, PipelineComposition, recoveryVerdictSchema, ShardScope } from './schemas.js';
 import type { AgentTerminalSubtype } from './harness.js';
 
 export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as const;
@@ -46,7 +46,7 @@ export interface PlanFile {
   dependsOn: string[];
   branch: string;
   migrations?: Array<{ timestamp: string; description: string }>;
-  agents?: Record<string, { effort?: string; thinking?: object; rationale?: string; agentRuntime?: string }>;
+  agents?: Record<string, { effort?: string; thinking?: object; rationale?: string; agentRuntime?: string; shards?: ShardScope[] }>;
   body: string;
   filePath: string;
   /** Parsing warnings collected when the plan file was read (e.g. malformed agents block). */
@@ -193,7 +193,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'plan:build:start'; planId: string }
   | { type: 'plan:build:implement:start'; planId: string }
   | { type: 'plan:build:implement:progress'; planId: string; message: string }
-  | { type: 'plan:build:implement:continuation'; planId: string; attempt: number; maxContinuations: number }
+  | { type: 'plan:build:implement:continuation'; planId: string; attempt: number; maxContinuations: number; shardId?: string }
   | { type: 'plan:build:implement:complete'; planId: string }
   | { type: 'plan:build:files_changed'; planId: string; files: string[]; diffs?: Array<{ path: string; diff: string }>; baseBranch?: string }
   | { type: 'plan:build:review:start'; planId: string }
@@ -263,7 +263,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   // Generic retry notification emitted by the shared retry wrapper (in addition to
   // any agent-specific continuation event such as planning:continuation,
   // plan:build:implement:continuation, or plan:build:evaluate:continuation).
-  | { type: 'agent:retry'; agent: AgentRole; attempt: number; maxAttempts: number; subtype: AgentTerminalSubtype; label: string; planId?: string }
+  | { type: 'agent:retry'; agent: AgentRole; attempt: number; maxAttempts: number; subtype: AgentTerminalSubtype; label: string; planId?: string; shardId?: string }
 
   // Validation (post-merge)
   | { type: 'validation:start'; commands: string[] }

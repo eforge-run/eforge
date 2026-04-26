@@ -6,13 +6,15 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
 import type { EforgeEvent } from '../../events.js';
-import type { BuildStageSpec } from '../../config.js';
+import type { BuildStageSpec, ShardScope } from '../../config.js';
 import {
   withRetry,
   DEFAULT_RETRY_POLICIES,
   type RetryPolicy,
   type BuilderContinuationInput,
+  type BuilderShardContinuationInput,
   type EvaluatorContinuationInput,
+  buildShardPolicy,
 } from '../../retry.js';
 import { builderImplement, builderEvaluate } from '../../agents/builder.js';
 import { runParallelReview } from '../../agents/parallel-reviewer.js';
@@ -21,6 +23,9 @@ import { runDocUpdater } from '../../agents/doc-updater.js';
 import { runTestWriter, runTester } from '../../agents/tester.js';
 import { testIssueToReviewIssue } from '../../agents/common.js';
 import type { ResolvedAgentConfig } from '../../config.js';
+import { runParallel } from '../../concurrency.js';
+import { forgeCommit } from '../../git.js';
+import { composeCommitMessage } from '../../model-tracker.js';
 
 import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
@@ -238,6 +243,191 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
 }
 
 // ---------------------------------------------------------------------------
+// Shard helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Determine whether a shard claims a given file path.
+ * Roots are matched by path prefix (with or without trailing slash).
+ * Files are matched by exact path.
+ */
+function shardClaimsFile(shard: ShardScope, file: string): boolean {
+  if (shard.roots) {
+    for (const root of shard.roots) {
+      const prefix = root.endsWith('/') ? root : `${root}/`;
+      if (file.startsWith(prefix) || file === root) return true;
+    }
+  }
+  if (shard.files) {
+    for (const f of shard.files) {
+      if (file === f) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Enforce that all staged files are claimed by exactly one shard.
+ * Returns ok:true when all files match exactly one shard.
+ * Returns ok:false with reason and offending files when:
+ * - 'unclaimed': a file is not claimed by any shard
+ * - 'overlap': a file is claimed by multiple shards (includes claiming shard IDs)
+ */
+export function enforceShardScope(
+  stagedFiles: string[],
+  shards: ShardScope[],
+): { ok: true } | { ok: false; reason: 'unclaimed' | 'overlap'; files: string[]; shardIds?: string[][] } {
+  const unclaimedFiles: string[] = [];
+  const overlappingFiles: string[] = [];
+  const overlappingShardIds: string[][] = [];
+
+  for (const file of stagedFiles) {
+    const claimingShards = shards.filter((s) => shardClaimsFile(s, file));
+    if (claimingShards.length === 0) {
+      unclaimedFiles.push(file);
+    } else if (claimingShards.length > 1) {
+      overlappingFiles.push(file);
+      overlappingShardIds.push(claimingShards.map((s) => s.id));
+    }
+  }
+
+  if (unclaimedFiles.length > 0) {
+    return { ok: false, reason: 'unclaimed', files: unclaimedFiles };
+  }
+  if (overlappingFiles.length > 0) {
+    return { ok: false, reason: 'overlap', files: overlappingFiles, shardIds: overlappingShardIds };
+  }
+  return { ok: true };
+}
+
+/**
+ * Extract and run verification commands from a plan body.
+ * Commands are extracted from backtick-quoted strings in the "## Verification" section.
+ * In build-only mode, test commands (containing 'test', 'jest', 'vitest') are skipped.
+ * Yields a plan:build:failed event if any command fails.
+ */
+async function* runVerificationCommands(
+  planBody: string,
+  cwd: string,
+  planId: string,
+  verificationScope: 'full' | 'build-only',
+): AsyncGenerator<EforgeEvent> {
+  // Find the Verification section. The lookahead must terminate at the next
+  // `## ` heading or at the true end of the string. `\s*$` with the `m` flag
+  // matches the end of *any* line, so a previous version of this regex
+  // truncated the section after the first newline and dropped every command
+  // beyond the first one. Use `$(?![\s\S])` (and `\n##\s` instead of `^##\s`
+  // so the `m` flag is unnecessary) to anchor only at end-of-input.
+  const sectionMatch = planBody.match(/^##\s+Verification\s*\n([\s\S]*?)(?=\n##\s|$(?![\s\S]))/m);
+  if (!sectionMatch) return;
+
+  const section = sectionMatch[1];
+
+  // Extract commands in backticks (pnpm/npm/npx/yarn only)
+  const commands: string[] = [];
+  const cmdPattern = /`((?:pnpm|npm|npx|yarn)\s+[^`]+)`/g;
+  let m;
+  while ((m = cmdPattern.exec(section)) !== null) {
+    commands.push(m[1].trim());
+  }
+
+  // Deduplicate
+  const unique = [...new Set(commands)];
+
+  // Filter for build-only: skip test commands
+  const filtered = verificationScope === 'build-only'
+    ? unique.filter((cmd) => !/\b(test|jest|vitest)\b/.test(cmd))
+    : unique;
+
+  for (const cmd of filtered) {
+    const parts = cmd.split(/\s+/);
+    const prog = parts[0];
+    const args = parts.slice(1);
+    try {
+      await exec(prog, args, { cwd });
+    } catch (err) {
+      const stderr = (err as NodeJS.ErrnoException & { stderr?: string }).stderr ?? '';
+      const stdout = (err as NodeJS.ErrnoException & { stdout?: string }).stdout ?? '';
+      const output = (stdout + stderr).trim() || (err as Error).message;
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'plan:build:failed',
+        planId,
+        error: `Shard coordinator verification failed (${cmd}): ${output}`,
+      };
+      return;
+    }
+  }
+}
+
+/** Per-shard-attempt span + event processing. Creates a new span per attempt. */
+async function* runBuilderShardAttempt(
+  input: BuilderShardContinuationInput,
+  ctx: BuildStageContext,
+  agentConfig: ResolvedAgentConfig,
+  parallelStages: string[][],
+): AsyncGenerator<EforgeEvent> {
+  const implSpan = ctx.tracing.createSpan('builder', { planId: ctx.planId, phase: 'implement', shardId: input.shardId });
+  implSpan.setInput({ planId: ctx.planId, phase: 'implement', shardId: input.shardId });
+  const implTracker = createToolTracker(implSpan);
+  try {
+    for await (const event of withPeriodicFileCheck(builderImplement(ctx.planFile, {
+      cwd: ctx.worktreePath,
+      verbose: ctx.verbose,
+      abortController: ctx.abortController,
+      ...agentConfig,
+      parallelStages,
+      // verificationScope is intentionally omitted: shardScope instructs the agent not to verify
+      shardScope: input.shardScope,
+      ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
+      harness: ctx.agentRuntimes.forRole('builder'),
+    }), ctx)) {
+      implTracker.handleEvent(event);
+      if (event.type === 'plan:build:failed') implSpan.error('Shard implementation failed');
+      yield event;
+    }
+    implTracker.cleanup();
+    implSpan.end();
+  } catch (err) {
+    implTracker.cleanup();
+    implSpan.error(err as Error);
+    throw err;
+  }
+}
+
+/** Run a single shard with its own retry policy. Yields all events including plan:build:failed on exhaustion. */
+async function* runShardAttempt(
+  shard: ShardScope,
+  ctx: BuildStageContext,
+  agentConfig: ResolvedAgentConfig,
+  parallelStages: string[][],
+  maxContinuations: number,
+): AsyncGenerator<EforgeEvent> {
+  const shardPolicy = buildShardPolicy(shard.id, maxContinuations + 1);
+
+  const initialInput: BuilderShardContinuationInput = {
+    worktreePath: ctx.worktreePath,
+    baseBranch: ctx.orchConfig.baseBranch,
+    planId: ctx.planId,
+    shardId: shard.id,
+    shardScope: shard,
+    builderOptions: {},
+  };
+
+  try {
+    for await (const event of withRetry(
+      (input) => runBuilderShardAttempt(input, ctx, agentConfig, parallelStages),
+      shardPolicy,
+      initialInput,
+    )) {
+      yield event;
+    }
+  } catch (err) {
+    yield toBuildFailedEvent(ctx.planId, err);
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Built-in Build Stages
 // ---------------------------------------------------------------------------
 
@@ -263,36 +453,135 @@ registerBuildStage({
   const parallelStages = ctx.build.filter((spec): spec is string[] => Array.isArray(spec));
   const verificationScope = hasTestStages(ctx.build) ? 'build-only' : 'full';
 
-  const initialInput: BuilderContinuationInput = {
-    worktreePath: ctx.worktreePath,
-    baseBranch: ctx.orchConfig.baseBranch,
-    planId: ctx.planId,
-    builderOptions: {},
-  };
+  const shards = agentConfig.shards;
 
-  // Policy with a per-plan override for maxAttempts (prior behavior: maxContinuations + 1).
-  const builderPolicy: RetryPolicy<BuilderContinuationInput> = {
-    ...(DEFAULT_RETRY_POLICIES.builder as RetryPolicy<BuilderContinuationInput>),
-    maxAttempts: maxContinuations + 1,
-  };
+  if (!shards || shards.length === 0) {
+    // -----------------------------------------------------------------------
+    // Single-builder flow (unchanged from before sharding was added)
+    // -----------------------------------------------------------------------
+    const initialInput: BuilderContinuationInput = {
+      worktreePath: ctx.worktreePath,
+      baseBranch: ctx.orchConfig.baseBranch,
+      planId: ctx.planId,
+      builderOptions: {},
+    };
 
-  try {
-    for await (const event of withRetry(
-      (input) => runBuilderAttempt(input, ctx, agentConfig, parallelStages, verificationScope),
-      builderPolicy,
-      initialInput,
-    )) {
-      if (event.type === 'plan:build:failed') {
+    // Policy with a per-plan override for maxAttempts (prior behavior: maxContinuations + 1).
+    const builderPolicy: RetryPolicy<BuilderContinuationInput> = {
+      ...(DEFAULT_RETRY_POLICIES.builder as RetryPolicy<BuilderContinuationInput>),
+      maxAttempts: maxContinuations + 1,
+    };
+
+    try {
+      for await (const event of withRetry(
+        (input) => runBuilderAttempt(input, ctx, agentConfig, parallelStages, verificationScope),
+        builderPolicy,
+        initialInput,
+      )) {
+        if (event.type === 'plan:build:failed') {
+          yield event;
+          ctx.buildFailed = true;
+          return;
+        }
         yield event;
-        ctx.buildFailed = true;
-        return;
+      }
+    } catch (err) {
+      yield toBuildFailedEvent(ctx.planId, err);
+      ctx.buildFailed = true;
+      return;
+    }
+  } else {
+    // -----------------------------------------------------------------------
+    // Sharded flow: fan out to N parallel builders, then coordinator phase
+    // -----------------------------------------------------------------------
+    let anyShardFailed = false;
+
+    const tasks = shards.map((shard) => ({
+      id: shard.id,
+      run: (): AsyncGenerator<EforgeEvent> =>
+        runShardAttempt(shard, ctx, agentConfig, parallelStages, maxContinuations),
+    }));
+
+    // Fan out: run all shards concurrently, collecting events
+    for await (const event of runParallel(tasks, { parallelism: shards.length })) {
+      if (event.type === 'plan:build:failed') {
+        anyShardFailed = true;
       }
       yield event;
     }
-  } catch (err) {
-    yield toBuildFailedEvent(ctx.planId, err);
-    ctx.buildFailed = true;
-    return;
+
+    if (anyShardFailed) {
+      ctx.buildFailed = true;
+      return;
+    }
+
+    // -----------------------------------------------------------------------
+    // Coordinator phase: scope enforcement → verification → single commit
+    // -----------------------------------------------------------------------
+
+    // Safety sweep: stage any working-tree changes left unstaged by shard agents so
+    // they are visible to scope enforcement rather than silently dropped or bypassed.
+    try {
+      await exec('git', ['add', '-A'], { cwd: ctx.worktreePath });
+    } catch (err) {
+      yield toBuildFailedEvent(ctx.planId, err);
+      ctx.buildFailed = true;
+      return;
+    }
+
+    // Scope enforcement: every staged file must be claimed by exactly one shard
+    try {
+      const { stdout: stagedOut } = await exec('git', ['diff', '--cached', '--name-only'], { cwd: ctx.worktreePath });
+      const stagedFiles = stagedOut.trim().split('\n').filter(Boolean);
+
+      if (stagedFiles.length > 0) {
+        const scopeResult = enforceShardScope(stagedFiles, shards);
+        if (!scopeResult.ok) {
+          let errorMsg: string;
+          if (scopeResult.reason === 'unclaimed') {
+            errorMsg = `Shard scope enforcement failed: files staged outside any shard scope: ${scopeResult.files.join(', ')}`;
+          } else {
+            const fileList = scopeResult.files.map((f, i) => {
+              const ids = scopeResult.shardIds?.[i]?.join(', ') ?? '?';
+              return `${f} (claimed by: ${ids})`;
+            }).join(', ');
+            errorMsg = `Shard scope enforcement failed: files claimed by multiple shards: ${fileList}`;
+          }
+          yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: ctx.planId, error: errorMsg };
+          ctx.buildFailed = true;
+          return;
+        }
+      }
+    } catch (err) {
+      yield toBuildFailedEvent(ctx.planId, err);
+      ctx.buildFailed = true;
+      return;
+    }
+
+    // Verification (coordinator runs once across all shards)
+    let verificationFailed = false;
+    for await (const event of runVerificationCommands(ctx.planFile.body, ctx.worktreePath, ctx.planId, verificationScope)) {
+      yield event;
+      if (event.type === 'plan:build:failed') {
+        verificationFailed = true;
+      }
+    }
+    if (verificationFailed) {
+      ctx.buildFailed = true;
+      return;
+    }
+
+    // Single coordinator commit
+    try {
+      const commitMsg = `feat(${ctx.planId}): ${ctx.planFile.name}`;
+      await forgeCommit(ctx.worktreePath, composeCommitMessage(commitMsg, ctx.modelTracker));
+    } catch (err) {
+      yield toBuildFailedEvent(ctx.planId, err);
+      ctx.buildFailed = true;
+      return;
+    }
+
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: ctx.planId };
   }
 
   yield* emitFilesChanged(ctx);

@@ -3,6 +3,8 @@ import { pickSdkOptions, AgentTerminalError } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
+import type { ShardScope } from '../schemas.js';
+import { ATTRIBUTION } from '../git.js';
 import { parseEvaluationBlock } from './common.js';
 export type { EvaluationVerdict, EvaluationEvidence } from './common.js';
 
@@ -39,6 +41,8 @@ export interface BuilderOptions extends SdkPassthroughConfig {
   };
   /** Commit SHA captured before the implement stage — used as evaluator reset target */
   preImplementCommit?: string;
+  /** Shard scope for this builder instance. When set, restricts the builder to a subset of files. */
+  shardScope?: ShardScope;
 }
 
 /**
@@ -65,6 +69,35 @@ You are running in parallel with: ${stageList}
 - Focus on code implementation only - do not modify documentation files (.md files in docs/, README.md, etc.)
 - Use targeted \`git add <file>\` for specific files instead of \`git add -A\` or \`git add .\`
 - Documentation updates are handled by a separate agent running alongside you`;
+}
+
+/**
+ * Format a shard scope notice for the builder prompt.
+ * Tells the agent which files/directories it owns, and enforces lane discipline:
+ * no out-of-scope edits, targeted git add, no commit, no verification.
+ * Exported for testability.
+ */
+export function formatShardScopeNotice(shardScope: ShardScope): string {
+  const scopeItems: string[] = [];
+  if (shardScope.roots && shardScope.roots.length > 0) {
+    scopeItems.push(`**Directory roots:** ${shardScope.roots.map((r) => `\`${r}\``).join(', ')}`);
+  }
+  if (shardScope.files && shardScope.files.length > 0) {
+    scopeItems.push(`**Explicit files:** ${shardScope.files.map((f) => `\`${f}\``).join(', ')}`);
+  }
+
+  return `## Shard Scope
+
+You are implementing shard \`${shardScope.id}\` within a parallel multi-shard build.
+
+**Your scope is limited to:**
+${scopeItems.join('\n')}
+
+**Lane discipline — strict rules for sharded builds:**
+- Only modify files within your declared scope above. Do not touch files outside your scope, even if they appear to need changes.
+- Use targeted \`git add <file>\` for specific files — never \`git add -A\` or \`git add .\`
+- Do not commit. The coordinator commits once after all shards finish.
+- Do not run verification. Verification runs once after all shards finish.`;
 }
 
 /**
@@ -106,9 +139,19 @@ export async function* builderImplement(
     ? formatBuilderParallelNotice(options.parallelStages)
     : '';
 
-  const verificationScopeText = options.verificationScope === 'build-only'
-    ? VERIFICATION_BUILD_ONLY
-    : VERIFICATION_FULL;
+  const shardScopeText = options.shardScope
+    ? formatShardScopeNotice(options.shardScope)
+    : '';
+
+  // In shard mode, verification and commit are deferred to the coordinator.
+  const verificationScopeText = options.shardScope
+    ? 'Verification will run once after all shards finish; do not run it yourself.'
+    : (options.verificationScope === 'build-only' ? VERIFICATION_BUILD_ONLY : VERIFICATION_FULL);
+
+  // In shard mode, only stage scoped files — do not commit.
+  const commitSectionText = options.shardScope
+    ? `## Staging\n\nStage only your scoped files using targeted \`git add <file>\`. Do not commit or run verification — the coordinator handles both after all shards finish.`
+    : `## Commit\n\nAfter all verification passes, create a single commit with all changes:\n\n\`\`\`\ngit add -A && git commit -m "feat(${plan.id}): ${plan.name}\n\n${ATTRIBUTION}"\n\`\`\``;
 
   let continuationContextText = '';
   if (options.continuationContext) {
@@ -133,8 +176,10 @@ ${completedDiff}
     plan_id: plan.id,
     plan_name: plan.name,
     plan_content: plan.body,
+    shardScope: shardScopeText,
     parallelLanes,
     verification_scope: verificationScopeText,
+    commit_section: commitSectionText,
     continuation_context: continuationContextText,
   }, options.promptAppend);
 
