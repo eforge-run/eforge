@@ -30,6 +30,7 @@ import { forgeCommit } from './git.js';
 import { composeCommitMessage } from './model-tracker.js';
 import { parsePlanFile } from './plan.js';
 import type { EforgeEvent, AgentRole } from './events.js';
+import type { ShardScope } from './schemas.js';
 
 const exec = promisify(execFile);
 
@@ -100,6 +101,8 @@ export interface RetryPolicy<Input> {
   label: string;
   /** Optional planId extraction for the `agent:retry` event. */
   planIdFromInput?: (input: Input) => string | undefined;
+  /** Optional shardId extraction for the `agent:retry` event. */
+  shardIdFromInput?: (input: Input) => string | undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -361,6 +364,184 @@ export async function buildBuilderContinuationInput(
     },
   };
   return { kind: 'retry', input: nextInput };
+}
+
+/**
+ * Extended shape of the builder input for sharded builds.
+ * Extends BuilderContinuationInput with shard identity and scope.
+ * Used by buildShardedBuilderContinuationInput and the shard-specific retry policy.
+ */
+export interface BuilderShardContinuationInput extends BuilderContinuationInput {
+  /** Shard identifier for this shard instance. */
+  shardId: string;
+  /** Scope definition (roots and/or files) owned by this shard. */
+  shardScope: ShardScope;
+}
+
+/** Returns true if a file path is within a shard's declared scope. */
+function fileMatchesShardScope(file: string, shardScope: ShardScope): boolean {
+  if (shardScope.roots) {
+    for (const root of shardScope.roots) {
+      const prefix = root.endsWith('/') ? root : `${root}/`;
+      if (file.startsWith(prefix) || file === root) return true;
+    }
+  }
+  if (shardScope.files) {
+    for (const f of shardScope.files) {
+      if (file === f) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Check whether any files in the working tree match a shard's scope.
+ * Used by buildShardedBuilderContinuationInput to decide whether to stash.
+ */
+async function hasShardScopeChanges(cwd: string, shardScope: ShardScope): Promise<boolean> {
+  try {
+    const { stdout } = await exec('git', ['status', '--porcelain'], { cwd });
+    const lines = stdout.trim().split('\n').filter(Boolean);
+    for (const line of lines) {
+      // Each line: XY <file> (status is 2 chars + space)
+      const file = line.slice(3).trim().replace(/^"(.*)"$/, '$1');
+      // Check if it's a working-tree change (second character is not space)
+      const wtStatus = line[1];
+      if (wtStatus === ' ' || wtStatus === undefined) continue;
+
+      if (fileMatchesShardScope(file, shardScope)) return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Stage any untracked files in the shard's scope so that git pathspec matching works
+ * during stash. Without this, `git stash push -- <pathspec>` fails with
+ * "pathspec did not match any file(s) known to git" for purely untracked files.
+ */
+async function stageUntrackedFilesInScope(cwd: string, shardScope: ShardScope): Promise<void> {
+  const { stdout } = await exec('git', ['status', '--porcelain'], { cwd });
+  const lines = stdout.trim().split('\n').filter(Boolean);
+  const toStage: string[] = [];
+
+  for (const line of lines) {
+    // '??' indicates a completely untracked file
+    if (line.slice(0, 2) !== '??') continue;
+    const file = line.slice(3).trim().replace(/^"(.*)"$/, '$1');
+    if (fileMatchesShardScope(file, shardScope)) {
+      toStage.push(file);
+    }
+  }
+
+  if (toStage.length > 0) {
+    await exec('git', ['add', '--', ...toStage], { cwd });
+  }
+}
+
+/**
+ * Build the next shard-builder attempt's input:
+ * - Abort (throw) if the shard's scope has no working-tree changes to stash.
+ * - git stash push --keep-index -m "eforge-shard-<id>-attempt-<N>" -- <scope-paths>
+ *   This stashes working-tree changes in the shard's scope while keeping staged changes staged.
+ * - Build a completedDiff from the stash to give the next attempt context.
+ * - Splice continuationContext into builder options.
+ */
+export async function buildShardedBuilderContinuationInput(
+  info: RetryAttemptInfo<BuilderShardContinuationInput>,
+): Promise<ContinuationDecision<BuilderShardContinuationInput>> {
+  const { worktreePath, baseBranch, planId, shardId, shardScope, builderOptions } = info.prevInput;
+
+  // Check if there are working-tree changes in the shard's scope
+  const hasScopeChanges = await hasShardScopeChanges(worktreePath, shardScope);
+  if (!hasScopeChanges) {
+    // No scope changes to stash — treat as a hard fail (cannot build continuation)
+    throw new Error(
+      `Shard continuation aborted: no working-tree changes in shard "${shardId}" scope (planId=${planId}). ` +
+      `The shard either made no progress or already staged all changes.`,
+    );
+  }
+
+  // Build the list of scope paths for the stash
+  const scopePaths: string[] = [
+    ...(shardScope.roots ?? []),
+    ...(shardScope.files ?? []),
+  ];
+
+  // Stage any untracked files in scope so the pathspec is known to git.
+  // Without this, `git stash push -- <pathspec>` fails for purely untracked files.
+  await stageUntrackedFilesInScope(worktreePath, shardScope);
+
+  // Stash working-tree changes in the shard's scope only; keep staged changes staged.
+  const stashMessage = `eforge-shard-${shardId}-attempt-${info.attempt}`;
+  const stashArgs = ['stash', 'push', '--keep-index', '-m', stashMessage];
+  if (scopePaths.length > 0) {
+    stashArgs.push('--', ...scopePaths);
+  }
+  await exec('git', stashArgs, { cwd: worktreePath });
+
+  // Capture the stash diff for the continuation context (truncated to 50k chars)
+  let completedDiff: string;
+  try {
+    const { stdout: stashDiff } = await exec('git', ['stash', 'show', '-p', 'stash@{0}'], { cwd: worktreePath });
+    const DIFF_CHAR_LIMIT = 50_000;
+    completedDiff = stashDiff.length <= DIFF_CHAR_LIMIT
+      ? stashDiff
+      : `[Diff too large (${stashDiff.length} chars) — showing partial]\n${stashDiff.slice(0, DIFF_CHAR_LIMIT)}`;
+  } catch {
+    completedDiff = '[Unable to generate stash diff]';
+  }
+
+  const nextInput: BuilderShardContinuationInput = {
+    worktreePath,
+    baseBranch,
+    planId,
+    shardId,
+    shardScope,
+    builderOptions: {
+      ...builderOptions,
+      continuationContext: {
+        attempt: info.attempt,
+        maxContinuations: info.maxAttempts - 1,
+        completedDiff,
+      },
+    },
+  };
+  return { kind: 'retry', input: nextInput };
+}
+
+/**
+ * Build a retry policy for a single sharded builder instance.
+ * Uses stash-based checkpoints instead of commit-based (so concurrent shards don't race on HEAD).
+ * Each shard gets its own retry budget.
+ */
+export function buildShardPolicy(
+  shardId: string,
+  maxAttempts: number,
+): RetryPolicy<BuilderShardContinuationInput> {
+  return {
+    agent: 'builder',
+    maxAttempts,
+    retryableSubtypes: new Set(['error_max_turns']) as ReadonlySet<AgentTerminalSubtype>,
+    buildContinuationInput: (info) =>
+      buildShardedBuilderContinuationInput(info as RetryAttemptInfo<BuilderShardContinuationInput>) as Promise<ContinuationDecision<BuilderShardContinuationInput>>,
+    onRetry: (info) => {
+      const input = info.prevInput as BuilderShardContinuationInput;
+      return [{
+        timestamp: new Date().toISOString(),
+        type: 'plan:build:implement:continuation',
+        planId: input.planId,
+        attempt: info.attempt,
+        maxContinuations: info.maxAttempts - 1,
+        shardId,
+      }];
+    },
+    planIdFromInput: (input) => (input as BuilderShardContinuationInput).planId,
+    shardIdFromInput: (input) => (input as BuilderShardContinuationInput).shardId,
+    label: `builder-shard-${shardId}-continuation`,
+  };
 }
 
 /**
@@ -671,6 +852,7 @@ export async function* withRetry<Input, Result = void>(
 
     // Emit the generic agent:retry notification first.
     const planId = policy.planIdFromInput ? policy.planIdFromInput(currentInput) : undefined;
+    const shardId = policy.shardIdFromInput ? policy.shardIdFromInput(currentInput) : undefined;
     yield {
       timestamp: new Date().toISOString(),
       type: 'agent:retry',
@@ -680,6 +862,7 @@ export async function* withRetry<Input, Result = void>(
       subtype,
       label: policy.label,
       ...(planId !== undefined && { planId }),
+      ...(shardId !== undefined && { shardId }),
     };
 
     // Emit any policy-specific domain continuation events (plan:continuation, etc.).

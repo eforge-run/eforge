@@ -82,8 +82,30 @@ Errand skips plan review entirely - the plan goes directly to build without any 
 **When NOT to use expedition** (use excursion instead):
 - Type/interface refactors where changing a definition breaks all consumers
 - Adding or removing required fields from widely-used types
-- Rename-and-update-all-callers refactors
+- Rename-and-update-all-callers refactors — but see sharding below for large mechanical refactors
 - Sequential dependency chains (A -> B -> C -> D) - that's ordered excursion plans, not parallel modules
+
+**Sharding large mechanical refactors (excursion/errand only):** When a single plan's implementation scope substantially exceeds what one builder can complete in an 80-turn budget — for example, renaming a type across 30+ files — you can instruct the engine to fan out the builder across parallel shards. Each shard owns a disjoint subset of the files. Add a `shards` block under `agents.builder` in the plan's YAML frontmatter. Heuristic: shard when the expected file count is high AND the work is mechanically uniform (e.g., find-and-replace patterns, mass import updates). Five large files rarely need sharding; 30+ small files often benefit from it.
+
+When emitting shards, use `roots` for directory subtrees and `files` for explicit paths. Scope enforcement is automatic — overlapping shards will be rejected. Keep shard IDs short and descriptive.
+
+Example frontmatter shape:
+
+```yaml
+agents:
+  builder:
+    shards:
+      - id: shard-packages
+        roots:
+          - packages/
+      - id: shard-tests
+        roots:
+          - test/
+      - id: shard-config
+        files:
+          - eforge/config.yaml
+          - packages/engine/src/config.ts
+```
 
 **Foundation module heuristic:** A pattern of one foundation module plus independent verticals CAN be expedition if the total planning scope genuinely demands delegated module planning, but is typically excursion when you can plan all pieces (including the foundation) in one session. Don't force an expedition split just because a shared layer exists.
 

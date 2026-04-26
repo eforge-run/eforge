@@ -17,7 +17,7 @@
  */
 
 import type { AgentRole } from '../events.js';
-import type { EforgeConfig, ModelRef, ModelClass, ResolvedAgentConfig, AgentTier } from '../config.js';
+import type { EforgeConfig, ModelRef, ModelClass, ResolvedAgentConfig, AgentTier, ShardScope } from '../config.js';
 import type { EffortLevel } from '../harness.js';
 import { clampEffort, lookupCapabilities } from '../model-capabilities.js';
 
@@ -421,7 +421,7 @@ export function resolveAgentRuntimeForRole(
 export function resolveAgentConfig(
   role: AgentRole,
   config: EforgeConfig,
-  planEntry?: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string; agentRuntime?: string }>; filePath?: string },
+  planEntry?: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string; agentRuntime?: string; shards?: ShardScope[] }>; filePath?: string },
 ): ResolvedAgentConfig {
   const { agentRuntimeName, harness, provider } = resolveAgentRuntimeForRole(role, config, planEntry);
   const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
@@ -450,6 +450,30 @@ export function resolveAgentConfig(
   // Always stamp provenance so the UI always has source data
   result.effortSource = effortSource;
   result.thinkingSource = thinkingSource;
+
+  // Thread shards from plan entry (builder role only). Validate unique IDs.
+  if (role === 'builder') {
+    const planShards = planEntry?.agents?.['builder']?.shards;
+    const configShards = (config.agents.roles?.['builder'] as { shards?: ShardScope[] } | undefined)?.shards;
+    // Plan-level shards take precedence over config-level shards
+    const shards = planShards ?? configShards;
+    if (shards !== undefined && shards.length > 0) {
+      const ids = shards.map((s) => s.id);
+      const seen = new Set<string>();
+      const duplicates = new Set<string>();
+      for (const id of ids) {
+        if (seen.has(id)) duplicates.add(id);
+        seen.add(id);
+      }
+      if (duplicates.size > 0) {
+        throw new Error(
+          `Builder config has duplicate shard IDs: ${[...duplicates].join(', ')}. ` +
+          `Each shard must have a unique id within the plan.`,
+        );
+      }
+      result.shards = shards;
+    }
+  }
 
   return result;
 }

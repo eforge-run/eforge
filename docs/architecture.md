@@ -134,7 +134,7 @@ graph LR
 
 | Stage | Description |
 |-------|-------------|
-| `implement` | Builder agent codes the plan, runs verification, commits changes |
+| `implement` | Builder agent codes the plan, runs verification, commits changes. When the planner emits a `shards` block under `agents.builder`, the stage fans out to N parallel builder invocations within the same worktree (each scoped to a `roots`/`files` partition), then a coordinator phase pops any per-shard retry stashes, enforces scope, runs verification once, and produces the single per-plan commit. |
 | `review-cycle` | Composite: expands to `review` -> `review-fix` -> `evaluate` |
 | `doc-update` | Updates documentation to reflect implementation changes |
 | `test-write` | Writes tests from the plan spec (TDD - runs before `implement`) |

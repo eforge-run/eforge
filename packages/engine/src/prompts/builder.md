@@ -39,21 +39,15 @@ You are working in a git worktree. All changes should be made within this workin
    - **Mixing:** if you know you need N reads followed by M edits and the reads won't change the edit targets, issue the reads in one turn, then the edits in the next turn — not N+M turns.
    - If a search across many files can answer a question more cheaply than opening each one, prefer the search.
 
+{{shardScope}}
+
 {{parallelLanes}}
 
 ## Verification
 
 {{verification_scope}}
 
-## Commit
-
-After all verification passes, create a single commit with all changes:
-
-```
-git add -A && git commit -m "feat({{plan_id}}): {{plan_name}}
-
-{{attribution}}"
-```
+{{commit_section}}
 
 ## Constraints
 
