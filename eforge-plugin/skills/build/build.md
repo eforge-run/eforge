@@ -33,7 +33,10 @@ Determine the working source from one of three branches:
    - If one session plan exists, read it and present a summary: "I found a planning session: _{topic}_. Status: {status}."
    - If multiple exist, list them by topic and date, most recent first, and ask which to use
    - If the session status is `ready`, use the **session plan file path** as the source — skip directly to **Step 4**. **Do not read the file and rewrite, summarize, or convert it into a different format.** The eforge daemon handles PRD formatting; the session plan file is the source material it needs.
-   - If the session status is `planning`, warn: "This session is still in planning — some dimensions haven't been explored yet." List which dimensions are `false` in frontmatter. Ask the user whether to submit as-is or continue planning (suggest `/eforge:plan --resume`)
+   - If the session status is `planning`, warn: "This session is still in planning — some dimensions are still missing." Then:
+     - **New-format sessions** (frontmatter has `required_dimensions`): read `required_dimensions`, `skipped_dimensions`, and the body section names from the file. Match section headers case-insensitively after converting kebab-case dimension names to space-separated words (e.g., `code-impact` matches `## Code Impact`). A section counts as covered only if it has at least one non-empty, non-placeholder line of content — not just a header, blank lines, or "TBD"/"N/A". List required dimensions that have neither body content nor a `skipped_dimensions` entry as **truly missing**. Separately list any intentionally skipped dimensions with their recorded reason. Recommend `/eforge:plan --resume` only if at least one required dimension is truly missing.
+     - **Legacy-format sessions** (frontmatter has `dimensions: { name: bool, ... }`): list every dimension whose value is `false` as missing (preserving current behavior) and suggest `/eforge:plan --resume` to continue.
+     - Ask the user whether to submit as-is or continue planning (suggest `/eforge:plan --resume`)
    - If the user confirms a `planning` session, use the **session plan file path** as the source and proceed to **Step 4**
 
 2. **Fall back to conversation context** — If no session plans are found (or the user declines to use one):

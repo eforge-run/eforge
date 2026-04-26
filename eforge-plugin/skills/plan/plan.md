@@ -1,5 +1,5 @@
 ---
-description: Start or resume a structured planning conversation for changes to be built by eforge. Explores scope, code impact, architecture, design decisions, documentation, and risks before handing off to eforge.
+description: Start or resume a structured planning conversation for changes to be built by eforge. Classifies work type and depth, selects relevant dimensions from a per-type playbook, captures acceptance criteria, and produces a session plan that /eforge:build enqueues.
 argument-hint: "[topic] [--resume]"
 ---
 
@@ -18,10 +18,12 @@ Start or resume a structured planning conversation. The output is a session plan
 
 **Resume path** — If `--resume` is passed or the user says "resume" / "continue planning":
 1. Scan `.eforge/session-plans/` for files where `status` in frontmatter is `planning` or `ready`
-2. If one found, read it and present a summary of where things stand: topic, what dimensions have content, key decisions so far, any open questions
+2. If one found, read it and present a summary of where things stand: topic, planning type, depth, what dimensions have content, key decisions so far, any open questions
 3. If multiple found, list them and ask which to resume
 4. If none found, tell the user and offer to start a new session
-5. Continue from whatever dimension needs work
+5. If the session file uses the legacy boolean `dimensions: { ... }` shape, handle it per **Legacy Session Files** below
+6. Continue from whatever dimension needs work
+   - If `required_dimensions` is empty (e.g., the session was abandoned before classification), restart from Step 3 to classify type/depth and populate the playbook.
 
 **New session path**:
 1. If no topic provided, ask: "What change are you planning?"
@@ -34,13 +36,13 @@ session: {session-id}
 topic: "{topic}"
 created: {ISO timestamp}
 status: planning
-dimensions:
-  scope: false
-  code-impact: false
-  architecture-impact: false
-  design-decisions: false
-  documentation-impact: false
-  risks: false
+planning_type: unknown
+planning_depth: focused
+confidence: low
+required_dimensions: []
+optional_dimensions: []
+skipped_dimensions: []
+open_questions: []
 profile: null
 ---
 
@@ -62,101 +64,93 @@ Write a `## Context` section to the session file summarizing what you found. Pre
 
 **Update the session file** after this step.
 
-### Step 3: Triage
+### Step 3: Classify Work Type and Depth
 
-Based on the topic and context gathered, assess the likely scope:
+Before exploring dimensions, classify the planned change to select the right conversation shape.
 
-| Signal | Size | Depth |
-|--------|------|-------|
-| Single-file fix, typo, config tweak | **Small** | Quick pass — scope + code impact, skip others unless relevant |
-| Multi-file feature, refactor, new capability | **Medium** | All dimensions, moderate depth |
-| Cross-cutting architectural change, new subsystem | **Large** | All dimensions, deep — especially architecture impact |
+**Work type** — choose the closest match:
 
-Tell the user your assessment: "This looks like a [small/medium/large] change — I'll adjust depth accordingly." The user can override.
+| Type | When |
+|------|------|
+| **bugfix** | Fixing a defect, crash, or incorrect behavior |
+| **feature** | Adding new user-facing or API capability |
+| **refactor** | Restructuring existing code without changing behavior |
+| **architecture** | Changing module boundaries, interfaces, or system-level data flow |
+| **docs** | Documentation-only changes |
+| **maintenance** | Dependency upgrades, CI, tooling, config tweaks |
+| **unknown** | Cannot confidently classify — falls back to the legacy six-dimension checklist plus acceptance criteria |
 
-For **small** changes, compress Steps 4-9 — briefly confirm scope and code impact, then move to readiness. Don't force the user through dimensions that don't apply.
+**Planning depth** — how thoroughly to explore:
 
-### Step 4: Scope
+| Depth | When |
+|-------|------|
+| **quick** | Small, low-risk — problem statement plus acceptance criteria plus one or two type-specific required dimensions |
+| **focused** | Typical work — all required dimensions for the type (default) |
+| **deep** | High-risk or cross-cutting — all required dimensions plus optional ones |
 
-Establish what's in and out:
+Tell the user: "This looks like a **{type}** / **{depth}** change — I'll shape the conversation accordingly. Override either if that's off."
 
-- What exactly is changing?
-- What is explicitly NOT changing? (important for keeping eforge focused)
-- Are there natural boundaries? (e.g., "backend only", "just the CLI", "types + all consumers")
-- Does this relate to or conflict with roadmap items?
+Update frontmatter: set `planning_type`, `planning_depth`, and `confidence` (high / medium / low — how certain you are of the classification).
 
-Write `## Scope` (with `### In Scope` and `### Out of Scope` subsections) to the session file. Mark `scope: true` in frontmatter dimensions.
+### Step 4: Consult Playbook
 
-### Step 5: Code Impact
+Use the work-type playbook to populate `required_dimensions` and `optional_dimensions` in the session frontmatter. For `quick` depth, trim the required list to the problem statement or scope dimension, `acceptance-criteria`, and at most two type-specific required dimensions.
 
-Explore what areas of the codebase are affected:
+**bugfix** — Required: `problem-statement`, `reproduction-steps`, `root-cause`, `acceptance-criteria`. Optional: `code-impact`, `risks`.
 
-- What files/modules/packages will need changes?
-- What patterns exist that should be followed? (find similar features as examples)
-- Are there shared utilities to reuse?
-- What are the dependency relationships between affected areas?
-- Are there tests that cover the affected areas?
+**feature** — Required: `problem-statement`, `scope`, `acceptance-criteria`, `code-impact`, `design-decisions`. Optional: `architecture-impact`, `documentation-impact`, `risks`.
 
-Write `## Code Impact` to the session file. Mark `code-impact: true`.
+**refactor** — Required: `scope`, `code-impact`, `acceptance-criteria`. Optional: `design-decisions`, `risks`.
 
-### Step 6: Architecture Impact
+**architecture** — Required: `scope`, `architecture-impact`, `design-decisions`, `acceptance-criteria`. Optional: `code-impact`, `documentation-impact`, `risks`.
 
-Assess whether this changes the system's structure:
+**docs** — Required: `scope`, `documentation-impact`, `acceptance-criteria`. Optional: `code-impact`.
 
-- Does this introduce new module boundaries or change existing ones?
-- Does this change contracts between components? (APIs, interfaces, data formats)
-- Does this change data flow or control flow at a system level?
-- Does this affect public API surface?
-- Does this change how the system is deployed, configured, or operated?
+**maintenance** — Required: `scope`, `code-impact`, `acceptance-criteria`. Optional: `risks`.
 
-If the change has no architecture impact (many don't), note "No architecture impact — this operates within existing boundaries" and move on.
+**unknown** — Required: `scope`, `code-impact`, `architecture-impact`, `design-decisions`, `documentation-impact`, `risks`, `acceptance-criteria`. Optional: (none). This is the legacy six-dimension checklist plus acceptance criteria; use it when classification is not confident enough to narrow down.
 
-Write `## Architecture Impact` to the session file. Mark `architecture-impact: true`.
+Write the dimension lists to frontmatter and tell the user which dimensions will be explored.
 
-### Step 7: Design Decisions
+### Step 5: Explore Dimensions
 
-Surface local design choices that matter:
+Work through `required_dimensions` in order, then any `optional_dimensions` for `deep` depth sessions. For each dimension:
 
-- Data structures and representations
-- API shape (if introducing or changing APIs)
-- Error handling strategy
-- Naming conventions
-- Algorithm or approach choices
-- Trade-offs being made (and why)
+1. Ask the relevant questions (see dimension guide below)
+2. Write a `## {Dimension Title}` section to the session file
+3. Coverage is recorded by the body section itself — if the dimension has a `## {Dimension Title}` section with content (at least one non-empty, non-placeholder line — not just the header, blank lines, or "TBD"/"N/A"), it counts as covered. If the user explicitly skips it, add an entry to `skipped_dimensions` with `name` and `reason` instead:
 
-For each decision, capture the choice AND the rationale. These inform eforge's planner.
+```yaml
+skipped_dimensions:
+  - name: documentation-impact
+    reason: no user-facing docs affected
+```
 
-Write `## Design Decisions` (numbered list, each with rationale) to the session file. Mark `design-decisions: true`.
+If the user says a dimension is not applicable, record it in `skipped_dimensions` with their stated reason — it will not block readiness.
 
-### Step 8: Documentation Impact
+**Dimension guide:**
 
-Identify what documentation would go stale:
+**problem-statement** — What is the symptom or gap? Who is affected? Why does it matter now?
 
-- README sections describing affected features
-- CLAUDE.md / AGENTS.md sections that describe architecture or conventions
-- Architecture docs (`docs/architecture.md`, ADRs)
-- Config docs (if config schema changes)
-- API docs (if API surface changes)
-- Inline code documentation (significant docstrings, module headers)
+**scope** — What is explicitly changing? What is explicitly NOT changing? Natural boundaries (e.g., "backend only", "just the CLI")? Relation to roadmap items?
 
-Be specific — name the files and sections, not just "docs might need updating."
+**reproduction-steps** — Exact steps to reproduce the bug. Expected vs actual behavior. Any known workarounds?
 
-Write `## Documentation Impact` (bullet list of file + what needs updating) to the session file. Mark `documentation-impact: true`.
+**root-cause** — What in the code causes this? Has the cause been confirmed? Any related latent issues?
 
-### Step 9: Risks & Edge Cases
+**code-impact** — What files, modules, and packages need changes? What patterns exist to follow? Shared utilities to reuse? Dependency relationships? Existing test coverage?
 
-Identify what could go wrong:
+**architecture-impact** — New module boundaries? Changed contracts (APIs, interfaces, data formats)? Changed data flow or control flow at a system level? Public API surface changes? Deployment or operational changes? If none apply, note: "No architecture impact — this operates within existing boundaries."
 
-- What are the tricky parts of this change?
-- What edge cases need handling?
-- Are there backward compatibility concerns?
-- Could this break existing functionality? How?
-- Are there performance implications?
-- What happens if this change is partially applied? (important for eforge's multi-plan orchestration)
+**design-decisions** — Data structures and representations, API shape, error handling strategy, naming conventions, algorithm or approach choices, trade-offs and rationale. Capture the choice AND the reason for each decision.
 
-Write `## Risks & Edge Cases` to the session file. Mark `risks: true`.
+**documentation-impact** — Which specific files and sections go stale? Name them — not just "docs might need updating."
 
-### Step 10: Profile Signal
+**risks** — Tricky parts, edge cases, backward compatibility concerns, partial-application behavior (important for eforge's multi-plan orchestration), performance implications.
+
+**acceptance-criteria** — Specific, testable conditions that confirm the change is complete. This is a required dimension for every work type, including the `unknown` fallback.
+
+### Step 6: Profile Signal
 
 Based on everything explored, recommend an eforge profile:
 
@@ -168,9 +162,11 @@ Based on everything explored, recommend an eforge profile:
 
 Write the recommendation and rationale to `## Profile Signal` in the session file. Update `profile` in frontmatter.
 
-### Step 11: Readiness
+### Step 7: Readiness
 
-When all relevant dimensions have been explored (or explicitly skipped for small changes):
+A plan is ready when every entry in `required_dimensions` either has body content in the session file or appears in `skipped_dimensions` with a reason. Body content means at least one non-empty, non-placeholder line under the section header — not just the header, blank lines, or "TBD"/"N/A". Optional dimensions never block readiness.
+
+When the plan is ready:
 
 1. Update session file status to `ready` in frontmatter
 2. Present a summary:
@@ -178,27 +174,35 @@ When all relevant dimensions have been explored (or explicitly skipped for small
 ```
 Planning complete for: {topic}
 
+Type: {planning_type} / {planning_depth}
+
 Dimensions covered:
-  ✓ Scope — {one-line summary}
-  ✓ Code Impact — {one-line summary}
-  ✓ Architecture Impact — {one-line summary or "no impact"}
-  ✓ Design Decisions — {count} decisions captured
-  ✓ Documentation Impact — {count} docs identified
-  ✓ Risks — {count} risks identified
+  ✓ {dimension} — {one-line summary}
+  ...
+  ⊘ {skipped dimension} — {reason}
 
 Profile: {errand|excursion|expedition}
 
 Ready to build. Run /eforge:build to enqueue.
 ```
 
-If any dimension is thin and the change is non-trivial, flag it: "⚠ Architecture Impact was briefly addressed — worth another look before submitting?"
+If any required dimension was briefly addressed and the change is non-trivial, flag it: "⚠ {dimension} was briefly addressed — worth another look before submitting?"
+
+## Legacy Session Files
+
+If a resumed session file uses the old boolean `dimensions: { scope: false, ... }` shape instead of `required_dimensions` / `optional_dimensions` / `skipped_dimensions`:
+
+- **On resume**: treat the session as `unknown` type with all six legacy dimensions (`scope`, `code-impact`, `architecture-impact`, `design-decisions`, `documentation-impact`, `risks`) plus `acceptance-criteria` as required. Any dimension that is `true` in the old map counts as already covered; any that is `false` is treated as a missing required dimension (preserving current build-skill behavior).
+- **On next save**: migrate the frontmatter to the new shape — convert covered dimensions to body-content entries and uncovered ones to entries in `required_dimensions`.
 
 ## Session File Updates
 
 Update the session file at these milestones:
 - After context gathering (Step 2)
-- After each dimension is explored (Steps 4-9)
-- After profile signal (Step 10)
+- After classifying type and depth (Step 3)
+- After populating dimension lists (Step 4)
+- As each dimension is explored (Step 5)
+- After profile signal (Step 6)
 - When status changes (planning → ready)
 
 Use the Edit tool for incremental updates — don't rewrite the entire file each time.
