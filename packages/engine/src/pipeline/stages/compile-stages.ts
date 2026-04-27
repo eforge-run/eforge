@@ -26,7 +26,7 @@ import { composePipeline } from '../../agents/pipeline-composer.js';
 import { compileExpedition } from '../../compiler.js';
 import { resolveDependencyGraph, injectPipelineIntoOrchestrationYaml, parseOrchestrationConfig } from '../../plan.js';
 import { runParallel, type ParallelTask } from '../../concurrency.js';
-import type { ResolvedAgentConfig } from '../../config.js';
+import type { ResolvedAgentConfig, BuildStageSpec, ReviewProfileConfig } from '../../config.js';
 
 import type { PipelineContext } from '../types.js';
 import { registerCompileStage } from '../registry.js';
@@ -103,8 +103,9 @@ async function* runPlannerAttempt(
             ...plan,
             dependsOn: depsById.get(plan.id) ?? [],
           }));
+          const planConfigs = orchConfig.plans.map(p => ({ id: p.id, build: p.build, review: p.review }));
           ctx.plans = enrichedPlans;
-          yield { ...event, plans: enrichedPlans };
+          yield { ...event, plans: enrichedPlans, planConfigs };
           continue;
         } catch {
           // Graceful fallback — yield the original event unchanged.
@@ -490,8 +491,17 @@ registerCompileStage({
   const orchYamlPath = resolve(ctx.cwd, ctx.config.plan.outputDir, ctx.planSetName, 'orchestration.yaml');
   await injectPipelineIntoOrchestrationYaml(orchYamlPath, ctx.pipeline, ctx.baseBranch);
 
+  // Parse the injected orchestration config to derive per-plan build + review for durable storage.
+  let expeditionPlanConfigs: Array<{ id: string; build: BuildStageSpec[]; review: ReviewProfileConfig }> | undefined;
+  try {
+    const orchConfig = await parseOrchestrationConfig(orchYamlPath);
+    expeditionPlanConfigs = orchConfig.plans.map(p => ({ id: p.id, build: p.build, review: p.review }));
+  } catch {
+    // Graceful degradation: if parsing fails, omit planConfigs.
+  }
+
   yield { timestamp: new Date().toISOString(), type: 'expedition:compile:complete', plans };
-  yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans };
+  yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans, ...(expeditionPlanConfigs && { planConfigs: expeditionPlanConfigs }) };
 
   // Update context plans for downstream stages
   ctx.plans = plans;

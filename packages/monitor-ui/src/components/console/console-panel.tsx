@@ -4,12 +4,13 @@ import { cn } from '@/lib/utils';
 import { TimelineControls } from '@/components/timeline/timeline-controls';
 import { Button } from '@/components/ui/button';
 
-export type LowerTab = 'log' | 'changes' | 'graph';
+export type LowerTab = 'log' | 'changes' | 'graph' | 'plan';
 
 interface ConsolePanelProps {
   activeTab: LowerTab;
   onTabChange: (tab: LowerTab) => void;
   graphEnabled: boolean;
+  planEnabled: boolean;
   showVerbose: boolean;
   onToggleVerbose: (checked: boolean) => void;
   collapsed: boolean;
@@ -24,6 +25,7 @@ const TAB_ITEMS: Array<{ id: LowerTab; label: string }> = [
   { id: 'log', label: 'Log' },
   { id: 'changes', label: 'Changes' },
   { id: 'graph', label: 'Graph' },
+  { id: 'plan', label: 'Plan' },
 ];
 
 export const ConsolePanel = forwardRef<HTMLDivElement, ConsolePanelProps>(
@@ -32,6 +34,7 @@ export const ConsolePanel = forwardRef<HTMLDivElement, ConsolePanelProps>(
       activeTab,
       onTabChange,
       graphEnabled,
+      planEnabled,
       showVerbose,
       onToggleVerbose,
       collapsed,
@@ -49,7 +52,15 @@ export const ConsolePanel = forwardRef<HTMLDivElement, ConsolePanelProps>(
         <div className="flex items-center justify-between px-2 border-b border-border bg-card shrink-0">
           <div className="flex items-center">
             {TAB_ITEMS.map(({ id, label }) => {
-              const disabled = id === 'graph' && !graphEnabled;
+              const disabled =
+                (id === 'graph' && !graphEnabled) ||
+                (id === 'plan' && !planEnabled);
+              const disabledTitle =
+                id === 'graph'
+                  ? 'Available when plans have dependency edges'
+                  : id === 'plan'
+                    ? 'Available when orchestration data is loaded'
+                    : undefined;
               return (
                 <Button
                   key={id}
@@ -64,7 +75,7 @@ export const ConsolePanel = forwardRef<HTMLDivElement, ConsolePanelProps>(
                       ? 'border-primary'
                       : 'border-transparent',
                   )}
-                  title={disabled ? 'Available when plans have dependency edges' : undefined}
+                  title={disabled ? disabledTitle : undefined}
                 >
                   {label}
                 </Button>

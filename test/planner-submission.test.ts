@@ -339,3 +339,87 @@ describe('Planner submission tool: validation error formatting', () => {
     expect(output).toMatch(/plans\.0\.frontmatter\.agents:/);
   });
 });
+
+describe('planning:complete event: planConfigs field', () => {
+  const makeTempDir = useTempDir('eforge-plan-configs-test-');
+
+  it('includes planConfigs in planning:complete when orchestration plans have build/review', async () => {
+    const payload = validPlanSetPayload();
+    // Add explicit build + review to the orchestration plan entry
+    payload.orchestration.plans[0] = {
+      ...payload.orchestration.plans[0],
+      build: ['implement', ['review', 'doc-update']],
+      review: {
+        strategy: 'single',
+        perspectives: ['security'],
+        maxRounds: 2,
+        evaluatorStrictness: 'standard',
+      },
+    } as typeof payload.orchestration.plans[0];
+
+    const backend = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_plan_set',
+        toolUseId: 'tu-planconfigs',
+        input: payload,
+        output: '',
+      }],
+      text: 'Plans submitted.',
+    }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runPlanner('Build widgets', {
+      harness: backend,
+      cwd,
+      auto: true,
+      scope: 'excursion',
+    }));
+
+    const completeEvents = events.filter(e => e.type === 'planning:complete');
+    expect(completeEvents).toHaveLength(1);
+    const complete = completeEvents[0] as EforgeEvent & { type: 'planning:complete' };
+
+    // planConfigs should be populated with the orchestration plan's build + review
+    expect(complete.planConfigs).toBeDefined();
+    expect(complete.planConfigs).toHaveLength(1);
+    const config = complete.planConfigs![0];
+    expect(config.id).toBe('plan-01-widgets');
+    expect(config.build).toEqual(['implement', ['review', 'doc-update']]);
+    expect(config.review).toEqual({
+      strategy: 'single',
+      perspectives: ['security'],
+      maxRounds: 2,
+      evaluatorStrictness: 'standard',
+    });
+  });
+
+  it('omits planConfigs from planning:complete when no orchestration plans have build/review', async () => {
+    const payload = validPlanSetPayload();
+    // orchestration plans have no build/review (default fixture)
+
+    const backend = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_plan_set',
+        toolUseId: 'tu-noconfigs',
+        input: payload,
+        output: '',
+      }],
+      text: 'Plans submitted.',
+    }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(runPlanner('Build widgets', {
+      harness: backend,
+      cwd,
+      auto: true,
+      scope: 'excursion',
+    }));
+
+    const completeEvents = events.filter(e => e.type === 'planning:complete');
+    expect(completeEvents).toHaveLength(1);
+    const complete = completeEvents[0] as EforgeEvent & { type: 'planning:complete' };
+
+    // planConfigs should be absent when no build/review were specified
+    expect(complete.planConfigs).toBeUndefined();
+  });
+});

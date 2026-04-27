@@ -166,7 +166,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'planning:progress'; message: string }
   | { type: 'planning:continuation'; attempt: number; maxContinuations: number; reason?: 'max_turns' | 'dropped_submission' }
   | { type: 'planning:pipeline'; scope: string; compile: string[]; defaultBuild: BuildStageSpec[]; defaultReview: ReviewProfileConfig; rationale: string }
-  | { type: 'planning:complete'; plans: PlanFile[] }
+  | { type: 'planning:complete'; plans: PlanFile[]; planConfigs?: Array<{ id: string; build?: BuildStageSpec[]; review?: ReviewProfileConfig }> }
 
   // Planning review (after planning phase — fires once per planning phase)
   | { type: 'planning:review:start' }

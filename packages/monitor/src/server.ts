@@ -54,6 +54,27 @@ function isWithinDir(resolvedPath: string, baseDir: string): boolean {
 }
 // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
+/**
+ * Enrich orchestration plan entries with per-plan build + review from a
+ * `planConfigs` array (sourced from the `planning:complete` event payload).
+ *
+ * Exported for unit testing; used by `serveOrchestration` to prefer durable
+ * event-log data over the ephemeral filesystem orchestration.yaml.
+ */
+export function enrichOrchestrationWithPlanConfigs(
+  plans: Array<Record<string, unknown>>,
+  planConfigs: Array<{ id: string; build?: unknown; review?: unknown }>,
+): void {
+  const configById = new Map(planConfigs.map((c) => [c.id, c]));
+  for (const plan of plans) {
+    const config = configById.get(plan.id as string);
+    if (config) {
+      if (config.build !== undefined) plan.build = config.build;
+      if (config.review !== undefined) plan.review = config.review;
+    }
+  }
+}
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
 
@@ -406,14 +427,25 @@ export async function startServer(
         mode: data.mode || null,
       };
 
-      // Enrich plan entries with build/review config from orchestration.yaml
-      const buildConfigMap = await readBuildConfigFromOrchestration(sessionId);
-      if (buildConfigMap) {
-        for (const plan of orchestration.plans) {
-          const config = buildConfigMap.get(plan.id);
-          if (config) {
-            (plan as Record<string, unknown>).build = config.build;
-            (plan as Record<string, unknown>).review = config.review;
+      // Prefer per-plan build/review from the event payload's planConfigs (durable).
+      // Fall back to the filesystem orchestration.yaml only when the field is missing
+      // (older sessions written before this change).
+      const eventPlanConfigs = Array.isArray(data.planConfigs) && data.planConfigs.length > 0
+        ? data.planConfigs as Array<{ id: string; build?: unknown; review?: unknown }>
+        : null;
+
+      if (eventPlanConfigs) {
+        enrichOrchestrationWithPlanConfigs(orchestration.plans as Array<Record<string, unknown>>, eventPlanConfigs);
+      } else {
+        // Enrich plan entries with build/review config from orchestration.yaml (filesystem fallback)
+        const buildConfigMap = await readBuildConfigFromOrchestration(sessionId);
+        if (buildConfigMap) {
+          for (const plan of orchestration.plans) {
+            const config = buildConfigMap.get(plan.id);
+            if (config) {
+              (plan as Record<string, unknown>).build = config.build;
+              (plan as Record<string, unknown>).review = config.review;
+            }
           }
         }
       }

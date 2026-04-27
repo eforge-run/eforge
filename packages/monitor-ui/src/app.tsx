@@ -13,13 +13,14 @@ import { DependencyGraph } from '@/components/graph';
 import { FileHeatmap } from '@/components/heatmap';
 import { PlanPreviewProvider, PlanPreviewPanel, usePlanPreview } from '@/components/preview';
 import { ConsolePanel, type LowerTab } from '@/components/console/console-panel';
+import { PlanTab } from '@/components/console/plan-tab';
 import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { useEforgeEvents } from '@/hooks/use-eforge-events';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useAutoBuild } from '@/hooks/use-auto-build';
 import { getSummaryStats } from '@/lib/reducer';
 import { fetchLatestSessionId, fetchOrchestration, fetchProjectContext } from '@/lib/api';
-import type { OrchestrationConfig, PipelineStage } from '@/lib/types';
+import type { OrchestrationConfig, PipelineStage, EforgeEvent } from '@/lib/types';
 import type { ProjectContext } from '@/components/layout/header';
 
 function AppContent() {
@@ -256,10 +257,27 @@ function AppContent() {
     return null;
   }, [runState.events]);
 
-  // Reset lower tab if graph becomes unavailable
+  const planEnabled = effectiveOrchestration !== null;
+
+  // Reset lower tab if graph or plan becomes unavailable
   useEffect(() => {
     if (lowerTab === 'graph' && !graphEnabled) setLowerTab('log');
   }, [graphEnabled, lowerTab]);
+
+  useEffect(() => {
+    if (lowerTab === 'plan' && !planEnabled) setLowerTab('log');
+  }, [planEnabled, lowerTab]);
+
+  // Derive the latest planning:pipeline event for the Plan tab
+  const latestPipelineEvent = useMemo(() => {
+    for (let i = runState.events.length - 1; i >= 0; i--) {
+      const { event } = runState.events[i];
+      if (event.type === 'planning:pipeline') {
+        return event as EforgeEvent & { type: 'planning:pipeline' };
+      }
+    }
+    return null;
+  }, [runState.events]);
 
   // Update duration every second while running
   const [, setTick] = useState(0);
@@ -339,6 +357,7 @@ function AppContent() {
             activeTab={lowerTab}
             onTabChange={setLowerTab}
             graphEnabled={graphEnabled}
+            planEnabled={planEnabled}
             showVerbose={showVerbose}
             onToggleVerbose={setShowVerbose}
             collapsed={consoleCollapsed}
@@ -369,6 +388,11 @@ function AppContent() {
                   mergedPlanIds={mergedPlanIds}
                 />
               </div>
+            ) : lowerTab === 'plan' && planEnabled ? (
+              <PlanTab
+                orchestration={effectiveOrchestration}
+                pipelineEvent={latestPipelineEvent}
+              />
             ) : null}
           </ConsolePanel>
         </ResizablePanel>

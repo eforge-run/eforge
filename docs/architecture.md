@@ -77,7 +77,7 @@ Prefixes carry scope unambiguously:
 | `session:*` | Run-wide envelope (`sessionId`) | Session lifecycle boundaries |
 | `phase:*` | Per-command (compile or build) (`runId`) | Phase lifecycle boundaries |
 | `config:*` | Run-wide | Config-load diagnostics (`config:warning` for malformed fields, unknown keys, stale markers) |
-| `planning:*` | Compile-phase activity, one set per phase (`plans: PlanFile[]`) | Planning, plan review, architecture review, cohesion review, submission, error, and load-time `planning:warning` diagnostics |
+| `planning:*` | Compile-phase activity, one set per phase (`plans: PlanFile[]`) | Planning, plan review, architecture review, cohesion review, submission, error, and load-time `planning:warning` diagnostics. The `planning:complete` event also carries an optional `planConfigs: Array<{ id; build; review }>` field with per-plan build stage and review profile configs - persisted in SQLite so the monitor can reconstruct stage breakdowns after worktrees are cleaned up. The `planning:pipeline` event carries the planner's scope classification, compile pipeline, default build stages, default review profile, and rationale. |
 | `plan:*` | Per-plan artifact lifecycle (`planId`) | Per-plan build (`plan:build:*`), per-plan merge (`plan:merge:*`), per-plan schedule readiness (`plan:schedule:ready`) |
 | `merge:finalize:*` | Run-wide feature-branch finalization | Final merge of the feature branch to the base branch (`merge:finalize:start`, `merge:finalize:complete`, `merge:finalize:skipped`) |
 | `schedule:start` | Run-wide (session-scoped, `planIds: string[]`) | Orchestration kickoff |
@@ -230,3 +230,5 @@ The web monitor tracks cost, token usage, and progress in real time on a dynamic
 **Recording** is decoupled from the dashboard. Every `EforgeEvent` is written to SQLite regardless of whether the web server is running. This means event history is always available for inspection.
 
 The **web server** runs as a detached process that survives CLI exit. It polls SQLite for new events and pushes them to the dashboard via Server-Sent Events (SSE). The server stays alive after the last active session ends so browser users can inspect results before it exits.
+
+The **console panel** in the monitor UI exposes four lower tabs: `Log` (raw event stream), `Changes` (per-plan file diffs), `Graph` (plan dependency graph), and `Plan` (planner decisions). The `Plan` tab renders three sections from the event log - Classification (mode badge from `planning:pipeline`), Pipeline (compile/build/review config), and Plans (per-plan build stage breakdown and review profile from `planning:complete`'s `planConfigs`). The `/api/orchestration/:sessionId` endpoint prefers the durable `planConfigs` from the `planning:complete` event row over reading from the filesystem, so per-plan stage breakdowns remain accurate for completed sessions after worktrees have been cleaned.

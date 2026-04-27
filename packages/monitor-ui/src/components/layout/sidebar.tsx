@@ -31,7 +31,7 @@ function StatusIcon({ status }: { status: SessionGroup['status'] }) {
   }
 }
 
-const profileBadgeClasses: Record<string, string> = {
+export const profileBadgeClasses: Record<string, string> = {
   errand: 'bg-green/20 text-green border-green/30',
   excursion: 'bg-yellow/20 text-yellow border-yellow/30',
   expedition: 'bg-purple-500/20 text-purple-400 border-purple-500/30',

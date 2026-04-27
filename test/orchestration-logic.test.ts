@@ -791,3 +791,71 @@ describe('executePlans - ModelTracker recording', () => {
     expect(ctx.modelTracker.has('model-Y')).toBe(true);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Server enrichOrchestrationWithPlanConfigs
+// ---------------------------------------------------------------------------
+
+import { enrichOrchestrationWithPlanConfigs } from '@eforge-build/monitor/server';
+
+describe('enrichOrchestrationWithPlanConfigs - prefer-event branch', () => {
+  it('enriches plans with build and review from planConfigs', () => {
+    const plans: Array<Record<string, unknown>> = [
+      { id: 'plan-01', name: 'Widget Feature', dependsOn: [], branch: 'feature/widget' },
+      { id: 'plan-02', name: 'Gadget Feature', dependsOn: ['plan-01'], branch: 'feature/gadget' },
+    ];
+
+    const planConfigs = [
+      {
+        id: 'plan-01',
+        build: ['implement', ['review', 'doc-update']],
+        review: { strategy: 'single', perspectives: ['security'], maxRounds: 2, evaluatorStrictness: 'standard' },
+      },
+      {
+        id: 'plan-02',
+        build: ['implement'],
+        review: { strategy: 'auto', perspectives: [], maxRounds: 1, evaluatorStrictness: 'lenient' },
+      },
+    ];
+
+    enrichOrchestrationWithPlanConfigs(plans, planConfigs);
+
+    expect(plans[0].build).toEqual(['implement', ['review', 'doc-update']]);
+    expect(plans[0].review).toEqual({ strategy: 'single', perspectives: ['security'], maxRounds: 2, evaluatorStrictness: 'standard' });
+    expect(plans[1].build).toEqual(['implement']);
+    expect(plans[1].review).toEqual({ strategy: 'auto', perspectives: [], maxRounds: 1, evaluatorStrictness: 'lenient' });
+  });
+
+  it('leaves plans unchanged when planConfigs does not contain a matching id', () => {
+    const plans: Array<Record<string, unknown>> = [
+      { id: 'plan-01', name: 'Widget Feature', dependsOn: [], branch: 'feature/widget' },
+    ];
+
+    enrichOrchestrationWithPlanConfigs(plans, [{ id: 'plan-99', build: ['implement'], review: undefined }]);
+
+    expect(plans[0].build).toBeUndefined();
+    expect(plans[0].review).toBeUndefined();
+  });
+
+  it('does not overwrite build/review when config value is undefined', () => {
+    const plans: Array<Record<string, unknown>> = [
+      { id: 'plan-01', build: ['implement'], review: { strategy: 'single' } },
+    ];
+
+    // Config has id match but undefined build/review
+    enrichOrchestrationWithPlanConfigs(plans, [{ id: 'plan-01', build: undefined, review: undefined }]);
+
+    // Existing values should be preserved (undefined means "not provided")
+    expect(plans[0].build).toEqual(['implement']);
+    expect(plans[0].review).toEqual({ strategy: 'single' });
+  });
+
+  it('handles empty planConfigs array without errors', () => {
+    const plans: Array<Record<string, unknown>> = [
+      { id: 'plan-01', name: 'Widget Feature', dependsOn: [], branch: 'feature/widget' },
+    ];
+
+    expect(() => enrichOrchestrationWithPlanConfigs(plans, [])).not.toThrow();
+    expect(plans[0].build).toBeUndefined();
+  });
+});

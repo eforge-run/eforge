@@ -319,7 +319,20 @@ ${existingPlans}`;
       plans.push(await parsePlanFile(filePath));
     }
 
-    yield { timestamp: new Date().toISOString(), type: 'planning:complete', plans };
+    const planConfigs = planSetPayload.orchestration.plans
+      .filter(p => p.build || p.review)
+      .map(p => ({
+        id: p.id,
+        ...(p.build !== undefined && { build: p.build }),
+        ...(p.review !== undefined && { review: p.review }),
+      }));
+
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'planning:complete',
+      plans,
+      ...(planConfigs.length > 0 && { planConfigs }),
+    };
     return;
   }
 
