@@ -59,12 +59,17 @@ export async function* runRecoveryAnalyst(
 ): AsyncGenerator<EforgeEvent> {
   const { harness, prdContent, summary, prdId, cwd, verbose, abortController } = options;
 
+  const partialHint = summary.partial === true
+    ? 'Note: this summary is partial (state.json was missing); prefer verdict=manual and document missing context in the rationale.'
+    : '';
+
   const prompt = await loadPrompt(
     'recovery-analyst',
     {
       prdContent,
       summary: JSON.stringify(summary, null, 2),
       recovery_schema: getRecoveryVerdictSchemaYaml(),
+      partialHint,
     },
     options.promptAppend,
   );

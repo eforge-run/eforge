@@ -302,7 +302,7 @@ describe('writeRecoverySidecar', () => {
     expect(json.length).toBeGreaterThan(0);
   });
 
-  it('JSON includes schemaVersion: 1, summary, verdict, generatedAt', async () => {
+  it('JSON includes schemaVersion: 2, summary, verdict, generatedAt', async () => {
     const dir = makeTempDir();
     const { jsonPath } = await writeRecoverySidecar({
       failedPrdDir: dir,
@@ -314,7 +314,7 @@ describe('writeRecoverySidecar', () => {
     const raw = await readFile(jsonPath, 'utf-8');
     const parsed = JSON.parse(raw);
 
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(2);
     expect(parsed.summary).toBeDefined();
     expect(parsed.summary.prdId).toBe('test-prd');
     expect(parsed.verdict).toBeDefined();
@@ -365,7 +365,7 @@ describe('writeRecoverySidecar', () => {
     });
 
     const raw = await readFile(jsonPath, 'utf-8');
-    expect(JSON.parse(raw).schemaVersion).toBe(1);
+    expect(JSON.parse(raw).schemaVersion).toBe(2);
   });
 
   it('produces valid JSON for each verdict type', async () => {
@@ -380,7 +380,7 @@ describe('writeRecoverySidecar', () => {
       });
       const parsed = JSON.parse(await readFile(jsonPath, 'utf-8'));
       expect(parsed.verdict.verdict).toBe(verdict);
-      expect(parsed.schemaVersion).toBe(1);
+      expect(parsed.schemaVersion).toBe(2);
     }
   });
 });
@@ -503,10 +503,12 @@ describe('buildFailureSummary', () => {
     expect(summary.prdId).toBe('test-prd');
   });
 
-  it('throws when state.json is missing', async () => {
+  it('returns partial summary when state.json is missing', async () => {
     const dir = makeTempDir();
-    await expect(buildFailureSummary({ setName: 'x', prdId: 'y', cwd: dir }))
-      .rejects.toThrow('state.json');
+    const summary = await buildFailureSummary({ setName: 'x', prdId: 'y', cwd: dir });
+    expect(summary.partial).toBe(true);
+    expect(summary.prdId).toBe('y');
+    expect(summary.setName).toBe('x');
   });
 });
 
@@ -794,7 +796,7 @@ describe('EforgeEngine.recover', () => {
   <suggestedSuccessorPrd># Successor PRD\n\nContinue the API work.</suggestedSuccessorPrd>
 </recovery>`;
 
-  it('throws when PRD file does not exist', async () => {
+  it('writes degraded sidecar when PRD file does not exist (no throw)', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
     await mkdir(join(dir, '.eforge'), { recursive: true });
@@ -808,9 +810,14 @@ describe('EforgeEngine.recover', () => {
     const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: backend });
 
-    await expect(
-      collectEvents(engine.recover('test-recovery-set', 'test-prd')),
-    ).rejects.toThrow();
+    // Should NOT throw — degraded sidecar with partial:true is written instead
+    const events = await collectEvents(engine.recover('test-recovery-set', 'test-prd'));
+
+    const complete = findEvent(events, 'recovery:complete');
+    expect(complete).toBeDefined();
+    expect(complete!.verdict.verdict).toBe('manual');
+    expect(complete!.verdict.partial).toBe(true);
+    expect(complete!.verdict.recoveryError).toContain('not found');
   });
 
   it('writes both sidecar files for a split verdict', async () => {
@@ -833,7 +840,7 @@ describe('EforgeEngine.recover', () => {
     expect(mdContent.length).toBeGreaterThan(0);
 
     const parsed = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
-    expect(parsed.schemaVersion).toBe(1);
+    expect(parsed.schemaVersion).toBe(2);
     expect(parsed.verdict.verdict).toBe('split');
   });
 
@@ -857,7 +864,7 @@ describe('EforgeEngine.recover', () => {
     await expect(readFile(complete!.sidecarMdPath!, 'utf-8')).resolves.toBeTruthy();
     const json = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
     expect(json.verdict.verdict).toBe('manual');
-    expect(json.schemaVersion).toBe(1);
+    expect(json.schemaVersion).toBe(2);
   });
 
   it.each(['retry', 'split', 'abandon', 'manual'] as const)('writes sidecars for %s verdict', async (verdict) => {
@@ -903,7 +910,7 @@ describe('EforgeEngine.recover', () => {
     expect(complete!.sidecarJsonPath).toBeDefined();
 
     const json = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
-    expect(json.schemaVersion).toBe(1);
+    expect(json.schemaVersion).toBe(2);
     expect(json.verdict.verdict).toBe(verdict);
   });
 

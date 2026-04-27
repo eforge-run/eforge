@@ -1,11 +1,13 @@
 /**
  * Assembles a BuildFailureSummary from state.json + git on the surviving
- * feature branch. No event-log replay — state already captures what we need.
+ * feature branch. When state.json is missing, falls back to a partial
+ * summary synthesized from monitor.db events and git history.
  */
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { loadState } from '../state.js';
+import { synthesizeFromEvents } from './event-history.js';
 import type { BuildFailureSummary, LandedCommit, PlanSummaryEntry, FailingPlanEntry } from '../events.js';
 
 const exec = promisify(execFile);
@@ -33,22 +35,31 @@ function parseModelsFromLog(logBody: string): string[] {
 /**
  * Build a failure summary for a PRD that failed during an eforge build session.
  *
- * Reads `.eforge/state.json` via `loadState`, then runs `git log` and
- * `git diff --stat` on the surviving feature branch to capture what landed
- * before the failure.
+ * When `state.json` is present, reads from it to produce a full summary.
+ * When `state.json` is missing, synthesizes a partial summary from:
+ * - monitor.db event history (via `synthesizeFromEvents`, when `dbPath` supplied)
+ * - git log/diff against `eforge/<setName>` (when the branch exists)
+ * Returns `partial: true` for the synthesized path.
  *
- * @param setName - The plan set name (used to locate state if featureBranch is absent)
+ * Never throws — callers can rely on always receiving a summary.
+ *
+ * @param setName - The plan set name
  * @param prdId - The PRD identifier being recovered
- * @param cwd - Repository root (must contain `.eforge/state.json`)
+ * @param cwd - Repository root
+ * @param dbPath - Optional path to monitor.db for event-history synthesis
+ * @param prdContent - Optional PRD file content (unused currently, reserved for future)
  */
-export async function buildFailureSummary({ setName, prdId, cwd }: {
+export async function buildFailureSummary({ setName, prdId, cwd, dbPath }: {
   setName: string;
   prdId: string;
   cwd: string;
+  dbPath?: string;
+  prdContent?: string;
 }): Promise<BuildFailureSummary> {
   const state = loadState(cwd);
   if (!state) {
-    throw new Error(`buildFailureSummary: no state file found at ${cwd}/.eforge/state.json`);
+    // Partial path: state.json is missing — synthesize from available sources
+    return buildPartialSummary({ setName, prdId, cwd, dbPath });
   }
 
   const baseBranch = state.baseBranch;
@@ -128,5 +139,96 @@ export async function buildFailureSummary({ setName, prdId, cwd }: {
     diffStat,
     modelsUsed,
     failedAt: state.completedAt ?? state.startedAt,
+  };
+}
+
+/**
+ * Build a partial failure summary when state.json is not available.
+ * Synthesizes from monitor.db events and git history on the feature branch.
+ * Returns `partial: true` always.
+ */
+async function buildPartialSummary({ setName, prdId, cwd, dbPath }: {
+  setName: string;
+  prdId: string;
+  cwd: string;
+  dbPath?: string;
+}): Promise<BuildFailureSummary> {
+  const featureBranch = `eforge/${setName}`;
+
+  // Try event-history synthesis
+  const eventFragment = synthesizeFromEvents({ setName, prdId, dbPath });
+
+  // Try git log/diff against feature branch if it exists
+  let landedCommits: LandedCommit[] = [];
+  let diffStat = '';
+  let modelsUsed: string[] = [];
+
+  try {
+    const { stdout } = await exec(
+      'git',
+      ['log', `--format=%H%x00%s%x00%an%x00%aI`, `main..${featureBranch}`],
+      { cwd },
+    );
+    if (stdout.trim()) {
+      landedCommits = stdout.trim().split('\n').filter(Boolean).map(line => {
+        const parts = line.split('\x00');
+        return {
+          sha: parts[0] ?? '',
+          subject: parts[1] ?? '',
+          author: parts[2] ?? '',
+          date: parts[3] ?? '',
+        };
+      });
+    }
+  } catch {
+    // Branch may not exist — leave empty
+  }
+
+  try {
+    const { stdout } = await exec(
+      'git',
+      ['diff', '--stat', `main...${featureBranch}`],
+      { cwd },
+    );
+    diffStat = stdout.trim();
+  } catch {
+    // Ignore
+  }
+
+  if (landedCommits.length > 0) {
+    try {
+      const { stdout } = await exec(
+        'git',
+        ['log', '--format=%B', `main..${featureBranch}`],
+        { cwd },
+      );
+      modelsUsed = parseModelsFromLog(stdout);
+    } catch {
+      // Ignore
+    }
+  }
+
+  // Merge event-history models
+  if (eventFragment?.modelsUsed && eventFragment.modelsUsed.length > 0) {
+    const merged = new Set([...modelsUsed, ...eventFragment.modelsUsed]);
+    modelsUsed = [...merged].sort();
+  }
+
+  const failingPlan: FailingPlanEntry = eventFragment?.failingPlan ?? { planId: 'unknown' };
+  const plans: PlanSummaryEntry[] = eventFragment?.plans ?? [];
+  const failedAt = eventFragment?.failedAt ?? new Date().toISOString();
+
+  return {
+    prdId,
+    setName,
+    featureBranch,
+    baseBranch: 'main',
+    plans,
+    failingPlan,
+    landedCommits,
+    diffStat,
+    modelsUsed,
+    failedAt,
+    partial: true,
   };
 }

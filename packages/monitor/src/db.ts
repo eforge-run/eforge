@@ -64,8 +64,6 @@ export interface MonitorDB {
   getLatestEventTimestamp(): string | undefined;
   /** Returns the highest event row id in the events table, or 0 if empty. */
   getMaxEventId(): number;
-  /** Returns all plan:build:failed events with id > afterId, ordered by id ascending. */
-  getNewBuildFailedEvents(afterId: number): EventRecord[];
   close(): void;
 }
 
@@ -193,9 +191,6 @@ export function openDatabase(dbPath: string): MonitorDB {
     ),
     getMaxEventId: db.prepare(
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events`,
-    ),
-    getNewBuildFailedEvents: db.prepare(
-      `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE id > ? AND type = 'plan:build:failed' ORDER BY id`,
     ),
     getRunsBySession: db.prepare(
       `SELECT id, session_id as sessionId, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd, pid FROM runs WHERE session_id = ? ORDER BY started_at`,
@@ -372,10 +367,6 @@ export function openDatabase(dbPath: string): MonitorDB {
     getMaxEventId() {
       const row = stmts.getMaxEventId.get() as unknown as { maxId: number } | undefined;
       return row?.maxId ?? 0;
-    },
-
-    getNewBuildFailedEvents(afterId) {
-      return stmts.getNewBuildFailedEvents.all(afterId) as unknown as EventRecord[];
     },
 
     insertFileDiffs(runId, planId, diffs, timestamp) {

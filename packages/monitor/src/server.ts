@@ -7,7 +7,6 @@ import {
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { statSync } from 'node:fs';
 import { resolve, dirname, extname, join, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -162,18 +161,9 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; failedPrdDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agentRuntimes' | 'defaultAgentRuntime'> },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agentRuntimes' | 'defaultAgentRuntime' | 'prdQueue'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
-
-  // --- eforge:region plan-03-daemon-mcp-pi ---
-  // Initialize to the current max event ID so recovery only triggers for events
-  // that appear after this server instance starts.
-  let lastRecoveryCheckId = db.getMaxEventId();
-  // In-memory set of in-flight recovery keys ("setName/prdId") to prevent duplicate spawns
-  // within the same poll cycle or across rapid successive ticks.
-  const inFlightRecoveries = new Set<string>();
-  // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
   // Resolve git remote once at startup
   const cwd = options?.cwd;
@@ -336,59 +326,6 @@ export async function startServer(
       }
     }
 
-    // --- eforge:region plan-03-daemon-mcp-pi ---
-    // Auto-trigger recovery for new plan:build:failed events (daemon mode only).
-    if (options?.workerTracker && options?.failedPrdDir) {
-      try {
-        const failedEvents = db.getNewBuildFailedEvents(lastRecoveryCheckId);
-        for (const event of failedEvents) {
-          if (event.id > lastRecoveryCheckId) {
-            lastRecoveryCheckId = event.id;
-          }
-          if (!event.planId) continue;
-          const run = db.getRun(event.runId);
-          if (!run?.planSet) continue;
-          const setName = run.planSet;
-          const prdId = event.planId;
-          // Idempotency: skip if recovery is already in-flight (in-memory check) or
-          // if the sidecar file already exists on disk (persisted check).
-          const recoveryKey = `${setName}/${prdId}`;
-          if (inFlightRecoveries.has(recoveryKey)) continue;
-          const sidecarPath = resolve(options.failedPrdDir, `${prdId}.recovery.json`);
-          try {
-            statSync(sidecarPath);
-            continue; // sidecar exists — recovery already ran
-          } catch {
-            // sidecar does not exist — proceed
-          }
-          // Mark as in-flight before spawning to guard against races within the same tick.
-          inFlightRecoveries.add(recoveryKey);
-          // Spawn recovery subprocess (does not consume a build permit)
-          try {
-            const result = options.workerTracker.spawnWorker(
-              'recover',
-              [setName, prdId],
-              () => inFlightRecoveries.delete(recoveryKey),
-            );
-            broadcast('recovery:start', JSON.stringify({
-              type: 'recovery:start',
-              setName,
-              prdId,
-              sessionId: result.sessionId,
-              pid: result.pid,
-              timestamp: new Date().toISOString(),
-            }));
-          } catch {
-            // Best-effort recovery spawn — log to stderr and continue
-            inFlightRecoveries.delete(recoveryKey);
-            process.stderr.write(`[eforge] Failed to spawn recovery for ${setName}/${prdId}\n`);
-          }
-        }
-      } catch {
-        // DB errors during recovery check — skip this tick
-      }
-    }
-    // --- eforge:endregion plan-03-daemon-mcp-pi ---
   }, POLL_INTERVAL_MS);
   pollTimer.unref();
 
@@ -979,21 +916,13 @@ export async function startServer(
         sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
         return;
       }
-      const recoveryKey = `${body.setName}/${body.prdId}`;
-      if (inFlightRecoveries.has(recoveryKey)) {
-        sendJsonError(res, 409, `Recovery already in flight for ${recoveryKey}`);
-        return;
-      }
-      inFlightRecoveries.add(recoveryKey);
       try {
         const result = options.workerTracker.spawnWorker(
           'recover',
           [body.setName, body.prdId],
-          () => inFlightRecoveries.delete(recoveryKey),
         );
         sendJson(res, { sessionId: result.sessionId, pid: result.pid });
       } catch (err) {
-        inFlightRecoveries.delete(recoveryKey);
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to spawn recovery worker');
       }
       return;
@@ -1332,10 +1261,12 @@ export async function startServer(
       }
     // --- eforge:region plan-03-daemon-mcp-pi ---
     } else if (req.method === 'GET' && url.startsWith(RECOVERY_SIDECAR_BASE)) {
-      if (!options?.failedPrdDir) {
-        sendJsonError(res, 503, 'Failed PRD directory not configured');
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
         return;
       }
+      const prdQueueDir = options?.config?.prdQueue?.dir ?? 'eforge/queue';
+      const failedPrdDir = resolve(cwd, prdQueueDir, 'failed');
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);
       const setName = params.get('setName');
@@ -1348,9 +1279,9 @@ export async function startServer(
         sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
         return;
       }
-      const mdPath = resolve(options.failedPrdDir, `${prdId}.recovery.md`);
-      const jsonPath = resolve(options.failedPrdDir, `${prdId}.recovery.json`);
-      if (!isWithinDir(mdPath, options.failedPrdDir) || !isWithinDir(jsonPath, options.failedPrdDir)) {
+      const mdPath = resolve(failedPrdDir, `${prdId}.recovery.md`);
+      const jsonPath = resolve(failedPrdDir, `${prdId}.recovery.json`);
+      if (!isWithinDir(mdPath, failedPrdDir) || !isWithinDir(jsonPath, failedPrdDir)) {
         sendJsonError(res, 400, 'Invalid setName or prdId: resolved path escapes failed PRD directory');
         return;
       }

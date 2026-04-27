@@ -21,8 +21,9 @@ import type {
   PlanFile,
   ClarificationQuestion,
   RecoveryVerdict,
+  BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, QueueExecExitCode, QueueSkipReason } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveAndCommitFailedWithSidecar, QueueExecExitCode, QueueSkipReason } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
@@ -808,8 +809,11 @@ export class EforgeEngine {
       status = 'failed';
       summary = (err as Error).message;
     } finally {
-      // Clean up state file (gitignored) — must use repo root, not merge worktree
-      try { await rm(resolve(cwd, '.eforge', 'state.json')); } catch {}
+      // Clean up state file on success. On failure, defer cleanup to the queue
+      // parent's finalize handler so recovery can read state.json before removal.
+      if (status !== 'failed') {
+        try { await rm(resolve(cwd, '.eforge', 'state.json')); } catch {}
+      }
 
       tracing?.setOutput({ status, summary });
       yield {
@@ -1030,6 +1034,8 @@ export class EforgeEngine {
     prdSessionId: string,
   ): Promise<'completed' | 'failed' | 'skipped'> {
     const cwd = this.cwd;
+    const agentRuntimes = this.agentRuntimes; // captured for inline recovery
+    const config = this.config;               // captured for inline recovery
     const prdId = prd.id;
     const filePath = prd.filePath;
     const abortController = options.abortController;
@@ -1108,7 +1114,109 @@ export class EforgeEngine {
           if (shouldRelease) {
             try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
           }
-          if (moveTo) {
+          if (moveTo === 'failed') {
+            // Run recovery inline against the still-present state.json, then
+            // commit the PRD move + both sidecar files atomically.
+            const state = loadState(cwd);
+            const setName = state?.setName ?? prdId;
+            const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+
+            // Build failure summary (tolerates missing state.json)
+            let summary: BuildFailureSummary;
+            try {
+              summary = await buildFailureSummary({ setName, prdId, cwd, dbPath });
+            } catch {
+              summary = {
+                prdId,
+                setName,
+                featureBranch: `eforge/${setName}`,
+                baseBranch: '',
+                plans: [],
+                failingPlan: { planId: 'unknown' },
+                landedCommits: [],
+                diffStat: '',
+                modelsUsed: [],
+                failedAt: new Date().toISOString(),
+                partial: true,
+              };
+            }
+
+            // Read PRD content (best-effort — child just exited, file should exist)
+            let prdContent = '';
+            try { prdContent = await readFile(filePath, 'utf-8'); } catch { /* ignore */ }
+
+            // Run recovery analyst with 90s timeout
+            let verdict: RecoveryVerdict;
+            const recoveryModelTracker = new ModelTracker();
+            const recoveryAbort = new AbortController();
+            const recoveryTimer = setTimeout(() => recoveryAbort.abort(), 90_000);
+            try {
+              let verdictResult: RecoveryVerdict | null = null;
+              const harness = agentRuntimes.forRole('recovery-analyst');
+              const agentConfig =
+                config.agentRuntimes && Object.keys(config.agentRuntimes).length > 0
+                  ? resolveAgentConfig('recovery-analyst', config)
+                  : {};
+
+              try {
+                for await (const event of runRecoveryAnalyst({
+                  ...agentConfig,
+                  harness,
+                  prdContent,
+                  summary,
+                  prdId,
+                  cwd,
+                  abortController: recoveryAbort,
+                })) {
+                  if (event.type === 'recovery:complete') {
+                    verdictResult = event.verdict;
+                  }
+                  if (event.type === 'agent:start' && 'model' in event && typeof event.model === 'string') {
+                    recoveryModelTracker.record(event.model);
+                  }
+                }
+              } catch (agentErr) {
+                // Agent failed or timed out — fall through to manual verdict
+                verdict = {
+                  verdict: 'manual',
+                  confidence: 'low',
+                  rationale: 'Recovery analyst failed or timed out.',
+                  completedWork: [],
+                  remainingWork: [],
+                  risks: [],
+                  partial: true,
+                  recoveryError: agentErr instanceof Error ? agentErr.message : String(agentErr),
+                };
+              }
+
+              if (!verdict!) {
+                verdict = verdictResult ?? {
+                  verdict: 'manual',
+                  confidence: 'low',
+                  rationale: 'Recovery analyst output could not be parsed.',
+                  completedWork: [],
+                  remainingWork: [],
+                  risks: [],
+                  partial: summary.partial === true,
+                  recoveryError: 'Failed to parse recovery analyst output',
+                };
+              }
+            } finally {
+              clearTimeout(recoveryTimer);
+            }
+
+            // Atomic commit: git mv + both sidecar files in one forgeCommit
+            try {
+              await moveAndCommitFailedWithSidecar(filePath, summary, verdict!, recoveryModelTracker, cwd);
+            } catch {
+              // Fallback: plain move without sidecars
+              try { await movePrdToSubdir(filePath, 'failed', cwd); } catch { /* best-effort */ }
+            }
+
+            // Best-effort cleanup state.json after the failure commit lands
+            try { await rm(resolve(cwd, '.eforge', 'state.json')); } catch { /* ignore ENOENT */ }
+
+          } else if (moveTo) {
             try {
               await movePrdToSubdir(filePath, moveTo, cwd);
             } catch {
@@ -1677,94 +1785,203 @@ export class EforgeEngine {
    * Recover: analyse a failed build, emit a typed verdict, and write sidecar files.
    *
    * Orchestrates: PRD file read → buildFailureSummary → recovery-analyst agent →
-   * writeRecoverySidecar. On agent parse failure, falls back to a `manual` verdict
-   * sidecar so the caller always receives an artifact.
+   * writeRecoverySidecar. On any error (PRD missing, agent timeout, git failure),
+   * still writes a sidecar with a degraded manual verdict so the caller always
+   * receives an artifact. Never throws.
    *
-   * Exit semantics: throws only on infrastructural errors (PRD missing, state missing,
-   * git failure). A `manual` verdict is a success — exit 0 is correct for all verdicts.
+   * When state.json is missing, synthesizes a partial summary from monitor.db events
+   * and git history. Passes `partial: true` through to the verdict so the recovery
+   * analyst and sidecar both indicate degraded context.
    */
   async *recover(setName: string, prdId: string, options: RecoveryOptions = {}): AsyncGenerator<EforgeEvent> {
     const cwd = options.cwd ?? this.cwd;
     const verbose = options.verbose;
     const abortController = options.abortController;
 
-    // Resolve PRD path in the failed queue subdirectory
     const failedDir = resolve(cwd, this.config.prdQueue.dir, 'failed');
     const prdPath = join(failedDir, `${prdId}.md`);
+    const dbPath = resolve(cwd, '.eforge', 'monitor.db');
 
-    // Verify PRD file exists — throw for infrastructural absence
-    let prdContent: string;
-    try {
-      prdContent = await readFile(prdPath, 'utf-8');
-    } catch {
-      throw new Error(`recover: PRD file not found: ${prdPath}`);
-    }
-
-    // Emit recovery:start
+    // Always emit recovery:start first
     yield { timestamp: new Date().toISOString(), type: 'recovery:start', prdId, setName };
 
-    // Assemble failure summary from state.json + git (may throw on missing state)
-    const summary = await buildFailureSummary({ setName, prdId, cwd });
+    try {
+      // Try to read PRD file
+      let prdContent: string | undefined;
+      let prdMissingError: string | undefined;
+      try {
+        prdContent = await readFile(prdPath, 'utf-8');
+      } catch {
+        prdMissingError = `PRD file not found: ${prdPath}`;
+      }
 
-    // Get recovery-analyst harness and config
-    const harness = this.agentRuntimes.forRole('recovery-analyst');
-    const agentConfig =
-      this.config.agentRuntimes && Object.keys(this.config.agentRuntimes).length > 0
-        ? resolveAgentConfig('recovery-analyst', this.config)
-        : {};
+      if (prdMissingError !== undefined || prdContent === undefined) {
+        // PRD missing — write degraded sidecar and return
+        const summary: BuildFailureSummary = {
+          prdId, setName,
+          featureBranch: `eforge/${setName}`,
+          baseBranch: 'main',
+          plans: [],
+          failingPlan: { planId: 'unknown' },
+          landedCommits: [],
+          diffStat: '',
+          modelsUsed: [],
+          failedAt: new Date().toISOString(),
+          partial: true,
+        };
+        const verdict: RecoveryVerdict = {
+          verdict: 'manual',
+          confidence: 'low',
+          rationale: 'Recovery failed: PRD file not found.',
+          completedWork: [],
+          remainingWork: [],
+          risks: [],
+          partial: true,
+          recoveryError: prdMissingError ?? 'PRD file not found',
+        };
+        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict });
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'recovery:complete',
+          prdId,
+          verdict,
+          sidecarMdPath: mdPath,
+          sidecarJsonPath: jsonPath,
+        };
+        return;
+      }
 
-    // Run recovery analyst — collect verdict or error
-    let verdictResult: RecoveryVerdict | null = null;
-    let parseError: string | undefined;
+      // Get failure summary (tolerates missing state.json via partial synthesis)
+      let summary: BuildFailureSummary;
+      try {
+        summary = await buildFailureSummary({ setName, prdId, cwd, dbPath });
+      } catch {
+        summary = {
+          prdId, setName,
+          featureBranch: `eforge/${setName}`,
+          baseBranch: 'main',
+          plans: [],
+          failingPlan: { planId: 'unknown' },
+          landedCommits: [],
+          diffStat: '',
+          modelsUsed: [],
+          failedAt: new Date().toISOString(),
+          partial: true,
+        };
+      }
 
-    for await (const event of runRecoveryAnalyst({
-      ...agentConfig,
-      harness,
-      prdContent,
-      summary,
-      prdId,
-      cwd,
-      verbose,
-      abortController,
-    })) {
-      if (event.type === 'recovery:complete') {
-        // Collect the verdict; we will re-emit recovery:complete with sidecar paths below
-        verdictResult = event.verdict;
-      } else if (event.type === 'recovery:error') {
-        parseError = event.error;
-        yield event;
-      } else {
-        yield event;
+      // Get recovery-analyst harness and config
+      const harness = this.agentRuntimes.forRole('recovery-analyst');
+      const agentConfig =
+        this.config.agentRuntimes && Object.keys(this.config.agentRuntimes).length > 0
+          ? resolveAgentConfig('recovery-analyst', this.config)
+          : {};
+
+      // Run recovery analyst — collect verdict or error
+      let verdictResult: RecoveryVerdict | null = null;
+      let parseError: string | undefined;
+      let agentError: string | undefined;
+
+      try {
+        for await (const event of runRecoveryAnalyst({
+          ...agentConfig,
+          harness,
+          prdContent,
+          summary,
+          prdId,
+          cwd,
+          verbose,
+          abortController,
+        })) {
+          if (event.type === 'recovery:complete') {
+            // Collect the verdict; we will re-emit recovery:complete with sidecar paths below
+            verdictResult = event.verdict;
+          } else if (event.type === 'recovery:error') {
+            parseError = event.error;
+            yield event;
+          } else {
+            yield event;
+          }
+        }
+      } catch (err) {
+        agentError = err instanceof Error ? err.message : String(err);
+      }
+
+      // Determine final verdict — fallback to manual on parse or agent failure
+      const verdict: RecoveryVerdict = verdictResult ?? {
+        verdict: 'manual',
+        confidence: 'low',
+        rationale: `Recovery analyst failed or output could not be parsed. ${agentError ?? parseError ?? 'Unknown error.'}`,
+        completedWork: [],
+        remainingWork: [],
+        risks: [],
+        partial: summary.partial === true || agentError !== undefined,
+        recoveryError: agentError ?? parseError,
+      };
+
+      // Write sidecar files
+      const { mdPath, jsonPath } = await writeRecoverySidecar({
+        failedPrdDir: failedDir,
+        prdId,
+        summary,
+        verdict,
+      });
+
+      // Emit final recovery:complete with sidecar paths
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'recovery:complete',
+        prdId,
+        verdict,
+        sidecarMdPath: mdPath,
+        sidecarJsonPath: jsonPath,
+      };
+
+    } catch (err) {
+      // Last-resort outer catch — write degraded sidecar even if something unexpected fails
+      const errMsg = err instanceof Error ? err.message : String(err);
+      try {
+        const summary: BuildFailureSummary = {
+          prdId, setName,
+          featureBranch: `eforge/${setName}`,
+          baseBranch: 'main',
+          plans: [],
+          failingPlan: { planId: 'unknown' },
+          landedCommits: [],
+          diffStat: '',
+          modelsUsed: [],
+          failedAt: new Date().toISOString(),
+          partial: true,
+        };
+        const verdict: RecoveryVerdict = {
+          verdict: 'manual',
+          confidence: 'low',
+          rationale: 'Recovery process failed unexpectedly.',
+          completedWork: [],
+          remainingWork: [],
+          risks: [],
+          partial: true,
+          recoveryError: errMsg,
+        };
+        const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId, summary, verdict });
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'recovery:complete',
+          prdId,
+          verdict,
+          sidecarMdPath: mdPath,
+          sidecarJsonPath: jsonPath,
+        };
+      } catch {
+        // Best-effort — if even sidecar write fails, emit recovery:error
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'recovery:error',
+          prdId,
+          error: errMsg,
+        };
       }
     }
-
-    // Determine final verdict — fallback to manual on parse failure
-    const verdict: RecoveryVerdict = verdictResult ?? {
-      verdict: 'manual',
-      confidence: 'low',
-      rationale: `Recovery analyst output could not be parsed. ${parseError ?? 'Unknown parse error.'}`,
-      completedWork: [],
-      remainingWork: [],
-      risks: [],
-    };
-
-    // Write sidecar files (no side effects beyond these two paths)
-    const { mdPath, jsonPath } = await writeRecoverySidecar({
-      failedPrdDir: failedDir,
-      prdId,
-      summary,
-      verdict,
-    });
-
-    // Emit final recovery:complete with sidecar paths
-    yield {
-      timestamp: new Date().toISOString(),
-      type: 'recovery:complete',
-      prdId,
-      verdict,
-      sidecarMdPath: mdPath,
-      sidecarJsonPath: jsonPath,
-    };
   }
 
   /**

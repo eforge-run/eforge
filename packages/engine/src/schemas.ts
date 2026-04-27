@@ -166,6 +166,12 @@ export const recoveryVerdictSchema = z.object({
   suggestedSuccessorPrd: z.string().optional().describe(
     'Full successor PRD content when verdict is split — must be complete and self-contained',
   ),
+  partial: z.boolean().optional().describe(
+    'When true, the recovery analysis was based on partial context (state.json was missing)',
+  ),
+  recoveryError: z.string().optional().describe(
+    'Error message when recovery failed or context was incomplete',
+  ),
 });
 
 // ---------------------------------------------------------------------------

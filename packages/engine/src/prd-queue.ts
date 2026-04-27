@@ -14,6 +14,9 @@ import { z } from 'zod/v4';
 import { resolveDependencyGraph } from './plan.js';
 import { forgeCommit, retryOnLock } from './git.js';
 import { composeCommitMessage } from './model-tracker.js';
+import type { ModelTracker } from './model-tracker.js';
+import { writeRecoverySidecar } from './recovery/sidecar.js';
+import type { BuildFailureSummary, RecoveryVerdict } from './events.js';
 
 const exec = promisify(execFile);
 
@@ -306,6 +309,54 @@ export async function movePrdToSubdir(filePath: string, subdir: string, cwd: str
 
   await retryOnLock(() => exec('git', ['mv', '--', filePath, destPath], { cwd }), cwd);
   await forgeCommit(cwd, composeCommitMessage(`queue(${prdId}): move to ${subdir}`));
+}
+
+/**
+ * Move a failed PRD to `failed/` and commit the move + both recovery sidecar files
+ * (`.recovery.md` + `.recovery.json`) in a single atomic `forgeCommit` call.
+ *
+ * This is the inline-recovery path: the queue parent runs recovery synchronously
+ * after the child exits with a failure code, then calls this helper to produce
+ * exactly one commit that contains the `git mv` + both sidecar paths. No prior
+ * commit moves the PRD — the move and sidecars land atomically.
+ *
+ * @returns Absolute paths to the moved PRD and the two sidecar files.
+ */
+export async function moveAndCommitFailedWithSidecar(
+  filePath: string,
+  summary: BuildFailureSummary,
+  verdict: RecoveryVerdict,
+  modelTracker: ModelTracker | undefined,
+  cwd: string,
+): Promise<{ mdPath: string; jsonPath: string; destPath: string }> {
+  const dir = resolve(filePath, '..');
+  const destDir = resolve(dir, 'failed');
+  await mkdir(destDir, { recursive: true });
+
+  const destPath = resolve(destDir, basename(filePath));
+  const prdId = basename(filePath, '.md');
+
+  // git mv: move the PRD file to failed/
+  await retryOnLock(() => exec('git', ['mv', '--', filePath, destPath], { cwd }), cwd);
+
+  // Write both sidecar files (atomic temp-then-rename inside writeRecoverySidecar)
+  const { mdPath, jsonPath } = await writeRecoverySidecar({
+    failedPrdDir: destDir,
+    prdId,
+    summary,
+    verdict,
+  });
+
+  // Stage both sidecar files
+  await retryOnLock(() => exec('git', ['add', '--', mdPath, jsonPath], { cwd }), cwd);
+
+  // Commit everything (git mv + both sidecars) in one forgeCommit
+  await forgeCommit(
+    cwd,
+    composeCommitMessage(`queue(${prdId}): failed - ${verdict.verdict}`, modelTracker),
+  );
+
+  return { mdPath, jsonPath, destPath };
 }
 
 /**

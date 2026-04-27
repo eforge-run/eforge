@@ -46,6 +46,8 @@ When choosing `split`, the `suggestedSuccessorPrd` must contain the **complete**
 - Sufficient context about the existing implementation (from `landedCommits` and `completedWork`) so the builder agent understands the starting point
 - Explicit out-of-scope notes for work already completed
 
+{{partialHint}}
+
 ## Output
 
 Emit exactly one `<recovery>` XML block. The verdict and confidence are attributes; all other fields are child elements.

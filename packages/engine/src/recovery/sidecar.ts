@@ -42,7 +42,7 @@ export async function writeRecoverySidecar({
 
   // --- JSON sidecar (machine contract) ---
   const jsonPayload = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     summary,
     verdict,
     generatedAt: new Date().toISOString(),
@@ -91,6 +91,10 @@ function buildMarkdown(
     '',
     `**${verdict.verdict.toUpperCase()}** (confidence: ${verdict.confidence})`,
     '',
+    ...(verdict.partial === true ? [
+      `**⚠ Partial summary** — context was incomplete: ${verdict.recoveryError ?? 'state.json was missing'}`,
+      '',
+    ] : []),
     '## Rationale',
     '',
     verdict.rationale,

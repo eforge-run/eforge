@@ -1,40 +1,61 @@
 /**
- * Integration tests for the daemon recovery trigger and HTTP routes.
+ * Tests for the new inline atomic recovery architecture.
+ *
+ * Architecture change: recovery now runs inline in the queue parent's finalize
+ * handler (no daemon polling loop). The PRD move + both sidecar files are
+ * committed atomically via moveAndCommitFailedWithSidecar. The daemon's
+ * POST /api/recover route still exists for manual backfill.
  *
  * Tests covered:
- * 1. Auto-trigger: when a plan:build:failed event is inserted after server start,
- *    the daemon spawns eforge recover with the correct setName and prdId.
- * 2. Idempotency: a second plan:build:failed event for the same prdId when a
- *    recovery sidecar already exists does NOT spawn a second recover process.
- * 3. No concurrent-build blocking: recovery spawn and a normal build spawn can
- *    both be called without either blocking the other.
- * 4. POST /api/recover: manual trigger route returns sessionId and pid.
- * 5. GET /api/recovery/sidecar: reads and returns sidecar files.
- * 6. DAEMON_API_VERSION is 7.
- * 7. API_ROUTES.recover and API_ROUTES.readRecoverySidecar are exported.
+ * 1. moveAndCommitFailedWithSidecar produces a single atomic commit with
+ *    the moved PRD + both sidecar paths.
+ * 2. Sidecar path uses prdId not planId (multi-plan scenario).
+ * 3. Recovery analyst parse error -> manual-verdict sidecar still written.
+ * 4. EforgeEngine.recover() with no state.json + populated event DB -> partial sidecar.
+ * 5. EforgeEngine.recover() with no state.json AND no event DB -> partial sidecar.
+ * 6. GET /api/recovery/sidecar reads v2 sidecar.
+ * 7. DAEMON_API_VERSION is 8.
+ * 8. POST /api/recover: manual trigger route returns sessionId and pid.
  *
  * Follows AGENTS.md conventions:
- * - No mocks. Real in-process HTTP server. Stub WorkerTracker (hand-crafted).
+ * - No mocks. Real git repos, real SQLite, stub harness for agents.
  * - useTempDir for filesystem cleanup.
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { writeFile, mkdir } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { writeFile, mkdir, readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { join, resolve } from 'node:path';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type WorkerTracker, type MonitorServer } from '@eforge-build/monitor/server';
+import { moveAndCommitFailedWithSidecar } from '@eforge-build/engine/prd-queue';
+import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { StubHarness } from './stub-harness.js';
 import {
   DAEMON_API_VERSION,
   API_ROUTES,
 } from '@eforge-build/client';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
+function initGitRepo(dir: string): void {
+  const opts = { cwd: dir };
+  execFileSync('git', ['init', '-b', 'main'], opts);
+  execFileSync('git', ['config', 'user.email', 'test@eforge.test'], opts);
+  execFileSync('git', ['config', 'user.name', 'Test'], opts);
+  execFileSync('git', ['commit', '--allow-empty', '-m', 'initial'], opts);
+}
+
+async function collectEvents(gen: AsyncGenerator<EforgeEvent>): Promise<EforgeEvent[]> {
+  const events: EforgeEvent[] = [];
+  for await (const event of gen) {
+    events.push(event);
+  }
+  return events;
 }
 
 interface SpawnCall {
@@ -66,7 +87,7 @@ function makeStubTracker(): { tracker: WorkerTracker; calls: SpawnCall[] } {
 }
 
 // ---------------------------------------------------------------------------
-// Test setup
+// Test setup for HTTP server tests
 // ---------------------------------------------------------------------------
 
 const makeTempDir = useTempDir();
@@ -77,18 +98,17 @@ let server: MonitorServer;
 let tracker: WorkerTracker;
 let spawnCalls: SpawnCall[];
 
-async function setupServer(failedPrdDir?: string): Promise<void> {
+async function setupServer(): Promise<void> {
   const { tracker: t, calls } = makeStubTracker();
   tracker = t;
   spawnCalls = calls;
 
   server = await startServer(
     openDatabase(dbPath),
-    0, // pick any free port
+    0,
     {
       strictPort: true,
       cwd: tmpDir,
-      failedPrdDir,
       workerTracker: tracker,
     },
   );
@@ -104,17 +124,17 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 6. DAEMON_API_VERSION is 7
+// 7. DAEMON_API_VERSION is 8
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 7', () => {
-    expect(DAEMON_API_VERSION).toBe(7);
+  it('is 8', () => {
+    expect(DAEMON_API_VERSION).toBe(8);
   });
 });
 
 // ---------------------------------------------------------------------------
-// 7. API_ROUTES exports
+// API_ROUTES exports
 // ---------------------------------------------------------------------------
 
 describe('API_ROUTES', () => {
@@ -128,12 +148,12 @@ describe('API_ROUTES', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. POST /api/recover — manual trigger
+// 8. POST /api/recover — manual trigger
 // ---------------------------------------------------------------------------
 
 describe('POST /api/recover', () => {
   beforeEach(async () => {
-    await setupServer(tmpDir);
+    await setupServer();
   });
 
   it('spawns recover with setName and prdId and returns sessionId + pid', async () => {
@@ -173,29 +193,36 @@ describe('POST /api/recover', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 5. GET /api/recovery/sidecar — read sidecar files
+// 6. GET /api/recovery/sidecar reads v2 sidecar
 // ---------------------------------------------------------------------------
 
 describe('GET /api/recovery/sidecar', () => {
   beforeEach(async () => {
-    await setupServer(tmpDir);
+    await setupServer();
   });
 
-  it('returns markdown and json sidecar content', async () => {
-    // Write fixture sidecar files directly in failedPrdDir (tmpDir), no setName subdir
-    await writeFile(resolve(tmpDir, 'plan-01.recovery.md'), '# Recovery Summary\nAll good.');
-    await writeFile(
-      resolve(tmpDir, 'plan-01.recovery.json'),
-      JSON.stringify({ verdict: 'retry', summary: 'retry is recommended', prdId: 'plan-01', setName: 'my-set', timestamp: '2024-01-01T00:00:00Z' }),
-    );
+  it('reads v2 sidecar (schemaVersion: 2, partial: true)', async () => {
+    // Create sidecar at the computed path: cwd/eforge/queue/failed/<prdId>.recovery.*
+    const failedDir = join(tmpDir, 'eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
 
-    const url = `http://localhost:${server.port}${API_ROUTES.readRecoverySidecar}?setName=my-set&prdId=plan-01`;
+    const v2Sidecar = {
+      schemaVersion: 2,
+      summary: { prdId: 'test-prd', setName: 'test-set', partial: true },
+      verdict: { verdict: 'manual', confidence: 'low', rationale: 'Missing context', completedWork: [], remainingWork: [], risks: [], partial: true, recoveryError: 'state.json was missing' },
+      generatedAt: new Date().toISOString(),
+    };
+    await writeFile(join(failedDir, 'test-prd.recovery.md'), '# Recovery Analysis: test-prd\n\nPartial summary.');
+    await writeFile(join(failedDir, 'test-prd.recovery.json'), JSON.stringify(v2Sidecar, null, 2));
+
+    const url = `http://localhost:${server.port}${API_ROUTES.readRecoverySidecar}?setName=test-set&prdId=test-prd`;
     const res = await fetch(url);
 
     expect(res.status).toBe(200);
-    const data = await res.json() as { markdown: string; json: { verdict: string } };
-    expect(data.markdown).toContain('Recovery Summary');
-    expect(data.json.verdict).toBe('retry');
+    const data = await res.json() as { markdown: string; json: typeof v2Sidecar };
+    expect(data.json.schemaVersion).toBe(2);
+    expect(data.json.verdict.partial).toBe(true);
+    expect(data.markdown).toContain('Recovery Analysis');
   });
 
   it('returns 404 when sidecar files do not exist', async () => {
@@ -212,195 +239,298 @@ describe('GET /api/recovery/sidecar', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 1. Auto-trigger on plan:build:failed
+// 1. moveAndCommitFailedWithSidecar creates single atomic commit
 // ---------------------------------------------------------------------------
 
-describe('auto-trigger on plan:build:failed', () => {
-  it('spawns recover when plan:build:failed event is inserted after server start', async () => {
-    const planOutputDir = resolve(tmpDir, 'plan-output');
-    await mkdir(planOutputDir, { recursive: true });
-    await setupServer(planOutputDir);
+describe('moveAndCommitFailedWithSidecar', () => {
+  const makeTestDir = useTempDir('eforge-inline-recovery-test-');
 
-    const db = openDatabase(dbPath);
-    try {
-      // Insert a run record (required for foreign key and getRun lookup)
-      db.insertRun({
-        id: 'run-auto-1',
-        sessionId: 'session-auto-1',
-        planSet: 'test-set',
-        command: 'build',
-        status: 'failed',
-        startedAt: new Date().toISOString(),
-        cwd: tmpDir,
-        pid: 99999,
-      });
+  it('produces a single commit with git mv + both sidecar files', async () => {
+    const dir = makeTestDir();
+    initGitRepo(dir);
 
-      // Insert the plan:build:failed event
-      db.insertEvent({
-        runId: 'run-auto-1',
-        type: 'plan:build:failed',
-        planId: 'plan-01',
-        data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-01', timestamp: new Date().toISOString() }),
-        timestamp: new Date().toISOString(),
-      });
-    } finally {
-      db.close();
-    }
+    // Create queue dir and PRD file, then commit it
+    const queueDir = join(dir, 'eforge', 'queue');
+    await mkdir(queueDir, { recursive: true });
+    const prdPath = join(queueDir, 'my-prd.md');
+    await writeFile(prdPath, '---\ntitle: My PRD\ncreated: 2024-01-01\n---\n\n# My PRD\n\nDo a thing.\n');
+    execFileSync('git', ['add', '--', prdPath], { cwd: dir });
+    execFileSync('git', ['commit', '-m', 'queue(my-prd): enqueue'], { cwd: dir });
 
-    // Wait for the poll loop to fire (200ms interval) — give it 3 cycles
-    await sleep(800);
+    const headBefore = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: dir }).toString().trim();
 
-    expect(spawnCalls.some((c) => c.command === 'recover' && c.args[0] === 'test-set' && c.args[1] === 'plan-01')).toBe(true);
+    // Build a stub summary and verdict
+    const summary = {
+      prdId: 'my-prd',
+      setName: 'test-set',
+      featureBranch: 'eforge/test-set',
+      baseBranch: 'main',
+      plans: [{ planId: 'plan-01', status: 'failed', error: 'Type error' }],
+      failingPlan: { planId: 'plan-01', errorMessage: 'Type error' },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: [],
+      failedAt: new Date().toISOString(),
+    };
+    const verdict = {
+      verdict: 'manual' as const,
+      confidence: 'low' as const,
+      rationale: 'Insufficient evidence.',
+      completedWork: [],
+      remainingWork: [],
+      risks: [],
+    };
+
+    const { mdPath, jsonPath, destPath } = await moveAndCommitFailedWithSidecar(
+      prdPath,
+      summary,
+      verdict,
+      undefined,
+      dir,
+    );
+
+    // Exactly one new commit since headBefore
+    const newCommits = execFileSync(
+      'git', ['log', '--format=%s', `${headBefore}..HEAD`],
+      { cwd: dir },
+    ).toString().trim().split('\n').filter(Boolean);
+    expect(newCommits).toHaveLength(1);
+    expect(newCommits[0]).toMatch(/^queue\(my-prd\): failed - manual/);
+
+    // Commit shows exactly 3 paths: renamed PRD + both sidecars
+    const nameStatus = execFileSync(
+      'git', ['show', '--name-status', '--format=', 'HEAD'],
+      { cwd: dir },
+    ).toString().trim().split('\n').filter(Boolean);
+
+    // Check renamed PRD
+    const renamedLines = nameStatus.filter(l => l.startsWith('R'));
+    expect(renamedLines).toHaveLength(1);
+    expect(renamedLines[0]).toContain('my-prd.md');
+
+    // Check both sidecar files are added
+    const addedLines = nameStatus.filter(l => l.startsWith('A'));
+    expect(addedLines).toHaveLength(2);
+    const addedPaths = addedLines.map(l => l.split('\t')[1]);
+    expect(addedPaths.some(p => p.endsWith('.recovery.md'))).toBe(true);
+    expect(addedPaths.some(p => p.endsWith('.recovery.json'))).toBe(true);
+
+    // Verify the sidecar JSON is v2
+    const sidecarJson = JSON.parse(await readFile(jsonPath, 'utf-8'));
+    expect(sidecarJson.schemaVersion).toBe(2);
+    expect(sidecarJson.verdict.verdict).toBe('manual');
+
+    // Verify the PRD moved to failed/
+    expect(destPath).toContain('failed');
+    expect(mdPath).toContain('.recovery.md');
+    expect(jsonPath).toContain('.recovery.json');
   });
 });
 
 // ---------------------------------------------------------------------------
-// 2. Idempotency: existing sidecar prevents re-spawn
+// 2. Sidecar path uses prdId not planId
 // ---------------------------------------------------------------------------
 
-describe('idempotency: existing sidecar prevents re-spawn', () => {
-  it('does not re-spawn recover when sidecar already exists', async () => {
-    const planOutputDir = resolve(tmpDir, 'plan-output');
-    await mkdir(planOutputDir, { recursive: true });
+describe('sidecar path uses prdId not planId', () => {
+  const makeTestDir = useTempDir('eforge-sidecar-path-test-');
 
-    // Write the sidecar before the server starts (simulating prior recovery run)
-    // Files live directly in failedPrdDir — no setName subdir
-    await writeFile(
-      resolve(planOutputDir, 'plan-02.recovery.json'),
-      JSON.stringify({ verdict: 'skip', summary: 'already recovered', prdId: 'plan-02', setName: 'test-set', timestamp: '2024-01-01T00:00:00Z' }),
-    );
+  it('writeRecoverySidecar uses prdId for filename, not planId', async () => {
+    const { writeRecoverySidecar } = await import('@eforge-build/engine/recovery/sidecar');
+    const dir = makeTestDir();
+    const failedDir = join(dir, 'failed');
 
-    await setupServer(planOutputDir);
+    const summary = {
+      prdId: 'my-feature-prd',
+      setName: 'test-set',
+      featureBranch: 'eforge/test-set',
+      baseBranch: 'main',
+      plans: [
+        { planId: 'plan-01', status: 'merged' },
+        { planId: 'plan-02', status: 'merged' },
+        { planId: 'plan-03', status: 'failed', error: 'Compilation error' },
+      ],
+      failingPlan: { planId: 'plan-03', errorMessage: 'Compilation error' },
+      landedCommits: [],
+      diffStat: '',
+      modelsUsed: [],
+      failedAt: new Date().toISOString(),
+    };
+    const verdict = {
+      verdict: 'manual' as const,
+      confidence: 'low' as const,
+      rationale: 'See plan-03 failure.',
+      completedWork: ['plan-01 merged', 'plan-02 merged'],
+      remainingWork: ['plan-03: compilation error'],
+      risks: [],
+    };
 
-    const db = openDatabase(dbPath);
-    try {
-      db.insertRun({
-        id: 'run-idempotent-1',
-        sessionId: 'session-idempotent-1',
-        planSet: 'test-set',
-        command: 'build',
-        status: 'failed',
-        startedAt: new Date().toISOString(),
-        cwd: tmpDir,
-        pid: 99999,
-      });
+    const { mdPath, jsonPath } = await writeRecoverySidecar({ failedPrdDir: failedDir, prdId: 'my-feature-prd', summary, verdict });
 
-      // First failed event
-      db.insertEvent({
-        runId: 'run-idempotent-1',
-        type: 'plan:build:failed',
-        planId: 'plan-02',
-        data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-02', timestamp: new Date().toISOString() }),
-        timestamp: new Date().toISOString(),
-      });
-    } finally {
-      db.close();
-    }
+    // Sidecar names use prdId, not planId
+    expect(mdPath).toContain('my-feature-prd.recovery.md');
+    expect(jsonPath).toContain('my-feature-prd.recovery.json');
 
-    // Wait for poll loop
-    await sleep(800);
+    // No plan-03 sidecar exists
+    const { existsSync } = await import('node:fs');
+    expect(existsSync(join(failedDir, 'plan-03.recovery.json'))).toBe(false);
+    expect(existsSync(join(failedDir, 'plan-03.recovery.md'))).toBe(false);
 
-    // Sidecar already exists — recover should NOT have been spawned
-    const recoverCalls = spawnCalls.filter((c) => c.command === 'recover' && c.args[1] === 'plan-02');
-    expect(recoverCalls).toHaveLength(0);
-  });
-
-  it('does not re-spawn on second plan:build:failed event when sidecar was created between events', async () => {
-    const planOutputDir = resolve(tmpDir, 'plan-output');
-    await mkdir(planOutputDir, { recursive: true });
-    await setupServer(planOutputDir);
-
-    const db = openDatabase(dbPath);
-    try {
-      db.insertRun({
-        id: 'run-idempotent-2',
-        sessionId: 'session-idempotent-2',
-        planSet: 'test-set',
-        command: 'build',
-        status: 'failed',
-        startedAt: new Date().toISOString(),
-        cwd: tmpDir,
-        pid: 99999,
-      });
-
-      // First failed event — no sidecar yet, should spawn
-      db.insertEvent({
-        runId: 'run-idempotent-2',
-        type: 'plan:build:failed',
-        planId: 'plan-03',
-        data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-03', timestamp: new Date().toISOString() }),
-        timestamp: new Date().toISOString(),
-      });
-    } finally {
-      db.close();
-    }
-
-    // Wait for first spawn
-    await sleep(800);
-
-    const firstSpawnCount = spawnCalls.filter((c) => c.command === 'recover' && c.args[1] === 'plan-03').length;
-    expect(firstSpawnCount).toBe(1);
-
-    // Now write the sidecar (simulating recovery agent completing)
-    // Files live directly in failedPrdDir — no setName subdir
-    await writeFile(
-      resolve(planOutputDir, 'plan-03.recovery.json'),
-      JSON.stringify({ verdict: 'fixed', summary: 'recovery done', prdId: 'plan-03', setName: 'test-set', timestamp: new Date().toISOString() }),
-    );
-
-    // Insert second failed event for the same prdId
-    const db2 = openDatabase(dbPath);
-    try {
-      db2.insertEvent({
-        runId: 'run-idempotent-2',
-        type: 'plan:build:failed',
-        planId: 'plan-03',
-        data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-03', timestamp: new Date().toISOString() }),
-        timestamp: new Date().toISOString(),
-      });
-    } finally {
-      db2.close();
-    }
-
-    // Wait for second poll cycle
-    await sleep(800);
-
-    // Should still be exactly 1 (no second spawn)
-    const secondSpawnCount = spawnCalls.filter((c) => c.command === 'recover' && c.args[1] === 'plan-03').length;
-    expect(secondSpawnCount).toBe(1);
+    // prdId sidecar exists
+    expect(existsSync(join(failedDir, 'my-feature-prd.recovery.json'))).toBe(true);
   });
 });
 
 // ---------------------------------------------------------------------------
-// 3. Recovery spawn does not block a concurrent build spawn
+// 3. Recovery analyst parse error -> manual-verdict sidecar still written
 // ---------------------------------------------------------------------------
 
-describe('recovery and build spawns do not block each other', () => {
-  it('both recover and enqueue spawns complete independently', async () => {
-    const planOutputDir = resolve(tmpDir, 'plan-output');
-    await mkdir(planOutputDir, { recursive: true });
-    await setupServer(planOutputDir);
+describe('recovery analyst parse error -> manual-verdict sidecar', () => {
+  const makeTestDir = useTempDir('eforge-parse-error-test-');
 
-    // Trigger a manual recover spawn
-    const recoverRes = await fetch(`http://localhost:${server.port}${API_ROUTES.recover}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ setName: 'set-a', prdId: 'plan-x' }),
+  it('writes sidecar with manual verdict and recoveryError when analyst returns garbage', async () => {
+    const dir = makeTestDir();
+    initGitRepo(dir);
+
+    // Create failed PRD
+    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nDo a thing.', 'utf-8');
+
+    // Create state.json so buildFailureSummary has something to work with
+    await mkdir(join(dir, '.eforge'), { recursive: true });
+    const state = {
+      setName: 'test-set',
+      status: 'failed',
+      baseBranch: 'main',
+      featureBranch: 'eforge/test-set',
+      startedAt: new Date().toISOString(),
+      plans: { 'plan-01': { status: 'failed', error: 'type error' } },
+      completedPlans: [],
+    };
+    await writeFile(join(dir, '.eforge', 'state.json'), JSON.stringify(state, null, 2), 'utf-8');
+
+    // Stub that returns unparseable garbage
+    const stub = new StubHarness([{ text: 'This is unparseable garbage with no XML block.' }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events = await collectEvents(engine.recover('test-set', 'test-prd'));
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    expect(sidecarContent.verdict.verdict).toBe('manual');
+    expect(sidecarContent.verdict.recoveryError).toBeDefined();
+    expect(sidecarContent.verdict.recoveryError).toBeTruthy();
+    expect(sidecarContent.schemaVersion).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 4. Manual EforgeEngine.recover() with no state.json + populated event db
+// ---------------------------------------------------------------------------
+
+describe('EforgeEngine.recover() with no state.json + populated event db', () => {
+  const makeTestDir = useTempDir('eforge-partial-eventdb-test-');
+
+  it('produces partial sidecar with partial:true and failingPlan.planId from events', async () => {
+    const dir = makeTestDir();
+    initGitRepo(dir);
+
+    // Create failed PRD (no state.json)
+    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nDo a thing.', 'utf-8');
+
+    // Create monitor DB with hand-rolled events
+    const dbDir = join(dir, '.eforge');
+    await mkdir(dbDir, { recursive: true });
+    const monitorDbPath = join(dbDir, 'monitor.db');
+    const db = openDatabase(monitorDbPath);
+    db.insertRun({
+      id: 'run-partial-01',
+      sessionId: 'session-partial-01',
+      planSet: 'test-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date().toISOString(),
+      cwd: dir,
+      pid: 99999,
     });
-    expect(recoverRes.status).toBe(200);
-
-    // Trigger a normal enqueue spawn via the API
-    const enqueueRes = await fetch(`http://localhost:${server.port}${API_ROUTES.enqueue}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ source: 'my-prd.md' }),
+    db.insertEvent({
+      runId: 'run-partial-01',
+      type: 'plan:build:failed',
+      planId: 'plan-01-foundation',
+      data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-01-foundation', error: 'Type error in foundation' }),
+      timestamp: new Date().toISOString(),
     });
-    expect(enqueueRes.status).toBe(200);
+    db.insertEvent({
+      runId: 'run-partial-01',
+      type: 'agent:start',
+      data: JSON.stringify({ type: 'agent:start', model: 'claude-sonnet-4-5', agent: 'builder' }),
+      timestamp: new Date().toISOString(),
+    });
+    db.close();
 
-    // Both spawns should have been recorded
-    const recoverCall = spawnCalls.find((c) => c.command === 'recover');
-    const enqueueCall = spawnCalls.find((c) => c.command === 'enqueue');
-    expect(recoverCall).toBeDefined();
-    expect(enqueueCall).toBeDefined();
+    // Stub that returns a valid manual verdict (partial hint nudges analyst)
+    const manualVerdictText = `<recovery verdict="manual" confidence="low">
+  <rationale>Partial context — state.json was missing, summary synthesized from event DB.</rationale>
+  <completedWork></completedWork>
+  <remainingWork><item>All work remains</item></remainingWork>
+  <risks><item>Root cause unknown without full state</item></risks>
+</recovery>`;
+    const stub = new StubHarness([{ text: manualVerdictText }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events = await collectEvents(engine.recover('test-set', 'test-prd'));
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    expect(sidecarContent.summary.partial).toBe(true);
+    // failingPlan should come from the event DB event
+    expect(sidecarContent.summary.failingPlan.planId).toBe('plan-01-foundation');
+    expect(sidecarContent.schemaVersion).toBe(2);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 5. EforgeEngine.recover() with no state.json AND no event db
+// ---------------------------------------------------------------------------
+
+describe('EforgeEngine.recover() with no state.json AND no event db', () => {
+  const makeTestDir = useTempDir('eforge-no-context-test-');
+
+  it('produces partial sidecar with manual verdict and recoveryError when context is fully absent', async () => {
+    const dir = makeTestDir();
+    initGitRepo(dir);
+
+    // Create failed PRD — no state.json, no event DB
+    const failedDir = join(dir, 'eforge', 'queue', 'failed');
+    await mkdir(failedDir, { recursive: true });
+    await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nDo a thing.', 'utf-8');
+
+    // Stub that returns garbage to trigger fallback manual verdict with recoveryError
+    const stub = new StubHarness([{ text: 'Completely unparseable output with no XML.' }]);
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: stub });
+
+    const events = await collectEvents(engine.recover('test-set', 'test-prd'));
+
+    const complete = events.find(e => e.type === 'recovery:complete') as Extract<EforgeEvent, { type: 'recovery:complete' }> | undefined;
+    expect(complete).toBeDefined();
+    expect(complete!.sidecarJsonPath).toBeDefined();
+
+    const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
+    // Summary is partial (no state.json, no event DB)
+    expect(sidecarContent.summary.partial).toBe(true);
+    // Fallback verdict is manual with recoveryError (parse failure)
+    expect(sidecarContent.verdict.verdict).toBe('manual');
+    expect(sidecarContent.verdict.recoveryError).toBeDefined();
+    expect(typeof sidecarContent.verdict.recoveryError).toBe('string');
+    expect(sidecarContent.verdict.recoveryError.length).toBeGreaterThan(0);
+    expect(sidecarContent.schemaVersion).toBe(2);
   });
 });

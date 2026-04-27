@@ -361,6 +361,8 @@ export interface BuildFailureSummary {
   diffStat: string;
   modelsUsed: string[];
   failedAt: string;
+  /** When true, the summary was synthesized from partial context (state.json was missing). */
+  partial?: boolean;
 }
 
 export type QueueEvent =
