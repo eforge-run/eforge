@@ -14,8 +14,7 @@
  * 4. EforgeEngine.recover() with no state.json + populated event DB -> partial sidecar.
  * 5. EforgeEngine.recover() with no state.json AND no event DB -> partial sidecar.
  * 6. GET /api/recovery/sidecar reads v2 sidecar.
- * 7. DAEMON_API_VERSION is 8.
- * 8. POST /api/recover: manual trigger route returns sessionId and pid.
+ * 7. POST /api/recover: manual trigger route returns sessionId and pid.
  *
  * Follows AGENTS.md conventions:
  * - No mocks. Real git repos, real SQLite, stub harness for agents.
@@ -32,10 +31,7 @@ import { startServer, type WorkerTracker, type MonitorServer } from '@eforge-bui
 import { moveAndCommitFailedWithSidecar } from '@eforge-build/engine/prd-queue';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { StubHarness } from './stub-harness.js';
-import {
-  DAEMON_API_VERSION,
-  API_ROUTES,
-} from '@eforge-build/client';
+import { API_ROUTES } from '@eforge-build/client';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 
 // ---------------------------------------------------------------------------
@@ -124,16 +120,6 @@ afterEach(async () => {
 });
 
 // ---------------------------------------------------------------------------
-// 7. DAEMON_API_VERSION is 8
-// ---------------------------------------------------------------------------
-
-describe('DAEMON_API_VERSION', () => {
-  it('is 9', () => {
-    expect(DAEMON_API_VERSION).toBe(9);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // API_ROUTES exports
 // ---------------------------------------------------------------------------
 
@@ -148,7 +134,7 @@ describe('API_ROUTES', () => {
 });
 
 // ---------------------------------------------------------------------------
-// 8. POST /api/recover — manual trigger
+// 7. POST /api/recover — manual trigger
 // ---------------------------------------------------------------------------
 
 describe('POST /api/recover', () => {
