@@ -1,6 +1,6 @@
 {
   "name": "@eforge-build/eforge",
-  "version": "0.7.1",
+  "version": "0.7.2",
   "description": "Autonomous plan-build-review CLI for code generation",
   "license": "Apache-2.0",
   "type": "module",
