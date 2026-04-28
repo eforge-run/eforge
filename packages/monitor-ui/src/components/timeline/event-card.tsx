@@ -37,7 +37,7 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type.endsWith(':skipped')) return { cls: 'info', label: type };
   if (type.endsWith(':progress')) return { cls: 'progress', label: type };
   if (type.startsWith('agent:')) return { cls: 'agent', label: type };
-  if (type === 'planning:skip' || type === 'plan:profile' || type === 'planning:clarification') return { cls: 'info', label: type };
+  if (type === 'planning:skip' || type === 'planning:clarification') return { cls: 'info', label: type };
   return { cls: 'info', label: type };
 }
 
@@ -50,7 +50,6 @@ function eventSummary(event: EforgeEvent): string {
       return `Planning from: ${display}`;
     }
     case 'planning:skip': return `Skipped: ${event.reason}`;
-    case 'plan:profile' as string: return `Profile: ${(event as unknown as { profileName: string; rationale: string }).profileName} — ${(event as unknown as { profileName: string; rationale: string }).rationale}`;
     case 'planning:clarification': return `${event.questions?.length || 0} clarification question(s)`;
     case 'planning:progress': return event.message;
     case 'planning:complete': return `${event.plans?.length || 0} plan(s) generated`;
@@ -130,28 +129,6 @@ function eventSummary(event: EforgeEvent): string {
 
 function eventDetail(event: EforgeEvent): string | null {
   switch (event.type) {
-    case 'plan:profile' as string: {
-      const _ev = event as unknown as { config?: { compile?: string[]; agents?: Record<string, Record<string, unknown>> }; rationale?: string };
-      if (!_ev.config) return _ev.rationale ?? null;
-      const parts: string[] = [];
-      {
-        const c = _ev.config;
-        parts.push(`Compile: ${c.compile?.join(' → ') ?? '—'}`);
-        const agents = Object.entries((c as Record<string, unknown>)['agents'] as Record<string, Record<string, unknown>> ?? {});
-        if (agents.length > 0) {
-          parts.push('Agents:');
-          for (const [role, cfg] of agents) {
-            const fields = [];
-            if (cfg.maxTurns) fields.push(`turns=${cfg.maxTurns}`);
-            if (cfg.tools) fields.push(`tools=${cfg.tools}`);
-            if (cfg.model) fields.push(`model=${cfg.model}`);
-            if (cfg.prompt) fields.push(`prompt=${cfg.prompt}`);
-            if (fields.length > 0) parts.push(`  ${role}: ${fields.join(', ')}`);
-          }
-        }
-      }
-      return parts.join('\n');
-    }
     case 'planning:clarification':
       return event.questions?.map((q) => `Q: ${q.question}${q.context ? '\n   ' + q.context : ''}`).join('\n\n') ?? null;
     case 'planning:review:complete':

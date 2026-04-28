@@ -845,6 +845,10 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.red(`  ✗ Recovery apply failed: ${event.message}`));
       break;
 
+    case 'session:profile':
+      // Profile info is informational; no output needed in CLI display
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

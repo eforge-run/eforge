@@ -4,7 +4,7 @@ import { formatDuration, formatNumber } from '@/lib/format';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import type { AgentThread, StoredEvent } from '@/lib/reducer';
-import type { AgentRole, PipelineStage, ReviewIssue, ProfileInfo, OrchestrationConfig, BuildStageSpec } from '@/lib/types';
+import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec } from '@/lib/types';
 
 const REVIEW_AGENTS = new Set([
   'reviewer', 'review-fixer', 'plan-reviewer', 'architecture-reviewer', 'cohesion-reviewer',
@@ -180,48 +180,6 @@ function StageOverview({ compile, activeStages, completedStages, hoveredStage, o
           <StagePill stage={stage} status={getStageStatus(stage, activeStages, completedStages)} hoveredStage={hoveredStage} onStageHover={onStageHover} />
         </div>
       ))}
-    </div>
-  );
-}
-
-function ProfileHeader({ profileInfo }: {
-  profileInfo: ProfileInfo;
-}) {
-  const tier = getTierColor(profileInfo.profileName);
-  return (
-    <div className="flex flex-col gap-2 mb-3">
-      <div className="flex items-center gap-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className={`px-2.5 py-1 rounded-md text-xs font-semibold border cursor-default ${tier.bg} ${tier.text} ${tier.border}`}>
-              {profileInfo.profileName}
-            </span>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-xs">
-            <div>{profileInfo.rationale}</div>
-            {!profileInfo.config.extends && profileInfo.config.description && (
-              <div className="mt-1 opacity-70">{profileInfo.config.description}</div>
-            )}
-          </TooltipContent>
-        </Tooltip>
-        {profileInfo.config.extends && profileInfo.config.description && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <span className={`text-[11px] cursor-default ${getTierColor(profileInfo.config.extends).text}`}>
-                extends <span className="font-medium">{profileInfo.config.extends}</span>
-              </span>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs">
-              {profileInfo.config.description}
-            </TooltipContent>
-          </Tooltip>
-        )}
-        {profileInfo.config.extends && !profileInfo.config.description && (
-          <span className={`text-[11px] cursor-default ${getTierColor(profileInfo.config.extends).text}`}>
-            extends <span className="font-medium">{profileInfo.config.extends}</span>
-          </span>
-        )}
-      </div>
     </div>
   );
 }
@@ -481,14 +439,13 @@ interface ThreadPipelineProps {
   endTime: number | null;
   planStatuses: Record<string, PipelineStage>;
   reviewIssues?: Record<string, ReviewIssue[]>;
-  profileInfo?: ProfileInfo | null;
   events: StoredEvent[];
   orchestration?: OrchestrationConfig | null;
   prdSource?: { label: string; content: string } | null;
   planArtifacts?: Array<{ id: string; name: string; body: string }>;
 }
 
-export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, profileInfo, events, orchestration, prdSource, planArtifacts }: ThreadPipelineProps) {
+export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const entries = Object.entries(planStatuses);
 
@@ -594,23 +551,19 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
     }
 
     return { activeStages: active, completedStages: completed };
-  }, [agentThreads, profileInfo]);
+  }, [agentThreads]);
 
-  // Show nothing if there are no threads and no profile info
-  if (!hasThreadContent && !profileInfo) return null;
+  // Show nothing if there are no threads
+  if (!hasThreadContent) return null;
 
   return (
     <TooltipProvider delayDuration={0}>
       <div>
-        {/* Header: profile badge + description, or fallback "Pipeline" label */}
-        {profileInfo ? (
-          <ProfileHeader profileInfo={profileInfo} />
-        ) : (
-          <h3 className="text-[11px] uppercase tracking-wider text-text-dim mb-2 flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue" />
-            Pipeline
-          </h3>
-        )}
+        {/* Header */}
+        <h3 className="text-[11px] uppercase tracking-wider text-text-dim mb-2 flex items-center gap-1.5">
+          <span className="w-1.5 h-1.5 rounded-full bg-blue" />
+          Pipeline
+        </h3>
 
         {/* Thread timeline rows */}
         {hasThreadContent && (
@@ -630,7 +583,6 @@ export function ThreadPipeline({ agentThreads, startTime, endTime, planStatuses,
                   onStageHover={setHoveredStage}
                   events={events}
                   prdSource={prdSource}
-                  compileStages={profileInfo?.config.compile}
                   compileActiveStages={activeStages}
                   compileCompletedStages={completedStages}
                 />

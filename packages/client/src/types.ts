@@ -45,7 +45,6 @@ export interface QueueItem {
 export interface SessionMetadata {
   planCount: number | null;
   baseProfile: string | null;
-  backend: string | null;
 }
 
 // GET /api/runs (array of these)

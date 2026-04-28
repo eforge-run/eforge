@@ -60,20 +60,14 @@ export interface RunInfo {
   sessionId?: string;
 }
 
-export interface ProfileConfig {
-  description: string;
-  extends?: string;
-  compile: string[];
-}
-
-export interface ProfileInfo {
-  profileName: string;
-  rationale: string;
-  config: ProfileConfig;
-}
+export type SessionProfile = {
+  profileName: string | null;
+  source: 'local' | 'user-local' | 'missing' | 'none';
+  scope: 'project' | 'user' | null;
+  config: unknown | null;
+};
 
 export interface SessionMetadata {
   planCount: number | null;
   baseProfile: string | null;
-  harness: string | null;
 }

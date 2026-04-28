@@ -853,7 +853,7 @@ export async function loadUserConfig(
  * Consumers with an active event stream should yield `config:warning` events;
  * bootstrap consumers (CLI startup, daemon startup) should write to stderr.
  */
-export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; warnings: string[] }> {
+export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; warnings: string[]; profile: { name: string | null; source: ActiveProfileSource; scope: 'project' | 'user' | null; config: PartialEforgeConfig | null } }> {
   const globalConfig = await loadUserConfig();
   const allWarnings: string[] = [];
 
@@ -911,15 +911,21 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
 
   // Resolve and merge active profile, if present
   let profileConfig: PartialEforgeConfig | null = null;
+  let resolvedProfileName: string | null = null;
+  let resolvedProfileSource: ActiveProfileSource = 'none';
+  let resolvedProfileScope: 'project' | 'user' | null = null;
   if (configPath) {
     const configDir = dirname(configPath);
     try {
-      const { name, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
+      const { name, source, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
       allWarnings.push(...warnings);
+      resolvedProfileName = name;
+      resolvedProfileSource = source;
       if (name) {
         const result = await loadProfile(configDir, name);
         if (result) {
           profileConfig = result.profile;
+          resolvedProfileScope = result.scope;
         }
       }
     } catch {
@@ -929,7 +935,16 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
 
   const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
   const merged = profileConfig ? mergePartialConfigs(baseMerged, profileConfig) : baseMerged;
-  return { config: resolveConfig(merged), warnings: allWarnings };
+  return {
+    config: resolveConfig(merged),
+    warnings: allWarnings,
+    profile: {
+      name: resolvedProfileName,
+      source: resolvedProfileSource,
+      scope: resolvedProfileScope,
+      config: profileConfig,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
