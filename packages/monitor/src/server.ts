@@ -729,6 +729,21 @@ export async function startServer(
       loadFromDir(resolve(queueDir, 'skipped'), 'skipped'),
     ]);
 
+    // Post-filter dependsOn to mirror resolveQueueOrder runtime semantics:
+    // terminal items expose no dependsOn; live items retain only deps on other live items.
+    const liveIds = new Set(
+      items.filter((i) => i.status === 'pending' || i.status === 'running').map((i) => i.id),
+    );
+    for (const item of items) {
+      if (item.status === 'failed' || item.status === 'skipped') {
+        delete item.dependsOn;
+      } else if (item.dependsOn) {
+        const filtered = item.dependsOn.filter((dep) => liveIds.has(dep));
+        if (filtered.length === 0) delete item.dependsOn;
+        else item.dependsOn = filtered;
+      }
+    }
+
     sendJson(res, items);
   }
 

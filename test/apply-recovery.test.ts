@@ -256,6 +256,47 @@ describe('applyRecovery — split', () => {
     expect(body).toContain('Co-Authored-By: forged-by-eforge');
   });
 
+  it('strips agent-emitted frontmatter and rebuilds clean frontmatter with no depends_on', async () => {
+    const dir = makeTempDir();
+    const prdId = 'test-split-frontmatter-strip';
+    seedGitRepo(dir);
+    await seedFailedPrd(dir, prdId, 'split', {
+      suggestedSuccessorPrd: [
+        '---',
+        'title: Wrong Title',
+        'depends_on: ["the-failed-prd-id"]',
+        '---',
+        '',
+        '# Real Title',
+        '',
+        'Body content here.',
+      ].join('\n'),
+    });
+
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
+    const { result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
+
+    // Successor ID should come from the body heading, not the agent frontmatter
+    expect(result.successorPrdId).toBe('real-title');
+
+    // Successor file should exist
+    const successorPath = join(dir, 'eforge', 'queue', 'real-title.md');
+    expect(await pathExists(successorPath)).toBe(true);
+
+    const successorContent = await readFile(successorPath, 'utf-8');
+
+    // Frontmatter should have title from the H1 heading
+    expect(successorContent).toContain('title: Real Title');
+
+    // Frontmatter must not contain depends_on
+    expect(successorContent).not.toMatch(/depends_on:/);
+
+    // Body section (after trailing ---) must not begin with ---
+    const fmEnd = successorContent.indexOf('\n---\n', successorContent.indexOf('---'));
+    const bodySection = successorContent.slice(fmEnd + 5).replace(/^\s+/, '');
+    expect(bodySection).not.toMatch(/^---/);
+  });
+
   it('derives successor ID from the first heading', async () => {
     const dir = makeTempDir();
     const prdId = 'test-split-slug';

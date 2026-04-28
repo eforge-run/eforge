@@ -69,6 +69,8 @@ Example — manual verdict (safe default when evidence is unclear):
 </recovery>
 ```
 
+Emit the PRD body only - do not include YAML frontmatter (`--- ... ---`). The system writes frontmatter automatically.
+
 Example — split verdict with successor PRD:
 
 ```
