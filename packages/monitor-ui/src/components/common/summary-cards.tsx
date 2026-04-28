@@ -3,6 +3,8 @@ import { CheckCircle2, XCircle, Loader2, Clock, Zap, DollarSign, Layers, Message
 import { formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { AnimatedCounter } from './animated-counter';
+import type { SessionProfile } from '@/lib/types';
+import { ProfileBadge } from '@/components/profile/profile-badge';
 
 interface SummaryCardsProps {
   duration: string;
@@ -20,7 +22,7 @@ interface SummaryCardsProps {
   reviewWarning: number;
   isComplete?: boolean;
   isFailed?: boolean;
-  harness?: string | null;
+  profile?: SessionProfile | null;
 }
 
 function StatGroup({ children }: { children: React.ReactNode }) {
@@ -47,7 +49,7 @@ export function SummaryCards({
   reviewWarning,
   isComplete,
   isFailed,
-  harness,
+  profile,
 }: SummaryCardsProps) {
   const statusAccent = isFailed ? 'red' : isComplete ? 'green' : 'blue';
   const statusIcon = isFailed
@@ -72,7 +74,7 @@ export function SummaryCards({
         )}>
           {statusLabel}
         </span>
-        {harness && <span className="text-text-dim text-[10px]">{harness}</span>}
+        {profile?.profileName && <ProfileBadge profile={profile} />}
       </StatGroup>
 
       <Separator />

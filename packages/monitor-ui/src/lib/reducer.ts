@@ -21,7 +21,7 @@
  * (`fileChanges: new Map()`, etc.). Use when the session changes to `null` or
  * when the hook is cleaning up.
  */
-import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, ProfileInfo, ReviewIssue } from './types';
+import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, SessionProfile, ReviewIssue } from './types';
 import type { PipelineStage } from './types';
 import { formatDuration, formatThinking } from './format';
 
@@ -77,10 +77,9 @@ export interface RunState {
   expeditionModules: ExpeditionModule[];
   moduleStatuses: Record<string, ModuleStatus>;
   earlyOrchestration: OrchestrationConfig | null;
-  profileInfo: ProfileInfo | null;
+  profile: SessionProfile | null;
   endTime: number | null;
   mergeCommits: Record<string, string>;
-  harness: string | null;
   liveAgentUsage: Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number; turns: number }>;
   enqueueStatus: 'running' | 'complete' | 'failed' | null;
   enqueueTitle: string | null;
@@ -104,10 +103,9 @@ export const initialRunState: RunState = {
   expeditionModules: [],
   moduleStatuses: {},
   earlyOrchestration: null,
-  profileInfo: null,
+  profile: null,
   endTime: null,
   mergeCommits: {},
-  harness: null,
   liveAgentUsage: {},
   enqueueStatus: null,
   enqueueTitle: null,
@@ -139,9 +137,8 @@ function processEvent(
     expeditionModules: ExpeditionModule[];
     moduleStatuses: Record<string, ModuleStatus>;
     earlyOrchestration: OrchestrationConfig | null;
-    profileInfo: ProfileInfo | null;
+    profile: SessionProfile | null;
     mergeCommits: Record<string, string>;
-    harness: string | null;
     liveAgentUsage: Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number; turns: number }>;
     enqueueStatus: 'running' | 'complete' | 'failed' | null;
     enqueueTitle: string | null;
@@ -294,13 +291,12 @@ function processEvent(
     state.moduleStatuses[event.moduleId] = 'complete';
   }
 
+  if (event.type === 'session:profile') {
+    state.profile = { profileName: event.profileName, source: event.source, scope: event.scope, config: event.config };
+  }
+
   // Agent thread tracking
   if (event.type === 'agent:start' && 'timestamp' in event && event.timestamp) {
-    // Set session-level harness from first agent:start using the harness field
-    if (state.harness === null) {
-      const harnessVal = ('harness' in event ? (event as { harness?: string }).harness : undefined);
-      state.harness = harnessVal ?? 'unknown';
-    }
     state.agentThreads.push({
       agentId: event.agentId,
       agent: event.agent,
@@ -414,7 +410,7 @@ function processEvent(
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profileInfo: null, mergeCommits: {}, harness: null, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null };
 
     case 'BATCH_LOAD': {
       const acc = {
@@ -434,9 +430,8 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         expeditionModules: [] as ExpeditionModule[],
         moduleStatuses: {} as Record<string, ModuleStatus>,
         earlyOrchestration: null as OrchestrationConfig | null,
-        profileInfo: null as ProfileInfo | null,
+        profile: null as SessionProfile | null,
         mergeCommits: {} as Record<string, string>,
-        harness: null as string | null,
         liveAgentUsage: {} as Record<string, { input: number; output: number; cacheRead: number; cacheCreation: number; cost: number; turns: number }>,
         enqueueStatus: null as 'running' | 'complete' | 'failed' | null,
         enqueueTitle: null as string | null,
@@ -474,7 +469,7 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
         expeditionModules: state.expeditionModules,
         moduleStatuses: { ...state.moduleStatuses },
         earlyOrchestration: state.earlyOrchestration,
-        profileInfo: state.profileInfo,
+        profile: state.profile,
         mergeCommits: { ...state.mergeCommits },
         liveAgentUsage: { ...state.liveAgentUsage },
       };

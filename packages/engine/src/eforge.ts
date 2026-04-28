@@ -140,10 +140,13 @@ export class EforgeEngine {
   private readonly onApproval?: EforgeEngineOptions['onApproval'];
   /** Config warnings collected during loadConfig — emitted as config:warning events. */
   private readonly configWarnings: string[];
+  /** Profile data collected during loadConfig — emitted as session:profile event. */
+  private readonly configProfile: { name: string | null; source: 'local' | 'user-local' | 'missing' | 'none'; scope: 'project' | 'user' | null; config: unknown | null };
 
-  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = []) {
+  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'user-local' | 'missing' | 'none'; scope: 'project' | 'user' | null; config: unknown | null }) {
     this.config = config;
     this.configWarnings = configWarnings;
+    this.configProfile = configProfile ?? { name: null, source: 'none', scope: null, config: null };
     this.cwd = options.cwd ?? process.cwd();
     // agentRuntimes is always resolved to a registry by create() before reaching the constructor
     this.agentRuntimes = options.agentRuntimes as AgentRuntimeRegistry;
@@ -162,7 +165,7 @@ export class EforgeEngine {
    */
   static async create(options: EforgeEngineOptions = {}): Promise<EforgeEngine> {
     const cwd = options.cwd ?? process.cwd();
-    const { config: loadedConfig, warnings: configWarnings } = await loadConfig(cwd);
+    const { config: loadedConfig, warnings: configWarnings, profile: configProfile } = await loadConfig(cwd);
     let config = loadedConfig;
 
     if (options.config) {
@@ -206,7 +209,7 @@ export class EforgeEngine {
     }
     options = { ...options, agentRuntimes };
 
-    return new EforgeEngine(config, options, configWarnings);
+    return new EforgeEngine(config, options, configWarnings, configProfile);
   }
 
   /**
@@ -224,6 +227,9 @@ export class EforgeEngine {
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Compile complete';
+
+    // Emit profile info before config warnings
+    yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
 
     // Emit any config warnings collected during engine creation
     for (const warning of this.configWarnings) {
@@ -471,6 +477,9 @@ export class EforgeEngine {
 
     let status: 'completed' | 'failed' = 'completed';
     let summary = 'Build complete';
+
+    // Emit profile info before config warnings
+    yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
 
     // Emit any config warnings collected during engine creation
     for (const warning of this.configWarnings) {
@@ -1362,6 +1371,15 @@ export class EforgeEngine {
           sessionId: prdSessionId,
           timestamp: new Date().toISOString(),
         } as EforgeEvent);
+        eventQueue.push({
+          type: 'session:profile',
+          sessionId: prdSessionId,
+          profileName: this.configProfile.name,
+          source: this.configProfile.source,
+          scope: this.configProfile.scope,
+          config: this.configProfile.config,
+          timestamp: new Date().toISOString(),
+        } as EforgeEvent);
 
         eventQueue.addProducer();
 
@@ -1608,6 +1626,15 @@ export class EforgeEngine {
         eventQueue.push({
           type: 'session:start',
           sessionId: prdSessionId,
+          timestamp: new Date().toISOString(),
+        } as EforgeEvent);
+        eventQueue.push({
+          type: 'session:profile',
+          sessionId: prdSessionId,
+          profileName: this.configProfile.name,
+          source: this.configProfile.source,
+          scope: this.configProfile.scope,
+          config: this.configProfile.config,
           timestamp: new Date().toISOString(),
         } as EforgeEvent);
 

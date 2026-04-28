@@ -79,7 +79,6 @@ export interface FileDiffRecord {
 export interface SessionMetadata {
   planCount: number | null;
   baseProfile: string | null;
-  backend: string | null;
 }
 
 const SCHEMA = `
@@ -208,7 +207,7 @@ export function openDatabase(dbPath: string): MonitorDB {
       `SELECT session_id as sessionId FROM runs ORDER BY started_at DESC LIMIT 1`,
     ),
     getSessionMetadataEvents: db.prepare(
-      `SELECT e.type, e.data, r.session_id as sessionId FROM events e JOIN runs r ON e.run_id = r.id WHERE e.type IN ('plan:profile', 'planning:complete', 'agent:start') ORDER BY e.id`,
+      `SELECT e.type, e.data, r.session_id as sessionId FROM events e JOIN runs r ON e.run_id = r.id WHERE e.type IN ('session:profile', 'planning:complete', 'agent:start') ORDER BY e.id`,
     ),
     insertFileDiff: db.prepare(
       `INSERT INTO file_diffs (run_id, plan_id, file_path, diff_text, timestamp) VALUES (?, ?, ?, ?, ?)`,
@@ -310,7 +309,6 @@ export function openDatabase(dbPath: string): MonitorDB {
     },
 
     getSessionMetadataBatch() {
-      const BUILTIN_PROFILES = ['errand', 'excursion', 'expedition'];
       const rows = stmts.getSessionMetadataEvents.all() as unknown as { type: string; data: string; sessionId: string }[];
 
       const result: Record<string, SessionMetadata> = {};
@@ -318,27 +316,16 @@ export function openDatabase(dbPath: string): MonitorDB {
       for (const row of rows) {
         if (!row.sessionId) continue;
         if (!result[row.sessionId]) {
-          result[row.sessionId] = { planCount: null, baseProfile: null, backend: null };
+          result[row.sessionId] = { planCount: null, baseProfile: null };
         }
         const meta = result[row.sessionId];
 
         try {
           const data = JSON.parse(row.data);
-          if (row.type === 'plan:profile' && meta.baseProfile === null) {
-            const profileName = data.profileName as string | undefined;
-            const config = data.config as { extends?: string } | undefined;
-            if (profileName && BUILTIN_PROFILES.includes(profileName)) {
+          if (row.type === 'session:profile' && meta.baseProfile === null) {
+            const profileName = data.profileName as string | null | undefined;
+            if (profileName) {
               meta.baseProfile = profileName;
-            } else if (config?.extends && BUILTIN_PROFILES.includes(config.extends)) {
-              meta.baseProfile = config.extends;
-            } else if (profileName) {
-              meta.baseProfile = profileName;
-            }
-          } else if (row.type === 'agent:start' && meta.backend === null) {
-            // Use new harness field; fall back to legacy backend field for stored events
-            const harness = (data.harness as string | undefined) ?? (data.backend as string | undefined);
-            if (harness) {
-              meta.backend = harness;
             }
           } else if (row.type === 'planning:complete') {
             const plans = data.plans as unknown[] | undefined;
