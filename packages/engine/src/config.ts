@@ -383,7 +383,7 @@ export interface EforgeConfig {
     effort?: import('./harness.js').EffortLevel;
     models?: Partial<Record<ModelClass, ModelRef>>;
     roles?: Record<string, Partial<ResolvedAgentConfig>>;
-    tiers?: Partial<Record<ModelClass, {
+    tiers?: Partial<Record<AgentTier, {
       model?: ModelRef;
       thinking?: import('./harness.js').ThinkingConfig;
       effort?: import('./harness.js').EffortLevel;
