@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { abortableSleep, EforgeEngine } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
+import { StubHarness } from './stub-harness.js';
 
 describe('abortableSleep', () => {
   it('returns false when timer completes normally', async () => {
@@ -51,9 +52,11 @@ describe('watchQueue', () => {
     await mkdir(queueDir, { recursive: true });
     const engine = await EforgeEngine.create({
       cwd,
+      // Use StubHarness so inline recovery (called when a PRD fails) completes
+      // immediately without making real API calls. Tests here exercise queue
+      // watch/discovery, not recovery behavior.
+      agentRuntimes: new StubHarness([]),
       config: {
-        agentRuntimes: { default: { harness: 'claude-sdk' } },
-        defaultAgentRuntime: 'default',
         prdQueue: { dir: 'eforge/queue' },
         plugins: { enabled: false },
       },

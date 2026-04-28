@@ -15,6 +15,7 @@ import { join } from 'node:path';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { resolveQueueOrder, type QueuedPrd } from '@eforge-build/engine/prd-queue';
+import { StubHarness } from './stub-harness.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -36,9 +37,11 @@ async function createTestEngine(configOverrides: Record<string, unknown> = {}): 
   await mkdir(join(cwd, 'eforge', 'queue'), { recursive: true });
   const engine = await EforgeEngine.create({
     cwd,
+    // Use StubHarness so inline recovery (called when a PRD fails) completes
+    // immediately without making real API calls. Tests here exercise queue
+    // scheduling, not recovery behavior.
+    agentRuntimes: new StubHarness([]),
     config: {
-      agentRuntimes: { default: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'default',
       maxConcurrentBuilds: 1,
       prdQueue: { dir: 'eforge/queue', watchPollIntervalMs: 50 },
       plugins: { enabled: false },
