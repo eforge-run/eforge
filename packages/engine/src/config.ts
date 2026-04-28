@@ -1195,7 +1195,7 @@ export async function getConfigDir(cwd?: string): Promise<string | null> {
 }
 
 /**
- * Resolve the active backend profile name and how it was selected.
+ * Resolve the active agent runtime profile name and how it was selected.
  *
  * Resolution precedence:
  * 1. Project marker `eforge/.active-profile` (dev-local) — wins when present and the
@@ -1245,7 +1245,7 @@ export async function resolveActiveProfileName(
 }
 
 /**
- * Load and parse a backend profile file from a specific path. Returns null
+ * Load and parse an agent runtime profile file from a specific path. Returns null
  * when the file does not exist or is unparseable.
  */
 async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | null> {
@@ -1415,14 +1415,14 @@ export async function setActiveProfile(
 }
 
 /**
- * Create a backend profile file. Validates the partial-config shape and
+ * Create an agent runtime profile file. Validates the partial-config shape and
  * the merged result (global + project + profile) before writing. Refuses
  * to overwrite an existing profile unless `overwrite: true` is supplied.
  *
  * When `scope` is `'user'`, writes to the user-scope profiles directory
  * (`~/.config/eforge/profiles/`) instead of the project directory.
  */
-export async function createBackendProfile(
+export async function createAgentRuntimeProfile(
   configDir: string,
   input: {
     name: string;
@@ -1527,7 +1527,7 @@ export async function createBackendProfile(
 export { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client';
 
 /**
- * Delete a backend profile file. Refuses to delete the currently active
+ * Delete an agent runtime profile file. Refuses to delete the currently active
  * profile unless `force: true` is supplied; in that case, the marker file
  * is also removed when it pointed at the deleted profile.
  *
@@ -1535,7 +1535,7 @@ export { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client'
  * scopes, throws an error requesting explicit scope. When `scope` is specified,
  * deletes only from that scope.
  */
-export async function deleteBackendProfile(
+export async function deleteAgentRuntimeProfile(
   configDir: string,
   name: string,
   force?: boolean,

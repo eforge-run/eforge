@@ -415,13 +415,13 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_profile
   createDaemonTool(server, cwd, {
     name: 'eforge_profile',
-    description: 'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+    description: 'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with harness; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
     schema: {
       action: z.enum(['list', 'show', 'use', 'create', 'delete']).describe(
         "'list' enumerates profiles, 'show' returns the resolved active profile, 'use' switches the active profile, 'create' writes a new profile, 'delete' removes a profile",
       ),
       name: z.string().optional().describe('Profile name (required for "use", "create", and "delete")'),
-      backend: z.enum(['claude-sdk', 'pi']).optional().describe('Backend kind (required for "create")'),
+      harness: z.enum(['claude-sdk', 'pi']).optional().describe('Harness kind (required for "create")'),
       pi: z.record(z.string(), z.any()).optional().describe('Pi-specific config to embed in the profile (optional, "create" only)'),
       agents: z.record(z.string(), z.any()).optional().describe('Agents config block to embed in the profile (optional, "create" only)'),
       overwrite: z.boolean().optional().describe('Overwrite an existing profile when creating. Default: false.'),
@@ -430,7 +430,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         'Scope for the operation. "list" accepts project|user|all (default: all). "use", "create", "delete" accept project|user (default: project). "show" ignores scope (resolves via precedence).',
       ),
     },
-    handler: async ({ action, name, backend, pi, agents, overwrite, force, scope }, { cwd: toolCwd }) => {
+    handler: async ({ action, name, harness, pi, agents, overwrite, force, scope }, { cwd: toolCwd }) => {
       if (action === 'list') {
         const params = new URLSearchParams();
         if (scope) params.set('scope', scope);
@@ -454,10 +454,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
       if (action === 'create') {
         if (!name) throw new Error('"name" is required when action is "create"');
-        if (backend !== 'claude-sdk' && backend !== 'pi') {
-          throw new Error('"backend" is required when action is "create" (must be "claude-sdk" or "pi")');
+        if (harness !== 'claude-sdk' && harness !== 'pi') {
+          throw new Error('"harness" is required when action is "create" (must be "claude-sdk" or "pi")');
         }
-        const body: Record<string, unknown> = { name, backend };
+        const body: Record<string, unknown> = { name, harness };
         if (pi !== undefined) body.pi = pi;
         if (agents !== undefined) body.agents = agents;
         if (overwrite !== undefined) body.overwrite = overwrite;
@@ -479,19 +479,19 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_models
   createDaemonTool(server, cwd, {
     name: 'eforge_models',
-    description: 'List providers or models available for a given backend. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first.',
+    description: 'List providers or models available for a given harness. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first.',
     schema: {
       action: z.enum(['providers', 'list']).describe("'providers' returns provider names, 'list' returns available models"),
-      backend: z.enum(['claude-sdk', 'pi']).describe('Which backend to query'),
+      harness: z.enum(['claude-sdk', 'pi']).describe('Which harness to query'),
       provider: z.string().optional().describe('Optional provider filter for "list" (Pi only). Ignored for claude-sdk.'),
     },
-    handler: async ({ action, backend, provider }, { cwd: toolCwd }) => {
+    handler: async ({ action, harness, provider }, { cwd: toolCwd }) => {
       if (action === 'providers') {
-        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.modelProviders}?backend=${encodeURIComponent(backend)}`);
+        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.modelProviders}?harness=${encodeURIComponent(harness)}`);
         return data;
       }
       // action === 'list'
-      const params = new URLSearchParams({ backend });
+      const params = new URLSearchParams({ harness });
       if (provider) params.set('provider', provider);
       const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.modelList}?${params.toString()}`);
       return data;
@@ -578,11 +578,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_init
   createDaemonTool(server, cwd, {
     name: 'eforge_init',
-    description: 'Initialize eforge in a project: creates a named backend profile under eforge/profiles/, activates it, and writes eforge/config.yaml for team-wide settings. Presents an elicitation form for backend, provider, and model selection. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.',
+    description: 'Initialize eforge in a project: creates a single-entry agent runtime profile under eforge/profiles/, activates it, and writes eforge/config.yaml for team-wide settings. Presents an elicitation form for harness, provider, and model selection. With migrate: true, extracts legacy harness config (top-level `backend:`/`pi:`/`agents.*` fields) from an existing pre-overhaul config.yaml into a named profile.',
     schema: {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands (e.g. ["pnpm install", "pnpm test"]). Only applied when creating a new config, not when merging with existing.'),
-      migrate: z.boolean().optional().describe('Extract backend config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.'),
+      migrate: z.boolean().optional().describe('Extract legacy harness config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.'),
     },
     handler: async ({ force, postMergeCommands, migrate }, { cwd: toolCwd, server: toolServer }) => {
       const configDir = join(toolCwd, 'eforge');
@@ -617,7 +617,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }
 
         const { profile, remaining } = parseRawConfigLegacy(data);
-        const backend = profile.backend as string;
+        const harness = profile.backend as string;
 
         let maxModelId: string | undefined;
         let provider: string | undefined;
@@ -634,12 +634,12 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }
 
         const profileName = maxModelId
-          ? sanitizeProfileName(backend, provider, maxModelId)
-          : backend;
+          ? sanitizeProfileName(harness, provider, maxModelId)
+          : harness;
 
         const createBody: Record<string, unknown> = {
           name: profileName,
-          backend,
+          harness,
           overwrite: true,
         };
         if (profile.agents) createBody.agents = profile.agents;
@@ -659,7 +659,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           configPath: 'eforge/config.yaml',
           profileName,
           profilePath: `eforge/profiles/${profileName}.yaml`,
-          backend,
+          harness,
           moved: Object.keys(profile),
           kept: Object.keys(remaining),
         };
@@ -671,7 +671,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         await access(configPath);
         if (!force) {
           throw new McpUserError({
-            error: 'eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract backend config into a profile.',
+            error: 'eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.',
           });
         }
       } catch (err) {
@@ -679,8 +679,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         // File does not exist - proceed
       }
 
-      // Elicit backend choice from user
-      let backend: string;
+      // Elicit harness choice from user
+      let harness: string;
       try {
         const result = await toolServer.server.elicitInput({
           mode: 'form',
@@ -688,10 +688,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           requestedSchema: {
             type: 'object',
             properties: {
-              backend: {
+              harness: {
                 type: 'string',
-                title: 'Backend',
-                description: 'Which LLM backend to use for builds',
+                title: 'Harness',
+                description: 'Which agent harness to use for builds. To mix multiple harnesses across agent roles, use /eforge:profile-new after setup.',
                 oneOf: [
                   { const: 'claude-sdk', title: 'Claude SDK - Uses Claude Code\'s built-in SDK' },
                   { const: 'pi', title: 'Pi - Experimental multi-provider via Pi SDK' },
@@ -699,7 +699,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
                 default: 'claude-sdk',
               },
             },
-            required: ['backend'],
+            required: ['harness'],
           },
         });
 
@@ -709,7 +709,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (result.action === 'cancel' || !result.content) {
           return { status: 'cancelled', message: 'Initialization cancelled.' };
         }
-        backend = result.content.backend as string;
+        harness = result.content.harness as string;
       } catch (err) {
         if (err instanceof McpUserError) throw err;
         throw new McpUserError({
@@ -719,9 +719,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
       // Elicit provider (if pi, via /api/models/providers)
       let provider: string | undefined;
-      if (backend === 'pi') {
+      if (harness === 'pi') {
         try {
-          const { data: providersResp } = await daemonRequest<{ providers: string[] }>(toolCwd, 'GET', `${API_ROUTES.modelProviders}?backend=pi`);
+          const { data: providersResp } = await daemonRequest<{ providers: string[] }>(toolCwd, 'GET', `${API_ROUTES.modelProviders}?harness=pi`);
           if (providersResp.providers.length > 0) {
             const providerSchema = {
               type: 'object' as const,
@@ -753,7 +753,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       // Elicit max model (via /api/models/list)
       let maxModelId: string | undefined;
       try {
-        const params = new URLSearchParams({ backend });
+        const params = new URLSearchParams({ harness });
         if (provider) params.set('provider', provider);
         const { data: modelsResp } = await daemonRequest<{ models: Array<{ id: string; provider?: string }> }>(
           toolCwd, 'GET', `${API_ROUTES.modelList}?${params.toString()}`,
@@ -789,15 +789,15 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       }
 
       const profileName = maxModelId
-        ? sanitizeProfileName(backend, provider, maxModelId)
-        : backend;
+        ? sanitizeProfileName(harness, provider, maxModelId)
+        : harness;
 
       const modelRef: Record<string, string> = maxModelId ? { id: maxModelId } : { id: 'claude-opus-4-7' };
       if (provider) modelRef.provider = provider;
 
       const createBody: Record<string, unknown> = {
         name: profileName,
-        backend,
+        harness,
         agents: {
           models: {
             max: { ...modelRef },
@@ -839,7 +839,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         configPath: 'eforge/config.yaml',
         profileName,
         profilePath: `eforge/profiles/${profileName}.yaml`,
-        backend,
+        harness,
       };
 
       if (validation) {

@@ -23,15 +23,15 @@ Inspect `$ARGUMENTS`:
 
 Call the `eforge_profile` tool with `{ action: "show" }`.
 
-Parse the response (shape: `{ active, source, resolved: { backend, profile } }`) and report:
+Parse the response (shape: `{ active, source, resolved: { harness, profile } }`) and report:
 
 - **Active profile**: `{active}` (or "(none - using team default)" when `active` is null)
 - **Source**: `{source}` (`local` when the active profile is picked via the `eforge/.active-profile` marker, `team` when no marker is present and the resolution falls back to the `defaultAgentRuntime:` field in `eforge/config.yaml`, `missing` when the marker points at a profile file that does not exist (stale marker), `none` when no profile is configured at all)
-- **Resolved backend**: `{resolved.backend}` (e.g. `claude-sdk` or `pi`)
+- **Resolved harness**: `{resolved.harness}` (e.g. `claude-sdk` or `pi`)
 
 Then call `eforge_profile` with `{ action: "list" }` to show the user what other profiles are available, rendering a table with the following columns:
 
-| Name | Scope | Backend | Active |
+| Name | Scope | Harness | Active |
 |------|-------|---------|--------|
 | `pi-anthropic` | `project` | `pi` | `●` |
 | `claude-fast` | `user` | `claude-sdk` | |
@@ -47,9 +47,9 @@ If no profiles exist, suggest `/eforge:profile-new` to create one.
 
 Call `eforge_profile` with `{ action: "use", name: "<arg>" }`. To set the active profile at user scope instead of project scope, pass `scope: "user"`: `{ action: "use", name: "<arg>", scope: "user" }`.
 
-On success, the daemon writes `eforge/.active-profile` with the new profile name. Then call `{ action: "show" }` again and report the new active profile plus the resolved backend:
+On success, the daemon writes `eforge/.active-profile` with the new profile name. Then call `{ action: "show" }` again and report the new active profile plus the resolved harness:
 
-> Switched to `{name}`. Resolved backend: `{resolved.backend}`. The next eforge build will use this profile.
+> Switched to `{name}`. Resolved harness: `{resolved.harness}`. The next eforge build will use this profile.
 
 On error (e.g. the profile does not exist), surface the error message and suggest running `/eforge:profile` with no args to list available profiles, or `/eforge:profile-new` to create a new one.
 

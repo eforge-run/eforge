@@ -8,7 +8,9 @@ disable-model-invocation: true
 
 # /eforge:profile-new
 
-Interactively create a new named agent runtime profile (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`). The profile can live at project scope (`eforge/profiles/<name>.yaml`) or user scope (`~/.config/eforge/profiles/<name>.yaml`). It selects a backend kind, provider, model, and optional tuning, then optionally activates itself.
+Interactively create a new named agent runtime profile (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`). The profile can live at project scope (`eforge/profiles/<name>.yaml`) or user scope (`~/.config/eforge/profiles/<name>.yaml`). It selects a harness, provider, model, and optional tuning, then optionally activates itself.
+
+> A single profile may later contain multiple `agentRuntimes` entries to mix harnesses across agent roles — use this skill to create the initial profile, then edit the YAML directly or run this skill again.
 
 ## Workflow
 
@@ -28,20 +30,20 @@ If the user does not specify, default to project scope. Remember the chosen scop
 
 The name will be used as the filename (project: `eforge/profiles/<name>.yaml`, user: `~/.config/eforge/profiles/<name>.yaml`).
 
-### Step 2: Pick the backend kind
+### Step 2: Pick the harness
 
-Ask: "Which backend? `claude-sdk` (Claude Code's built-in SDK) or `pi` (multi-provider via Pi SDK)?"
+Ask: "Which harness? `claude-sdk` (Claude Code's built-in SDK) or `pi` (multi-provider via Pi SDK)?"
 
 Use a smart default based on the name hint:
-- Names starting with `pi-` default to `pi`.
-- Names starting with `claude-` default to `claude-sdk`.
-- Otherwise default to `pi` (the more flexible option) and let the user override.
+- Names starting with `pi-` default to harness `pi`.
+- Names starting with `claude-` default to harness `claude-sdk`.
+- Otherwise default to harness `pi` (the more flexible option) and let the user override.
 
 ### Step 3: Pick a provider (Pi only)
 
-Only if `backend === "pi"`:
+Only if `harness === "pi"`:
 
-Call `eforge_models` with `{ action: "providers", backend: "pi" }`.
+Call `eforge_models` with `{ action: "providers", harness: "pi" }`.
 
 Parse the `{ providers: string[] }` response and show the list. Use a smart default based on the name hint (e.g. `pi-anthropic` -> `anthropic`, `pi-glm` -> `zai`, `pi-openrouter` -> `openrouter`). Ask the user to confirm or pick another.
 
@@ -58,8 +60,8 @@ Eforge routes agent roles through three model classes:
 A profile sets one model per class via `agents.models.{max,balanced,fast}`, so each agent role picks up the right tier.
 
 Call `eforge_models` with:
-- `{ action: "list", backend: "claude-sdk" }` for claude-sdk, or
-- `{ action: "list", backend: "pi", provider: "<chosen>" }` for pi.
+- `{ action: "list", harness: "claude-sdk" }` for claude-sdk, or
+- `{ action: "list", harness: "pi", provider: "<chosen>" }` for pi.
 
 Parse the `{ models: ModelInfo[] }` response (already sorted newest-first). Show the top 10 (id + `releasedAt` when available); add a "see all" affordance if the list is longer.
 
@@ -76,7 +78,7 @@ A user who just accepts defaults gets the same model for all three classes — f
 Ask the user whether they want to customize tuning. Most users skip this. Defaults:
 
 - **Pi only** - `pi.thinkingLevel`: `off` | `low` | `medium` | `high` | `xhigh`. Default: `medium`.
-- **All backends** - `agents.effort`: `low` | `medium` | `high` | `xhigh` | `max`. Default: `high`.
+- **All harnesses** - `agents.effort`: `low` | `medium` | `high` | `xhigh` | `max`. Default: `high`.
 
 Collect only the values the user explicitly sets.
 
@@ -87,7 +89,7 @@ Build the profile object that will go to the tool:
 ```
 {
   name: "<name>",
-  backend: "<claude-sdk|pi>",
+  harness: "<claude-sdk|pi>",
   // For pi: provider is REQUIRED on the runtime entry; thinkingLevel only if user set.
   pi: { provider: "<chosen-provider>", thinkingLevel: "<level>"? },
   agents: {
@@ -105,7 +107,7 @@ Build the profile object that will go to the tool:
 Show the user a rendered preview of the YAML that will land in the chosen scope directory (project: `eforge/profiles/<name>.yaml`, user: `~/.config/eforge/profiles/<name>.yaml`):
 
 ```yaml
-backend: pi
+harness: pi
 pi:
   thinkingLevel: medium
   provider: anthropic
@@ -131,7 +133,7 @@ Call `eforge_profile` with:
   action: "create",
   name: "<name>",
   scope: "<project|user>",   // from Step 0
-  backend: "<claude-sdk|pi>",
+  harness: "<claude-sdk|pi>",
   pi: { ... }?,       // omit if empty
   agents: { ... }?,   // omit if empty
   overwrite: false,

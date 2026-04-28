@@ -27,7 +27,7 @@ describe('eforge-plugin/skills/profile/profile.md - user-scope updates', () => {
 
   it('contains "Scope" in the list output table header', () => {
     // The table header should include a Scope column
-    expect(raw).toMatch(/\|\s*Name\s*\|\s*Scope\s*\|\s*Backend\s*\|\s*Active\s*\|/);
+    expect(raw).toMatch(/\|\s*Name\s*\|\s*Scope\s*\|\s*Harness\s*\|\s*Active\s*\|/);
   });
 
   it('shows project and user scope values in the example table', () => {
@@ -120,7 +120,7 @@ describe('packages/pi-eforge/skills/eforge-profile/SKILL.md - user-scope updates
   const raw = readRepoFile('packages/pi-eforge/skills/eforge-profile/SKILL.md');
 
   it('contains "Scope" in the list output table header', () => {
-    expect(raw).toMatch(/\|\s*Name\s*\|\s*Scope\s*\|\s*Backend\s*\|\s*Active\s*\|/);
+    expect(raw).toMatch(/\|\s*Name\s*\|\s*Scope\s*\|\s*Harness\s*\|\s*Active\s*\|/);
   });
 
   it('documents user (shadowed) in the Scope column', () => {

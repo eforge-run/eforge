@@ -175,9 +175,9 @@ export async function handleProfileNewCommand(
   ]);
   if (!scope) return;
 
-  // Step 2: Backend type picker (smart default based on name hint)
-  const defaultBackend = name.startsWith("claude-") ? "claude-sdk" : "pi";
-  const backendItems = defaultBackend === "claude-sdk"
+  // Step 2: Harness type picker (smart default based on name hint)
+  const defaultHarness = name.startsWith("claude-") ? "claude-sdk" : "pi";
+  const harnessItems = defaultHarness === "claude-sdk"
     ? [
         { value: "claude-sdk", label: "Claude SDK", description: "Claude Code's built-in SDK" },
         { value: "pi", label: "Pi", description: "Multi-provider via Pi SDK" },
@@ -187,16 +187,16 @@ export async function handleProfileNewCommand(
         { value: "claude-sdk", label: "Claude SDK", description: "Claude Code's built-in SDK" },
       ];
 
-  const backend = await showSelectOverlay(ctx, "eforge - New Profile: Backend", backendItems);
-  if (!backend) return;
+  const harness = await showSelectOverlay(ctx, "eforge - New Profile: Harness", harnessItems);
+  if (!harness) return;
 
   // Step 3: Provider picker (Pi only)
   let provider: string | undefined;
-  if (backend === "pi") {
+  if (harness === "pi") {
     let providers: string[];
     try {
       const { data } = await withLoader(ctx, "Loading providers...", () =>
-        daemonRequest<{ providers: string[] }>(ctx.cwd, "GET", `${API_ROUTES.modelProviders}?backend=pi`),
+        daemonRequest<{ providers: string[] }>(ctx.cwd, "GET", `${API_ROUTES.modelProviders}?harness=pi`),
       );
       providers = data.providers;
     } catch (err) {
@@ -209,7 +209,7 @@ export async function handleProfileNewCommand(
     }
 
     if (providers.length === 0) {
-      await showInfoOverlay(ctx, "eforge - Error", "No providers available for the Pi backend.");
+      await showInfoOverlay(ctx, "eforge - Error", "No providers available for the Pi harness.");
       return;
     }
 
@@ -225,7 +225,7 @@ export async function handleProfileNewCommand(
   }
 
   // Step 4: Model picker for max class
-  const modelQueryParams = new URLSearchParams({ backend });
+  const modelQueryParams = new URLSearchParams({ harness });
   if (provider) modelQueryParams.set("provider", provider);
 
   let models: Array<{ id: string; provider?: string; releasedAt?: string }>;
@@ -248,7 +248,7 @@ export async function handleProfileNewCommand(
   }
 
   if (models.length === 0) {
-    await showInfoOverlay(ctx, "eforge - Error", "No models available for the selected backend/provider.");
+    await showInfoOverlay(ctx, "eforge - Error", "No models available for the selected harness/provider.");
     return;
   }
 
@@ -278,10 +278,10 @@ export async function handleProfileNewCommand(
   if (!fastModel) return;
 
   // Step 7: Optional tuning
-  const tuneDefaults = backend === "pi" ? "effort: high, thinkingLevel: medium" : "effort: high";
+  const tuneDefaults = harness === "pi" ? "effort: high, thinkingLevel: medium" : "effort: high";
   const tuneChoice = await showSelectOverlay(ctx, "eforge - New Profile: Tuning", [
     { value: "defaults", label: "Use defaults", description: tuneDefaults },
-    { value: "customize", label: "Customize", description: "Choose effort level" + (backend === "pi" ? " and thinking level" : "") },
+    { value: "customize", label: "Customize", description: "Choose effort level" + (harness === "pi" ? " and thinking level" : "") },
   ]);
   if (!tuneChoice) return;
 
@@ -299,7 +299,7 @@ export async function handleProfileNewCommand(
     if (!effortChoice) return;
     effort = effortChoice;
 
-    if (backend === "pi") {
+    if (harness === "pi") {
       const thinkingChoice = await showSelectOverlay(ctx, "eforge - New Profile: Thinking Level", [
         { value: "off", label: "Off", description: "No thinking" },
         { value: "low", label: "Low", description: "Light thinking" },
@@ -319,7 +319,7 @@ export async function handleProfileNewCommand(
     return ref;
   };
 
-  const confirmTitle = `eforge - Confirm: ${name} (${backend}, ${scope})`;
+  const confirmTitle = `eforge - Confirm: ${name} (${harness}, ${scope})`;
   const confirm = await showSelectOverlay(ctx, confirmTitle, [
     { value: "create", label: "✓ Create profile", description: `${maxModel} / ${balancedModel} / ${fastModel}` },
     { value: "cancel", label: "✗ Cancel", description: "Abort" },
@@ -329,7 +329,7 @@ export async function handleProfileNewCommand(
   // Step 9: Create the profile
   const createBody: Record<string, unknown> = {
     name,
-    backend,
+    harness,
     scope,
     agents: {
       models: {

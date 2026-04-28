@@ -162,19 +162,19 @@ function ensureGitignoreEntries(cwd: string, entries: string[]): void {
 // ---------------------------------------------------------------------------
 
 export default function eforgeExtension(pi: ExtensionAPI) {
-  // Module-scope context for refreshing status after backend changes
+  // Module-scope context for refreshing status after harness changes
   let _latestCtx: UIContext | null = null;
 
-  /** Refresh the Pi footer status with the active backend profile. Best-effort. */
+  /** Refresh the Pi footer status with the active harness profile. Best-effort. */
   async function refreshStatus(ctx: { cwd: string; ui: { setStatus(key: string, text: string | undefined): void } }): Promise<void> {
     try {
       const { data } = await daemonRequest<{
         active: string | null;
         source: string;
-        resolved: { backend?: string; name?: string } | null;
+        resolved: { harness?: string; name?: string } | null;
       }>(ctx.cwd, 'GET', API_ROUTES.profileShow);
-      if (data.active && data.resolved?.backend) {
-        ctx.ui.setStatus('eforge', `eforge: ${data.active} (${data.resolved.backend})`);
+      if (data.active && data.resolved?.harness) {
+        ctx.ui.setStatus('eforge', `eforge: ${data.active} (harness: ${data.resolved.harness})`);
       } else {
         ctx.ui.setStatus('eforge', undefined);
       }
@@ -601,7 +601,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_profile",
     label: "eforge profile",
     description:
-      'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with backend; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+      'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with harness; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
     parameters: Type.Object({
       action: StringEnum(["list", "show", "use", "create", "delete"] as const, {
         description:
@@ -613,9 +613,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             'Profile name (required for "use", "create", and "delete")',
         }),
       ),
-      backend: Type.Optional(
+      harness: Type.Optional(
         StringEnum(["claude-sdk", "pi"] as const, {
-          description: 'Backend kind (required for "create")',
+          description: 'Harness kind (required for "create")',
         }),
       ),
       pi: Type.Optional(
@@ -650,7 +650,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, name, backend, pi: piCfg, agents, overwrite, force, scope } =
+      const { action, name, harness, pi: piCfg, agents, overwrite, force, scope } =
         params;
 
       if (action === "list") {
@@ -686,12 +686,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!name) {
           throw new Error('"name" is required when action is "create"');
         }
-        if (backend !== "claude-sdk" && backend !== "pi") {
+        if (harness !== "claude-sdk" && harness !== "pi") {
           throw new Error(
-            '"backend" is required when action is "create" (must be "claude-sdk" or "pi")',
+            '"harness" is required when action is "create" (must be "claude-sdk" or "pi")',
           );
         }
-        const body: Record<string, unknown> = { name, backend };
+        const body: Record<string, unknown> = { name, harness };
         if (piCfg !== undefined) body.pi = piCfg;
         if (agents !== undefined) body.agents = agents;
         if (overwrite !== undefined) body.overwrite = overwrite;
@@ -727,7 +727,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const name = typeof args.name === "string" ? args.name : "";
       const suffix = name ? ` ${name}` : "";
       return new Text(
-        theme.fg("toolTitle", theme.bold(`eforge backend ${action}${suffix}`)),
+        theme.fg("toolTitle", theme.bold(`eforge profile ${action}${suffix}`)),
         0,
         0,
       );
@@ -757,13 +757,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         } else if ("resolved" in data) {
           const active = (data as { active?: string | null }).active ?? null;
           const source = (data as { source?: string }).source ?? "none";
-          const resolved = (data as { resolved?: { backend?: string } }).resolved;
+          const resolved = (data as { resolved?: { harness?: string } }).resolved;
           lines.push(
             theme.fg("accent", `active: ${active ?? "(none)"}`) +
               theme.fg("dim", `  source: ${source}`),
           );
-          if (resolved?.backend) {
-            lines.push(theme.fg("dim", `  backend: ${resolved.backend}`));
+          if (resolved?.harness) {
+            lines.push(theme.fg("dim", `  harness: ${resolved.harness}`));
           }
         } else if ("active" in data) {
           lines.push(theme.fg("success", `✓ active: ${String((data as { active?: unknown }).active)}`));
@@ -788,14 +788,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_models",
     label: "eforge models",
     description:
-      'List providers or models available for a given backend. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first.',
+      'List providers or models available for a given harness. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first.',
     parameters: Type.Object({
       action: StringEnum(["providers", "list"] as const, {
         description:
           "'providers' returns provider names, 'list' returns available models",
       }),
-      backend: StringEnum(["claude-sdk", "pi"] as const, {
-        description: "Which backend to query",
+      harness: StringEnum(["claude-sdk", "pi"] as const, {
+        description: "Which harness to query",
       }),
       provider: Type.Optional(
         Type.String({
@@ -809,11 +809,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const { data } = await daemonRequest(
           ctx.cwd,
           "GET",
-          `${API_ROUTES.modelProviders}?backend=${encodeURIComponent(params.backend)}`,
+          `${API_ROUTES.modelProviders}?harness=${encodeURIComponent(params.harness)}`,
         );
         return jsonResult(data);
       }
-      const searchParams = new URLSearchParams({ backend: params.backend });
+      const searchParams = new URLSearchParams({ harness: params.harness });
       if (params.provider) searchParams.set("provider", params.provider);
       const { data } = await daemonRequest(
         ctx.cwd,
@@ -825,13 +825,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
     renderCall(args, theme) {
       const action = typeof args.action === "string" ? args.action : "?";
-      const backend = typeof args.backend === "string" ? args.backend : "?";
+      const harness = typeof args.harness === "string" ? args.harness : "?";
       const provider = typeof args.provider === "string" ? args.provider : "";
       const suffix = provider ? ` / ${provider}` : "";
       return new Text(
         theme.fg(
           "toolTitle",
-          theme.bold(`eforge models ${action} ${backend}${suffix}`),
+          theme.bold(`eforge models ${action} ${harness}${suffix}`),
         ),
         0,
         0,
@@ -980,7 +980,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_init",
     label: "eforge init",
     description:
-      "Initialize eforge in a project: creates a named backend profile under eforge/profiles/, activates it, and writes eforge/config.yaml for team-wide settings. Backend is hardcoded to 'pi'. With migrate: true, extracts backend config from an existing pre-overhaul config.yaml into a named profile.",
+      "Initialize eforge in a project: creates a single-entry agent runtime profile under eforge/profiles/, activates it, and writes eforge/config.yaml for team-wide settings. Harness is hardcoded to 'pi' for this Pi-only init flow. With migrate: true, extracts legacy harness config (top-level `backend:`/`pi:`/`agents.*` fields) from an existing pre-overhaul config.yaml into a named profile.",
     parameters: Type.Object({
       force: Type.Optional(
         Type.Boolean({
@@ -997,19 +997,19 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       migrate: Type.Optional(
         Type.Boolean({
           description:
-            "Extract backend config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.",
+            "Extract legacy harness config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.",
         }),
       ),
       provider: Type.Optional(
         Type.String({
           description:
-            'Provider name for Pi backend (e.g. "anthropic", "openrouter"). The skill should supply this after querying eforge_models { action: "providers", backend: "pi" }.',
+            'Provider name for the Pi harness (e.g. "anthropic", "openrouter"). The skill should supply this after querying eforge_models { action: "providers", harness: "pi" }.',
         }),
       ),
       maxModel: Type.Optional(
         Type.String({
           description:
-            'Max model ID (e.g. "claude-opus-4-7"). The skill should supply this after querying eforge_models { action: "list", backend: "pi", provider: "..." }.',
+            'Max model ID (e.g. "claude-opus-4-7"). The skill should supply this after querying eforge_models { action: "list", harness: "pi", provider: "..." }.',
         }),
       ),
     }),
@@ -1045,7 +1045,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }
 
         const { profile, remaining } = parseRawConfigLegacy(data);
-        const backend = profile.backend as string;
+        const harness = profile.backend as string;
 
         let maxModelId: string | undefined;
         let provider: string | undefined;
@@ -1062,12 +1062,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }
 
         const profileName = maxModelId
-          ? sanitizeProfileName(backend, provider, maxModelId)
-          : backend;
+          ? sanitizeProfileName(harness, provider, maxModelId)
+          : harness;
 
         const createBody: Record<string, unknown> = {
           name: profileName,
-          backend,
+          harness,
           overwrite: true,
         };
         if (profile.agents) createBody.agents = profile.agents;
@@ -1092,7 +1092,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           configPath: "eforge/config.yaml",
           profileName,
           profilePath: `eforge/profiles/${profileName}.yaml`,
-          backend,
+          harness,
           moved: Object.keys(profile),
           kept: Object.keys(remaining),
         });
@@ -1105,7 +1105,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         accessSync(configPath);
         if (!params.force) {
           throw new Error(
-            "eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract backend config into a profile.",
+            "eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.",
           );
         }
       } catch (err) {
@@ -1115,15 +1115,15 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         // File does not exist - proceed
       }
 
-      // Backend is always pi for Pi extension
-      const backend = "pi";
+      // Harness is always pi for Pi extension
+      const harness = "pi";
       const provider = params.provider;
       const maxModelId = params.maxModel;
 
       // Compute profile name
       const profileName = maxModelId
-        ? sanitizeProfileName(backend, provider, maxModelId)
-        : backend;
+        ? sanitizeProfileName(harness, provider, maxModelId)
+        : harness;
 
       // Build model ref
       const modelRef: Record<string, string> = maxModelId
@@ -1134,7 +1134,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       // Create the profile via daemon
       const createBody: Record<string, unknown> = {
         name: profileName,
-        backend,
+        harness,
         agents: {
           models: {
             max: { ...modelRef },
@@ -1186,7 +1186,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         configPath: "eforge/config.yaml",
         profileName,
         profilePath: `eforge/profiles/${profileName}.yaml`,
-        backend,
+        harness,
       };
 
       if (validation) {

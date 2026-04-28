@@ -5,20 +5,20 @@
  */
 
 /**
- * Compute a deterministic profile name from backend, provider, and model ID.
+ * Compute a deterministic profile name from harness, provider, and model ID.
  *
  * Sanitization: lowercase, `.` -> `-`, strip `claude-` prefix from model ID,
- * collapse repeated dashes. Format: `[backend[-provider]]-[sanitized-model-id]`.
+ * collapse repeated dashes. Format: `[harness[-provider]]-[sanitized-model-id]`.
  *
  * Examples:
  * - `('claude-sdk', undefined, 'claude-opus-4.7')` -> `'claude-sdk-opus-4-7'`
  * - `('pi', 'anthropic', 'claude-opus-4.7')` -> `'pi-anthropic-opus-4-7'`
  * - `('pi', 'zai', 'glm-4.6')` -> `'pi-zai-glm-4-6'`
  */
-export function sanitizeProfileName(backend: string, provider: string | undefined, modelId: string): string {
+export function sanitizeProfileName(harness: string, provider: string | undefined, modelId: string): string {
   let sanitized = modelId.toLowerCase().replace(/\./g, '-');
   sanitized = sanitized.replace(/^claude-/, '');
-  const parts = [backend];
+  const parts = [harness];
   if (provider) parts.push(provider);
   parts.push(sanitized);
   return parts.join('-').replace(/-{2,}/g, '-');
@@ -28,6 +28,10 @@ export function sanitizeProfileName(backend: string, provider: string | undefine
  * Parse a pre-overhaul config.yaml that has `backend:` at the top level.
  * Extracts backend-related fields into a `profile` object and puts everything
  * else into `remaining`. Used by the `--migrate` flow.
+ *
+ * The return type `{ profile: { backend?: string } }` describes the legacy
+ * `config.yaml` shape — `backend` is the historical YAML key name, not the
+ * current API field name.
  */
 export function parseRawConfigLegacy(data: Record<string, unknown>): {
   profile: { backend?: string; pi?: unknown; agents?: unknown };
