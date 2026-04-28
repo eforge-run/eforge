@@ -1,6 +1,6 @@
 import { defineConfig } from "tsup";
 import { existsSync } from "node:fs";
-import { cp } from "node:fs/promises";
+import { cp, readdir, readFile, writeFile } from "node:fs/promises";
 import { globSync } from "node:fs";
 
 export default defineConfig({
@@ -19,6 +19,16 @@ export default defineConfig({
   async onSuccess() {
     if (existsSync("src/prompts")) {
       await cp("src/prompts", "dist/prompts", { recursive: true });
+    }
+    // node:sqlite prefix is stripped by esbuild; restore it after build
+    const files = await readdir("dist");
+    for (const f of files) {
+      if (!f.endsWith(".js")) continue;
+      const path = `dist/${f}`;
+      const content = await readFile(path, "utf-8");
+      if (content.includes('from "sqlite"')) {
+        await writeFile(path, content.replace(/from "sqlite"/g, 'from "node:sqlite"'));
+      }
     }
   },
 });
