@@ -134,8 +134,8 @@ graph LR
 
 | Stage | Description |
 |-------|-------------|
-| `implement` | Builder agent codes the plan, runs verification, commits changes. When the planner emits a `shards` block under `agents.builder`, the stage fans out to N parallel builder invocations within the same worktree (each scoped to a `roots`/`files` partition), then a coordinator phase pops any per-shard retry stashes, enforces scope, runs verification once, and produces the single per-plan commit. |
-| `review-cycle` | Composite: expands to `review` -> `review-fix` -> `evaluate` |
+| `implement` | Builder agent codes the plan, runs verification, commits changes. When the planner emits a `shards` block under `agents.builder`, the stage fans out to N parallel builder invocations within the same worktree (each scoped to a `roots`/`files` partition), then a coordinator phase pops any per-shard retry stashes, enforces scope, and produces the single per-plan commit. Sharded plans must include `review-cycle` (the engine injects it if missing); integration verification runs there via the `verify` perspective rather than in the coordinator. |
+| `review-cycle` | Composite: expands to `review` -> `review-fix` -> `evaluate`. Supports multiple reviewer perspectives: `code`, `security`, `api`, `docs`, `test`, and `verify`. The `verify` perspective runs the plan's verification commands as subprocesses and emits a critical issue per failing command (including full stdout/stderr), so the review-fix loop can repair failures without restarting the build. Sharded plans always include the `verify` perspective. |
 | `doc-update` | Updates documentation to reflect implementation changes |
 | `test-write` | Writes tests from the plan spec (TDD - runs before `implement`) |
 | `test-cycle` | Composite: expands to `test` -> `test-fix` -> `evaluate` |
@@ -177,6 +177,8 @@ Per-role configuration (model, thinking mode, effort level, budget, tool filters
 ### Blind review
 
 Quality requires separating generation from evaluation. The reviewer operates without builder context - it sees only the code diff, not the builder's reasoning. The review-fixer applies suggested fixes as unstaged changes. The evaluator then judges each fix against the original plan intent, accepting strict improvements and rejecting changes that alter intent. This same three-step pattern (blind review -> fix -> evaluate) applies to plan review, architecture review, and cohesion review.
+
+The `verify` perspective is an exception to the diff-only rule: instead of reading a diff, it runs the plan's verification commands as subprocesses and emits one critical issue per failing command, with the full exit code and stdout/stderr in the issue's fix element. The review-fixer then applies the necessary edits - which may touch files outside the original diff - and the evaluator accepts or rejects as usual. This allows integration failures in sharded builds to flow through the same iterative fix cycle as code-review issues.
 
 ## Orchestration
 
