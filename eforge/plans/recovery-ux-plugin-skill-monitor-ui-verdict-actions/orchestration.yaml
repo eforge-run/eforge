@@ -1,0 +1,91 @@
+name: recovery-ux-plugin-skill-monitor-ui-verdict-actions
+description: "Close the recovery UX loop: add engine `applyRecovery()` with
+  verdict dispatch (retry/split/abandon/manual), wire it through the daemon,
+  shared client, and MCP/Pi tools, then add a `/recover` skill in both the
+  Claude Code plugin and Pi extension plus verdict-specific action buttons
+  inside the monitor UI's existing recovery sheet."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-backend-apply-recovery
+    name: Engine applyRecovery + Daemon Route + MCP/Pi Parity
+    depends_on: []
+    branch: recovery-ux-plugin-skill-monitor-ui-verdict-actions/backend-apply-recovery
+    build:
+      - - implement
+        - doc-update
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-consumer-surfaces
+    name: /recover Skill (Plugin + Pi) and Monitor UI Verdict Action Buttons
+    depends_on:
+      - plan-01-backend-apply-recovery
+    branch: recovery-ux-plugin-skill-monitor-ui-verdict-actions/consumer-surfaces
+    build:
+      - - implement
+        - doc-update
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - test-write
+      - doc-update
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - correctness
+      - consistency
+      - maintainability
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "Excursion scope is correct here: although the PRD spans engine,
+    daemon, shared client, MCP proxy, Pi extension, plugin/Pi skills, and
+    monitor UI, the work is a coordinated foundation-then-consumers chain
+    (engine applyRecovery() -> daemon route -> client helpers -> MCP/Pi tools ->
+    skills -> UI). A single planner session can enumerate the plan files,
+    file-level changes, and cross-plan dependencies with quality - none of the
+    negative-expedition signals (multiple genuinely independent subsystems each
+    requiring deep exploration) apply. The compile pipeline uses planner +
+    plan-review-cycle because parity across two consumer surfaces (Claude Code
+    plugin and Pi extension), an additive HTTP API, and a new engine method
+    warrant a plan-quality gate before build. defaultBuild runs implement first,
+    then test-write and doc-update in parallel (neither is the other's
+    predecessor; both depend only on implement, which has already completed),
+    then review-cycle for an iterative quality loop. test-write is included
+    because Acceptance Criterion #1 requires pnpm test to pass and the PRD
+    explicitly calls for engine applyRecovery dispatch coverage. doc-update is
+    included because the PRD touches user-facing docs (plugin.json registration,
+    version bump 0.12.0->0.13.0, pi-eforge README skill list, new SKILL.md
+    files). review-cycle (rather than a single review) is warranted because the
+    change crosses public API boundaries (new HTTP route, new MCP tool exposed
+    in two surfaces) and must enforce conventions the project cares deeply about
+    (forgeCommit() usage, no inlined route literals, Claude Code/Pi parity per
+    AGENTS.md). Parallel review with correctness/consistency/maintainability
+    perspectives catches both engine-level dispatch bugs and the repo-wide
+    consistency concerns (route helper usage, dual-surface parity, version bump
+    rules); standard strictness with autoAcceptBelow=suggestion and 2 rounds
+    keeps the loop tight without over-iterating on a medium-risk additive
+    change."
