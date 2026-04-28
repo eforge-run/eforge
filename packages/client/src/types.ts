@@ -191,34 +191,34 @@ export interface KeepAliveResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Backend profile management (DAEMON_API_VERSION 2)
+// Agent runtime profile management (renamed from backend in DAEMON_API_VERSION 10)
 // ---------------------------------------------------------------------------
 
-/** A single backend profile entry returned by the list endpoint. */
-export interface BackendProfileInfo {
+/** A single agent runtime profile entry returned by the list endpoint. */
+export interface AgentRuntimeProfileInfo {
   name: string;
-  backend: 'claude-sdk' | 'pi' | undefined;
+  harness: 'claude-sdk' | 'pi' | undefined;
   path: string;
   scope: 'project' | 'user';
   shadowedBy?: 'project';
 }
 
-/** Source of the active backend profile resolution. */
-export type BackendProfileSource = 'local' | 'user-local' | 'missing' | 'none';
+/** Source of the active agent runtime profile resolution. */
+export type AgentRuntimeProfileSource = 'local' | 'user-local' | 'missing' | 'none';
 
-// GET /api/backend/list
-export interface BackendListResponse {
-  profiles: BackendProfileInfo[];
+// GET /api/profile/list
+export interface ProfileListResponse {
+  profiles: AgentRuntimeProfileInfo[];
   active: string | null;
-  source: BackendProfileSource;
+  source: AgentRuntimeProfileSource;
 }
 
-// GET /api/backend/show
-export interface BackendShowResponse {
+// GET /api/profile/show
+export interface ProfileShowResponse {
   active: string | null;
-  source: BackendProfileSource;
+  source: AgentRuntimeProfileSource;
   resolved: {
-    backend: 'claude-sdk' | 'pi' | undefined;
+    harness: 'claude-sdk' | 'pi' | undefined;
     /** The parsed profile partial config. Opaque to the client. */
     profile: unknown | null;
     scope?: 'project' | 'user';
@@ -226,24 +226,24 @@ export interface BackendShowResponse {
 }
 
 /** Optional scope filter for the list endpoint. */
-export interface BackendListRequest {
+export interface ProfileListRequest {
   scope?: 'project' | 'user' | 'all';
 }
 
-// POST /api/backend/use
-export interface BackendUseRequest {
+// POST /api/profile/use
+export interface ProfileUseRequest {
   name: string;
   scope?: 'project' | 'user';
 }
 
-export interface BackendUseResponse {
+export interface ProfileUseResponse {
   active: string;
 }
 
-// POST /api/backend/create
-export interface BackendCreateRequest {
+// POST /api/profile/create
+export interface ProfileCreateRequest {
   name: string;
-  backend: 'claude-sdk' | 'pi';
+  harness: 'claude-sdk' | 'pi';
   /** Optional pi config block — opaque to the client. */
   pi?: unknown;
   /** Optional agents config block — opaque to the client. */
@@ -252,25 +252,25 @@ export interface BackendCreateRequest {
   scope?: 'project' | 'user';
 }
 
-export interface BackendCreateResponse {
+export interface ProfileCreateResponse {
   path: string;
 }
 
-// DELETE /api/backend/:name
-export interface BackendDeleteRequest {
+// DELETE /api/profile/:name
+export interface ProfileDeleteRequest {
   force?: boolean;
   scope?: 'project' | 'user';
 }
 
-export interface BackendDeleteResponse {
+export interface ProfileDeleteResponse {
   deleted: string;
 }
 
 // ---------------------------------------------------------------------------
-// Model listing (DAEMON_API_VERSION 2)
+// Model listing (DAEMON_API_VERSION 10)
 // ---------------------------------------------------------------------------
 
-// GET /api/models/providers?backend=pi|claude-sdk
+// GET /api/models/providers?harness=pi|claude-sdk
 export interface ModelProvidersResponse {
   providers: string[];
 }
@@ -284,7 +284,7 @@ export interface ModelInfo {
   deprecated?: boolean;
 }
 
-// GET /api/models/list?backend=pi|claude-sdk&provider=<optional>
+// GET /api/models/list?harness=pi|claude-sdk&provider=<optional>
 export interface ModelListResponse {
   models: ModelInfo[];
 }

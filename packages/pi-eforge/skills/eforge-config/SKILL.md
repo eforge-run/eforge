@@ -31,10 +31,10 @@ If `eforge/config.yaml` already exists, ask the user whether they want to switch
 
 This skill does not create agent runtime profiles. Before gathering team-wide settings, confirm a profile is already active by calling `eforge_profile` with `{ action: "show" }`. Inspect the response:
 
-- If `active` is `null` (no profile is active for this project) or `resolved.backend` is missing, **stop**. Tell the user:
+- If `active` is `null` (no profile is active for this project) or `resolved.harness` is missing, **stop**. Tell the user:
   > `/eforge:config` only manages team-wide settings. This project has no active agent runtime profile. Run `/eforge:init` to set up eforge in a fresh project (creates a profile and `config.yaml`), or `/eforge:profile-new` to add a profile to an existing setup. Come back to `/eforge:config` once a profile is active.
   Do not proceed with the interview and do not write `eforge/config.yaml`.
-- Otherwise note the resolved backend kind (`resolved.backend` is `claude-sdk` or `pi`) and, for Pi, the profile's provider. Use these when suggesting models later.
+- Otherwise note the resolved harness kind (`resolved.harness` is `claude-sdk` or `pi`) and, for Pi, the profile's provider. Use these when suggesting models later.
 
 ### Step 3: Gather Context
 
@@ -48,17 +48,17 @@ Share a brief summary of what you found.
 
 ### Step 4: Interview
 
-Walk the user through configuration sections, asking about each one. Only include sections where the user wants non-default behavior. **Do not** collect backend, provider, or Pi-specific tuning here - those belong in agent runtime profile files.
+Walk the user through configuration sections, asking about each one. Only include sections where the user wants non-default behavior. **Do not** collect harness, provider, or Pi-specific tuning here - those belong in agent runtime profile files.
 
 Agent settings resolve through three layers of granularity: **global** (applies to every agent), **tier** (applies to a group of related agents — planning, implementation, review, evaluation), and **per-role** (applies to one named agent). The interview walks them in that order; skip layers you don't want to customize.
 
 **Sections to cover:**
 
 1. **Build settings** - `postMergeCommands` (validation commands to run after merging worktrees, e.g. `pnpm install`, `pnpm type-check`, `pnpm test`), `maxValidationRetries`
-2. **Global agent defaults** (opt-in - "Would you like to customize model or thinking settings? Most users keep defaults.") - Model references are objects: `{ id: "model-name" }` for all backends. For Pi, the provider lives on the agent runtime entry (`pi.provider`), not on the model ref. Model class overrides via `agents.models` (map class names `max`/`balanced`/`fast` to model ref objects), global `agents.model` override (bypasses class system), `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`xhigh`/`max`). Resolution order (highest → lowest): plan override → per-role config → per-tier config → global config → built-in per-role default → built-in per-tier default. Model resolution adds a sub-chain: an explicit `model` at any layer wins over `modelClass`, and `modelClass` resolves to a model ID via `agents.models.<class>` (with backend defaults and fallback walking if unset). Whenever you suggest a specific model ID, **call `eforge_models` first** with `{ action: "list", backend: "<resolved-backend>" }` (and `provider: "<profile-provider>"` for Pi) and pick from the returned list (newest-first). Never propose a model ID from memory.
+2. **Global agent defaults** (opt-in - "Would you like to customize model or thinking settings? Most users keep defaults.") - Model references are objects: `{ id: "model-name" }` for all harnesses. For Pi, the provider lives on the agent runtime entry (`pi.provider`), not on the model ref. Model class overrides via `agents.models` (map class names `max`/`balanced`/`fast` to model ref objects), global `agents.model` override (bypasses class system), `agents.thinking` config (`adaptive`, `enabled` with optional `budgetTokens`, or `disabled`), `agents.effort` level (`low`/`medium`/`high`/`xhigh`/`max`). Resolution order (highest → lowest): plan override → per-role config → per-tier config → global config → built-in per-role default → built-in per-tier default. Model resolution adds a sub-chain: an explicit `model` at any layer wins over `modelClass`, and `modelClass` resolves to a model ID via `agents.models.<class>` (with harness defaults and fallback walking if unset). Whenever you suggest a specific model ID, **call `eforge_models` first** with `{ action: "list", harness: "<resolved-harness>" }` (and `provider: "<profile-provider>"` for Pi) and pick from the returned list (newest-first). Never propose a model ID from memory.
 3. **Tier tuning** (opt-in - "Would you like to tune agents by group? eforge organises agents into four groups by what they do: **planning**, **implementation**, **review**, and **evaluation**. You can give each group its own effort level or model class without touching individual roles.") - Group membership: **planning** — `planner`, `module-planner`, `formatter`, `pipeline-composer`, `dependency-detector`; **implementation** — `builder`, `review-fixer`, `validation-fixer`, `merge-conflict-resolver`, `doc-updater`, `test-writer`, `tester`, `gap-closer`, `recovery-analyst`; **review** — `reviewer`, `architecture-reviewer`, `cohesion-reviewer`, `plan-reviewer`, `staleness-assessor`, `prd-validator`; **evaluation** — `evaluator`, `architecture-evaluator`, `cohesion-evaluator`, `plan-evaluator`. Built-in defaults: `implementation` defaults to `effort=medium, modelClass=balanced`; `planning`, `review`, and `evaluation` default to `effort=high, modelClass=max`. Setting `agents.tiers.<tier>.modelClass` shifts a whole tier; setting `agents.roles.<role>.modelClass` shifts a single role. Available per-tier knobs: `effort`, `modelClass`, `model`, `thinking`, `maxTurns`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`, `agentRuntime`. Set them under `agents.tiers.<tier>`.
 4. **Agent behavior** - Global `maxTurns`, `maxContinuations` (default 3 - max continuation attempts after maxTurns hit), `permissionMode` (`bypass` or `default`), `settingSources`, `bare` (default false)
-5. **Per-role overrides** (opt-in - "Would you like to tune specific agent roles differently? Most users skip this.") - Override settings per agent role. Available roles: planning (`planner`, `module-planner`, `formatter`, `pipeline-composer`, `dependency-detector`), implementation (`builder`, `review-fixer`, `validation-fixer`, `merge-conflict-resolver`, `doc-updater`, `test-writer`, `tester`, `gap-closer`, `recovery-analyst`), review (`reviewer`, `architecture-reviewer`, `cohesion-reviewer`, `plan-reviewer`, `staleness-assessor`, `prd-validator`), evaluation (`evaluator`, `architecture-evaluator`, `cohesion-evaluator`, `plan-evaluator`). Per-role options: `model`, `modelClass` (override which class the role belongs to: `max`/`balanced`/`fast`), `thinking`, `effort`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`, `maxTurns`, `promptAppend` (text appended to the agent's prompt - useful for project-specific rules like "flag raw SQL queries" for the reviewer). You can also set `roles.<role>.tier` to reassign a role to a different tier (rare, but supported when one role inside a group needs to behave like another group). Same rule as section 2: call `eforge_models` before proposing any model ID.
+5. **Per-role overrides** (opt-in - "Would you like to tune specific agent roles differently? Most users skip this.") - Override settings per agent role. Available roles: planning (`planner`, `module-planner`, `formatter`, `pipeline-composer`, `dependency-detector`), implementation (`builder`, `review-fixer`, `validation-fixer`, `merge-conflict-resolver`, `doc-updater`, `test-writer`, `tester`, `gap-closer`, `recovery-analyst`), review (`reviewer`, `architecture-reviewer`, `cohesion-reviewer`, `plan-reviewer`, `staleness-assessor`, `prd-validator`), evaluation (`evaluator`, `architecture-evaluator`, `cohesion-evaluator`, `plan-evaluator`). Per-role options: `model`, `modelClass` (override which class the role belongs to: `max`/`balanced`/`fast`), `thinking`, `effort`, `maxBudgetUsd`, `fallbackModel`, `allowedTools`, `disallowedTools`, `maxTurns`, `promptAppend` (text appended to the agent's prompt - useful for project-specific rules like "flag raw SQL queries" for the reviewer). You can also set `roles.<role>.tier` to reassign a role to a different tier (rare, but supported when one role inside a group needs to behave like another group). Same rule as section 2: call `eforge_models` with `harness:` before proposing any model ID.
 6. **Prompt customization** (opt-in - "Would you like to customize agent prompts?") - `agents.promptDir` points to a directory of `.md` files that shadow bundled prompts by name (e.g. `eforge/prompts/reviewer.md` replaces the built-in reviewer prompt). Per-role `promptAppend` is safer - it appends instructions without replacing the full prompt.
 7. **Hooks** - Event-driven commands that run on specific eforge events (e.g. `session:start`, `phase:end`). Each hook has `event` (pattern), `command`, and optional `timeout`.
 8. **Langfuse tracing** - Whether to enable Langfuse integration (keys are typically set via env vars)
@@ -70,7 +70,7 @@ For each section, explain what it controls and suggest values based on the proje
 
 ### Step 5: Present Draft
 
-Show the user the complete `eforge/config.yaml` content before writing. Confirm it contains no standalone `backend:` key at the top level (backend-specific config belongs only in agent runtime profile files under `eforge/profiles/`). Ask for any changes.
+Show the user the complete `eforge/config.yaml` content before writing. Confirm it contains no standalone `backend:` key at the top level (harness-specific config belongs only in agent runtime profile files under `eforge/profiles/`). Ask for any changes.
 
 ### Step 6: Write
 
@@ -90,11 +90,11 @@ Read the existing `eforge/config.yaml` file and summarize its current settings f
 
 ### Step 2: Identify Changes
 
-Ask the user what they want to change. If `$ARGUMENTS` contains additional context beyond `--edit`, use that to understand the desired changes. If the requested change is really about the backend (switching backend kind, provider, or the profile's own model/tuning), stop and redirect them to `/eforge:profile` (switch active profile) or `/eforge:profile-new` (create a new profile) - that configuration does not belong in `eforge/config.yaml`.
+Ask the user what they want to change. If `$ARGUMENTS` contains additional context beyond `--edit`, use that to understand the desired changes. If the requested change is really about the harness (switching harness kind, provider, or the profile's own model/tuning), stop and redirect them to `/eforge:profile` (switch active profile) or `/eforge:profile-new` (create a new profile) - that configuration does not belong in `eforge/config.yaml`.
 
 ### Step 3: Apply Changes
 
-Modify the config based on the user's requests. Present the updated content before writing. If the change involves a model ID anywhere (`agents.models.*`, `agents.model`, per-role `model`), first resolve the active profile by calling `eforge_profile` with `{ action: "show" }`, then call `eforge_models` with `{ action: "list", backend: "<resolved-backend>" }` (and `provider` for Pi) to fetch the live list. Pick from that list; do not suggest model IDs from memory.
+Modify the config based on the user's requests. Present the updated content before writing. If the change involves a model ID anywhere (`agents.models.*`, `agents.model`, per-role `model`), first resolve the active profile by calling `eforge_profile` with `{ action: "show" }`, then call `eforge_models` with `{ action: "list", harness: "<resolved-harness>" }` (and `provider` for Pi) to fetch the live list. Pick from that list; do not suggest model IDs from memory.
 
 ### Step 4: Write
 
@@ -116,7 +116,7 @@ This returns the merged result of defaults + global config + project config + ac
 
 ## Configuration Reference
 
-Available top-level sections in `eforge/config.yaml`. Note: backend-specific sections (`pi:`, `claudeSdk:`) are **not valid here** - they live in agent runtime profile files under `eforge/profiles/` or `~/.config/eforge/profiles/`. The `agentRuntimes:` and `defaultAgentRuntime:` keys are valid top-level keys for registering and selecting profiles.
+Available top-level sections in `eforge/config.yaml`. Note: harness-specific sections (`pi:`, `claudeSdk:`) are **not valid here** - they live in agent runtime profile files under `eforge/profiles/` or `~/.config/eforge/profiles/`. The `agentRuntimes:` and `defaultAgentRuntime:` keys are valid top-level keys for registering and selecting profiles.
 
 ```yaml
 # Queue concurrency
@@ -142,7 +142,7 @@ agents:
   bare: false                          # Bare mode
   # --- Model class system ---
   # Model IDs in the examples below are illustrative only. Always call
-  # eforge_models with action="list" and the resolved backend
+  # eforge_models with action="list" and the resolved harness
   # (and provider, for Pi) before filling in concrete model IDs.
   # models:                            # Map model classes to model refs
   #   max:
@@ -228,7 +228,7 @@ hooks:
 |-----------|--------|
 | No active agent runtime profile | Stop and direct the user to `/eforge:init` or `/eforge:profile-new` |
 | `eforge_config` validate returns errors | Show errors, offer to fix |
-| Validation error mentions a backend key is not valid here | Remove the key; backend-specific config lives in profile files, not `config.yaml` |
+| Validation error mentions a backend key is not valid here | Remove the key; harness-specific config lives in profile files, not `config.yaml` |
 | Validation error mentions an unrecognized top-level key | Remove the key (typo or stale feature reference) - the error includes the recognized-key list |
 | YAML syntax error in existing file | Report the error, offer to recreate |
 | Daemon connection failure | The daemon auto-starts; if it still fails, suggest running `eforge daemon start` manually |

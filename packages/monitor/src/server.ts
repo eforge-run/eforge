@@ -790,7 +790,7 @@ export async function startServer(
   /**
    * Read and parse the project's `config.yaml` at the given config dir into
    * a partial config object. Returns {} on any failure (missing file, bad
-   * YAML, etc.). Used by backend-profile endpoints to compute the team
+   * YAML, etc.). Used by agent runtime profile endpoints to compute the team
    * default fallback for `resolveActiveProfileName`.
    */
   async function loadProjectPartialConfig(configDir: string): Promise<Record<string, unknown>> {
@@ -1041,7 +1041,7 @@ export async function startServer(
       return;
     }
 
-    // --- Backend profile management ---
+    // --- Agent runtime profile management ---
     if (req.method === 'GET' && (url === API_ROUTES.profileList || url.startsWith(`${API_ROUTES.profileList}?`))) {
       try {
         const { getConfigDir, listProfiles, resolveActiveProfileName, loadUserConfig } =
@@ -1070,7 +1070,7 @@ export async function startServer(
         }
         sendJson(res, { profiles, active: name, source });
       } catch (err) {
-        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list backend profiles');
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list agent runtime profiles');
       }
       return;
     }
@@ -1081,7 +1081,7 @@ export async function startServer(
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
-          sendJson(res, { active: null, source: 'none', resolved: { backend: undefined, profile: null } });
+          sendJson(res, { active: null, source: 'none', resolved: { harness: undefined, profile: null } });
           return;
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
@@ -1095,22 +1095,35 @@ export async function startServer(
           process.stderr.write(`${warning}\n`);
         }
         let profile: unknown = null;
-        let backend: 'claude-sdk' | 'pi' | undefined;
+        let harness: 'claude-sdk' | 'pi' | undefined;
         let profileScope: 'project' | 'user' | undefined;
         if (name) {
           const result = await loadProfile(configDir, name);
           if (result) {
             profile = result.profile;
             profileScope = result.scope;
-            if (result.profile && typeof result.profile === 'object' && 'backend' in result.profile) {
-              const b = (result.profile as { backend?: unknown }).backend;
-              if (b === 'claude-sdk' || b === 'pi') backend = b;
+            if (result.profile && typeof result.profile === 'object') {
+              const p = result.profile as Record<string, unknown>;
+              // New shape: agentRuntimes.<name>.harness
+              if (p.agentRuntimes && typeof p.agentRuntimes === 'object') {
+                const runtimeKey = typeof p.defaultAgentRuntime === 'string' ? p.defaultAgentRuntime : 'main';
+                const runtime = (p.agentRuntimes as Record<string, unknown>)[runtimeKey];
+                if (runtime && typeof runtime === 'object') {
+                  const h = (runtime as Record<string, unknown>).harness;
+                  if (h === 'claude-sdk' || h === 'pi') harness = h;
+                }
+              }
+              // Legacy shape fallback: top-level backend field
+              if (!harness && 'backend' in p) {
+                const b = p.backend;
+                if (b === 'claude-sdk' || b === 'pi') harness = b;
+              }
             }
           }
         }
-        sendJson(res, { active: name, source, resolved: { backend, profile, scope: profileScope } });
+        sendJson(res, { active: name, source, resolved: { harness, profile, scope: profileScope } });
       } catch (err) {
-        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to show backend profile');
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to show agent runtime profile');
       }
       return;
     }
@@ -1134,7 +1147,7 @@ export async function startServer(
           await setActiveProfile(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined);
           sendJson(res, { active: body.name });
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Failed to set active backend';
+          const msg = err instanceof Error ? err.message : 'Failed to set active profile';
           if (/not found/i.test(msg)) {
             sendJsonError(res, 404, msg);
           } else {
@@ -1151,7 +1164,7 @@ export async function startServer(
       try {
         const body = await parseJsonBody(req) as {
           name?: unknown;
-          backend?: unknown;
+          harness?: unknown;
           pi?: unknown;
           agents?: unknown;
           overwrite?: unknown;
@@ -1161,12 +1174,12 @@ export async function startServer(
           sendJsonError(res, 400, 'Missing required field: name (string)');
           return;
         }
-        if (body.backend !== 'claude-sdk' && body.backend !== 'pi') {
-          sendJsonError(res, 400, 'Invalid field: backend (must be "claude-sdk" or "pi")');
+        if (body.harness !== 'claude-sdk' && body.harness !== 'pi') {
+          sendJsonError(res, 400, 'Invalid field: harness (must be "claude-sdk" or "pi")');
           return;
         }
         const scopeVal = body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
-        const { getConfigDir, createBackendProfile } =
+        const { getConfigDir, createAgentRuntimeProfile } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -1174,9 +1187,9 @@ export async function startServer(
           return;
         }
         try {
-          const result = await createBackendProfile(configDir, {
+          const result = await createAgentRuntimeProfile(configDir, {
             name: body.name,
-            harness: body.backend as 'claude-sdk' | 'pi',
+            harness: body.harness as 'claude-sdk' | 'pi',
             pi: body.pi as PartialEforgeConfig['pi'],
             agents: body.agents as PartialEforgeConfig['agents'],
             overwrite: body.overwrite === true,
@@ -1184,7 +1197,7 @@ export async function startServer(
           });
           sendJson(res, { path: result.path });
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Failed to create backend profile';
+          const msg = err instanceof Error ? err.message : 'Failed to create agent runtime profile';
           if (/already exists/i.test(msg)) {
             sendJsonError(res, 409, msg);
           } else {
@@ -1200,7 +1213,7 @@ export async function startServer(
     if (req.method === 'DELETE' && url.startsWith(`${PROFILE_BASE}/`)) {
       const name = url.slice(`${PROFILE_BASE}/`.length);
       if (!name || !/^[A-Za-z0-9._-]+$/.test(name)) {
-        sendJsonError(res, 400, 'Invalid backend profile name');
+        sendJsonError(res, 400, 'Invalid agent runtime profile name');
         return;
       }
       try {
@@ -1215,7 +1228,7 @@ export async function startServer(
         } catch {
           // empty body — force defaults to false, scope defaults to undefined
         }
-        const { getConfigDir, deleteBackendProfile } =
+        const { getConfigDir, deleteAgentRuntimeProfile } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -1223,10 +1236,10 @@ export async function startServer(
           return;
         }
         try {
-          await deleteBackendProfile(configDir, name, force, scopeVal);
+          await deleteAgentRuntimeProfile(configDir, name, force, scopeVal);
           sendJson(res, { deleted: name });
         } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Failed to delete backend profile';
+          const msg = err instanceof Error ? err.message : 'Failed to delete agent runtime profile';
           if (/currently active/i.test(msg)) {
             sendJsonError(res, 409, msg);
           } else if (/not found/i.test(msg)) {
@@ -1238,7 +1251,7 @@ export async function startServer(
           }
         }
       } catch (err) {
-        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to delete backend profile');
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to delete agent runtime profile');
       }
       return;
     }
@@ -1246,14 +1259,14 @@ export async function startServer(
     if (req.method === 'GET' && url.startsWith(API_ROUTES.modelProviders)) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);
-      const backend = params.get('backend');
-      if (backend !== 'pi' && backend !== 'claude-sdk') {
-        sendJsonError(res, 400, 'Missing or invalid query param: backend (must be "pi" or "claude-sdk")');
+      const harness = params.get('harness');
+      if (harness !== 'pi' && harness !== 'claude-sdk') {
+        sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")');
         return;
       }
       try {
         const { listProviders } = await import('@eforge-build/engine/models');
-        const providers = await listProviders(backend);
+        const providers = await listProviders(harness);
         sendJson(res, { providers });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list providers');
@@ -1264,15 +1277,15 @@ export async function startServer(
     if (req.method === 'GET' && url.startsWith(API_ROUTES.modelList)) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);
-      const backend = params.get('backend');
+      const harness = params.get('harness');
       const provider = params.get('provider') ?? undefined;
-      if (backend !== 'pi' && backend !== 'claude-sdk') {
-        sendJsonError(res, 400, 'Missing or invalid query param: backend (must be "pi" or "claude-sdk")');
+      if (harness !== 'pi' && harness !== 'claude-sdk') {
+        sendJsonError(res, 400, 'Missing or invalid query param: harness (must be "pi" or "claude-sdk")');
         return;
       }
       try {
         const { listModels } = await import('@eforge-build/engine/models');
-        const models = await listModels(backend, provider);
+        const models = await listModels(harness, provider);
         sendJson(res, { models });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list models');

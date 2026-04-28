@@ -29,10 +29,10 @@ Present your suggested commands to the user briefly: "I'd suggest these postMerg
 <!-- parity-skip-start -->
 ### Step 1.5: Pick provider and model
 
-Since Pi is the backend:
+Since this skill targets the Pi harness:
 
-1. **Provider**: Call `eforge_models` with `{ action: "providers", backend: "pi" }` to get available providers. Ask the user to pick one (e.g. "anthropic", "openrouter").
-2. **Max model**: Call `eforge_models` with `{ action: "list", backend: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Default to the newest model. The max model is used for all three model classes (max, balanced, fast) initially - users can refine later with `/eforge:profile-new`.
+1. **Provider**: Call `eforge_models` with `{ action: "providers", harness: "pi" }` to get available providers. Ask the user to pick one (e.g. "anthropic", "openrouter").
+2. **Max model**: Call `eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Default to the newest model. The max model is used for all three model classes (max, balanced, fast) initially - users can refine later with `/eforge:profile-new`.
 
 ### Step 2: Call the tool
 
@@ -43,11 +43,11 @@ Call the `eforge_init` tool with:
 - `maxModel`: the model ID from Step 1.5
 <!-- parity-skip-end -->
 
-The tool will create a named agent runtime profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` with `agentRuntimes:` (listing available profiles) and `defaultAgentRuntime:` (the default profile name) as top-level keys alongside other team-wide settings.
+The tool will create a single-entry agent runtime profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` with `agentRuntimes:` (listing available profiles) and `defaultAgentRuntime:` (the default profile name) as top-level keys alongside other team-wide settings.
 
 ### Step 2.5: Migrate existing config
 
-If `$ARGUMENTS` contains `--migrate`, skip Steps 1.5 and 2 above. Instead call `eforge_init` with `migrate: true`. This extracts the `backend:`, `pi:`, and `agents.models`/`agents.model`/`agents.effort`/`agents.thinking` fields from the existing `config.yaml` into a named profile, activates it, and strips those fields from `config.yaml`.
+If `$ARGUMENTS` contains `--migrate`, skip Steps 1.5 and 2 above. Instead call `eforge_init` with `migrate: true`. This extracts the legacy `backend:`/`pi:`/`agents.*` fields from the existing `config.yaml` into a single-entry agent runtime profile, activates it, and strips those fields from `config.yaml`.
 
 ### Step 3: Ensure `.gitignore` covers the active-profile marker
 
@@ -58,6 +58,8 @@ The `eforge/.active-profile` file is a per-developer marker that tracks which na
 Once the tool completes successfully, inform the user:
 
 > eforge initialized with profile `<profileName>`. The profile lives at `eforge/profiles/<profileName>.yaml` and is now active. You can customize further with `/eforge:config --edit`, switch profiles with `/eforge:profile`, or create additional profiles with `/eforge:profile-new`. Use `/eforge:profile-new --scope user` to create a user-scope profile under `~/.config/eforge/profiles/` that applies across all your projects.
+
+To mix multiple harnesses across agent roles (e.g. `claude-sdk` planners + `pi` builders), use `/eforge:profile-new` or edit `eforge/profiles/<profileName>.yaml` directly — `agentRuntimes` accepts multiple named entries.
 
 ## Related Skills
 

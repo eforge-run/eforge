@@ -8,8 +8,8 @@ import {
   loadProfile,
   listProfiles,
   setActiveProfile,
-  createBackendProfile,
-  deleteBackendProfile,
+  createAgentRuntimeProfile,
+  deleteAgentRuntimeProfile,
   getConfigDir,
   parseRawConfigLegacy,
   type PartialEforgeConfig,
@@ -224,7 +224,7 @@ describe('setActiveProfile', () => {
   });
 });
 
-describe('createBackendProfile', () => {
+describe('createAgentRuntimeProfile', () => {
   let projectDir: string;
   let configDir: string;
 
@@ -238,7 +238,7 @@ describe('createBackendProfile', () => {
 
   it('accepts pi profile with pi.provider (provider now schema-required on pi runtimes)', async () => {
     // Provider is now required at schema time on agentRuntimes.<name>.pi.provider
-    const result = await createBackendProfile(configDir, {
+    const result = await createAgentRuntimeProfile(configDir, {
       name: 'pi-with-provider',
       harness: 'pi',
       pi: { provider: 'openrouter' },
@@ -248,7 +248,7 @@ describe('createBackendProfile', () => {
   });
 
   it('creates a valid pi profile with provider in pi config', async () => {
-    const result = await createBackendProfile(configDir, {
+    const result = await createAgentRuntimeProfile(configDir, {
       name: 'pi-prod',
       harness: 'pi',
       pi: { provider: 'openrouter' },
@@ -261,15 +261,15 @@ describe('createBackendProfile', () => {
   });
 
   it('refuses overwrite without overwrite: true', async () => {
-    await createBackendProfile(configDir, { name: 'pi', harness: 'claude-sdk' });
+    await createAgentRuntimeProfile(configDir, { name: 'pi', harness: 'claude-sdk' });
     await expect(
-      createBackendProfile(configDir, { name: 'pi', harness: 'claude-sdk' }),
+      createAgentRuntimeProfile(configDir, { name: 'pi', harness: 'claude-sdk' }),
     ).rejects.toThrow(/already exists/);
   });
 
   it('with overwrite: true replaces the file', async () => {
-    await createBackendProfile(configDir, { name: 'pi', harness: 'claude-sdk' });
-    const again = await createBackendProfile(configDir, {
+    await createAgentRuntimeProfile(configDir, { name: 'pi', harness: 'claude-sdk' });
+    const again = await createAgentRuntimeProfile(configDir, {
       name: 'pi',
       harness: 'pi',
       pi: { provider: 'openrouter' },
@@ -282,12 +282,12 @@ describe('createBackendProfile', () => {
 
   it('rejects invalid profile names', async () => {
     await expect(
-      createBackendProfile(configDir, { name: 'has spaces', harness: 'claude-sdk' }),
+      createAgentRuntimeProfile(configDir, { name: 'has spaces', harness: 'claude-sdk' }),
     ).rejects.toThrow(/Invalid profile name/);
   });
 });
 
-describe('deleteBackendProfile', () => {
+describe('deleteAgentRuntimeProfile', () => {
   let projectDir: string;
   let configDir: string;
 
@@ -303,7 +303,7 @@ describe('deleteBackendProfile', () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
     await writeFile(join(configDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'active\n', 'utf-8');
-    await expect(deleteBackendProfile(configDir, 'active')).rejects.toThrow(/currently active/);
+    await expect(deleteAgentRuntimeProfile(configDir, 'active')).rejects.toThrow(/currently active/);
   });
 
   it('with force: true removes the file and clears the marker', async () => {
@@ -311,13 +311,13 @@ describe('deleteBackendProfile', () => {
     await writeFile(join(configDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'active\n', 'utf-8');
 
-    await deleteBackendProfile(configDir, 'active', true);
+    await deleteAgentRuntimeProfile(configDir, 'active', true);
     expect(await fileExists(join(configDir, 'profiles', 'active.yaml'))).toBe(false);
     expect(await fileExists(join(configDir, '.active-profile'))).toBe(false);
   });
 
   it('errors when the profile file does not exist', async () => {
-    await expect(deleteBackendProfile(configDir, 'ghost')).rejects.toThrow(/not found/);
+    await expect(deleteAgentRuntimeProfile(configDir, 'ghost')).rejects.toThrow(/not found/);
   });
 });
 
@@ -608,7 +608,7 @@ describe('user-scope: listProfiles', () => {
   });
 });
 
-describe('user-scope: createBackendProfile', () => {
+describe('user-scope: createAgentRuntimeProfile', () => {
   let projectDir: string;
   let configDir: string;
   let userHomeDir: string;
@@ -633,7 +633,7 @@ describe('user-scope: createBackendProfile', () => {
   });
 
   it('with scope: user writes file under user config profiles directory', async () => {
-    const result = await createBackendProfile(configDir, {
+    const result = await createAgentRuntimeProfile(configDir, {
       name: 'user-prof',
       harness: 'claude-sdk',
       scope: 'user',
@@ -645,7 +645,7 @@ describe('user-scope: createBackendProfile', () => {
   });
 });
 
-describe('user-scope: deleteBackendProfile', () => {
+describe('user-scope: deleteAgentRuntimeProfile', () => {
   let projectDir: string;
   let configDir: string;
   let userHomeDir: string;
@@ -675,7 +675,7 @@ describe('user-scope: deleteBackendProfile', () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(join(userEforgeDir, 'profiles', 'dup.yaml'), 'backend: pi\n', 'utf-8');
 
-    await expect(deleteBackendProfile(configDir, 'dup')).rejects.toThrow(
+    await expect(deleteAgentRuntimeProfile(configDir, 'dup')).rejects.toThrow(
       /both project and user scope/i,
     );
   });
@@ -686,7 +686,7 @@ describe('user-scope: deleteBackendProfile', () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(join(userEforgeDir, 'profiles', 'dup.yaml'), 'backend: pi\n', 'utf-8');
 
-    await deleteBackendProfile(configDir, 'dup', false, 'user');
+    await deleteAgentRuntimeProfile(configDir, 'dup', false, 'user');
     expect(await fileExists(join(userEforgeDir, 'profiles', 'dup.yaml'))).toBe(false);
     expect(await fileExists(join(configDir, 'profiles', 'dup.yaml'))).toBe(true);
   });
@@ -837,7 +837,7 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
   });
 });
 
-describe('user-scope: deleteBackendProfile edge cases', () => {
+describe('user-scope: deleteAgentRuntimeProfile edge cases', () => {
   let projectDir: string;
   let configDir: string;
   let userHomeDir: string;
@@ -866,7 +866,7 @@ describe('user-scope: deleteBackendProfile edge cases', () => {
     await writeFile(join(userEforgeDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-profile'), 'active\n', 'utf-8');
 
-    await deleteBackendProfile(configDir, 'active', true, 'user');
+    await deleteAgentRuntimeProfile(configDir, 'active', true, 'user');
     expect(await fileExists(join(userEforgeDir, 'profiles', 'active.yaml'))).toBe(false);
     expect(await fileExists(join(userEforgeDir, '.active-profile'))).toBe(false);
   });
@@ -876,7 +876,7 @@ describe('user-scope: deleteBackendProfile edge cases', () => {
     await writeFile(join(userEforgeDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-profile'), 'active\n', 'utf-8');
 
-    await expect(deleteBackendProfile(configDir, 'active', false, 'user')).rejects.toThrow(
+    await expect(deleteAgentRuntimeProfile(configDir, 'active', false, 'user')).rejects.toThrow(
       /currently active/,
     );
   });
@@ -885,7 +885,7 @@ describe('user-scope: deleteBackendProfile edge cases', () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(join(userEforgeDir, 'profiles', 'usr-only.yaml'), 'backend: pi\n', 'utf-8');
 
-    await deleteBackendProfile(configDir, 'usr-only');
+    await deleteAgentRuntimeProfile(configDir, 'usr-only');
     expect(await fileExists(join(userEforgeDir, 'profiles', 'usr-only.yaml'))).toBe(false);
   });
 
@@ -893,7 +893,7 @@ describe('user-scope: deleteBackendProfile edge cases', () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
     await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: claude-sdk\n', 'utf-8');
 
-    await expect(deleteBackendProfile(configDir, 'proj', false, 'user')).rejects.toThrow(
+    await expect(deleteAgentRuntimeProfile(configDir, 'proj', false, 'user')).rejects.toThrow(
       /not found in user scope/,
     );
   });
