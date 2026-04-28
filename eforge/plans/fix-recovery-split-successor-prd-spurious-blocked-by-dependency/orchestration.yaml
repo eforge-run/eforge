@@ -1,0 +1,64 @@
+name: fix-recovery-split-successor-prd-spurious-blocked-by-dependency
+description: Eliminate spurious "blocked by" dependency on successor PRDs
+  created by the split recovery verdict by routing the agent's body through
+  enqueuePrd (Layer A), filtering stale dependsOn at the monitor API (Layer B),
+  and nudging the recovery analyst prompt to emit body only (Layer C).
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-fix-spurious-depends-on
+    name: Fix spurious depends_on on split-recovery successor PRDs
+    depends_on: []
+    branch: fix-recovery-split-successor-prd-spurious-blocked-by-dependency/plan-01
+    build:
+      - - implement
+        - doc-update
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+    - test
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - api-contract
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: This PRD is a focused bug fix touching three well-scoped files
+    (recovery/apply.ts, monitor/server.ts, recovery-analyst.md) plus two test
+    files. The changes are sequential and tightly coupled (Layer A + Layer B +
+    Layer C all serve one goal), with explicit code snippets, line numbers, and
+    acceptance criteria already supplied — a single planner session can easily
+    enumerate all plans and dependencies, so excursion (not expedition) is
+    correct. It is not an errand because it spans multiple packages (engine +
+    monitor), deletes a function, mutates an HTTP API response shape, and
+    requires new tests in two suites. Compile uses planner + plan-review-cycle
+    to ensure the plan correctly captures both layers and the prompt nudge
+    before building. Default build runs implement, then a review-cycle
+    (correctness + API-contract perspectives, since the change alters server
+    JSON output and a public engine helper boundary) at standard strictness with
+    maxRounds=2 — appropriate for a contained bug fix with clear acceptance
+    criteria. The `test` stage is appended because the PRD explicitly requires
+    new vitest cases (frontmatter-stripping test, serveQueue filter test) and
+    existing tests must continue to pass; running the tester agent validates the
+    AC1 build gate. doc-update is not included since the PRD touches no
+    user-facing docs (CHANGELOG is owned by release flow per memory, and
+    roadmap.md does not need an entry for a bug fix).
