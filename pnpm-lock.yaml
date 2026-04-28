@@ -270,6 +270,9 @@ importers:
       '@eforge-build/client':
         specifier: workspace:*
         version: link:../client
+      '@eforge-build/engine':
+        specifier: workspace:*
+        version: link:../engine
       '@mariozechner/pi-ai':
         specifier: '*'
         version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.3.6))(ws@8.20.0)(zod@4.3.6)

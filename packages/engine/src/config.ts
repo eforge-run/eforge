@@ -215,11 +215,11 @@ const eforgeConfigBaseSchema = z.object({
       tier: agentTierSchema.optional().describe('Override the tier assignment for this role'),
       shards: z.array(shardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
     }).optional()).optional().describe('Per-agent role overrides'),
-    tiers: z.record(agentTierSchema, sdkPassthroughConfigSchema.extend({
+    tiers: z.record(modelClassSchema, sdkPassthroughConfigSchema.extend({
       maxTurns: z.number().int().positive().optional(),
       modelClass: modelClassSchema.optional().describe('Override the model class for all roles in this tier'),
       agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this tier'),
-    }).optional()).optional().describe('Per-agent tier overrides'),
+    }).optional()).optional().describe('Per-model-class tier overrides'),
   }).optional(),
   build: z.object({
     worktreeDir: z.string().optional(),
@@ -383,7 +383,7 @@ export interface EforgeConfig {
     effort?: import('./harness.js').EffortLevel;
     models?: Partial<Record<ModelClass, ModelRef>>;
     roles?: Record<string, Partial<ResolvedAgentConfig>>;
-    tiers?: Partial<Record<AgentTier, {
+    tiers?: Partial<Record<ModelClass, {
       model?: ModelRef;
       thinking?: import('./harness.js').ThinkingConfig;
       effort?: import('./harness.js').EffortLevel;
