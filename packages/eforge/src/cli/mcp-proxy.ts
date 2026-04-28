@@ -12,6 +12,7 @@ import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, sanitizeProfileName, parseRawConfigLegacy, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery } from '@eforge-build/client';
+import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   LatestRunResponse,
   EnqueueResponse,
@@ -578,13 +579,31 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_init
   createDaemonTool(server, cwd, {
     name: 'eforge_init',
-    description: 'Initialize eforge in a project: creates a single-entry agent runtime profile under eforge/profiles/, activates it, and writes eforge/config.yaml for team-wide settings. Presents an elicitation form for harness, provider, and model selection. With migrate: true, extracts legacy harness config (top-level `backend:`/`pi:`/`agents.*` fields) from an existing pre-overhaul config.yaml into a named profile.',
+    description: 'Initialize eforge in a project. The skill is responsible for picking harness/runtime/model interactively; the tool is a pure persister. Pass `profile` with the assembled multi-runtime spec. With `migrate: true`, extracts legacy harness config from a pre-overhaul config.yaml.',
     schema: {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
-      postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands (e.g. ["pnpm install", "pnpm test"]). Only applied when creating a new config, not when merging with existing.'),
-      migrate: z.boolean().optional().describe('Extract legacy harness config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.'),
+      postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands. Only applied when creating a new config.'),
+      migrate: z.boolean().optional().describe('Extract legacy harness config from existing pre-overhaul config.yaml into a named profile. Default: false.'),
+      profile: z.object({
+        name: z.string().optional().describe('Profile name. Auto-derived via deriveProfileName when omitted.'),
+        agentRuntimes: z.record(z.string(), z.object({
+          harness: z.enum(['claude-sdk', 'pi']),
+          pi: z.object({ provider: z.string() }).optional(),
+        })),
+        defaultAgentRuntime: z.string(),
+        models: z.object({
+          max: z.object({ id: z.string() }).optional(),
+          balanced: z.object({ id: z.string() }).optional(),
+          fast: z.object({ id: z.string() }).optional(),
+        }).optional(),
+        tiers: z.object({
+          max: z.object({ agentRuntime: z.string() }).optional(),
+          balanced: z.object({ agentRuntime: z.string() }).optional(),
+          fast: z.object({ agentRuntime: z.string() }).optional(),
+        }).optional(),
+      }).optional().describe('Multi-runtime profile spec. When omitted, the tool falls back to a minimal default and emits a deprecation note.'),
     },
-    handler: async ({ force, postMergeCommands, migrate }, { cwd: toolCwd, server: toolServer }) => {
+    handler: async ({ force, postMergeCommands, migrate, profile }, { cwd: toolCwd }) => {
       const configDir = join(toolCwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
 
@@ -616,12 +635,12 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           throw new McpUserError({ error: 'config.yaml has no top-level "backend:" field. Nothing to migrate.' });
         }
 
-        const { profile, remaining } = parseRawConfigLegacy(data);
-        const harness = profile.backend as string;
+        const { profile: legacyProfile, remaining } = parseRawConfigLegacy(data);
+        const harness = legacyProfile.backend as string;
 
         let maxModelId: string | undefined;
         let provider: string | undefined;
-        const agents = profile.agents as Record<string, unknown> | undefined;
+        const agents = legacyProfile.agents as Record<string, unknown> | undefined;
         if (agents?.models) {
           const models = agents.models as Record<string, unknown>;
           const maxModel = models.max as { id?: string; provider?: string } | undefined;
@@ -642,8 +661,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           harness,
           overwrite: true,
         };
-        if (profile.agents) createBody.agents = profile.agents;
-        if (profile.pi) createBody.pi = profile.pi;
+        if (legacyProfile.agents) createBody.agents = legacyProfile.agents;
+        if (legacyProfile.pi) createBody.pi = legacyProfile.pi;
 
         await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, createBody);
 
@@ -660,7 +679,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           profileName,
           profilePath: `eforge/profiles/${profileName}.yaml`,
           harness,
-          moved: Object.keys(profile),
+          moved: Object.keys(legacyProfile),
           kept: Object.keys(remaining),
         };
       }
@@ -679,136 +698,53 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         // File does not exist - proceed
       }
 
-      // Elicit harness choice from user
-      let harness: string;
-      try {
-        const result = await toolServer.server.elicitInput({
-          mode: 'form',
-          message: 'Configure eforge for this project:',
-          requestedSchema: {
-            type: 'object',
-            properties: {
-              harness: {
-                type: 'string',
-                title: 'Harness',
-                description: 'Which agent harness to use for builds. To mix multiple harnesses across agent roles, use /eforge:profile-new after setup.',
-                oneOf: [
-                  { const: 'claude-sdk', title: 'Claude SDK - Uses Claude Code\'s built-in SDK' },
-                  { const: 'pi', title: 'Pi - Experimental multi-provider via Pi SDK' },
-                ],
-                default: 'claude-sdk',
-              },
-            },
-            required: ['harness'],
+      // Resolve effective profile spec
+      let deprecation: string | undefined;
+      let resolvedSpec: {
+        agentRuntimes: Record<string, { harness: 'claude-sdk' | 'pi'; pi?: { provider: string } }>;
+        defaultAgentRuntime: string;
+        models?: { max?: { id: string }; balanced?: { id: string }; fast?: { id: string } };
+        tiers?: { max?: { agentRuntime: string }; balanced?: { agentRuntime: string }; fast?: { agentRuntime: string } };
+      };
+
+      if (profile) {
+        resolvedSpec = {
+          agentRuntimes: profile.agentRuntimes,
+          defaultAgentRuntime: profile.defaultAgentRuntime,
+          models: profile.models,
+          tiers: profile.tiers,
+        };
+      } else {
+        // Minimal default fallback for legacy callers
+        resolvedSpec = {
+          agentRuntimes: { main: { harness: 'claude-sdk' as const } },
+          defaultAgentRuntime: 'main',
+          models: {
+            max: { id: 'claude-opus-4-7' },
+            balanced: { id: 'claude-opus-4-7' },
+            fast: { id: 'claude-opus-4-7' },
           },
-        });
-
-        if (result.action === 'decline') {
-          return { status: 'declined', message: 'Initialization declined by user.' };
-        }
-        if (result.action === 'cancel' || !result.content) {
-          return { status: 'cancelled', message: 'Initialization cancelled.' };
-        }
-        harness = result.content.harness as string;
-      } catch (err) {
-        if (err instanceof McpUserError) throw err;
-        throw new McpUserError({
-          error: `Elicitation failed: ${err instanceof Error ? err.message : String(err)}. You can use /eforge:config instead.`,
-        });
+        };
+        deprecation = 'eforge_init was called without a profile parameter. Future versions will require it. Update your skill or harness wrapper.';
       }
 
-      // Elicit provider (if pi, via /api/models/providers)
-      let provider: string | undefined;
-      if (harness === 'pi') {
-        try {
-          const { data: providersResp } = await daemonRequest<{ providers: string[] }>(toolCwd, 'GET', `${API_ROUTES.modelProviders}?harness=pi`);
-          if (providersResp.providers.length > 0) {
-            const providerSchema = {
-              type: 'object' as const,
-              properties: {
-                provider: {
-                  type: 'string' as const,
-                  title: 'Provider',
-                  description: 'Which provider to use',
-                  oneOf: providersResp.providers.map((p) => ({ const: p, title: p })),
-                  default: providersResp.providers[0],
-                },
-              },
-              required: ['provider'],
-            };
-            const provResult = await toolServer.server.elicitInput({
-              mode: 'form',
-              message: 'Select a provider:',
-              requestedSchema: providerSchema,
-            });
-            if (provResult.action === 'accept' && provResult.content) {
-              provider = provResult.content.provider as string;
-            }
-          }
-        } catch {
-          // Best-effort provider selection
-        }
-      }
+      // Compute profile name (use skill-supplied name if present, otherwise derive)
+      const profileName = profile?.name ?? deriveProfileName(resolvedSpec);
 
-      // Elicit max model (via /api/models/list)
-      let maxModelId: string | undefined;
-      try {
-        const params = new URLSearchParams({ harness });
-        if (provider) params.set('provider', provider);
-        const { data: modelsResp } = await daemonRequest<{ models: Array<{ id: string; provider?: string }> }>(
-          toolCwd, 'GET', `${API_ROUTES.modelList}?${params.toString()}`,
-        );
-        if (modelsResp.models.length > 0) {
-          const topModels = modelsResp.models.slice(0, 10);
-          const modelSchema = {
-            type: 'object' as const,
-            properties: {
-              model: {
-                type: 'string' as const,
-                title: 'Max Model',
-                description: 'Primary model for heavy reasoning (planners, reviewers). Used for all model classes by default.',
-                oneOf: topModels.map((m) => ({ const: m.id, title: m.id })),
-                default: topModels[0].id,
-              },
-            },
-            required: ['model'],
-          };
-          const modelResult = await toolServer.server.elicitInput({
-            mode: 'form',
-            message: 'Select the max model:',
-            requestedSchema: modelSchema,
-          });
-          if (modelResult.action === 'accept' && modelResult.content) {
-            maxModelId = modelResult.content.model as string;
-          } else {
-            maxModelId = topModels[0].id;
-          }
-        }
-      } catch {
-        // Best-effort model selection
-      }
-
-      const profileName = maxModelId
-        ? sanitizeProfileName(harness, provider, maxModelId)
-        : harness;
-
-      const modelRef: Record<string, string> = maxModelId ? { id: maxModelId } : { id: 'claude-opus-4-7' };
-      if (provider) modelRef.provider = provider;
+      // Build agents block
+      const agentsBlock: Record<string, unknown> = {};
+      if (resolvedSpec.models) agentsBlock.models = resolvedSpec.models;
+      if (resolvedSpec.tiers) agentsBlock.tiers = resolvedSpec.tiers;
 
       const createBody: Record<string, unknown> = {
         name: profileName,
-        harness,
-        agents: {
-          models: {
-            max: { ...modelRef },
-            balanced: { ...modelRef },
-            fast: { ...modelRef },
-          },
-        },
+        overwrite: !!force,
+        agentRuntimes: resolvedSpec.agentRuntimes,
+        defaultAgentRuntime: resolvedSpec.defaultAgentRuntime,
       };
-      if (force) createBody.overwrite = true;
-      await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, createBody);
+      if (Object.keys(agentsBlock).length > 0) createBody.agents = agentsBlock;
 
+      await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, createBody);
       await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: profileName });
 
       try {
@@ -839,12 +775,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         configPath: 'eforge/config.yaml',
         profileName,
         profilePath: `eforge/profiles/${profileName}.yaml`,
-        harness,
+        agentRuntimes: Object.keys(resolvedSpec.agentRuntimes),
       };
 
-      if (validation) {
-        response.validation = validation;
-      }
+      if (validation) response.validation = validation;
+      if (deprecation) response.deprecation = deprecation;
 
       return response;
     },

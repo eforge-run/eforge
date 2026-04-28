@@ -29,6 +29,7 @@ import {
   API_ROUTES,
   buildPath,
 } from '@eforge-build/client';
+import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   LatestRunResponse,
   EnqueueResponse,
@@ -980,7 +981,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_init",
     label: "eforge init",
     description:
-      "Initialize eforge in a project: creates a single-entry agent runtime profile under eforge/profiles/, activates it, and writes eforge/config.yaml for team-wide settings. Harness is hardcoded to 'pi' for this Pi-only init flow. With migrate: true, extracts legacy harness config (top-level `backend:`/`pi:`/`agents.*` fields) from an existing pre-overhaul config.yaml into a named profile.",
+      "Initialize eforge in a project. The skill is responsible for picking provider/model interactively; the tool is a pure persister. Pass `profile` with the assembled multi-runtime spec (every runtime must use harness: 'pi'). With migrate: true, extracts legacy harness config from a pre-overhaul config.yaml.",
     parameters: Type.Object({
       force: Type.Optional(
         Type.Boolean({
@@ -991,7 +992,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       postMergeCommands: Type.Optional(
         Type.Array(Type.String(), {
           description:
-            'Post-merge validation commands (e.g. ["pnpm install", "pnpm test"]). Only applied when creating a new config.',
+            'Post-merge validation commands. Only applied when creating a new config.',
         }),
       ),
       migrate: Type.Optional(
@@ -1000,17 +1001,28 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             "Extract legacy harness config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.",
         }),
       ),
-      provider: Type.Optional(
-        Type.String({
-          description:
-            'Provider name for the Pi harness (e.g. "anthropic", "openrouter"). The skill should supply this after querying eforge_models { action: "providers", harness: "pi" }.',
-        }),
-      ),
-      maxModel: Type.Optional(
-        Type.String({
-          description:
-            'Max model ID (e.g. "claude-opus-4-7"). The skill should supply this after querying eforge_models { action: "list", harness: "pi", provider: "..." }.',
-        }),
+      profile: Type.Optional(
+        Type.Object({
+          name: Type.Optional(Type.String({ description: "Profile name. Auto-derived via deriveProfileName when omitted." })),
+          agentRuntimes: Type.Record(
+            Type.String(),
+            Type.Object({
+              harness: StringEnum(["pi"]),
+              pi: Type.Optional(Type.Object({ provider: Type.String() })),
+            }),
+          ),
+          defaultAgentRuntime: Type.String(),
+          models: Type.Optional(Type.Object({
+            max: Type.Optional(Type.Object({ id: Type.String() })),
+            balanced: Type.Optional(Type.Object({ id: Type.String() })),
+            fast: Type.Optional(Type.Object({ id: Type.String() })),
+          })),
+          tiers: Type.Optional(Type.Object({
+            max: Type.Optional(Type.Object({ agentRuntime: Type.String() })),
+            balanced: Type.Optional(Type.Object({ agentRuntime: Type.String() })),
+            fast: Type.Optional(Type.Object({ agentRuntime: Type.String() })),
+          })),
+        }, { description: "Multi-runtime profile spec. All runtimes must use harness: 'pi'. When omitted, falls back to a minimal pi-anthropic default and emits a deprecation note." }),
       ),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
@@ -1044,12 +1056,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           throw new Error('config.yaml has no top-level "backend:" field. Nothing to migrate.');
         }
 
-        const { profile, remaining } = parseRawConfigLegacy(data);
-        const harness = profile.backend as string;
+        const { profile: legacyProfile, remaining } = parseRawConfigLegacy(data);
+        const harness = legacyProfile.backend as string;
 
         let maxModelId: string | undefined;
         let provider: string | undefined;
-        const agents = profile.agents as Record<string, unknown> | undefined;
+        const agents = legacyProfile.agents as Record<string, unknown> | undefined;
         if (agents?.models) {
           const models = agents.models as Record<string, unknown>;
           const maxModel = models.max as { id?: string; provider?: string } | undefined;
@@ -1070,8 +1082,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           harness,
           overwrite: true,
         };
-        if (profile.agents) createBody.agents = profile.agents;
-        if (profile.pi) createBody.pi = profile.pi;
+        if (legacyProfile.agents) createBody.agents = legacyProfile.agents;
+        if (legacyProfile.pi) createBody.pi = legacyProfile.pi;
 
         await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
 
@@ -1093,7 +1105,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           profileName,
           profilePath: `eforge/profiles/${profileName}.yaml`,
           harness,
-          moved: Object.keys(profile),
+          moved: Object.keys(legacyProfile),
           kept: Object.keys(remaining),
         });
       }
@@ -1115,35 +1127,65 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         // File does not exist - proceed
       }
 
-      // Harness is always pi for Pi extension
-      const harness = "pi";
-      const provider = params.provider;
-      const maxModelId = params.maxModel;
+      // Resolve effective profile spec
+      let deprecation: string | undefined;
+      let resolvedSpec: {
+        agentRuntimes: Record<string, { harness: "pi"; pi?: { provider: string } }>;
+        defaultAgentRuntime: string;
+        models?: { max?: { id: string }; balanced?: { id: string }; fast?: { id: string } };
+        tiers?: { max?: { agentRuntime: string }; balanced?: { agentRuntime: string }; fast?: { agentRuntime: string } };
+      };
 
-      // Compute profile name
-      const profileName = maxModelId
-        ? sanitizeProfileName(harness, provider, maxModelId)
-        : harness;
+      if (params.profile) {
+        // Validate that every runtime uses harness: 'pi'
+        for (const [runtimeName, runtimeEntry] of Object.entries(params.profile.agentRuntimes)) {
+          if ((runtimeEntry as { harness: string }).harness !== "pi") {
+            throw new Error(
+              `Runtime "${runtimeName}" uses harness "${(runtimeEntry as { harness: string }).harness}" but the Pi extension only supports harness: "pi". Use the Claude Code MCP proxy for claude-sdk runtimes.`,
+            );
+          }
+          if (!(runtimeEntry as { pi?: { provider: string } }).pi?.provider) {
+            throw new Error(
+              `Runtime "${runtimeName}" is missing pi.provider. Each pi runtime must specify a provider (e.g. "anthropic", "openrouter").`,
+            );
+          }
+        }
+        resolvedSpec = {
+          agentRuntimes: params.profile.agentRuntimes as Record<string, { harness: "pi"; pi?: { provider: string } }>,
+          defaultAgentRuntime: params.profile.defaultAgentRuntime,
+          models: params.profile.models,
+          tiers: params.profile.tiers,
+        };
+      } else {
+        // Pi-only minimal default fallback
+        resolvedSpec = {
+          agentRuntimes: { "pi-anthropic": { harness: "pi", pi: { provider: "anthropic" } } },
+          defaultAgentRuntime: "pi-anthropic",
+          models: {
+            max: { id: "claude-opus-4-7" },
+            balanced: { id: "claude-opus-4-7" },
+            fast: { id: "claude-opus-4-7" },
+          },
+        };
+        deprecation = "eforge_init was called without a profile parameter. Future versions will require it.";
+      }
 
-      // Build model ref
-      const modelRef: Record<string, string> = maxModelId
-        ? { id: maxModelId }
-        : { id: "claude-opus-4-7" };
-      if (provider) modelRef.provider = provider;
+      // Compute profile name (use skill-supplied name if present, otherwise derive)
+      const profileName = params.profile?.name ?? deriveProfileName(resolvedSpec);
 
-      // Create the profile via daemon
+      // Build agents block
+      const agentsBlock: Record<string, unknown> = {};
+      if (resolvedSpec.models) agentsBlock.models = resolvedSpec.models;
+      if (resolvedSpec.tiers) agentsBlock.tiers = resolvedSpec.tiers;
+
       const createBody: Record<string, unknown> = {
         name: profileName,
-        harness,
-        agents: {
-          models: {
-            max: { ...modelRef },
-            balanced: { ...modelRef },
-            fast: { ...modelRef },
-          },
-        },
+        overwrite: !!params.force,
+        agentRuntimes: resolvedSpec.agentRuntimes,
+        defaultAgentRuntime: resolvedSpec.defaultAgentRuntime,
       };
-      if (params.force) createBody.overwrite = true;
+      if (Object.keys(agentsBlock).length > 0) createBody.agents = agentsBlock;
+
       await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
 
       // Activate the profile
@@ -1156,7 +1198,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         // Directory may already exist
       }
 
-      // Write config.yaml with only non-backend fields (never emit backend:)
+      // Write config.yaml
       const configData: Record<string, unknown> = {};
       if (params.postMergeCommands && params.postMergeCommands.length > 0) {
         configData.build = { postMergeCommands: params.postMergeCommands };
@@ -1186,12 +1228,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         configPath: "eforge/config.yaml",
         profileName,
         profilePath: `eforge/profiles/${profileName}.yaml`,
-        harness,
+        agentRuntimes: Object.keys(resolvedSpec.agentRuntimes),
       };
 
-      if (validation) {
-        response.validation = validation;
-      }
+      if (validation) response.validation = validation;
+      if (deprecation) response.deprecation = deprecation;
 
       return jsonResult(response);
     },

@@ -49,6 +49,7 @@
   },
   "dependencies": {
     "@eforge-build/client": "workspace:*",
+    "@eforge-build/engine": "workspace:*",
     "yaml": "^2.8.3"
   },
   "author": "Schaake Solutions LLC",

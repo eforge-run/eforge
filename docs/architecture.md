@@ -60,7 +60,7 @@ graph TD
 
 ### Plugin
 
-`eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for init, build, queue, status, config, and daemon operations. The `eforge_init` tool uses MCP elicitation to present an interactive form for project onboarding and operates locally (no daemon needed) for file creation.
+`eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for init, build, queue, status, config, and daemon operations. The `/eforge:init` skill drives project onboarding interactively (harness, provider, model selection via a Quick or Mix-and-match flow), then calls `eforge_init` as a pure persister - the tool accepts a fully-assembled `profile` object and writes config to disk. The tool does not elicit input itself.
 
 ### Pi Package
 
