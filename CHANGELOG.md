@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.7.2] - 2026-04-28
+
+### Features
+
+- **core**: Close the recovery UX loop: add engine `applyRecovery()` with verdict dispatch (retry/split/abandon/manual), wire it through the daemon, shared client, and MCP/Pi tools, then add a `/recover` skill in both the Claude Code plugin and Pi extension plus verdict-specific action buttons inside the monitor UI's existing recovery sheet.
+- **core**: PRD Gap Close
+- **engine**: Engine applyRecovery + Daemon Route + MCP/Pi Parity
+- **engine**: Inline atomic recovery sidecar + resilient recover()
+- **engine**: Move Pi `provider` from per-model refs (`agents.models.<class>.provider`) to the agentRuntime entry (`agentRuntimes.<name>.pi.provider`). Hard removal of `provider` from `modelRefSchema`; required for `harness: pi` runtimes via schema-time `superRefine`.
+- **engine**: Schema, resolver, and inline test fixtures
+- **engine**: Sharded implement stage with stash-based per-shard retry
+- **monitor-ui**: session:profile event end-to-end + inspectable profile badge
+- **monitor-ui**: Surface planner output and persist plan strategy
+- **plugin**: /recover Skill (Plugin + Pi) and Monitor UI Verdict Action Buttons
+- **plugin**: Adaptive /eforge:plan workflow and /eforge:build readiness updates
+- **plugin**: Skill doc updates and plugin version bump
+
+### Bug Fixes
+
+- **core**: handle session:profile event in CLI display switch
+- **engine**: restore node:sqlite prefix stripped by esbuild
+- **test**: provide StubHarness to EforgeEngine.create in apply-recovery tests
+
+### Maintenance
+
+- **engine**: fix test issues
+
 ## [0.7.1] - 2026-04-25
 
 ### Maintenance
@@ -333,20 +360,6 @@
 ### Maintenance
 
 - fix test assertions for plan:skip on 0 plans
-
-## [0.5.0] - 2026-04-11
-
-### Features
-
-- usage-normalization: shared usage normalization helper for Pi backend (fixes cached % > 100%)
-
-### Bug Fixes
-
-- cli: resolve monitor server-main via import.meta.resolve
-
-### Maintenance
-
-- publish: publish workspace packages in lockstep via pnpm -r
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
