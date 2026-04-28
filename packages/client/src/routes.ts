@@ -74,6 +74,18 @@ export interface ReadSidecarResponse {
   json: RecoveryVerdictSidecar;
 }
 
+/** POST /api/recover/apply */
+export interface ApplyRecoveryRequest {
+  setName: string;
+  prdId: string;
+}
+
+/** Response for POST /api/recover/apply */
+export interface ApplyRecoveryResponse {
+  sessionId: string;
+  pid: number;
+}
+
 /**
  * Central API route map for the eforge daemon HTTP API.
  *
@@ -116,6 +128,7 @@ export const API_ROUTES = {
   diff: '/api/diff/:sessionId/:planId',
   recover: '/api/recover',
   readRecoverySidecar: '/api/recovery/sidecar',
+  applyRecovery: '/api/recover/apply',
 } as const;
 
 /** Response body for GET /api/version */

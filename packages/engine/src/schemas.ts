@@ -175,6 +175,28 @@ export const recoveryVerdictSchema = z.object({
 });
 
 // ---------------------------------------------------------------------------
+// Apply Recovery schemas
+// ---------------------------------------------------------------------------
+
+/** Options for applyRecovery() — reserved for future extension. */
+export const applyRecoveryOptionsSchema = z.object({}).passthrough();
+export type ApplyRecoveryOptions = z.infer<typeof applyRecoveryOptionsSchema>;
+
+/** The verdict value union — a convenience alias for the enum in recoveryVerdictSchema. */
+export type RecoveryVerdictValue = z.infer<typeof recoveryVerdictSchema>['verdict'];
+
+/**
+ * Return type of EforgeEngine.applyRecovery().
+ * commitSha is absent for the `manual` no-op verdict.
+ */
+export interface ApplyRecoveryResult {
+  verdict: RecoveryVerdictValue;
+  successorPrdId?: string;
+  noAction: boolean;
+  commitSha?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Expedition module schema
 // ---------------------------------------------------------------------------
 

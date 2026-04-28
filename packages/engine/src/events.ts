@@ -307,6 +307,11 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'recovery:complete'; prdId: string; verdict: RecoveryVerdict; sidecarMdPath?: string; sidecarJsonPath?: string }
   | { type: 'recovery:error'; prdId: string; error: string; rawOutput?: string }
 
+  // Recovery apply (verdict execution)
+  | { type: 'recovery:apply:start'; prdId: string; setName: string }
+  | { type: 'recovery:apply:complete'; prdId: string; verdict: 'retry' | 'split' | 'abandon' | 'manual'; successorPrdId?: string; noAction: boolean }
+  | { type: 'recovery:apply:error'; prdId: string; message: string }
+
   // Queue
   | QueueEvent
 );

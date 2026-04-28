@@ -103,6 +103,40 @@ export async function cancelSession(sessionId: string): Promise<{ status: string
   }
 }
 
+export async function triggerRecover(
+  setName: string,
+  prdId: string,
+): Promise<{ sessionId: string; pid: number } | null> {
+  try {
+    const res = await fetch(API_ROUTES.recover, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setName, prdId }),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
+export async function applyRecovery(
+  setName: string,
+  prdId: string,
+): Promise<{ sessionId: string; pid: number } | null> {
+  try {
+    const res = await fetch(API_ROUTES.applyRecovery, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ setName, prdId }),
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Fetch the recovery sidecar JSON + markdown for a failed PRD.
  *

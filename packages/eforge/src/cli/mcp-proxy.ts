@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, sanitizeProfileName, parseRawConfigLegacy, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, sanitizeProfileName, parseRawConfigLegacy, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery } from '@eforge-build/client';
 import type {
   LatestRunResponse,
   EnqueueResponse,
@@ -879,6 +879,24 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       return data;
     },
   });
+
+  // --- eforge:region plan-01-backend-apply-recovery ---
+
+  // Tool: eforge_apply_recovery
+  createDaemonTool(server, cwd, {
+    name: 'eforge_apply_recovery',
+    description: 'Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon).',
+    schema: {
+      setName: z.string().describe('The plan set name (e.g. the orchestration set that contained the failing plan)'),
+      prdId: z.string().describe('The plan ID (prdId) whose recovery verdict to apply'),
+    },
+    handler: async ({ setName, prdId }, { cwd: toolCwd }) => {
+      const { data } = await apiApplyRecovery({ cwd: toolCwd, body: { setName, prdId } });
+      return data;
+    },
+  });
+
+  // --- eforge:endregion plan-01-backend-apply-recovery ---
 
   // --- eforge:endregion plan-03-daemon-mcp-pi ---
 

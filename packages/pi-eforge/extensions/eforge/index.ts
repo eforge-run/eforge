@@ -1347,6 +1347,37 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     },
   });
 
+  // --- eforge:region plan-01-backend-apply-recovery ---
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_apply_recovery
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_apply_recovery",
+    label: "eforge apply recovery",
+    description:
+      "Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon).",
+    parameters: Type.Object({
+      setName: Type.String({
+        description: "The plan set name (e.g. the orchestration set that contained the failing plan)",
+      }),
+      prdId: Type.String({
+        description: "The plan ID (prdId) whose recovery verdict to apply",
+      }),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { data } = await daemonRequest(
+        ctx.cwd,
+        "POST",
+        API_ROUTES.applyRecovery,
+        { setName: params.setName, prdId: params.prdId },
+      );
+      return jsonResult(data);
+    },
+  });
+
+  // --- eforge:endregion plan-01-backend-apply-recovery ---
+
   // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
   // ------------------------------------------------------------------

@@ -26,6 +26,7 @@ Then, in your project:
 - Native Pi commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX
 - Slash commands for build operations (`/eforge:build`, `/eforge:init`, `/eforge:status`, `/eforge:restart`, `/eforge:update`)
 - The `/eforge:plan` skill for structured handoff planning before build execution
+- The `/eforge:recover` skill for reviewing and acting on failed-PRD recovery verdicts
 - Ambient status display showing active profile, queue count, and build progress
 
 ## Requirements

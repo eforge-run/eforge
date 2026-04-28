@@ -935,6 +935,44 @@ export async function startServer(
     }
     // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
+    // --- eforge:region plan-01-backend-apply-recovery ---
+    if (req.method === 'POST' && url === API_ROUTES.applyRecovery) {
+      if (!options?.workerTracker) {
+        sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      let body: { setName?: unknown; prdId?: unknown };
+      try {
+        body = await parseJsonBody(req) as { setName?: unknown; prdId?: unknown };
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.setName || typeof body.setName !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: setName');
+        return;
+      }
+      if (!body.prdId || typeof body.prdId !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: prdId');
+        return;
+      }
+      if (!isValidPathSegment(body.setName) || !isValidPathSegment(body.prdId)) {
+        sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
+        return;
+      }
+      try {
+        const result = options.workerTracker.spawnWorker(
+          'apply-recovery',
+          [body.setName, body.prdId],
+        );
+        sendJson(res, { sessionId: result.sessionId, pid: result.pid });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to spawn apply-recovery worker');
+      }
+      return;
+    }
+    // --- eforge:endregion plan-01-backend-apply-recovery ---
+
     // --- Auto-build API routes ---
     if (req.method === 'POST' && url === API_ROUTES.daemonStop) {
       if (!options?.daemonState) {

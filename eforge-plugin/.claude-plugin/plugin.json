@@ -1,7 +1,7 @@
 {
   "name": "eforge",
   "description": "Conversational planning and MCP-based daemon integration for eforge — enqueue, run, and monitor builds from within Claude Code",
-  "version": "0.12.0",
+  "version": "0.13.0",
   "commands": [
     "./skills/build/build.md",
     "./skills/status/status.md",
@@ -11,7 +11,8 @@
     "./skills/init/init.md",
     "./skills/profile/profile.md",
     "./skills/profile-new/profile-new.md",
-    "./skills/plan/plan.md"
+    "./skills/plan/plan.md",
+    "./skills/recover/recover.md"
   ],
   "author": {
     "name": "Mark Schaake"

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, RefreshCw } from 'lucide-react';
 import type { QueueItem, RunInfo } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
-import { fetchRecoverySidecar } from '@/lib/api';
+import { fetchRecoverySidecar, triggerRecover } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { API_ROUTES } from '@eforge-build/client';
 import type { ReadSidecarResponse } from '@eforge-build/client';
+import { Button } from '@/components/ui/button';
 import {
   RecoveryVerdictChip,
   type RecoveryVerdictValue,
@@ -65,6 +66,8 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
   const [open, setOpen] = useState(true);
   const { data: items, refetch } = useApi<QueueItem[]>(API_ROUTES.queue);
   const { data: runs } = useApi<RunInfo[]>(API_ROUTES.runs);
+  // Tracks prdIds that have had triggerRecover called recently (debounce).
+  const [triggeringIds, setTriggeringIds] = useState<Set<string>>(new Set());
 
   // --- eforge:region plan-04-monitor-ui ---
   // Sidecar data per prdId: undefined = not yet fetched, null = fetched but
@@ -208,7 +211,34 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
                   />
                 )}
                 {isRecoveryPending && (
-                  <span className="text-[10px] text-text-dim/60 italic">recovery pending</span>
+                  <>
+                    <span className="text-[10px] text-text-dim/60 italic">recovery pending</span>
+                    {activeSetName && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="h-4 w-4 p-0"
+                        disabled={triggeringIds.has(item.id)}
+                        title="Run recovery analysis"
+                        onClick={() => {
+                          if (!activeSetName) return;
+                          setTriggeringIds((prev) => new Set([...prev, item.id]));
+                          triggerRecover(activeSetName, item.id).finally(() => {
+                            setTimeout(() => {
+                              setTriggeringIds((prev) => {
+                                const next = new Set(prev);
+                                next.delete(item.id);
+                                return next;
+                              });
+                            }, 3000);
+                          });
+                        }}
+                      >
+                        <RefreshCw size={10} />
+                      </Button>
+                    )}
+                  </>
                 )}
                 {/* --- eforge:endregion plan-04-monitor-ui --- */}
                 {item.priority !== undefined && sidecarVerdict == null && (
@@ -220,7 +250,7 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
               {/* --- eforge:region plan-04-monitor-ui --- */}
               {sidecar != null && sidecarVerdict != null && (
                 <div className="pl-[calc(8px+0.5rem)] mt-0.5">
-                  <RecoverySidecarSheet sidecar={sidecar} prdId={item.id} />
+                  <RecoverySidecarSheet sidecar={sidecar} prdId={item.id} setName={activeSetName ?? ''} />
                 </div>
               )}
               {/* --- eforge:endregion plan-04-monitor-ui --- */}

@@ -59,6 +59,10 @@ export { apiRecover } from './api/recover.js';
 
 export { apiReadRecoverySidecar } from './api/recovery-sidecar.js';
 
+export { apiApplyRecovery } from './api/apply-recovery.js';
+
+export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
+
 export {
   type LockfileData,
   LOCKFILE_NAME,

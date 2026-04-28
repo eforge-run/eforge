@@ -830,6 +830,21 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.yellow(`  ⚠ Recovery parse failed — writing manual verdict sidecar: ${event.error}`));
       break;
 
+    case 'recovery:apply:start':
+      break;
+
+    case 'recovery:apply:complete':
+      if (!event.noAction) {
+        console.log(chalk.green(`  ✓ Recovery applied: ${chalk.bold(event.verdict.toUpperCase())}${event.successorPrdId ? ` → ${event.successorPrdId}` : ''}`));
+      } else {
+        console.log(chalk.dim(`  ℹ Recovery verdict is manual — no changes made. Review the recovery report.`));
+      }
+      break;
+
+    case 'recovery:apply:error':
+      console.log(chalk.red(`  ✗ Recovery apply failed: ${event.message}`));
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

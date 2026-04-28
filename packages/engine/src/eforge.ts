@@ -28,6 +28,9 @@ import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
 import { writeRecoverySidecar } from './recovery/sidecar.js';
+import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual } from './recovery/apply.js';
+import { recoveryVerdictSchema } from './schemas.js';
+import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
 import { runFormatter } from './agents/formatter.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
 import type { EforgeConfig, PluginConfig, ReviewProfileConfig, BuildStageSpec } from './config.js';
@@ -1981,6 +1984,125 @@ export class EforgeEngine {
           error: errMsg,
         };
       }
+    }
+  }
+
+  /**
+   * Apply the recovery verdict for a failed build plan.
+   *
+   * Reads the recovery sidecar JSON written by `recover()`, validates the verdict,
+   * and dispatches to one of four verdict-specific helpers:
+   *   - retry: moves the failed PRD back to the queue and removes sidecars
+   *   - split: writes the successor PRD to the queue
+   *   - abandon: removes the failed PRD and both sidecars
+   *   - manual: no-op, returns noAction: true
+   *
+   * Each mutating dispatch produces exactly one forgeCommit. Never spawns agents.
+   * Throws on missing sidecar, validation failure, or missing suggestedSuccessorPrd for split.
+   */
+  async *applyRecovery(
+    setName: string,
+    prdId: string,
+    _options?: ApplyRecoveryOptions,
+  ): AsyncGenerator<EforgeEvent, ApplyRecoveryResult> {
+    const cwd = this.cwd;
+
+    // Validate path segments — reject values containing path separators or traversal
+    if (
+      !setName ||
+      !prdId ||
+      setName.includes('/') ||
+      setName.includes('\\') ||
+      setName.includes('..') ||
+      prdId.includes('/') ||
+      prdId.includes('\\') ||
+      prdId.includes('..')
+    ) {
+      throw new Error('Invalid setName or prdId: must not contain path separators or traversal sequences');
+    }
+
+    const queueRelDir = this.config.prdQueue.dir;
+    const queueDir = resolve(cwd, queueRelDir);
+    const failedDir = join(queueDir, 'failed');
+    const sidecarJsonPath = join(failedDir, `${prdId}.recovery.json`);
+
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'recovery:apply:start',
+      prdId,
+      setName,
+    };
+
+    try {
+      // Read the recovery sidecar JSON
+      let rawJson: string;
+      try {
+        rawJson = await readFile(sidecarJsonPath, 'utf-8');
+      } catch {
+        throw new Error(`Recovery sidecar not found for ${prdId}; run recover() first`);
+      }
+
+      // Parse and validate the verdict
+      const parsed = JSON.parse(rawJson) as { verdict?: unknown };
+      const verdictResult = recoveryVerdictSchema.safeParse(parsed.verdict);
+      if (!verdictResult.success) {
+        throw new Error(
+          `Recovery verdict validation failed for ${prdId}: ${verdictResult.error.message}`,
+        );
+      }
+      const verdict = verdictResult.data;
+
+      const helperOptions = { cwd, prdId, queueDir };
+
+      let result: ApplyRecoveryResult;
+
+      switch (verdict.verdict) {
+        case 'retry': {
+          const { commitSha } = await applyRecoveryRetry(helperOptions);
+          result = { verdict: 'retry', noAction: false, commitSha };
+          break;
+        }
+        case 'split': {
+          const { commitSha, successorPrdId } = await applyRecoverySplit(helperOptions, verdict);
+          result = { verdict: 'split', noAction: false, commitSha, successorPrdId };
+          break;
+        }
+        case 'abandon': {
+          const { commitSha } = await applyRecoveryAbandon(helperOptions);
+          result = { verdict: 'abandon', noAction: false, commitSha };
+          break;
+        }
+        case 'manual': {
+          await applyRecoveryManual(helperOptions);
+          result = { verdict: 'manual', noAction: true };
+          break;
+        }
+        default: {
+          // TypeScript exhaustiveness guard
+          const _never: never = verdict.verdict;
+          throw new Error(`Unknown verdict: ${_never}`);
+        }
+      }
+
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'recovery:apply:complete',
+        prdId,
+        verdict: result.verdict,
+        successorPrdId: result.successorPrdId,
+        noAction: result.noAction,
+      };
+
+      return result;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'recovery:apply:error',
+        prdId,
+        message,
+      };
+      throw err;
     }
   }
 
