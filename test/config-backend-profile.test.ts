@@ -12,6 +12,7 @@ import {
   deleteAgentRuntimeProfile,
   getConfigDir,
   parseRawConfigLegacy,
+  deriveProfileName,
   type PartialEforgeConfig,
 } from '@eforge-build/engine/config';
 
@@ -284,6 +285,135 @@ describe('createAgentRuntimeProfile', () => {
     await expect(
       createAgentRuntimeProfile(configDir, { name: 'has spaces', harness: 'claude-sdk' }),
     ).rejects.toThrow(/Invalid profile name/);
+  });
+
+  it('multi-runtime spec round-trips: writes correct agentRuntimes, defaultAgentRuntime, and agents', async () => {
+    const result = await createAgentRuntimeProfile(configDir, {
+      name: 'mixed',
+      agentRuntimes: {
+        'claude-sdk': { harness: 'claude-sdk' },
+        'pi-openrouter': { harness: 'pi', pi: { provider: 'openrouter' } },
+      },
+      defaultAgentRuntime: 'claude-sdk',
+      agents: {
+        models: { max: { id: 'claude-opus-4-7' }, fast: { id: 'zai-glm-4-6' } },
+        tiers: { fast: { agentRuntime: 'pi-openrouter' } },
+      } as PartialEforgeConfig['agents'],
+    });
+    expect(await fileExists(result.path)).toBe(true);
+    const written = await readFile(result.path, 'utf-8');
+    // Verify top-level keys include agentRuntimes, defaultAgentRuntime, agents
+    expect(written).toContain('agentRuntimes:');
+    expect(written).toContain('defaultAgentRuntime: claude-sdk');
+    expect(written).toContain('agents:');
+    // agentRuntimes should contain both entries
+    expect(written).toContain('claude-sdk:');
+    expect(written).toContain('pi-openrouter:');
+    // agents.tiers.fast.agentRuntime should be pi-openrouter
+    expect(written).toContain('pi-openrouter');
+  });
+
+  it('multi-runtime: defaultAgentRuntime must exist in agentRuntimes', async () => {
+    await expect(
+      createAgentRuntimeProfile(configDir, {
+        name: 'x',
+        agentRuntimes: { foo: { harness: 'pi', pi: { provider: 'openrouter' } } },
+        defaultAgentRuntime: 'missing',
+      }),
+    ).rejects.toThrow(/defaultAgentRuntime/);
+  });
+
+  it('multi-runtime: tier agentRuntime must exist in agentRuntimes', async () => {
+    await expect(
+      createAgentRuntimeProfile(configDir, {
+        name: 'x',
+        agentRuntimes: {
+          foo: { harness: 'claude-sdk' },
+          bar: { harness: 'pi', pi: { provider: 'openrouter' } },
+        },
+        defaultAgentRuntime: 'foo',
+        agents: {
+          tiers: { fast: { agentRuntime: 'nonexistent' } },
+        } as PartialEforgeConfig['agents'],
+      }),
+    ).rejects.toThrow(/nonexistent/);
+  });
+});
+
+describe('deriveProfileName', () => {
+  it('single runtime, same model id across all three tiers → sanitized model id (strips claude- prefix, dots to dashes)', () => {
+    const result = deriveProfileName({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'main',
+      models: {
+        max: { id: 'claude-opus-4-7' },
+        balanced: { id: 'claude-opus-4-7' },
+        fast: { id: 'claude-opus-4-7' },
+      },
+    });
+    expect(result).toBe('opus-4-7');
+  });
+
+  it('single runtime, same model id across tiers, non-claude prefix', () => {
+    const result = deriveProfileName({
+      agentRuntimes: { main: { harness: 'pi', pi: { provider: 'zai' } } },
+      defaultAgentRuntime: 'main',
+      models: {
+        max: { id: 'glm-4.6' },
+        balanced: { id: 'glm-4.6' },
+        fast: { id: 'glm-4.6' },
+      },
+    });
+    expect(result).toBe('glm-4-6');
+  });
+
+  it('single runtime, model varies across tiers, claude-sdk harness, no provider → harness name', () => {
+    const result = deriveProfileName({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+      defaultAgentRuntime: 'main',
+      models: {
+        max: { id: 'claude-opus-4-7' },
+        balanced: { id: 'claude-sonnet-4-6' },
+        fast: { id: 'claude-haiku-4' },
+      },
+    });
+    expect(result).toBe('claude-sdk');
+  });
+
+  it('single runtime, model varies, pi harness with provider → harness-provider', () => {
+    const result = deriveProfileName({
+      agentRuntimes: { main: { harness: 'pi', pi: { provider: 'anthropic' } } },
+      defaultAgentRuntime: 'main',
+      models: {
+        max: { id: 'claude-opus-4-7' },
+        balanced: { id: 'claude-sonnet-4-6' },
+        fast: { id: 'claude-haiku-4' },
+      },
+    });
+    expect(result).toBe('pi-anthropic');
+  });
+
+  it('multiple runtimes, max tier assigned to claude-sdk → mixed-claude-sdk', () => {
+    const result = deriveProfileName({
+      agentRuntimes: {
+        'claude-sdk': { harness: 'claude-sdk' },
+        'pi-openrouter': { harness: 'pi', pi: { provider: 'openrouter' } },
+      },
+      defaultAgentRuntime: 'claude-sdk',
+      tiers: { max: { agentRuntime: 'claude-sdk' } },
+    });
+    expect(result).toBe('mixed-claude-sdk');
+  });
+
+  it('multiple runtimes, max tier uses defaultAgentRuntime when tiers.max.agentRuntime is absent', () => {
+    const result = deriveProfileName({
+      agentRuntimes: {
+        'claude-sdk': { harness: 'claude-sdk' },
+        'pi-openrouter': { harness: 'pi', pi: { provider: 'openrouter' } },
+      },
+      defaultAgentRuntime: 'pi-openrouter',
+    });
+    expect(result).toBe('mixed-pi-openrouter');
   });
 });
 

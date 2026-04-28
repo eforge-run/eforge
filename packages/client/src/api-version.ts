@@ -14,7 +14,7 @@ import type { VersionResponse } from './routes.js';
  * the version. Removing a field, renaming a route, or changing a response's
  * required fields IS breaking and must bump the version.
  */
-export const DAEMON_API_VERSION = 10; // v10: rename of backend → harness on /api/profile/create body and /api/models/* query string
+export const DAEMON_API_VERSION = 11; // v11: /api/profile/create accepts agentRuntimes + defaultAgentRuntime body shape
 
 /** Per-process cache: maps `${port}:${pid}` to the verified daemon version. */
 const verifiedDaemons = new Map<string, number>();

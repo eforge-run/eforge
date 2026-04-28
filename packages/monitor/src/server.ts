@@ -1182,15 +1182,13 @@ export async function startServer(
           harness?: unknown;
           pi?: unknown;
           agents?: unknown;
+          agentRuntimes?: unknown;
+          defaultAgentRuntime?: unknown;
           overwrite?: unknown;
           scope?: unknown;
         };
         if (!body.name || typeof body.name !== 'string') {
           sendJsonError(res, 400, 'Missing required field: name (string)');
-          return;
-        }
-        if (body.harness !== 'claude-sdk' && body.harness !== 'pi') {
-          sendJsonError(res, 400, 'Invalid field: harness (must be "claude-sdk" or "pi")');
           return;
         }
         const scopeVal = body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
@@ -1202,14 +1200,40 @@ export async function startServer(
           return;
         }
         try {
-          const result = await createAgentRuntimeProfile(configDir, {
-            name: body.name,
-            harness: body.harness as 'claude-sdk' | 'pi',
-            pi: body.pi as PartialEforgeConfig['pi'],
-            agents: body.agents as PartialEforgeConfig['agents'],
-            overwrite: body.overwrite === true,
-            scope: scopeVal,
-          });
+          let result: { path: string };
+          if (body.agentRuntimes !== undefined) {
+            // New multi-runtime shape
+            if (typeof body.agentRuntimes !== 'object' || body.agentRuntimes === null || Array.isArray(body.agentRuntimes)) {
+              sendJsonError(res, 400, 'Invalid field: agentRuntimes (must be an object)');
+              return;
+            }
+            if (typeof body.defaultAgentRuntime !== 'string') {
+              sendJsonError(res, 400, 'Missing required field: defaultAgentRuntime (string) when agentRuntimes is provided');
+              return;
+            }
+            result = await createAgentRuntimeProfile(configDir, {
+              name: body.name,
+              agentRuntimes: body.agentRuntimes as Record<string, import('@eforge-build/engine/config').AgentRuntimeEntry>,
+              defaultAgentRuntime: body.defaultAgentRuntime,
+              agents: body.agents as PartialEforgeConfig['agents'],
+              overwrite: body.overwrite === true,
+              scope: scopeVal,
+            });
+          } else {
+            // Legacy single-runtime shape
+            if (body.harness !== 'claude-sdk' && body.harness !== 'pi') {
+              sendJsonError(res, 400, 'Invalid field: harness (must be "claude-sdk" or "pi")');
+              return;
+            }
+            result = await createAgentRuntimeProfile(configDir, {
+              name: body.name,
+              harness: body.harness as 'claude-sdk' | 'pi',
+              pi: body.pi as PartialEforgeConfig['pi'],
+              agents: body.agents as PartialEforgeConfig['agents'],
+              overwrite: body.overwrite === true,
+              scope: scopeVal,
+            });
+          }
           sendJson(res, { path: result.path });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Failed to create agent runtime profile';

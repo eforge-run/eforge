@@ -286,6 +286,20 @@ export const eforgeConfigSchema = eforgeConfigBaseSchema.superRefine((data, ctx)
       }
     }
   }
+
+  // Every agents.tiers.*.agentRuntime must reference an existing agentRuntimes entry.
+  if (runtimeKeys.length > 0 && data.agents?.tiers) {
+    for (const [tier, tierConfig] of Object.entries(data.agents.tiers)) {
+      const tierRuntime = (tierConfig as { agentRuntime?: string } | undefined)?.agentRuntime;
+      if (tierRuntime && !agentRuntimes![tierRuntime]) {
+        ctx.addIssue({
+          code: 'custom',
+          message: `agents.tiers.${tier}.agentRuntime references "${tierRuntime}" which is not declared in "agentRuntimes". Declared: ${runtimeKeys.join(', ')}.`,
+          path: ['agents', 'tiers', tier, 'agentRuntime'],
+        });
+      }
+    }
+  }
 });
 
 // ---------------------------------------------------------------------------
@@ -1415,25 +1429,47 @@ export async function setActiveProfile(
 }
 
 /**
+ * Discriminated union input for `createAgentRuntimeProfile`.
+ *
+ * - Legacy single-runtime shape: `{ harness, pi?, ... }` — unchanged behavior.
+ * - New multi-runtime shape: `{ agentRuntimes, defaultAgentRuntime, ... }`.
+ */
+export type CreateProfileInput =
+  // Legacy single-runtime input - unchanged behavior
+  | {
+      name: string;
+      harness: 'claude-sdk' | 'pi';
+      pi?: PartialEforgeConfig['pi'];
+      agents?: PartialEforgeConfig['agents'];
+      overwrite?: boolean;
+      scope?: 'project' | 'user';
+    }
+  // New multi-runtime input
+  | {
+      name: string;
+      agentRuntimes: Record<string, AgentRuntimeEntry>;
+      defaultAgentRuntime: string;
+      agents?: PartialEforgeConfig['agents'];
+      overwrite?: boolean;
+      scope?: 'project' | 'user';
+    };
+
+/**
  * Create an agent runtime profile file. Validates the partial-config shape and
  * the merged result (global + project + profile) before writing. Refuses
  * to overwrite an existing profile unless `overwrite: true` is supplied.
  *
  * When `scope` is `'user'`, writes to the user-scope profiles directory
  * (`~/.config/eforge/profiles/`) instead of the project directory.
+ *
+ * Accepts either a legacy single-runtime input `{ harness, pi?, ... }` or a
+ * new multi-runtime input `{ agentRuntimes, defaultAgentRuntime, ... }`.
  */
 export async function createAgentRuntimeProfile(
   configDir: string,
-  input: {
-    name: string;
-    harness: 'claude-sdk' | 'pi';
-    pi?: PartialEforgeConfig['pi'];
-    agents?: PartialEforgeConfig['agents'];
-    overwrite?: boolean;
-    scope?: 'project' | 'user';
-  },
+  input: CreateProfileInput,
 ): Promise<{ path: string }> {
-  const { name, harness, pi, agents, overwrite, scope: inputScope } = input;
+  const { name, agents, overwrite, scope: inputScope } = input;
   const scope = inputScope ?? 'project';
   if (!name || typeof name !== 'string' || !/^[A-Za-z0-9._-]+$/.test(name)) {
     throw new Error(
@@ -1449,12 +1485,23 @@ export async function createAgentRuntimeProfile(
     }
   }
 
-  // Build the partial config using the new agentRuntimes format.
-  const runtimeEntry: AgentRuntimeEntry = { harness, ...(pi && { pi }) };
-  const partial: PartialEforgeConfig = {
-    agentRuntimes: { main: runtimeEntry },
-    defaultAgentRuntime: 'main',
-  };
+  // Build the partial config — branch on discriminated input shape.
+  let partial: PartialEforgeConfig;
+  if ('agentRuntimes' in input) {
+    // Multi-runtime input shape
+    partial = {
+      agentRuntimes: input.agentRuntimes,
+      defaultAgentRuntime: input.defaultAgentRuntime,
+    };
+  } else {
+    // Legacy single-runtime input shape — unchanged behavior
+    const { harness, pi } = input;
+    const runtimeEntry: AgentRuntimeEntry = { harness, ...(pi && { pi }) };
+    partial = {
+      agentRuntimes: { main: runtimeEntry },
+      defaultAgentRuntime: 'main',
+    };
+  }
   if (agents !== undefined) partial.agents = agents as PartialEforgeConfig['agents'];
 
   // Validate against the partial schema first
@@ -1525,6 +1572,77 @@ export async function createAgentRuntimeProfile(
 
 // Re-export profile utilities from the shared client package
 export { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client';
+
+/**
+ * Spec passed to `deriveProfileName` describing the runtime/model configuration
+ * for which a deterministic profile name should be computed.
+ */
+export interface DeriveProfileNameSpec {
+  agentRuntimes: Record<string, AgentRuntimeEntry>;
+  defaultAgentRuntime: string;
+  models?: {
+    max?: { id: string };
+    balanced?: { id: string };
+    fast?: { id: string };
+  };
+  tiers?: {
+    max?: { agentRuntime?: string };
+    balanced?: { agentRuntime?: string };
+    fast?: { agentRuntime?: string };
+  };
+}
+
+/**
+ * Sanitize a raw string into a valid profile-name fragment by lowercasing,
+ * replacing dots with dashes, stripping `claude-` prefix from model IDs, and
+ * collapsing repeated dashes.
+ */
+function sanitizeFragment(raw: string): string {
+  return raw.toLowerCase().replace(/\./g, '-').replace(/^claude-/, '').replace(/-{2,}/g, '-');
+}
+
+/**
+ * Derive a deterministic profile name from a multi-runtime spec.
+ *
+ * Rules:
+ * - Single runtime, same model id across all three tiers → `<sanitized-model-id>`.
+ * - Single runtime, model varies across tiers → `<harness>` or `<harness>-<provider>`.
+ * - Multiple runtimes → `mixed-<runtime-backing-max>` where the backing runtime is
+ *   `tiers.max.agentRuntime` if set, otherwise `defaultAgentRuntime`.
+ */
+export function deriveProfileName(spec: DeriveProfileNameSpec): string {
+  const runtimeKeys = Object.keys(spec.agentRuntimes);
+  const isMultiRuntime = runtimeKeys.length > 1;
+
+  if (isMultiRuntime) {
+    // Multiple runtimes: use the runtime assigned to the max tier (or defaultAgentRuntime).
+    // Runtime names are used verbatim (lowercased, dots→dashes) — the claude- prefix is
+    // meaningful and must NOT be stripped (it would turn 'claude-sdk' into 'sdk').
+    const maxRuntime = spec.tiers?.max?.agentRuntime ?? spec.defaultAgentRuntime;
+    const sanitizedRuntime = maxRuntime.toLowerCase().replace(/\./g, '-').replace(/-{2,}/g, '-');
+    return `mixed-${sanitizedRuntime}`;
+  }
+
+  // Single runtime
+  const runtimeKey = runtimeKeys[0] ?? spec.defaultAgentRuntime;
+  const entry = spec.agentRuntimes[runtimeKey];
+  const harness = entry?.harness ?? 'claude-sdk';
+  const provider = entry?.pi?.provider;
+
+  const maxId = spec.models?.max?.id;
+  const balancedId = spec.models?.balanced?.id;
+  const fastId = spec.models?.fast?.id;
+
+  // If all three tier model IDs are the same (and present), use the sanitized model ID
+  if (maxId !== undefined && maxId === balancedId && maxId === fastId) {
+    return sanitizeFragment(maxId);
+  }
+
+  // Model varies (or not specified) — use harness + optional provider
+  const parts: string[] = [harness];
+  if (provider) parts.push(provider);
+  return parts.join('-').replace(/-{2,}/g, '-');
+}
 
 /**
  * Delete an agent runtime profile file. Refuses to delete the currently active
