@@ -15,6 +15,7 @@ import { promisify } from 'node:util';
 import { join } from 'node:path';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { useTempDir } from './test-tmpdir.js';
+import { StubHarness } from './stub-harness.js';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { ApplyRecoveryResult } from '@eforge-build/engine/schemas';
 
@@ -152,7 +153,7 @@ describe('applyRecovery — retry', () => {
     seedGitRepo(dir);
     await seedFailedPrd(dir, prdId, 'retry');
 
-    const engine = await EforgeEngine.create({ cwd: dir });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     const { events, result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
 
     // Result shape
@@ -189,7 +190,7 @@ describe('applyRecovery — retry', () => {
     seedGitRepo(dir);
     await seedFailedPrd(dir, prdId, 'retry');
 
-    const engine = await EforgeEngine.create({ cwd: dir });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     await driveGenerator(engine.applyRecovery('test-set', prdId));
 
     const body = await gitLogBody(dir);
@@ -212,7 +213,7 @@ describe('applyRecovery — split', () => {
       suggestedSuccessorPrd: '# Successor Feature\n\nContinue the API work.',
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     const { events, result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
 
     // Result shape
@@ -263,7 +264,7 @@ describe('applyRecovery — split', () => {
       suggestedSuccessorPrd: '# REST API Layer\n\nBuild the REST layer.',
     });
 
-    const engine = await EforgeEngine.create({ cwd: dir });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     const { result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
 
     expect(result.successorPrdId).toBe('rest-api-layer');
@@ -283,7 +284,7 @@ describe('applyRecovery — abandon', () => {
     seedGitRepo(dir);
     await seedFailedPrd(dir, prdId, 'abandon');
 
-    const engine = await EforgeEngine.create({ cwd: dir });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     const { events, result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
 
     // Result shape
@@ -329,7 +330,7 @@ describe('applyRecovery — manual', () => {
 
     const headBefore = await gitHeadSha(dir);
 
-    const engine = await EforgeEngine.create({ cwd: dir });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     const { events, result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
 
     // Result shape
@@ -375,7 +376,7 @@ describe('applyRecovery — error paths', () => {
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, `${prdId}.md`), '# PRD', 'utf-8');
 
-    const engine = await EforgeEngine.create({ cwd: dir });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
 
     await expect(
       driveGenerator(engine.applyRecovery('test-set', prdId)),
@@ -428,7 +429,7 @@ describe('applyRecovery — error paths', () => {
     execFileSync('git', ['add', '--', failedDir], { cwd: dir });
     execFileSync('git', ['commit', '-m', 'chore: seed split-no-successor'], { cwd: dir });
 
-    const engine = await EforgeEngine.create({ cwd: dir });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
 
     await expect(
       driveGenerator(engine.applyRecovery('test-set', prdId)),
@@ -440,7 +441,7 @@ describe('applyRecovery — error paths', () => {
     const prdId = 'no-sidecar-events';
     seedGitRepo(dir);
 
-    const engine = await EforgeEngine.create({ cwd: dir });
+    const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
     const gen = engine.applyRecovery('test-set', prdId);
     const events: EforgeEvent[] = [];
 
