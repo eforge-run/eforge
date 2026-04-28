@@ -18,22 +18,22 @@ plans:
     branch: replace-backend-with-harness-across-the-eforge-mcp-http-skill-stack/plan-01-rename-backend-to-harness
     build:
       - implement
-      - test-cycle
       - review-cycle
     review:
-      strategy: auto
+      strategy: single
       perspectives:
         - code
-      maxRounds: 1
+        - api
+      maxRounds: 2
       evaluatorStrictness: standard
     agents:
       builder:
         effort: high
         rationale: "Cross-package coordinated rename touching ~18 files. Mechanical but
           unforgiving: a missed callsite breaks pnpm type-check. Sharded across
-          three parallel scope groups (types/engine, MCP tools, skills+tests) so
-          each shard has tight focus while the merged result must compile
-          coherently."
+          three parallel scope groups (types/engine/monitor, MCP tools,
+          skills+tests) so each shard has tight focus while the merged result
+          must compile coherently."
         shards:
           - id: shard-types-engine-monitor
             roots:
@@ -65,36 +65,32 @@ pipeline:
   defaultBuild:
     - implement
     - review-cycle
+    - doc-update
   defaultReview:
     strategy: single
     perspectives:
       - correctness
-      - consistency
-      - api-contract
+      - api-consistency
     maxRounds: 2
     autoAcceptBelow: suggestion
     evaluatorStrictness: standard
-  rationale: "This is a coordinated rename refactor (`backend` -> `harness`) that
-    ripples through TypeScript types, MCP tool params, daemon HTTP API, client
-    types, engine helpers, and skill markdown across multiple packages. Per the
-    user's feedback memory, type/interface refactors and
-    rename-and-update-all-callers refactors are negative signals for expedition
-    - the TypeScript compiler is the safety net and changes are tightly coupled,
-    so a single planner session can enumerate every file/line listed in the PRD.
-    Excursion is the right scope. Compile uses `planner` + `plan-review-cycle`
-    because the PRD spans 5 distinct surfaces (engine helpers, daemon API +
-    version bump, client types, MCP tools for both Plugin and Pi, four skill
-    files) and plan quality matters for catching missed call sites and
-    preserving the legitimate legacy `backend:` YAML references that must NOT be
-    renamed. Build uses sequential `implement` -> `review-cycle` (no parallelism
-    needed; review must read the final implemented state to verify the grep
-    audit acceptance criterion). `doc-update` is omitted because the skill
-    markdown updates are themselves part of the implementation scope.
-    `test-cycle` is omitted because acceptance criteria #2 only requires
-    updating existing fixtures (a `pnpm test` pass), not authoring new tests;
-    the TypeScript build (criterion #1) is the primary safety net. Review uses
-    `single` strategy with three perspectives (`correctness` for the rename
-    mechanics, `consistency` for Plugin/Pi parity, `api-contract` for the
-    DAEMON_API_VERSION bump and breaking field renames). `standard` strictness
-    fits a non-security refactor; `maxRounds: 2` is sufficient given the rename
-    is mechanical and the PRD enumerates exact line numbers."
+  rationale: This is a cross-cutting rename refactor (backend -> harness) that
+    touches MCP tools, daemon HTTP API, client types, engine helpers, and skill
+    files. It is a classic 'rename-and-update-all-callers' refactor with
+    sequential dependencies (types must change before callers compile), which
+    the guidelines explicitly call out as a negative expedition signal —
+    excursion is correct. A single planner session can enumerate every file and
+    edit because the PRD already lists exact line numbers and file paths.
+    plan-review-cycle is added because the rename is a breaking API change
+    (DAEMON_API_VERSION 9 -> 10) with parity requirements across Plugin and Pi
+    extensions, so a quality gate on the plan catches missed call sites before
+    build. defaultBuild uses implement followed by review-cycle (to catch missed
+    renames and ensure Plugin/Pi parity) with doc-update running afterward to
+    keep skill files and inline docs in sync — doc-update is sequential after
+    review-cycle to avoid editing the same skill markdown files concurrently
+    with reviewer fixes. Review uses single strategy with correctness and
+    api-consistency perspectives at standard strictness — appropriate for a
+    mechanical-but-broad rename where the main risks are missed call sites and
+    inconsistent terminology, not security or data integrity. maxRounds=2 is
+    sufficient because review issues here are concrete (missed renames) rather
+    than design debates.
