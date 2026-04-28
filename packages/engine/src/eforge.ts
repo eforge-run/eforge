@@ -1834,6 +1834,7 @@ export class EforgeEngine {
 
     // Always emit recovery:start first
     yield { timestamp: new Date().toISOString(), type: 'recovery:start', prdId, setName };
+    yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
 
     try {
       // Try to read PRD file
@@ -2059,6 +2060,7 @@ export class EforgeEngine {
       prdId,
       setName,
     };
+    yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
 
     try {
       // Read the recovery sidecar JSON
