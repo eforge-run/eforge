@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.7.4] - 2026-04-29
+
+Maintenance release
+
 ## [0.7.3] - 2026-04-28
 
 ### Features
