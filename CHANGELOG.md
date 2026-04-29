@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.7] - 2026-04-29
+
+### Bug Fixes
+
+- **config**: strict schema validation; reject modelClass-keyed agents.tiers
+
 ## [0.7.6] - 2026-04-29
 
 ### Maintenance
@@ -331,52 +337,6 @@ Maintenance release
 ### Documentation
 
 - clarify excursion vs expedition scope guidance
-
-## [0.5.5] - 2026-04-16
-
-### Features
-
-- Add configFound boolean to validate API, update build/status skills with missing-config guidance, and add Related Skills cross-reference tables to all 13 eforge skill files
-- Add Related Skills tables to remaining skill files and bump plugin version
-- Add configFound field to engine and client types
-
-### Bug Fixes
-
-- propagate validator errors and carry prior output on composer retry
-
-### Maintenance
-
-- bump max model class default to claude-opus-4-7
-- bump pi SDK and agent dependencies
-
-## [0.5.4] - 2026-04-15
-
-### Features
-
-- Fail-fast on unreachable model backend
-- Replace N-Write-calls planner pattern with structured submission tools that validate and persist plan payloads engine-side
-- PRD Gap Close
-- Planner Agent Submission Tool Integration
-- Submission Tool Foundation
-- add pnpm release script for lockstep version bumps
-
-### Bug Fixes
-
-- register planner submission tools via SDK MCP server
-- reduce SQLITE_BUSY errors under concurrent writes
-
-### Refactoring
-
-- introduce typed AgentTerminalError for SDK failures
-
-### Documentation
-
-- sharpen tagline and add "Why eforge" section
-
-### Maintenance
-
-- fix stale planner wiring tests
-- post-parallel-group auto-commit
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
