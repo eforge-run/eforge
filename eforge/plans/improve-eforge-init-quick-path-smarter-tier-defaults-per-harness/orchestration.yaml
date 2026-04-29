@@ -1,0 +1,56 @@
+name: improve-eforge-init-quick-path-smarter-tier-defaults-per-harness
+description: "Make /eforge:init Quick path tier-aware: auto-suggest
+  Opus/Sonnet/Haiku per tier for claude-sdk, encourage a separate balanced model
+  for Pi (with fast=balanced derived), in both the plugin skill and pi-eforge
+  skill."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-tier-aware-quick-path
+    name: Tier-aware Quick path in both init skills
+    depends_on: []
+    branch: improve-eforge-init-quick-path-smarter-tier-defaults-per-harness/tier-aware-quick-path
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - doc-update
+      - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - consistency
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This PRD modifies two parity-tracked skill markdown files plus a
+    plugin version bump - a focused, multi-file documentation/skill change with
+    no engine, MCP, or schema changes. That fits excursion squarely: a single
+    planner session can enumerate all edits (Step 3a in both skills, Step 4
+    aside in both, version bump) and their dependencies, with no need for
+    delegated module planning. A plan-review-cycle is worth including because
+    the two skill files must stay in lockstep (parity-tracked with skip
+    markers), so catching scope/parity issues before build is valuable. For the
+    build phase, implement runs first (since both doc-update and review-cycle
+    declare it as a predecessor), then doc-update runs in parallel with
+    review-cycle. review-cycle (maxRounds=2) ensures the harness-branched flows
+    match the PRD's prescribed prompts and YAML shapes. Standard strictness with
+    correctness + consistency perspectives matches the parity-tracking
+    requirement. No tests are needed - these are skill markdown files driving an
+    interactive flow, not code with unit tests."
