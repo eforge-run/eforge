@@ -39,8 +39,12 @@ When the user chooses Quick setup:
 
 1. **Provider**: Call `eforge_models` with `{ action: "providers", harness: "pi" }` to get available providers. Present the list and ask the user to pick one.
 2. **Max model**: Call `eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Show the top 10 and ask the user to pick.
+3. **Balanced model**: Prompt:
+   > Pick a separate **balanced**-tier model? (Recommended — most build steps run at the balanced tier, so a cheaper/smaller model here saves a lot. Press enter to reuse `<max-id>`.)
+   Show the same top-10 list with the user's max pick highlighted as the default. If the user accepts the default, set `balanced.id = max.id`.
+4. **Fast model**: No prompt. Set `fast.id = balanced.id`.
 
-Assemble the single-runtime profile (runtime named `pi-<provider>`):
+Assemble the single-runtime profile (runtime named `pi-<provider>`, no `tiers` block):
 
 ```yaml
 profile:
@@ -54,9 +58,9 @@ profile:
     max:
       id: <picked>
     balanced:
-      id: <picked>
+      id: <picked-or-max>
     fast:
-      id: <picked>
+      id: <balanced>
 ```
 
 ### Step 3b: Mix-and-match path

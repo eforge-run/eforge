@@ -811,7 +811,7 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(raw).toContain('profile:');
   });
 
-  it('plugin version bumped to 0.14.0', () => {
+  it('plugin version bumped to 0.15.0', () => {
     const manifest = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { version: string };
     expect(manifest.version).not.toBe('0.13.0');
     // Parse and compare as major.minor.patch
@@ -819,7 +819,7 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     const [refMajor, refMinor] = '0.13.0'.split('.').map(Number);
     const isGreater = major > refMajor || (major === refMajor && minor > refMinor);
     expect(isGreater).toBe(true);
-    expect(manifest.version).toBe('0.14.0');
+    expect(manifest.version).toBe('0.15.0');
   });
 
   it('MCP proxy eforge_init writes config file before calling profileCreate in the fresh-init branch', () => {

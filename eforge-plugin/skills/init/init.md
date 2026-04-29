@@ -37,18 +37,29 @@ Do not suggest a default - both options should be presented equally.
 When the user chooses Quick setup:
 
 1. **Harness**: Ask the user to choose between `claude-sdk` (Claude Code's built-in SDK) or `pi` (multi-provider via Pi SDK). No default - user must pick.
-2. **Provider** (Pi only): Call `mcp__eforge__eforge_models` with `{ action: "providers", harness: "pi" }` to get available providers. Present the list and ask the user to pick one.
-3. **Max model**: Call `mcp__eforge__eforge_models` with `{ action: "list", harness: "<chosen>", provider: "<chosen if pi>" }` to get available models (sorted newest-first). Show the top 10 and ask the user to pick.
 
-Assemble the single-runtime profile:
+**If harness = `claude-sdk`:**
+
+2. Call `mcp__eforge__eforge_models` with `{ action: "list", harness: "claude-sdk" }` to get available models (sorted newest-first, already harness-filtered).
+3. From the returned list, derive tier defaults by scanning for the first non-deprecated entry whose `id` contains, case-insensitively:
+   - `opus` → default for `max` tier
+   - `sonnet` → default for `balanced` tier
+   - `haiku` → default for `fast` tier
+4. Present the three picks as a recommendation, e.g.:
+   > Claude Code ships three model families. Latest of each:
+   > - **max**: `claude-opus-4-7` (Opus — deepest reasoning)
+   > - **balanced**: `claude-sonnet-4-6` (Sonnet — strong default)
+   > - **fast**: `claude-haiku-4-5` (Haiku — cheapest, quickest)
+   >
+   > Use these, or customize a tier?
+5. Accept one of: `confirm`, `customize <tier>`, `customize all`. For each tier the user wants to customize, show the top 10 from the already-fetched list (no extra `mcp__eforge__eforge_models` call) and let them pick a different id. The default at each per-tier prompt is the family-derived suggestion.
+6. Assemble the single-runtime profile (no `tiers` block):
 
 ```yaml
 profile:
   agentRuntimes:
     main:
-      harness: <chosen>          # e.g. "claude-sdk" or "pi"
-      pi:                        # only when harness=pi
-        provider: <chosen>
+      harness: claude-sdk
   defaultAgentRuntime: main
   models:
     max:
@@ -59,7 +70,32 @@ profile:
       id: <picked>
 ```
 
-(For a claude-sdk runtime there is no `pi:` block. For a pi runtime, include `pi.provider`. The runtime is named `main` in both cases.)
+**If harness = `pi`:**
+
+2. **Provider**: Call `mcp__eforge__eforge_models` with `{ action: "providers", harness: "pi" }` to get available providers. Present the list and ask the user to pick one.
+3. **Max model**: Call `mcp__eforge__eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Show the top 10 and ask the user to pick.
+4. **Balanced model**: Prompt:
+   > Pick a separate **balanced**-tier model? (Recommended — most build steps run at the balanced tier, so a cheaper/smaller model here saves a lot. Press enter to reuse `<max-id>`.)
+   Show the same top-10 list with the user's max pick highlighted as the default. If the user accepts the default, set `balanced.id = max.id`.
+5. **Fast model**: No prompt. Set `fast.id = balanced.id`.
+6. Assemble the single-runtime profile (runtime named `main`, no `tiers` block):
+
+```yaml
+profile:
+  agentRuntimes:
+    main:
+      harness: pi
+      pi:
+        provider: <chosen>
+  defaultAgentRuntime: main
+  models:
+    max:
+      id: <picked>
+    balanced:
+      id: <picked-or-max>
+    fast:
+      id: <balanced>
+```
 
 ### Step 3b: Mix-and-match path
 
@@ -113,6 +149,8 @@ Derive a candidate profile name from the assembled profile using these rules (mi
 - **Multiple runtimes**: use `mixed-<runtime-backing-max>` where the backing runtime is from `tiers.max.agentRuntime` (e.g. `mixed-claude-sdk`).
 
 Show the candidate name to the user: "I'd name this profile `<candidate>`. Does that work, or would you like a different name?" Accept a one-word override (alphanumeric + dashes). If the user accepts, proceed with the candidate. Set `profile.name` to the final name before calling the tool.
+
+Note: the Claude SDK Quick path will typically land on the candidate name `claude-sdk` because each tier picks a different model family by default (single runtime, model varies across tiers).
 
 ### Step 5: Persist
 
