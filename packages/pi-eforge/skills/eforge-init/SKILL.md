@@ -107,6 +107,8 @@ Derive a candidate profile name from the assembled profile using these rules (mi
 - **Single runtime, model varies across tiers**: use `<harness>-<provider>` (e.g. `pi-anthropic`).
 - **Multiple runtimes**: use `mixed-<runtime-backing-max>` where the backing runtime is from `tiers.max.agentRuntime` (e.g. `mixed-pi-anthropic`).
 
+> Note: For the Pi Quick path, expect the candidate name to be the sanitized max model id when all tiers share the same model, or `pi-<provider>` when tiers differ. (For reference, the Claude SDK Quick path in the plugin skill typically lands on `claude-sdk`, since each tier picks a different family by default.)
+
 Show the candidate name to the user: "I'd name this profile `<candidate>`. Does that work, or would you like a different name?" Accept a one-word override (alphanumeric + dashes). If the user accepts, proceed with the candidate. Set `profile.name` to the final name before calling the tool.
 
 ### Step 5: Persist
