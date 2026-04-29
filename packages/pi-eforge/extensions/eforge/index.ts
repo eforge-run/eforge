@@ -10,7 +10,7 @@ import { DynamicBorder, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
 import { Container, Markdown, type SelectItem, SelectList, Text } from "@mariozechner/pi-tui";
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
-import { readFileSync, accessSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, accessSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
@@ -1186,16 +1186,27 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       };
       if (Object.keys(agentsBlock).length > 0) createBody.agents = agentsBlock;
 
-      await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
-
-      // Activate the profile
-      await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
-
-      // Create eforge/ directory
+      // Write a sentinel file so the daemon can discover the config directory.
+      let wroteSentinel = false;
       try {
-        mkdirSync(configDir, { recursive: true });
+        accessSync(configPath);
       } catch {
-        // Directory may already exist
+        // File does not exist - write empty sentinel so daemon can find configDir
+        mkdirSync(configDir, { recursive: true });
+        writeFileSync(configPath, "", "utf-8");
+        wroteSentinel = true;
+      }
+
+      try {
+        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, createBody);
+
+        // Activate the profile
+        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: profileName });
+      } catch (err) {
+        if (wroteSentinel) {
+          try { unlinkSync(configPath); } catch {}
+        }
+        throw err;
       }
 
       // Write config.yaml

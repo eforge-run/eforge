@@ -8,7 +8,7 @@
 import { McpServer, ResourceTemplate } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { readFile, writeFile, access, mkdir } from 'node:fs/promises';
+import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, sanitizeProfileName, parseRawConfigLegacy, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery } from '@eforge-build/client';
@@ -744,13 +744,25 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       };
       if (Object.keys(agentsBlock).length > 0) createBody.agents = agentsBlock;
 
-      await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, createBody);
-      await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: profileName });
+      // Write a sentinel file so the daemon can discover the config directory.
+      let wroteSentinel = false;
+      try {
+        await access(configPath);
+      } catch {
+        // File does not exist - write empty sentinel so daemon can find configDir
+        await mkdir(configDir, { recursive: true });
+        await writeFile(configPath, '', 'utf-8');
+        wroteSentinel = true;
+      }
 
       try {
-        await mkdir(configDir, { recursive: true });
-      } catch {
-        // Directory may already exist
+        await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, createBody);
+        await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: profileName });
+      } catch (err) {
+        if (wroteSentinel) {
+          try { await unlink(configPath); } catch {}
+        }
+        throw err;
       }
 
       const configData: Record<string, unknown> = {};

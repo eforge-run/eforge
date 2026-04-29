@@ -821,4 +821,28 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(isGreater).toBe(true);
     expect(manifest.version).toBe('0.14.0');
   });
+
+  it('MCP proxy eforge_init writes config file before calling profileCreate in the fresh-init branch', () => {
+    const block = getMcpInitBlock();
+    const freshInitStart = block.indexOf('Fresh init mode');
+    expect(freshInitStart).toBeGreaterThan(-1);
+    const slice = block.slice(freshInitStart);
+    const writeFileIdx = slice.indexOf('writeFile(configPath');
+    const profileCreateIdx = slice.indexOf('API_ROUTES.profileCreate');
+    expect(writeFileIdx).toBeGreaterThan(-1);
+    expect(profileCreateIdx).toBeGreaterThan(-1);
+    expect(writeFileIdx).toBeLessThan(profileCreateIdx);
+  });
+
+  it('Pi extension eforge_init writes config file before calling profileCreate in the fresh-init branch', () => {
+    const block = getPiInitBlock();
+    const freshInitStart = block.indexOf('Fresh init mode');
+    expect(freshInitStart).toBeGreaterThan(-1);
+    const slice = block.slice(freshInitStart);
+    const writeFileIdx = slice.indexOf('writeFileSync(configPath');
+    const profileCreateIdx = slice.indexOf('API_ROUTES.profileCreate');
+    expect(writeFileIdx).toBeGreaterThan(-1);
+    expect(profileCreateIdx).toBeGreaterThan(-1);
+    expect(writeFileIdx).toBeLessThan(profileCreateIdx);
+  });
 });
