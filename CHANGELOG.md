@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.7.6] - 2026-04-29
+
+### Maintenance
+
+- **profile-wiring**: floor plugin version assertion at 0.16.0
+
 ## [0.7.5] - 2026-04-29
 
 ### Maintenance
