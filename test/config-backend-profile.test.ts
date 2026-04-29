@@ -7,6 +7,9 @@ import {
   resolveActiveProfileName,
   loadProfile,
   listProfiles,
+  listUserProfiles,
+  resolveUserActiveProfile,
+  loadUserProfile,
   setActiveProfile,
   createAgentRuntimeProfile,
   deleteAgentRuntimeProfile,
@@ -1270,6 +1273,107 @@ describe('auto-migration: orphaned project-scope .active-backend marker recovery
     const newMarker = await readFile(join(configDir, '.active-profile'), 'utf-8');
     expect(newMarker.trim()).toBe('a');
     expect(await fileExists(join(configDir, '.active-backend'))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// user-scope helpers without configDir
+// ---------------------------------------------------------------------------
+
+describe('user-scope helpers without configDir', () => {
+  let userHomeDir: string;
+  let userEforgeDir: string;
+  let origXdg: string | undefined;
+
+  beforeEach(async () => {
+    ({ userHomeDir, userEforgeDir } = await makeUserHome());
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = userHomeDir;
+  });
+
+  afterEach(async () => {
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
+    await rm(userHomeDir, { recursive: true, force: true });
+  });
+
+  it('listUserProfiles returns user-scope yaml entries with correct harness and scope, skipping non-yaml', async () => {
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(
+      join(userEforgeDir, 'profiles', 'claude-sdk-4-7.yaml'),
+      'backend: claude-sdk\n',
+      'utf-8',
+    );
+    await writeFile(
+      join(userEforgeDir, 'profiles', 'pi-codex-5-5.yaml'),
+      'backend: pi\n',
+      'utf-8',
+    );
+    await writeFile(join(userEforgeDir, 'profiles', 'README.md'), '# skip me', 'utf-8');
+
+    const result = await listUserProfiles();
+    expect(result.length).toBe(2);
+    const byName = new Map(result.map((r) => [r.name, r]));
+    expect(byName.get('claude-sdk-4-7')?.harness).toBe('claude-sdk');
+    expect(byName.get('claude-sdk-4-7')?.scope).toBe('user');
+    expect(byName.get('pi-codex-5-5')?.harness).toBe('pi');
+    expect(byName.get('pi-codex-5-5')?.scope).toBe('user');
+  });
+
+  it('listUserProfiles returns [] when user profiles directory is empty', async () => {
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    const result = await listUserProfiles();
+    expect(result).toEqual([]);
+  });
+
+  it('resolveUserActiveProfile returns { name, source: user-local, warnings: [] } for valid user marker', async () => {
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(
+      join(userEforgeDir, 'profiles', 'claude-sdk-4-7.yaml'),
+      'backend: claude-sdk\n',
+      'utf-8',
+    );
+    await writeFile(join(userEforgeDir, '.active-profile'), 'claude-sdk-4-7\n', 'utf-8');
+
+    const result = await resolveUserActiveProfile();
+    expect(result).toEqual({ name: 'claude-sdk-4-7', source: 'user-local', warnings: [] });
+  });
+
+  it('resolveUserActiveProfile returns { name: null, source: none, warnings: [stale warning] } for stale user marker', async () => {
+    // Marker file present, but profile yaml does not exist
+    await writeFile(join(userEforgeDir, '.active-profile'), 'ghost-profile\n', 'utf-8');
+
+    const result = await resolveUserActiveProfile();
+    expect(result.name).toBeNull();
+    expect(result.source).toBe('none');
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('ghost-profile');
+    expect(result.warnings[0]).toContain('no profile file exists');
+  });
+
+  it('resolveUserActiveProfile returns { name: null, source: none, warnings: [] } when no marker exists', async () => {
+    const result = await resolveUserActiveProfile();
+    expect(result).toEqual({ name: null, source: 'none', warnings: [] });
+  });
+
+  it('loadUserProfile returns { profile, scope: user } for a present yaml and null for an absent name', async () => {
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(
+      join(userEforgeDir, 'profiles', 'claude-sdk-4-7.yaml'),
+      'backend: claude-sdk\nagents:\n  maxTurns: 42\n',
+      'utf-8',
+    );
+
+    const present = await loadUserProfile('claude-sdk-4-7');
+    expect(present).not.toBeNull();
+    expect(present?.scope).toBe('user');
+    expect(present?.profile.agents?.maxTurns).toBe(42);
+
+    const absent = await loadUserProfile('nonexistent');
+    expect(absent).toBeNull();
   });
 });
 

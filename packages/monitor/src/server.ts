@@ -803,6 +803,31 @@ export async function startServer(
   }
 
   /**
+   * Extract the harness kind from a parsed profile object.
+   * Supports both the new `agentRuntimes.<name>.harness` shape and the legacy
+   * top-level `backend:` field. Returns undefined when neither is present.
+   */
+  function extractHarnessFromProfile(profile: unknown): 'claude-sdk' | 'pi' | undefined {
+    if (!profile || typeof profile !== 'object') return undefined;
+    const p = profile as Record<string, unknown>;
+    // New shape: agentRuntimes.<name>.harness
+    if (p.agentRuntimes && typeof p.agentRuntimes === 'object') {
+      const runtimeKey = typeof p.defaultAgentRuntime === 'string' ? p.defaultAgentRuntime : 'main';
+      const runtime = (p.agentRuntimes as Record<string, unknown>)[runtimeKey];
+      if (runtime && typeof runtime === 'object') {
+        const h = (runtime as Record<string, unknown>).harness;
+        if (h === 'claude-sdk' || h === 'pi') return h;
+      }
+    }
+    // Legacy shape fallback: top-level backend field
+    if ('backend' in p) {
+      const b = p.backend;
+      if (b === 'claude-sdk' || b === 'pi') return b;
+    }
+    return undefined;
+  }
+
+  /**
    * Read and parse the project's `config.yaml` at the given config dir into
    * a partial config object. Returns {} on any failure (missing file, bad
    * YAML, etc.). Used by agent runtime profile endpoints to compute the team
@@ -1059,16 +1084,26 @@ export async function startServer(
     // --- Agent runtime profile management ---
     if (req.method === 'GET' && (url === API_ROUTES.profileList || url.startsWith(`${API_ROUTES.profileList}?`))) {
       try {
-        const { getConfigDir, listProfiles, resolveActiveProfileName, loadUserConfig } =
+        const { getConfigDir, listProfiles, listUserProfiles, resolveActiveProfileName, resolveUserActiveProfile, loadUserConfig } =
           await import('@eforge-build/engine/config');
-        const configDir = await getConfigDir(options?.cwd);
-        if (!configDir) {
-          sendJson(res, { profiles: [], active: null, source: 'none' });
-          return;
-        }
         const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
         const params = new URLSearchParams(queryString);
         const scopeParam = params.get('scope') as 'project' | 'user' | 'all' | null;
+        const configDir = await getConfigDir(options?.cwd);
+        if (!configDir) {
+          if (scopeParam === 'project') {
+            sendJson(res, { profiles: [], active: null, source: 'none' });
+            return;
+          }
+          // user, all, or unset: return user-scope data
+          const profiles = await listUserProfiles();
+          const { name, source, warnings } = await resolveUserActiveProfile();
+          for (const warning of warnings) {
+            process.stderr.write(`${warning}\n`);
+          }
+          sendJson(res, { profiles, active: name, source });
+          return;
+        }
         let profiles = await listProfiles(configDir);
         if (scopeParam === 'project' || scopeParam === 'user') {
           profiles = profiles.filter((p) => p.scope === scopeParam);
@@ -1092,11 +1127,22 @@ export async function startServer(
 
     if (req.method === 'GET' && url === API_ROUTES.profileShow) {
       try {
-        const { getConfigDir, loadProfile, resolveActiveProfileName, loadUserConfig } =
+        const { getConfigDir, loadProfile, loadUserProfile, resolveActiveProfileName, resolveUserActiveProfile, loadUserConfig } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
-          sendJson(res, { active: null, source: 'none', resolved: { harness: undefined, profile: null } });
+          const { name, source, warnings: resolveWarnings } = await resolveUserActiveProfile();
+          for (const warning of resolveWarnings) {
+            process.stderr.write(`${warning}\n`);
+          }
+          if (name === null) {
+            sendJson(res, { active: null, source: 'none', resolved: { harness: undefined, profile: null } });
+            return;
+          }
+          const result = await loadUserProfile(name);
+          const harness = result ? extractHarnessFromProfile(result.profile) : undefined;
+          const profile = result ? result.profile : null;
+          sendJson(res, { active: name, source: 'user-local', resolved: { harness, profile, scope: 'user' } });
           return;
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
@@ -1117,23 +1163,7 @@ export async function startServer(
           if (result) {
             profile = result.profile;
             profileScope = result.scope;
-            if (result.profile && typeof result.profile === 'object') {
-              const p = result.profile as Record<string, unknown>;
-              // New shape: agentRuntimes.<name>.harness
-              if (p.agentRuntimes && typeof p.agentRuntimes === 'object') {
-                const runtimeKey = typeof p.defaultAgentRuntime === 'string' ? p.defaultAgentRuntime : 'main';
-                const runtime = (p.agentRuntimes as Record<string, unknown>)[runtimeKey];
-                if (runtime && typeof runtime === 'object') {
-                  const h = (runtime as Record<string, unknown>).harness;
-                  if (h === 'claude-sdk' || h === 'pi') harness = h;
-                }
-              }
-              // Legacy shape fallback: top-level backend field
-              if (!harness && 'backend' in p) {
-                const b = p.backend;
-                if (b === 'claude-sdk' || b === 'pi') harness = b;
-              }
-            }
+            harness = extractHarnessFromProfile(result.profile);
           }
         }
         sendJson(res, { active: name, source, resolved: { harness, profile, scope: profileScope } });

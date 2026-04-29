@@ -1305,6 +1305,46 @@ export async function loadProfile(
   return null;
 }
 
+/** Shared entry type returned by scanProfilesDir. */
+type ScannedProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user' };
+
+/**
+ * Scan a profiles directory and return an entry for each `.yaml` file.
+ * Non-YAML files and unreadable files are silently skipped.
+ */
+async function scanProfilesDir(dir: string, scope: 'project' | 'user'): Promise<ScannedProfileEntry[]> {
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return [];
+  }
+  const out: ScannedProfileEntry[] = [];
+  for (const entry of entries.sort()) {
+    if (extname(entry) !== '.yaml') continue;
+    const name = basename(entry, '.yaml');
+    const path = resolve(dir, entry);
+    let harness: 'claude-sdk' | 'pi' | undefined;
+    try {
+      const raw = await readFile(path, 'utf-8');
+      const data = parseYaml(raw);
+      if (data && typeof data === 'object') {
+        // Support both new `harness:` key and legacy `backend:` key in profile files.
+        const raw_data = data as Record<string, unknown>;
+        const harnessVal = raw_data.harness ?? raw_data.backend;
+        const parsed = harnessSchema.safeParse(harnessVal);
+        if (parsed.success) {
+          harness = parsed.data;
+        }
+      }
+    } catch {
+      // unreadable — still include the entry with harness=undefined
+    }
+    out.push({ name, harness, path, scope });
+  }
+  return out;
+}
+
 /**
  * List all profile files from both project (`eforge/profiles/`) and
  * user (`~/.config/eforge/profiles/`) scopes. Each entry includes the profile
@@ -1318,41 +1358,8 @@ export async function listProfiles(
 ): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' }>> {
   type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' };
 
-  async function scanDir(dir: string, scope: 'project' | 'user'): Promise<ProfileEntry[]> {
-    let entries: string[];
-    try {
-      entries = await readdir(dir);
-    } catch {
-      return [];
-    }
-    const out: ProfileEntry[] = [];
-    for (const entry of entries.sort()) {
-      if (extname(entry) !== '.yaml') continue;
-      const name = basename(entry, '.yaml');
-      const path = resolve(dir, entry);
-      let harness: 'claude-sdk' | 'pi' | undefined;
-      try {
-        const raw = await readFile(path, 'utf-8');
-        const data = parseYaml(raw);
-        if (data && typeof data === 'object') {
-          // Support both new `harness:` key and legacy `backend:` key in profile files.
-          const raw_data = data as Record<string, unknown>;
-          const harnessVal = raw_data.harness ?? raw_data.backend;
-          const parsed = harnessSchema.safeParse(harnessVal);
-          if (parsed.success) {
-            harness = parsed.data;
-          }
-        }
-      } catch {
-        // unreadable — still include the entry with harness=undefined
-      }
-      out.push({ name, harness, path, scope });
-    }
-    return out;
-  }
-
-  const projectEntries = await scanDir(profilesDir(configDir), 'project');
-  const userEntries = await scanDir(userProfilesDir(), 'user');
+  const projectEntries = await scanProfilesDir(profilesDir(configDir), 'project') as ProfileEntry[];
+  const userEntries = await scanProfilesDir(userProfilesDir(), 'user') as ProfileEntry[];
 
   // Mark user entries that are shadowed by project entries with the same name
   const projectNames = new Set(projectEntries.map((e) => e.name));
@@ -1363,6 +1370,56 @@ export async function listProfiles(
   }
 
   return [...projectEntries, ...userEntries];
+}
+
+/**
+ * List all profile files from only the user scope (`~/.config/eforge/profiles/`).
+ * Does not require a project config directory. Unreadable or non-YAML files are
+ * skipped silently.
+ */
+export async function listUserProfiles(): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'user' }>> {
+  const entries = await scanProfilesDir(userProfilesDir(), 'user');
+  return entries as Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'user' }>;
+}
+
+/**
+ * Resolve the active profile from the user-scope marker only, without requiring
+ * a project config directory.
+ *
+ * Returns `{ name, source: 'user-local', warnings: [] }` when the user marker
+ * points at an existing profile file. Returns `{ name: null, source: 'none', warnings }`
+ * otherwise. When the marker is present but the profile file is missing, a stale-marker
+ * warning is appended to `warnings`.
+ */
+export async function resolveUserActiveProfile(): Promise<{ name: string | null; source: 'user-local' | 'none'; warnings: string[] }> {
+  const warnings: string[] = [];
+  const markerName = await readMarkerName(userMarkerPath());
+  if (markerName !== null) {
+    if (await fileExists(userProfilePath(markerName))) {
+      return { name: markerName, source: 'user-local', warnings };
+    }
+    // Stale marker — warn and fall through to none
+    warnings.push(
+      `[eforge] Active profile marker ${userMarkerPath()} points at ` +
+      `"${markerName}" but no profile file exists in user scope. ` +
+      `Falling back to next available source.`,
+    );
+    return { name: null, source: 'none', warnings };
+  }
+  return { name: null, source: 'none', warnings };
+}
+
+/**
+ * Load a user-scope profile by name from `~/.config/eforge/profiles/`.
+ * Does not require a project config directory. Returns `{ profile, scope: 'user' }`
+ * on success, or `null` when the profile file does not exist or is unparseable.
+ */
+export async function loadUserProfile(name: string): Promise<{ profile: PartialEforgeConfig; scope: 'user' } | null> {
+  const result = await loadProfileFromPath(userProfilePath(name));
+  if (result !== null) {
+    return { profile: result, scope: 'user' };
+  }
+  return null;
 }
 
 /**
