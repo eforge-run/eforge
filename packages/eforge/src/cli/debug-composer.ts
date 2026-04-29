@@ -81,20 +81,18 @@ async function loadConfigForProfile(
 
   // Parse project config (same flow as loadConfig, but we re-parse here so we
   // can merge a specific profile rather than the active one).
+  // Strict: ConfigValidationError / ConfigMigrationError propagate so users
+  // see schema typos clearly. Missing project config is tolerated (ENOENT).
   let projectConfig: PartialEforgeConfig = {};
   try {
     const raw = await readFile(configPath, 'utf-8');
     const data = parseYaml(raw);
     if (data && typeof data === 'object') {
-      const { config, warnings } = parseRawConfig(data as Record<string, unknown>);
-      projectConfig = config;
-      for (const warning of warnings) {
-        process.stderr.write(`${warning}\n`);
-      }
+      projectConfig = parseRawConfig(data as Record<string, unknown>);
     }
-  } catch {
-    // fall through with empty projectConfig — mirrors loadConfig()'s
-    // lenient handling of malformed YAML.
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err;
+    // missing project config — fall through with empty projectConfig
   }
 
   // Resolve profile name: explicit arg > active marker > error

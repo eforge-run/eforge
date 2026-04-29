@@ -326,52 +326,39 @@ describe('mergePartialConfigs', () => {
 });
 
 // ---------------------------------------------------------------------------
-// parseRawConfig validation warnings (zod-backed)
+// parseRawConfig — strict validation (no silent drop)
 // ---------------------------------------------------------------------------
 
-describe('parseRawConfig validation warnings', () => {
-  // parseRawConfig is not exported, so we test it indirectly via loadConfig
-  // which calls parseRawConfig on the YAML data. We use resolveConfig with
-  // a PartialEforgeConfig that simulates what parseRawConfig would produce,
-  // plus direct stderr spy tests to verify warning output.
-
-  it('loadConfig with invalid maxTurns returns a warning containing "maxTurns"', async () => {
-    // We test parseRawConfig indirectly via loadConfig, which calls it on the
-    // YAML data. Warnings are returned in the { warnings } field — not logged.
-    const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
+describe('parseRawConfig strict validation', () => {
+  it('loadConfig throws ConfigValidationError when agents.maxTurns is invalid', async () => {
+    const { writeFile, mkdtemp, rm, mkdir } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
 
-    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-warn-'));
-    const { mkdir } = await import('node:fs/promises');
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-strict-'));
     await mkdir(join(tmpDir, 'eforge'), { recursive: true });
     const configPath = join(tmpDir, 'eforge', 'config.yaml');
     await writeFile(configPath, 'agents:\n  maxTurns: "not-a-number"\n', 'utf-8');
 
     try {
-      const { warnings } = await loadConfig(tmpDir);
-      const warningText = warnings.join('\n');
-      expect(warningText).toContain('maxTurns');
+      await expect(loadConfig(tmpDir)).rejects.toThrow(/maxTurns/);
     } finally {
       await rm(tmpDir, { recursive: true });
     }
   });
 
-  it('loadConfig with invalid permissionMode returns a warning containing "permissionMode"', async () => {
-    const { writeFile, mkdtemp, rm } = await import('node:fs/promises');
+  it('loadConfig throws ConfigValidationError when agents.permissionMode is invalid', async () => {
+    const { writeFile, mkdtemp, rm, mkdir } = await import('node:fs/promises');
     const { tmpdir } = await import('node:os');
     const { join } = await import('node:path');
 
-    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-warn-'));
-    const { mkdir } = await import('node:fs/promises');
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-config-strict-'));
     await mkdir(join(tmpDir, 'eforge'), { recursive: true });
     const configPath = join(tmpDir, 'eforge', 'config.yaml');
     await writeFile(configPath, 'agents:\n  permissionMode: "skip"\n', 'utf-8');
 
     try {
-      const { warnings } = await loadConfig(tmpDir);
-      const warningText = warnings.join('\n');
-      expect(warningText).toContain('permissionMode');
+      await expect(loadConfig(tmpDir)).rejects.toThrow(/permissionMode/);
     } finally {
       await rm(tmpDir, { recursive: true });
     }

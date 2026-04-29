@@ -207,7 +207,10 @@ describe('setActiveProfile', () => {
   let configDir: string;
 
   beforeEach(async () => {
-    ({ projectDir, configDir } = await makeProject({ configYaml: 'backend: claude-sdk\n' }));
+    // Empty project config — fixture only needs eforge/ to exist; setActiveProfile
+    // tests don't depend on project config content. (Legacy `backend: claude-sdk`
+    // was previously here but is now rejected by ConfigMigrationError.)
+    ({ projectDir, configDir } = await makeProject({ configYaml: '' }));
   });
 
   afterEach(async () => {
@@ -300,7 +303,7 @@ describe('createAgentRuntimeProfile', () => {
       defaultAgentRuntime: 'claude-sdk',
       agents: {
         models: { max: { id: 'claude-opus-4-7' }, fast: { id: 'zai-glm-4-6' } },
-        tiers: { fast: { agentRuntime: 'pi-openrouter' } },
+        tiers: { implementation: { agentRuntime: 'pi-openrouter' } },
       } as PartialEforgeConfig['agents'],
     });
     expect(await fileExists(result.path)).toBe(true);
@@ -312,7 +315,7 @@ describe('createAgentRuntimeProfile', () => {
     // agentRuntimes should contain both entries
     expect(written).toContain('claude-sdk:');
     expect(written).toContain('pi-openrouter:');
-    // agents.tiers.fast.agentRuntime should be pi-openrouter
+    // agents.tiers.implementation.agentRuntime should be pi-openrouter
     expect(written).toContain('pi-openrouter');
   });
 
@@ -336,7 +339,7 @@ describe('createAgentRuntimeProfile', () => {
         },
         defaultAgentRuntime: 'foo',
         agents: {
-          tiers: { fast: { agentRuntime: 'nonexistent' } },
+          tiers: { implementation: { agentRuntime: 'nonexistent' } },
         } as PartialEforgeConfig['agents'],
       }),
     ).rejects.toThrow(/nonexistent/);
@@ -833,7 +836,9 @@ describe('user-scope: setActiveProfile', () => {
   let origXdg: string | undefined;
 
   beforeEach(async () => {
-    ({ projectDir, configDir } = await makeProject({ configYaml: 'backend: claude-sdk\n' }));
+    // Empty project config — fixture only needs eforge/ to exist; user-scope
+    // setActiveProfile tests don't depend on project config content.
+    ({ projectDir, configDir } = await makeProject({ configYaml: '' }));
     ({ userHomeDir, userEforgeDir } = await makeUserHome());
     origXdg = process.env.XDG_CONFIG_HOME;
     process.env.XDG_CONFIG_HOME = userHomeDir;

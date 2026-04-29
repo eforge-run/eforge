@@ -215,11 +215,11 @@ const eforgeConfigBaseSchema = z.object({
       tier: agentTierSchema.optional().describe('Override the tier assignment for this role'),
       shards: z.array(shardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
     }).optional()).optional().describe('Per-agent role overrides'),
-    tiers: z.record(modelClassSchema, sdkPassthroughConfigSchema.extend({
+    tiers: z.record(agentTierSchema, sdkPassthroughConfigSchema.extend({
       maxTurns: z.number().int().positive().optional(),
       modelClass: modelClassSchema.optional().describe('Override the model class for all roles in this tier'),
       agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this tier'),
-    }).optional()).optional().describe('Per-model-class tier overrides'),
+    }).optional()).optional().describe('Per-tier overrides keyed by AgentTier (planning/implementation/review/evaluation)'),
   }).optional(),
   build: z.object({
     worktreeDir: z.string().optional(),
@@ -613,14 +613,26 @@ export class ConfigMigrationError extends Error {
 }
 
 /**
+ * Error thrown when config.yaml or a profile YAML fails schema validation.
+ * Strict-by-design: invalid fields are NOT silently dropped — the user gets
+ * a clear error so the typo or schema mismatch surfaces immediately.
+ */
+export class ConfigValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigValidationError';
+  }
+}
+
+/**
  * Parse and validate a raw YAML object into a partial EforgeConfig.
- * Uses zod schema for validation — invalid fields are dropped and
- * a warning is returned so users get feedback on typos.
+ * Strict: any schema validation failure throws `ConfigValidationError`.
+ * No silent dropping of invalid fields.
  *
  * @param context  `'config'` (default) for config.yaml parsing — rejects and strips `backend:`.
  *                 `'profile'` for profile file parsing — keeps `backend:`.
  */
-export function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): { config: PartialEforgeConfig; warnings: string[] } {
+export function parseRawConfig(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
   // Config.yaml context: reject legacy top-level fields that must migrate to agentRuntimes.
   if (context === 'config') {
     const offending: string[] = [];
@@ -646,64 +658,27 @@ export function parseRawConfig(data: Record<string, unknown>, context: 'config' 
   }
 
   const result = partialEforgeConfigSchema.safeParse(data);
-  if (result.success) {
-    return { config: stripUndefinedSections(result.data), warnings: [] };
+  if (!result.success) {
+    const label = context === 'profile' ? 'profile' : 'config';
+    throw new ConfigValidationError(
+      `Invalid ${label}: ` + z.prettifyError(result.error),
+    );
   }
-  // Collect validation errors so callers can surface them to users
-  const warning = 'eforge config warning: some fields were invalid and will be ignored:\n' + z.prettifyError(result.error);
-  // Parse again with passthrough to salvage valid fields —
-  // safeParse is all-or-nothing per property, so re-parse each section independently
-  return { config: parseRawConfigFallback(data, context), warnings: [warning] };
+  return stripUndefinedSections(result.data);
 }
 
 /**
- * Fallback parser: parse each top-level section independently so that
- * one bad section doesn't nuke the rest. Mirrors the schema structure.
- */
-function parseRawConfigFallback(data: Record<string, unknown>, context: 'config' | 'profile' = 'config'): PartialEforgeConfig {
-  const result: PartialEforgeConfig = {};
-  // Suppress unused-parameter warning: context is retained for future profile-specific handling
-  void context;
-  if (data.maxConcurrentBuilds !== undefined) {
-    const mcbSchema = z.number().int().positive();
-    const mcbResult = mcbSchema.safeParse(data.maxConcurrentBuilds);
-    if (mcbResult.success) {
-      (result as Record<string, unknown>).maxConcurrentBuilds = mcbResult.data;
-    }
-  }
-  const sections = ['langfuse', 'agents', 'build', 'plan', 'plugins', 'prdQueue', 'daemon', 'pi', 'claudeSdk', 'hooks'] as const;
-  for (const key of sections) {
-    if (data[key] === undefined) continue;
-    const sectionSchema = eforgeConfigSchema.shape[key];
-    const parsed = sectionSchema.safeParse(data[key]);
-    if (parsed.success) {
-      (result as Record<string, unknown>)[key] = parsed.data;
-    }
-    // If a section fails, it's silently dropped (warning already logged above)
-  }
-  return stripUndefinedSections(result);
-}
-
-/**
- * Remove top-level keys that are undefined or empty objects so that
- * mergePartialConfigs treats absent sections correctly.
+ * Remove top-level keys that are undefined so that mergePartialConfigs
+ * treats absent sections correctly. Driven by the base schema's shape,
+ * so any future top-level config field is preserved automatically.
  */
 function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfig {
-  const out: PartialEforgeConfig = {};
-  if (config.maxConcurrentBuilds !== undefined) out.maxConcurrentBuilds = config.maxConcurrentBuilds;
-  if (config.langfuse !== undefined) out.langfuse = config.langfuse;
-  if (config.agents !== undefined) out.agents = config.agents;
-  if (config.build !== undefined) out.build = config.build;
-  if (config.plan !== undefined) out.plan = config.plan;
-  if (config.plugins !== undefined) out.plugins = config.plugins;
-  if (config.prdQueue !== undefined) out.prdQueue = config.prdQueue;
-  if (config.daemon !== undefined) out.daemon = config.daemon;
-  if (config.pi !== undefined) out.pi = config.pi;
-  if (config.claudeSdk !== undefined) out.claudeSdk = config.claudeSdk;
-  if (config.hooks !== undefined) out.hooks = config.hooks;
-  if (config.agentRuntimes !== undefined) out.agentRuntimes = config.agentRuntimes;
-  if (config.defaultAgentRuntime !== undefined) out.defaultAgentRuntime = config.defaultAgentRuntime;
-  return out;
+  const out: Record<string, unknown> = {};
+  const src = config as Record<string, unknown>;
+  for (const key of Object.keys(eforgeConfigBaseSchema.shape)) {
+    if (src[key] !== undefined) out[key] = src[key];
+  }
+  return out as PartialEforgeConfig;
 }
 
 /**
@@ -834,19 +809,37 @@ export async function loadUserConfig(
   env: Record<string, string | undefined> = process.env,
 ): Promise<PartialEforgeConfig> {
   const configPath = getUserConfigPath(env);
+  let raw: string;
   try {
-    const raw = await readFile(configPath, 'utf-8');
-    const data = parseYaml(raw);
-    if (!data || typeof data !== 'object') {
-      return {};
-    }
-    const { config } = parseRawConfig(data as Record<string, unknown>);
-    return config;
+    raw = await readFile(configPath, 'utf-8');
   } catch (err) {
-    // Re-throw migration errors so callers surface a hard error
-    if (err instanceof ConfigMigrationError) throw err;
-    return {};
+    // Missing user-level global config is fine — most users don't have one.
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return {};
+    throw err;
   }
+  const data = parseYaml(raw);
+  if (!data || typeof data !== 'object') return {};
+  return parseRawConfig(data as Record<string, unknown>);
+}
+
+/**
+ * Read and parse `eforge/config.yaml` from a config directory.
+ * Returns `{}` when the file does not exist (ENOENT).
+ * Propagates `ConfigMigrationError` and `ConfigValidationError` so callers
+ * surface clear errors instead of silently falling back to an empty baseline.
+ */
+async function readProjectConfigOrEmpty(configDir: string): Promise<PartialEforgeConfig> {
+  const cfgPath = resolve(configDir, 'config.yaml');
+  let raw: string;
+  try {
+    raw = await readFile(cfgPath, 'utf-8');
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return {};
+    throw err;
+  }
+  const data = parseYaml(raw);
+  if (!data || typeof data !== 'object') return {};
+  return parseRawConfig(data as Record<string, unknown>);
 }
 
 /**
@@ -863,7 +856,9 @@ export async function loadUserConfig(
  *   mkdir -p eforge && mv eforge.yaml eforge/config.yaml
  *
  * Returns `{ config, warnings }` where `warnings` is a list of user-facing
- * diagnostic messages about invalid config fields or migration issues.
+ * diagnostic messages (currently: stale active-profile marker fallbacks).
+ * Schema validation failures throw `ConfigValidationError` rather than
+ * surfacing as warnings.
  * Consumers with an active event stream should yield `config:warning` events;
  * bootstrap consumers (CLI startup, daemon startup) should write to stderr.
  */
@@ -892,18 +887,10 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
 
   let projectConfig: PartialEforgeConfig = {};
   if (configPath) {
-    try {
-      const raw = await readFile(configPath, 'utf-8');
-      const data = parseYaml(raw);
-      if (data && typeof data === 'object') {
-        const { config, warnings } = parseRawConfig(data as Record<string, unknown>);
-        projectConfig = config;
-        allWarnings.push(...warnings);
-      }
-    } catch (err) {
-      // Re-throw migration errors so callers surface a hard error
-      if (err instanceof ConfigMigrationError) throw err;
-      // malformed YAML — treat as empty
+    const raw = await readFile(configPath, 'utf-8');
+    const data = parseYaml(raw);
+    if (data && typeof data === 'object') {
+      projectConfig = parseRawConfig(data as Record<string, unknown>);
     }
   }
 
@@ -923,27 +910,25 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
     // best-effort: migration failure should not break config loading
   }
 
-  // Resolve and merge active profile, if present
+  // Resolve and merge active profile, if present.
+  // Strict: validation errors from the active profile propagate so the user
+  // sees a clear schema error instead of a silent default-config fallback.
   let profileConfig: PartialEforgeConfig | null = null;
   let resolvedProfileName: string | null = null;
   let resolvedProfileSource: ActiveProfileSource = 'none';
   let resolvedProfileScope: 'project' | 'user' | null = null;
   if (configPath) {
     const configDir = dirname(configPath);
-    try {
-      const { name, source, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
-      allWarnings.push(...warnings);
-      resolvedProfileName = name;
-      resolvedProfileSource = source;
-      if (name) {
-        const result = await loadProfile(configDir, name);
-        if (result) {
-          profileConfig = result.profile;
-          resolvedProfileScope = result.scope;
-        }
+    const { name, source, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
+    allWarnings.push(...warnings);
+    resolvedProfileName = name;
+    resolvedProfileSource = source;
+    if (name) {
+      const result = await loadProfile(configDir, name);
+      if (result) {
+        profileConfig = result.profile;
+        resolvedProfileScope = result.scope;
       }
-    } catch {
-      // best-effort: profile resolution should not break config loading
     }
   }
 
@@ -1260,26 +1245,20 @@ export async function resolveActiveProfileName(
 
 /**
  * Load and parse an agent runtime profile file from a specific path. Returns null
- * when the file does not exist or is unparseable.
+ * when the file does not exist. Throws if the file exists but is invalid
+ * (malformed YAML or schema validation failure).
  */
 async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | null> {
   let raw: string;
   try {
     raw = await readFile(path, 'utf-8');
-  } catch {
-    return null;
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code === 'ENOENT') return null;
+    throw err;
   }
-  let data: unknown;
-  try {
-    data = parseYaml(raw);
-  } catch {
-    return null;
-  }
-  if (!data || typeof data !== 'object') {
-    return {};
-  }
-  const { config } = parseRawConfig(data as Record<string, unknown>, 'profile');
-  return config;
+  const data = parseYaml(raw);
+  if (!data || typeof data !== 'object') return {};
+  return parseRawConfig(data as Record<string, unknown>, 'profile');
 }
 
 /**
@@ -1446,20 +1425,11 @@ export async function setActiveProfile(
     throw new Error(`Profile "${name}" not found in project or user scope`);
   }
 
-  // Load project config and global config to validate the merged result
+  // Load project config and global config to validate the merged result.
+  // Strict: ConfigValidationError / ConfigMigrationError propagate so the user
+  // sees the typo instead of validating against a misleading empty baseline.
   const globalConfig = await loadUserConfig();
-  let projectConfig: PartialEforgeConfig = {};
-  const cfgPath = resolve(configDir, 'config.yaml');
-  try {
-    const raw = await readFile(cfgPath, 'utf-8');
-    const data = parseYaml(raw);
-    if (data && typeof data === 'object') {
-      const { config } = parseRawConfig(data as Record<string, unknown>);
-      projectConfig = config;
-    }
-  } catch {
-    // no project config
-  }
+  const projectConfig = await readProjectConfigOrEmpty(configDir);
 
   const profileResult = await loadProfile(configDir, name);
   if (!profileResult) {
@@ -1570,20 +1540,11 @@ export async function createAgentRuntimeProfile(
     );
   }
 
-  // Validate against the merged schema (global + project + profile)
+  // Validate against the merged schema (global + project + profile).
+  // Strict: ConfigValidationError / ConfigMigrationError propagate so the user
+  // sees the typo instead of validating against a misleading empty baseline.
   const globalConfig = await loadUserConfig();
-  let projectConfig: PartialEforgeConfig = {};
-  const cfgPath = resolve(configDir, 'config.yaml');
-  try {
-    const raw = await readFile(cfgPath, 'utf-8');
-    const data = parseYaml(raw);
-    if (data && typeof data === 'object') {
-      const { config } = parseRawConfig(data as Record<string, unknown>);
-      projectConfig = config;
-    }
-  } catch {
-    // no project config
-  }
+  const projectConfig = await readProjectConfigOrEmpty(configDir);
 
   const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
   const merged = mergePartialConfigs(baseMerged, partialResult.data);
