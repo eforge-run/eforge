@@ -27,6 +27,39 @@ If `eforge/config.yaml` already exists, also read its current `build.postMergeCo
 Present your suggested commands to the user briefly: "I'd suggest these postMergeCommands based on your project: ..." and ask if they look right. Accept corrections.
 
 <!-- parity-skip-start -->
+### Step 1.5: Existing user-scope profiles
+
+Call `eforge_profile { action: "list", scope: "user" }` to check for existing user-scope profiles.
+
+If the response contains no profiles (empty list), skip this step entirely and proceed to Step 2.
+
+If profiles exist, present them to the user:
+
+| Name | Max model |
+|------|-----------|
+| `<name>` | `<models.max.id>` |
+
+Ask: "Would you like to use one of these existing user-scope profiles, or create a new project profile?"
+
+**On pick (existing profile):**
+
+Call `eforge_init` with:
+
+```json
+{
+  "existingProfile": { "name": "<chosen>", "scope": "user" },
+  "postMergeCommands": [...]
+}
+```
+
+Include `force: true` if `$ARGUMENTS` contains `--force` or `force`.
+
+Skip Steps 2–6. Proceed directly to the result message:
+
+> eforge initialized with user-scope profile `<name>` activated. The profile lives at `~/.config/eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands.
+
+**On "create new project profile":** Fall through to Step 2.
+
 ### Step 2: Setup mode
 
 The harness is always `pi` in this flow. Ask the user: "Quick setup (one provider and model used for every tier) or mix-and-match (pick a different provider/model per tier)?"

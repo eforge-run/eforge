@@ -97,7 +97,7 @@ pi install -l npm:@eforge-build/pi-eforge
 
 The main `@eforge-build/eforge` npm package is the standalone CLI and daemon runtime. The Pi integration is published separately as `@eforge-build/pi-eforge`.
 
-The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. It walks you through a Quick setup (one harness and model for every tier) or a Mix-and-match flow (different harness, provider, or model per tier). In Claude Code you choose between `claude-sdk` and `pi`; in Pi the harness is pinned to `pi` and you pick from available providers and models. For further customization, run `/eforge:config --edit`.
+The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. If you already have user-scope profiles in `~/.config/eforge/profiles/`, it offers to activate one of those instead of creating a new project profile. Otherwise it walks you through a Quick setup (one harness and model for every tier) or a Mix-and-match flow (different harness, provider, or model per tier). In Claude Code you choose between `claude-sdk` and `pi`; in Pi the harness is pinned to `pi` and you pick from available providers and models. For further customization, run `/eforge:config --edit`.
 
 The Pi package also provides native interactive commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations — exploring scope, code impact, architecture, design decisions, documentation, and risks — before handing off to `/eforge:build`.
 

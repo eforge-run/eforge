@@ -1001,6 +1001,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             "Extract legacy harness config from existing pre-overhaul config.yaml into a named profile and strip config.yaml. Default: false.",
         }),
       ),
+      existingProfile: Type.Optional(
+        Type.Object({
+          name: Type.String({ description: 'Name of the existing user-scope profile to activate.' }),
+          scope: StringEnum(['user', 'project']),
+        }, { description: 'Existing user-scope profile to activate. When provided, skips profile creation and activates directly. Mutually exclusive with `profile` and `migrate`.' }),
+      ),
       profile: Type.Optional(
         Type.Object({
           name: Type.Optional(Type.String({ description: "Profile name. Auto-derived via deriveProfileName when omitted." })),
@@ -1031,6 +1037,19 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
       // Ensure .gitignore has daemon state and active-profile marker
       ensureGitignoreEntries(ctx.cwd, [".eforge/", "eforge/.active-profile"]);
+
+      // --- Conflict validation ---
+      if (params.existingProfile) {
+        if (params.profile) {
+          throw new Error('`existingProfile` and `profile` cannot be set at the same time.');
+        }
+        if (params.migrate) {
+          throw new Error('`existingProfile` and `migrate` cannot be set at the same time.');
+        }
+        if (params.existingProfile.scope !== 'user') {
+          throw new Error('The init skill only supports user-scope existing profiles. Use `existingProfile.scope: "user"`.');
+        }
+      }
 
       // --- Migrate mode ---
       if (params.migrate) {
@@ -1108,6 +1127,64 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           moved: Object.keys(legacyProfile),
           kept: Object.keys(remaining),
         });
+      }
+
+      // --- Existing profile mode ---
+
+      if (params.existingProfile) {
+        if (params.existingProfile.scope !== 'user') {
+          throw new Error('The init skill only supports user-scope existing profiles. Use `existingProfile.scope: "user"`.');
+        }
+
+        try {
+          accessSync(configPath);
+          if (!params.force) {
+            throw new Error(
+              "eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.",
+            );
+          }
+        } catch (err) {
+          if (err instanceof Error && !('code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT')) {
+            throw err;
+          }
+          // File does not exist - proceed
+        }
+
+        mkdirSync(configDir, { recursive: true });
+        await daemonRequest(ctx.cwd, "POST", API_ROUTES.profileUse, { name: params.existingProfile.name, scope: params.existingProfile.scope });
+
+        const existingProfileConfigData: Record<string, unknown> = {};
+        if (params.postMergeCommands && params.postMergeCommands.length > 0) {
+          existingProfileConfigData.build = { postMergeCommands: params.postMergeCommands };
+        }
+        const existingProfileConfigContent = Object.keys(existingProfileConfigData).length > 0
+          ? stringifyYaml(existingProfileConfigData)
+          : "";
+        writeFileSync(configPath, existingProfileConfigContent, "utf-8");
+
+        let existingProfileValidation: ConfigValidateResponse | null = null;
+        try {
+          const { data } = await daemonRequest<ConfigValidateResponse>(
+            ctx.cwd,
+            "GET",
+            API_ROUTES.configValidate,
+          );
+          existingProfileValidation = data;
+        } catch {
+          // Daemon validation is best-effort
+        }
+
+        if (_latestCtx) await refreshStatus(_latestCtx);
+
+        const existingProfileResponse: Record<string, unknown> = {
+          status: "initialized",
+          configPath: "eforge/config.yaml",
+          profileName: params.existingProfile.name,
+          source: "user-scope",
+          activatedExistingProfile: true,
+        };
+        if (existingProfileValidation) existingProfileResponse.validation = existingProfileValidation;
+        return jsonResult(existingProfileResponse);
       }
 
       // --- Fresh init mode ---

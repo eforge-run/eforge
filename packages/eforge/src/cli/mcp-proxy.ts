@@ -584,6 +584,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands. Only applied when creating a new config.'),
       migrate: z.boolean().optional().describe('Extract legacy harness config from existing pre-overhaul config.yaml into a named profile. Default: false.'),
+      existingProfile: z.object({
+        name: z.string().describe('Name of the existing user-scope profile to activate.'),
+        scope: z.enum(['user', 'project']).describe('Scope of the existing profile.'),
+      }).optional().describe('Existing user-scope profile to activate. When provided, skips profile creation and activates the profile directly. Mutually exclusive with `profile` and `migrate`.'),
       profile: z.object({
         name: z.string().optional().describe('Profile name. Auto-derived via deriveProfileName when omitted.'),
         agentRuntimes: z.record(z.string(), z.object({
@@ -603,12 +607,25 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }).optional(),
       }).optional().describe('Multi-runtime profile spec. When omitted, the tool falls back to a minimal default and emits a deprecation note.'),
     },
-    handler: async ({ force, postMergeCommands, migrate, profile }, { cwd: toolCwd }) => {
+    handler: async ({ force, postMergeCommands, migrate, existingProfile, profile }, { cwd: toolCwd }) => {
       const configDir = join(toolCwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
 
       // Ensure .gitignore has daemon state (.eforge/) and the per-developer active-profile marker.
       await ensureGitignoreEntries(toolCwd, ['.eforge/', 'eforge/.active-profile']);
+
+      // --- Conflict validation ---
+      if (existingProfile) {
+        if (profile) {
+          throw new McpUserError({ error: '`existingProfile` and `profile` cannot be set at the same time.' });
+        }
+        if (migrate) {
+          throw new McpUserError({ error: '`existingProfile` and `migrate` cannot be set at the same time.' });
+        }
+        if (existingProfile.scope !== 'user') {
+          throw new McpUserError({ error: 'The init skill only supports user-scope existing profiles. Use `existingProfile.scope: "user"`.' });
+        }
+      }
 
       // --- Migrate mode ---
       if (migrate) {
@@ -682,6 +699,56 @@ export async function runMcpProxy(cwd: string): Promise<void> {
           moved: Object.keys(legacyProfile),
           kept: Object.keys(remaining),
         };
+      }
+
+      // --- Existing profile mode ---
+
+      if (existingProfile) {
+        if (existingProfile.scope !== 'user') {
+          throw new McpUserError({ error: 'The init skill only supports user-scope existing profiles. Use `existingProfile.scope: "user"`.' });
+        }
+
+        try {
+          await access(configPath);
+          if (!force) {
+            throw new McpUserError({
+              error: 'eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.',
+            });
+          }
+        } catch (err) {
+          if (err instanceof McpUserError) throw err;
+          // File does not exist - proceed
+        }
+
+        await mkdir(configDir, { recursive: true });
+        await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: existingProfile.name, scope: existingProfile.scope });
+
+        const existingProfileConfigData: Record<string, unknown> = {};
+        if (postMergeCommands && postMergeCommands.length > 0) {
+          existingProfileConfigData.build = { postMergeCommands };
+        }
+        const existingProfileConfigContent = Object.keys(existingProfileConfigData).length > 0
+          ? stringifyYaml(existingProfileConfigData)
+          : '';
+        await writeFile(configPath, existingProfileConfigContent, 'utf-8');
+
+        let existingProfileValidation: ConfigValidateResponse | null = null;
+        try {
+          const { data } = await daemonRequest<ConfigValidateResponse>(toolCwd, 'GET', API_ROUTES.configValidate);
+          existingProfileValidation = data;
+        } catch {
+          // Daemon validation is best-effort
+        }
+
+        const existingProfileResponse: Record<string, unknown> = {
+          status: 'initialized',
+          configPath: 'eforge/config.yaml',
+          profileName: existingProfile.name,
+          source: 'user-scope',
+          activatedExistingProfile: true,
+        };
+        if (existingProfileValidation) existingProfileResponse.validation = existingProfileValidation;
+        return existingProfileResponse;
       }
 
       // --- Fresh init mode ---

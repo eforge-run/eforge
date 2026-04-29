@@ -780,9 +780,11 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(raw).toContain('agents.tiers.<tier>.agentRuntime');
   });
 
-  it('plugin /eforge:init skill no longer contains Step 1.5', () => {
+  it('plugin /eforge:init skill contains Step 1.5 (existing user-scope profiles)', () => {
     const raw = readRepoFile('eforge-plugin/skills/init/init.md');
-    expect(raw).not.toContain('Step 1.5');
+    expect(raw).toContain('Step 1.5');
+    expect(raw).toContain('existingProfile');
+    expect(raw).toContain('scope: "user"');
   });
 
   it('plugin /eforge:init skill tool call passes profile parameter', () => {
@@ -811,7 +813,7 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(raw).toContain('profile:');
   });
 
-  it('plugin version bumped to 0.15.0', () => {
+  it('plugin version bumped to 0.16.0', () => {
     const manifest = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { version: string };
     expect(manifest.version).not.toBe('0.13.0');
     // Parse and compare as major.minor.patch
@@ -819,7 +821,7 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     const [refMajor, refMinor] = '0.13.0'.split('.').map(Number);
     const isGreater = major > refMajor || (major === refMajor && minor > refMinor);
     expect(isGreater).toBe(true);
-    expect(manifest.version).toBe('0.15.0');
+    expect(manifest.version).toBe('0.16.0');
   });
 
   it('MCP proxy eforge_init writes config file before calling profileCreate in the fresh-init branch', () => {
