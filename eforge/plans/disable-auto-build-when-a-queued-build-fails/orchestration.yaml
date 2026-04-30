@@ -1,0 +1,67 @@
+name: disable-auto-build-when-a-queued-build-fails
+description: Disable daemon auto-build when a queued PRD build fails so the
+  queue stops cycling failed work, and surface a coherent paused reason in the
+  monitor UI.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-disable-auto-build-on-failure
+    name: Disable auto-build on first failed queue:prd:complete
+    depends_on: []
+    branch: disable-auto-build-when-a-queued-build-fails/disable-auto-build-on-failure
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "Excursion scope: this is a tightly-scoped change to one daemon file
+    (`packages/monitor/src/server-main.ts`) plus an optional small UI hook tweak
+    (`use-auto-build.ts`) and a new unit test. The PRD already enumerates the
+    exact lines to modify, the policy decision, and the failure-path mirror to
+    follow - a single planner session can easily decompose this into 1-2
+    sequential plans (server change first, optional UI nudge second). No
+    independent subsystems, no architecture document needed, so expedition would
+    be overkill. Errand is too small because acceptance criteria explicitly
+    require a new unit test alongside the source change, plus a reviewable
+    safety-interlock behavior. Compile stages: planner produces the plan(s);
+    plan-review-cycle adds a quality gate because this is safety-critical
+    interlock logic (a wrong guard condition could either fail to pause
+    auto-build on real failures or pause a fresh watcher unintentionally - the
+    `watcherAbort === controller` guard is subtle). Build stages: implement
+    performs the edit, then test-write since acceptance criterion #1 requires a
+    new test next to `test/watch-queue.test.ts` exercising `wrapWatcherEvents`,
+    then review-cycle for a focused correctness pass on the drain-loop guard and
+    event ordering. test-write is sequenced after implement (it declares
+    implement as predecessor) and review-cycle is non-parallelizable so it sits
+    at the end sequentially. doc-update is omitted because the change is
+    internal daemon behavior with no user-facing API or documentation surface.
+    Review config: single-perspective `correctness` review at standard
+    strictness with 2 rounds is right-sized - the change is small, but the logic
+    guards a daemon-wide safety interlock (autoBuild flip + watcher kill +
+    paused event), so we want at least one review-fix loop to catch off-by-one
+    or guard-mismatch issues. Strict isn't warranted given the surface area;
+    lenient would underweight the safety-critical nature."
