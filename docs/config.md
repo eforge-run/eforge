@@ -377,6 +377,8 @@ Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `
 
 Agent runtime profiles follow the same three-level pattern. Profile files can exist at project-local scope (`.eforge/profiles/` - gitignored), project scope (`eforge/profiles/`), or user scope (`~/.config/eforge/profiles/`). The active-profile marker can be set at any level: `.eforge/.active-profile` (project-local, highest precedence), `eforge/.active-profile` (project), or `~/.config/eforge/.active-profile` (user). Active profile resolution walks a 6-step precedence: (1) project-local marker, (2) project marker, (3) project config `defaultAgentRuntime:` field, (4) user marker, (5) global config `defaultAgentRuntime:` field, (6) none. When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 
+Playbooks follow the same three-tier pattern: `.eforge/playbooks/` (project-local, highest precedence), `eforge/playbooks/` (project scope), and `~/.config/eforge/playbooks/` (user scope). When the same playbook name exists at multiple tiers, the highest-precedence tier wins and lower-tier copies are reported as shadows. Each playbook carries a `scope` frontmatter field that must match the tier it was loaded from; a mismatch is surfaced as a warning in the listing.
+
 ## Parallelism
 
 eforge has two dimensions of parallelism:
