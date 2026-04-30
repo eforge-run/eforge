@@ -133,6 +133,10 @@ export function openDatabase(dbPath: string): MonitorDB {
   // the last committed transaction on OS/power failure. Trades that for
   // fewer fsyncs and much higher write throughput under concurrency.
   db.exec('PRAGMA synchronous = NORMAL');
+  // Node.js DatabaseSync enforces FK constraints by default. Daemon-level
+  // events (e.g. daemon:auto-build:paused) use the watcher sessionId as
+  // run_id without a matching runs row, so FK enforcement must stay off.
+  db.exec('PRAGMA foreign_keys = OFF');
   db.exec(SCHEMA);
 
   // Migrations for existing DBs

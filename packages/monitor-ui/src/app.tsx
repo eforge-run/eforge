@@ -37,7 +37,7 @@ function AppContent() {
   const isCurrentRunningRef = useRef(false);
   const { runState, connectionStatus, shutdownCountdown } = useEforgeEvents(currentSessionId);
   const { containerRef, autoScroll, enableAutoScroll } = useAutoScroll([runState.events.length]);
-  const { state: autoBuildState, toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild();
+  const { state: autoBuildState, toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild(currentSessionId);
   const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { setRuntimeData } = usePlanPreview();

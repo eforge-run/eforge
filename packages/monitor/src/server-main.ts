@@ -192,6 +192,41 @@ function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string, reason: str
 }
 
 /**
+ * Context passed to maybePauseOnFailure for each event in the drain loop.
+ * Exported for unit-testing without spinning up a real watcher.
+ */
+export interface PauseOnFailureCtx {
+  /** Returns true when the drain loop's controller is still the active one. */
+  isActiveController: () => boolean;
+  daemonState: DaemonState;
+  db: MonitorDB;
+  sessionId: string;
+}
+
+/**
+ * Inspect a single watcher event and pause auto-build if it is the first
+ * failed queue:prd:complete for the active watcher session.
+ *
+ * Guards (must both hold before pausing):
+ *  - isActiveController() — a superseded watcher must not pause a fresh one.
+ *  - daemonState.autoBuild — avoids double-pause and redundant events.
+ *
+ * Exported for unit-testing.
+ */
+export function maybePauseOnFailure(event: EforgeEvent, ctx: PauseOnFailureCtx): void {
+  if (
+    event.type === 'queue:prd:complete' &&
+    event.status === 'failed' &&
+    ctx.isActiveController() &&
+    ctx.daemonState.autoBuild
+  ) {
+    ctx.daemonState.autoBuild = false;
+    writeAutoBuildPausedEvent(ctx.db, ctx.sessionId, `Build failed: ${event.prdId}`);
+    ctx.daemonState.onKillWatcher?.();
+  }
+}
+
+/**
  * Compose the watcher event-stream middlewares for the daemon.
  * withRecording (inner) persists events to SQLite first; withHooks (outer)
  * fires user-configured hooks against the same stream.
@@ -416,8 +451,16 @@ async function main(): Promise<void> {
         );
         // Drain the event stream; withRecording persists each event to SQLite
         // and withHooks fires user-configured hooks non-blocking.
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        for await (const _event of events) { /* persisted by withRecording, hooks fired by withHooks */ }
+        // Inspect each event to pause auto-build on the first failed PRD.
+        const pauseCtx: PauseOnFailureCtx = {
+          isActiveController: () => watcherAbort === controller,
+          daemonState,
+          db,
+          sessionId,
+        };
+        for await (const event of events) {
+          maybePauseOnFailure(event, pauseCtx);
+        }
       } catch (err) {
         // Only pause if this controller is still the active one — otherwise
         // a newer startWatcher() has already taken over.
