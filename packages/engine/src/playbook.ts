@@ -32,6 +32,36 @@ import {
   type SetArtifactShadow,
 } from './set-resolver.js';
 
+// ---------------------------------------------------------------------------
+// Shadow entry helper
+// ---------------------------------------------------------------------------
+
+/** A shadow entry in the merged playbook listing — a lower-precedence tier that
+ *  also contains a playbook with the same name. */
+export interface PlaybookShadowEntry {
+  /** Which tier this shadow copy comes from. */
+  source: SetArtifactShadow;
+  /** Absolute path to the shadow file. */
+  path: string;
+}
+
+/** Compute shadow entries (with paths) for a given artifact name. */
+function shadowEntries(
+  name: string,
+  shadows: SetArtifactShadow[],
+  opts: { configDir: string; cwd: string },
+): PlaybookShadowEntry[] {
+  return shadows.map((source) => {
+    let dir: string;
+    if (source === 'project-team') {
+      dir = projectTeamSetDir(PLAYBOOKS_KIND, opts.configDir);
+    } else {
+      dir = userSetDir(PLAYBOOKS_KIND);
+    }
+    return { source, path: `${dir}/${name}.${PLAYBOOKS_KIND.fileExtension}` };
+  });
+}
+
 const execFileAsync = promisify(execFile);
 
 // ---------------------------------------------------------------------------
@@ -106,7 +136,7 @@ export interface PlaybookEntry {
    * Full shadow chain — lower-precedence tiers that also have this playbook.
    * Highest-precedence first. Empty when no other tier has this name.
    */
-  shadows: SetArtifactShadow[];
+  shadows: PlaybookShadowEntry[];
   /** Absolute path to the file. */
   path: string;
 }
@@ -306,7 +336,7 @@ export async function listPlaybooks(
         description,
         scope,
         source: artifact.source,
-        shadows: artifact.shadows,
+        shadows: shadowEntries(artifact.name, artifact.shadows, opts),
         path: artifact.path,
       });
     }),
@@ -330,7 +360,7 @@ export interface LoadPlaybookOpts {
  */
 export async function loadPlaybook(
   opts: LoadPlaybookOpts,
-): Promise<{ playbook: Playbook; source: SetArtifactSource; shadows: SetArtifactShadow[] }> {
+): Promise<{ playbook: Playbook; source: SetArtifactSource; shadows: PlaybookShadowEntry[] }> {
   const artifact = await loadSetArtifact(PLAYBOOKS_KIND, opts.name, opts);
   if (!artifact) {
     throw new PlaybookNotFoundError(opts.name);
@@ -345,9 +375,9 @@ export async function loadPlaybook(
   // Determine full shadow chain
   const allArtifacts = await listSetArtifacts(PLAYBOOKS_KIND, opts);
   const entry = allArtifacts.find((a) => a.name === opts.name);
-  const shadows = entry?.shadows ?? [];
+  const rawShadows = entry?.shadows ?? [];
 
-  return { playbook: result.playbook, source: artifact.source, shadows };
+  return { playbook: result.playbook, source: artifact.source, shadows: shadowEntries(opts.name, rawShadows, opts) };
 }
 
 /**

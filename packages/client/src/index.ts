@@ -61,6 +61,34 @@ export { apiReadRecoverySidecar } from './api/recovery-sidecar.js';
 
 export { apiApplyRecovery } from './api/apply-recovery.js';
 
+export {
+  apiPlaybookList,
+  apiPlaybookShow,
+  apiPlaybookSave,
+  apiPlaybookEnqueue,
+  apiPlaybookPromote,
+  apiPlaybookDemote,
+  apiPlaybookValidate,
+} from './api/playbook.js';
+
+export type {
+  PlaybookScope,
+  PlaybookArtifactSource,
+  PlaybookShadow,
+  PlaybookListEntry,
+  PlaybookData,
+  PlaybookFrontmatterFields,
+  PlaybookBodyFields,
+  PlaybookSaveBody,
+  PlaybookListResponse,
+  PlaybookShowResponse,
+  PlaybookSaveResponse,
+  PlaybookEnqueueResponse,
+  PlaybookPromoteResponse,
+  PlaybookDemoteResponse,
+  PlaybookValidateResponse,
+} from './api/playbook.js';
+
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
 
 export {

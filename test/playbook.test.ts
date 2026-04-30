@@ -379,7 +379,7 @@ describe('writePlaybook + loadPlaybook round-trip', () => {
     const loaded = await loadPlaybook({ ...opts, name: 'my-feature' });
     expect(loaded.source).toBe('project-local');
     expect(loaded.playbook.goal).toContain('Local goal');
-    expect(loaded.shadows).toContain('project-team');
+    expect(loaded.shadows.some((s) => s.source === 'project-team')).toBe(true);
   });
 
   it('throws PlaybookNotFoundError when playbook does not exist', async () => {
@@ -454,7 +454,11 @@ describe('listPlaybooks', () => {
     expect(playbooks).toHaveLength(1);
     expect(playbooks[0].name).toBe('shared');
     expect(playbooks[0].source).toBe('project-local');
-    expect(playbooks[0].shadows).toEqual(['project-team', 'user']);
+    expect(playbooks[0].shadows).toHaveLength(2);
+    expect(playbooks[0].shadows[0].source).toBe('project-team');
+    expect(typeof playbooks[0].shadows[0].path).toBe('string');
+    expect(playbooks[0].shadows[1].source).toBe('user');
+    expect(typeof playbooks[0].shadows[1].path).toBe('string');
   });
 
   it('emits a warning when frontmatter scope does not match storage tier', async () => {

@@ -129,6 +129,13 @@ export const API_ROUTES = {
   recover: '/api/recover',
   readRecoverySidecar: '/api/recovery/sidecar',
   applyRecovery: '/api/recover/apply',
+  playbookList: '/api/playbook/list',
+  playbookShow: '/api/playbook/show',
+  playbookSave: '/api/playbook/save',
+  playbookEnqueue: '/api/playbook/enqueue',
+  playbookPromote: '/api/playbook/promote',
+  playbookDemote: '/api/playbook/demote',
+  playbookValidate: '/api/playbook/validate',
 } as const;
 
 /** Response body for GET /api/version */

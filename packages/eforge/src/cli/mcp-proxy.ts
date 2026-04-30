@@ -919,6 +919,86 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
   // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
+  // --- eforge:region plan-02-daemon-http-and-mcp-tool ---
+
+  // Tool: eforge_playbook
+  createDaemonTool(server, cwd, {
+    name: 'eforge_playbook',
+    description: 'Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook\'s frontmatter and body; "save" validates and writes a playbook to the target tier; "enqueue" loads a playbook and enqueues it as a PRD, optionally chained after another queue entry; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing.',
+    schema: {
+      action: z.enum(['list', 'show', 'save', 'enqueue', 'promote', 'demote', 'validate']).describe(
+        'Operation to perform on playbooks',
+      ),
+      name: z.string().optional().describe('Playbook name (required for "show", "enqueue", "promote", "demote")'),
+      scope: z.enum(['user', 'project-team', 'project-local']).optional().describe(
+        'Target scope for "save" (determines which tier directory to write to)',
+      ),
+      playbook: z.object({
+        frontmatter: z.object({
+          name: z.string(),
+          description: z.string(),
+          scope: z.enum(['user', 'project-team', 'project-local']),
+          agentRuntime: z.string().optional(),
+          postMerge: z.array(z.string()).optional(),
+        }),
+        body: z.object({
+          goal: z.string(),
+          outOfScope: z.string().optional().default(''),
+          acceptanceCriteria: z.string().optional().default(''),
+          plannerNotes: z.string().optional().default(''),
+        }),
+      }).optional().describe('Playbook content (required for "save")'),
+      afterQueueId: z.string().optional().describe('Queue entry ID to depend on (optional, "enqueue" only). When set, the new PRD will have dependsOn: [afterQueueId].'),
+      raw: z.string().optional().describe('Raw Markdown playbook string (required for "validate")'),
+    },
+    handler: async ({ action, name, scope, playbook, afterQueueId, raw }, { cwd: toolCwd }) => {
+      if (action === 'list') {
+        const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.playbookList);
+        return data;
+      }
+
+      if (action === 'show') {
+        if (!name) throw new Error('"name" is required when action is "show"');
+        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.playbookShow}?name=${encodeURIComponent(name)}`);
+        return data;
+      }
+
+      if (action === 'save') {
+        if (!scope) throw new Error('"scope" is required when action is "save"');
+        if (!playbook) throw new Error('"playbook" is required when action is "save"');
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookSave, { scope, playbook });
+        return data;
+      }
+
+      if (action === 'enqueue') {
+        if (!name) throw new Error('"name" is required when action is "enqueue"');
+        const body: Record<string, unknown> = { name };
+        if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookEnqueue, body);
+        return data;
+      }
+
+      if (action === 'promote') {
+        if (!name) throw new Error('"name" is required when action is "promote"');
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookPromote, { name });
+        return data;
+      }
+
+      if (action === 'demote') {
+        if (!name) throw new Error('"name" is required when action is "demote"');
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookDemote, { name });
+        return data;
+      }
+
+      // action === 'validate'
+      if (!raw) throw new Error('"raw" is required when action is "validate"');
+      const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.playbookValidate, { raw });
+      return data;
+    },
+  });
+
+  // --- eforge:endregion plan-02-daemon-http-and-mcp-tool ---
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 }

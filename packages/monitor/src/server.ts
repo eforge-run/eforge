@@ -1327,6 +1327,291 @@ export async function startServer(
       return;
     }
 
+    // --- eforge:region plan-02-daemon-http-and-mcp-tool ---
+    // Playbook names must be kebab-case (mirrors `playbookFrontmatterSchema.name`).
+    // The route `name` parameter is interpolated into a filesystem path by
+    // `loadSetArtifact`/`movePlaybook`, so anything outside this character class
+    // would permit path traversal (e.g. `name=../../etc/passwd`). Validate at the
+    // edge before passing to the engine.
+    const PLAYBOOK_NAME_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+    if (req.method === 'GET' && (url === API_ROUTES.playbookList || url.startsWith(`${API_ROUTES.playbookList}?`))) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      try {
+        const { getConfigDir } = await import('@eforge-build/engine/config');
+        const { listPlaybooks } = await import('@eforge-build/engine/playbook');
+        const configDir = await getConfigDir(cwd);
+        const result = await listPlaybooks({ configDir: configDir ?? cwd, cwd });
+        for (const warning of result.warnings) {
+          process.stderr.write(`${warning}\n`);
+        }
+        sendJson(res, result);
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list playbooks');
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && (url === API_ROUTES.playbookShow || url.startsWith(`${API_ROUTES.playbookShow}?`))) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+      const qParams = new URLSearchParams(queryString);
+      const name = qParams.get('name');
+      if (!name) {
+        sendJsonError(res, 400, 'Missing required query param: name');
+        return;
+      }
+      if (!PLAYBOOK_NAME_RE.test(name)) {
+        sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
+        return;
+      }
+      try {
+        const { getConfigDir } = await import('@eforge-build/engine/config');
+        const { loadPlaybook } = await import('@eforge-build/engine/playbook');
+        const configDir = await getConfigDir(cwd);
+        if (!configDir) {
+          sendJsonError(res, 404, 'No eforge config directory found');
+          return;
+        }
+        const result = await loadPlaybook({ configDir, cwd, name });
+        sendJson(res, result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to load playbook';
+        if (/not found/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.playbookSave) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { scope?: unknown; playbook?: { frontmatter?: unknown; body?: unknown } };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (body.scope !== 'user' && body.scope !== 'project-team' && body.scope !== 'project-local') {
+        sendJsonError(res, 400, 'Missing or invalid field: scope (must be "user", "project-team", or "project-local")');
+        return;
+      }
+      if (!body.playbook || typeof body.playbook !== 'object') {
+        sendJsonError(res, 400, 'Missing required field: playbook');
+        return;
+      }
+      try {
+        const { getConfigDir } = await import('@eforge-build/engine/config');
+        const { writePlaybook, playbookFrontmatterSchema } = await import('@eforge-build/engine/playbook');
+        const fm = body.playbook.frontmatter;
+        const bd = body.playbook.body;
+        // Validate frontmatter
+        const fmResult = playbookFrontmatterSchema.safeParse(fm);
+        if (!fmResult.success) {
+          const errors = fmResult.error.issues.map((i) => {
+            const path = i.path.length > 0 ? i.path.join('.') + ': ' : '';
+            return path + i.message;
+          });
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'Playbook validation failed', errors }));
+          return;
+        }
+        // Validate body
+        if (!bd || typeof (bd as Record<string, unknown>).goal !== 'string' || !(bd as Record<string, unknown>).goal) {
+          res.writeHead(400, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
+          res.end(JSON.stringify({ error: 'Playbook validation failed', errors: ['Missing required section: ## Goal'] }));
+          return;
+        }
+        const bdTyped = bd as { goal?: string; outOfScope?: string; acceptanceCriteria?: string; plannerNotes?: string };
+        const playbook = {
+          ...fmResult.data,
+          goal: bdTyped.goal ?? '',
+          outOfScope: bdTyped.outOfScope ?? '',
+          acceptanceCriteria: bdTyped.acceptanceCriteria ?? '',
+          plannerNotes: bdTyped.plannerNotes ?? '',
+        };
+        const configDir = await getConfigDir(cwd);
+        const result = await writePlaybook({ configDir: configDir ?? cwd, cwd, scope: body.scope, playbook });
+        sendJson(res, { path: result.path });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to save playbook');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.playbookEnqueue) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { name?: unknown; afterQueueId?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.name || typeof body.name !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: name (string)');
+        return;
+      }
+      if (!PLAYBOOK_NAME_RE.test(body.name)) {
+        sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
+        return;
+      }
+      const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
+      try {
+        const { getConfigDir } = await import('@eforge-build/engine/config');
+        const { loadPlaybook, playbookToSessionPlan } = await import('@eforge-build/engine/playbook');
+        const { enqueuePrd, inferTitle } = await import('@eforge-build/engine/prd-queue');
+        const configDir = await getConfigDir(cwd);
+        if (!configDir) {
+          sendJsonError(res, 404, 'No eforge config directory found');
+          return;
+        }
+        const { playbook } = await loadPlaybook({ configDir, cwd, name: body.name });
+        const plan = playbookToSessionPlan(playbook);
+        const queueDir = options?.queueDir ?? 'eforge/queue';
+        const title = inferTitle(plan.source, plan.name);
+        const result = await enqueuePrd({
+          body: plan.source,
+          title,
+          queueDir,
+          cwd,
+          depends_on: afterQueueId ? [afterQueueId] : undefined,
+        });
+        sendJson(res, { id: result.id });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to enqueue playbook';
+        if (/not found/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.playbookPromote) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { name?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.name || typeof body.name !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: name (string)');
+        return;
+      }
+      if (!PLAYBOOK_NAME_RE.test(body.name)) {
+        sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
+        return;
+      }
+      try {
+        const { getConfigDir } = await import('@eforge-build/engine/config');
+        const { movePlaybook } = await import('@eforge-build/engine/playbook');
+        const configDir = await getConfigDir(cwd);
+        if (!configDir) {
+          sendJsonError(res, 404, 'No eforge config directory found');
+          return;
+        }
+        const result = await movePlaybook({ configDir, cwd, name: body.name, fromScope: 'project-local', toScope: 'project-team' });
+        sendJson(res, { path: result.path });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to promote playbook';
+        if (/not found/i.test(msg) || /enoent/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.playbookDemote) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { name?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.name || typeof body.name !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: name (string)');
+        return;
+      }
+      if (!PLAYBOOK_NAME_RE.test(body.name)) {
+        sendJsonError(res, 400, 'Invalid playbook name (must be kebab-case)');
+        return;
+      }
+      try {
+        const { getConfigDir } = await import('@eforge-build/engine/config');
+        const { movePlaybook } = await import('@eforge-build/engine/playbook');
+        const configDir = await getConfigDir(cwd);
+        if (!configDir) {
+          sendJsonError(res, 404, 'No eforge config directory found');
+          return;
+        }
+        const result = await movePlaybook({ configDir, cwd, name: body.name, fromScope: 'project-team', toScope: 'project-local' });
+        sendJson(res, { path: result.path });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to demote playbook';
+        if (/not found/i.test(msg) || /enoent/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.playbookValidate) {
+      let body: { raw?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.raw || typeof body.raw !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: raw (string)');
+        return;
+      }
+      try {
+        const { validatePlaybook } = await import('@eforge-build/engine/playbook');
+        const result = validatePlaybook(body.raw);
+        if (result.ok) {
+          sendJson(res, { ok: true });
+        } else {
+          sendJson(res, { ok: false, errors: result.errors });
+        }
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to validate playbook');
+      }
+      return;
+    }
+    // --- eforge:endregion plan-02-daemon-http-and-mcp-tool ---
+
     if (req.method === 'GET' && url.startsWith(API_ROUTES.modelProviders)) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);
