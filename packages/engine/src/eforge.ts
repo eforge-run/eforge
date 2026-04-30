@@ -23,7 +23,7 @@ import type {
   RecoveryVerdict,
   BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveAndCommitFailedWithSidecar, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveAndCommitFailedWithSidecar, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting, commitEnqueuedPrd } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
@@ -444,8 +444,7 @@ export class EforgeEngine {
 
       // Commit the enqueued PRD
       try {
-        await retryOnLock(() => exec('git', ['add', enqueueResult.filePath], { cwd }), cwd);
-        await forgeCommit(cwd, composeCommitMessage(`enqueue(${enqueueResult.id}): ${title}`));
+        await commitEnqueuedPrd(enqueueResult.filePath, enqueueResult.id, title, cwd);
       } catch (err) {
         yield {
           timestamp: new Date().toISOString(),

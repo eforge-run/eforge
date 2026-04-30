@@ -312,6 +312,14 @@ describe('POST /api/playbook/enqueue', () => {
     await expect(access(queueFile)).resolves.toBeUndefined();
     const content = await readFile(queueFile, 'utf-8');
     expect(content).toContain('title:');
+
+    // Verify the enqueue commit was created with the correct subject
+    const commitSubject = execFileSync('git', ['log', '-1', '--pretty=%s'], { cwd: tmpDir }).toString().trim();
+    expect(commitSubject).toMatch(new RegExp(`^enqueue\\(${data.id}\\): `));
+
+    // Verify the queue directory is clean (no untracked or modified files)
+    const gitStatus = execFileSync('git', ['status', '--porcelain', 'eforge/queue/'], { cwd: tmpDir }).toString().trim();
+    expect(gitStatus).toBe('');
   });
 
   it('persists dependsOn in PRD frontmatter when afterQueueId is provided', async () => {

@@ -292,6 +292,27 @@ export async function cleanupCompletedPrd(filePath: string, queueDir: string, cw
   await forgeCommit(cwd, composeCommitMessage(`cleanup(${prdId}): remove completed PRD`), { paths: [filePath] });
 }
 
+/**
+ * Stage and commit a freshly enqueued PRD file.
+ *
+ * Used by both enqueue paths (engine subprocess and daemon HTTP playbook route)
+ * to keep the write-and-commit step in one place. `paths: [filePath]` scopes the
+ * commit so any unrelated staged changes in the working tree are not swept in.
+ */
+export async function commitEnqueuedPrd(
+  filePath: string,
+  prdId: string,
+  title: string,
+  cwd: string,
+): Promise<void> {
+  await retryOnLock(() => exec('git', ['add', '--', filePath], { cwd }), cwd);
+  await forgeCommit(
+    cwd,
+    composeCommitMessage(`enqueue(${prdId}): ${title}`),
+    { paths: [filePath] },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // File-location state helpers
 // ---------------------------------------------------------------------------

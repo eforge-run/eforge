@@ -1478,7 +1478,7 @@ export async function startServer(
         const { getConfigDir } = await import('@eforge-build/engine/config');
         const { loadPlaybook, playbookToSessionPlan } = await import('@eforge-build/engine/playbook');
         // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-        const { enqueuePrd, inferTitle, validateDependsOnExists } = await import('@eforge-build/engine/prd-queue');
+        const { enqueuePrd, inferTitle, validateDependsOnExists, commitEnqueuedPrd } = await import('@eforge-build/engine/prd-queue');
         // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
@@ -1515,6 +1515,7 @@ export async function startServer(
           agentRuntime: plan.agentRuntime,
           postMerge: plan.postMerge,
         });
+        await commitEnqueuedPrd(result.filePath, result.id, title, cwd);
         sendJson(res, { id: result.id });
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to enqueue playbook';
