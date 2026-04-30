@@ -1,9 +1,16 @@
-import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
+import type { AgentHarness, SdkPassthroughConfig, CustomTool } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { parseReviewIssues } from './reviewer.js';
-import { getPlanReviewIssueSchemaYaml } from '../schemas.js';
+import {
+  getPlanReviewIssueSchemaYaml,
+  getArchitectureReviewSubmissionSchemaYaml,
+  architectureReviewSubmissionSchema,
+  type ArchitectureReviewSubmission,
+} from '../schemas.js';
+import { applyArchitectureReviewFixes } from '../plan.js';
+import { formatSubmissionValidationError } from './planner.js';
 
 /**
  * Options for the architecture reviewer agent.
@@ -28,12 +35,37 @@ export interface ArchitectureReviewerOptions extends SdkPassthroughConfig {
 }
 
 /**
+ * Create a custom tool for submitting architecture-reviewer fixes.
+ * The handler validates the payload against the schema and captures it via the callback.
+ */
+function createArchitectureReviewSubmissionTool(
+  onSubmit: (payload: ArchitectureReviewSubmission) => boolean,
+): CustomTool {
+  return {
+    name: 'submit_architecture_review_fixes',
+    description: 'Submit fixes for the architecture document. Use this tool to apply all fixes you identified during architecture review. Pass an empty fixes array if no fixes are needed.',
+    inputSchema: architectureReviewSubmissionSchema,
+    handler: async (input: unknown) => {
+      const result = architectureReviewSubmissionSchema.safeParse(input);
+      if (!result.success) {
+        return formatSubmissionValidationError(result.error.issues);
+      }
+      if (!onSubmit(result.data)) {
+        return 'Error: a submission tool was already called. Only one submission per review turn is allowed.';
+      }
+      return 'Architecture review fixes submitted successfully.';
+    },
+  };
+}
+
+/**
  * Run the architecture reviewer agent as a one-shot query.
  *
  * Reviews the architecture.md document against the PRD for module boundary
  * soundness, integration contract completeness, shared file registry clarity,
- * data model feasibility, and PRD alignment. Leaves any fixes unstaged for
- * the architecture evaluator to accept/reject.
+ * data model feasibility, and PRD alignment. Submits any fixes through the
+ * structured submission tool (Write/Edit/NotebookEdit are disallowed) so all
+ * writes go through stringifyYaml.
  *
  * Yields:
  * - `planning:architecture:review:start` at the beginning
@@ -47,18 +79,43 @@ export async function* runArchitectureReview(
 
   yield { timestamp: new Date().toISOString(), type: 'planning:architecture:review:start' };
 
+  const outputDir = options.outputDir ?? 'eforge/plans';
+
+  // Mutable container for submission payload — set by custom tool handler via closure
+  let captured: ArchitectureReviewSubmission | null = null;
+
+  const submissionTool = createArchitectureReviewSubmissionTool((payload) => {
+    if (captured !== null) return false;
+    captured = payload;
+    return true;
+  });
+
+  const customTools: CustomTool[] = [submissionTool];
+  const submitTool = harness.effectiveCustomToolName(submissionTool.name);
+
   const prompt = await loadPrompt('architecture-reviewer', {
     source_content: sourceContent,
     plan_set_name: planSetName,
     architecture_content: architectureContent,
-    outputDir: options.outputDir ?? 'eforge/plans',
+    outputDir,
     review_issue_schema: getPlanReviewIssueSchemaYaml(),
+    submitTool,
+    submission_schema: getArchitectureReviewSubmissionSchemaYaml(),
   }, options.promptAppend);
 
   let fullText = '';
 
   for await (const event of harness.run(
-    { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
+    {
+      prompt,
+      cwd,
+      maxTurns: 30,
+      tools: 'coding',
+      abortSignal: abortController?.signal,
+      customTools,
+      disallowedTools: ['Write', 'Edit', 'NotebookEdit'],
+      ...pickSdkOptions(options),
+    },
     'architecture-reviewer',
   )) {
     if (isAlwaysYieldedAgentEvent(event) || verbose) {
@@ -67,6 +124,11 @@ export async function* runArchitectureReview(
     if (event.type === 'agent:message' && event.content) {
       fullText += event.content;
     }
+  }
+
+  // Apply any captured fixes before parsing issues
+  if (captured !== null) {
+    await applyArchitectureReviewFixes({ cwd, outputDir, planSetName, fixes: (captured as ArchitectureReviewSubmission).fixes });
   }
 
   const issues = parseReviewIssues(fullText);

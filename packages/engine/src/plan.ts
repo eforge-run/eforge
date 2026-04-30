@@ -58,6 +58,59 @@ export function validatePlanSetName(name: string): void {
 }
 
 /**
+ * Validate a plan ID for use in file paths.
+ * Rejects empty strings, path traversal, path separators, and characters outside [A-Za-z0-9_-].
+ */
+function validatePlanId(planId: string): void {
+  if (!planId) {
+    throw new Error(`Invalid plan ID (empty): "${planId}"`);
+  }
+  if (planId.includes('..')) {
+    throw new Error(`Invalid plan ID (path traversal): "${planId}"`);
+  }
+  if (/[\\/]/.test(planId)) {
+    throw new Error(`Invalid plan ID (contains path separator): "${planId}"`);
+  }
+  if (!/^[A-Za-z0-9_-]+$/.test(planId)) {
+    throw new Error(`Invalid plan ID (must only contain [A-Za-z0-9_-]): "${planId}"`);
+  }
+}
+
+/**
+ * Split a plan file's raw content into its frontmatter block and body.
+ * Returns null if the file does not have valid YAML frontmatter.
+ */
+function splitFrontmatter(raw: string): { frontmatterBlock: string; body: string } | null {
+  const match = raw.match(/^---\n([\s\S]*?)\n---\n?([\s\S]*)$/);
+  if (!match) return null;
+  return { frontmatterBlock: `---\n${match[1]}\n---\n`, body: match[2] };
+}
+
+/**
+ * Serialize a plan frontmatter object to a YAML frontmatter block string.
+ */
+function serializePlanFrontmatter(frontmatter: {
+  id: string;
+  name: string;
+  branch: string;
+  migrations?: Array<{ timestamp: string; description: string }>;
+  agents?: unknown;
+}): string {
+  const fm: Record<string, unknown> = {
+    id: frontmatter.id,
+    name: frontmatter.name,
+    branch: frontmatter.branch,
+  };
+  if (frontmatter.migrations && frontmatter.migrations.length > 0) {
+    fm.migrations = frontmatter.migrations;
+  }
+  if (frontmatter.agents) {
+    fm.agents = frontmatter.agents;
+  }
+  return `---\n${stringifyYaml(fm).trim()}\n---\n`;
+}
+
+/**
  * Parsed expedition index.yaml.
  */
 export interface ExpeditionIndex {
@@ -746,6 +799,201 @@ export async function writeArchitecture(options: WriteArchitectureOptions): Prom
 
   // Create modules/ directory
   await mkdir(resolve(planDir, 'modules'), { recursive: true });
+}
+
+/**
+ * Options for applying plan-reviewer fixes.
+ */
+export interface ApplyPlanReviewFixesOptions {
+  cwd: string;
+  outputDir: string;
+  planSetName: string;
+  fixes: import('./schemas.js').PlanReviewSubmission['fixes'];
+}
+
+/**
+ * Apply fixes emitted by the plan-reviewer agent to plan artifacts.
+ * Handles replace_orchestration (merges with existing, translates camelCase to snake_case),
+ * replace_plan_file (writes full file through stringifyYaml), and
+ * replace_plan_body (preserves existing frontmatter, replaces body).
+ * Does NOT run git add — fixes remain unstaged.
+ */
+export async function applyPlanReviewFixes(options: ApplyPlanReviewFixesOptions): Promise<void> {
+  const { cwd, outputDir, planSetName, fixes } = options;
+  if (fixes.length === 0) return;
+
+  const planDir = resolve(cwd, outputDir, planSetName);
+
+  const errors: Error[] = [];
+  for (const fix of fixes) {
+    try {
+      if (fix.kind === 'replace_orchestration') {
+        const orchPath = resolve(planDir, 'orchestration.yaml');
+        const raw = await readFile(orchPath, 'utf-8');
+        const parsedYaml = parseYaml(raw);
+        // Issue #9: validate the parsed YAML is a non-null plain object
+        if (!parsedYaml || typeof parsedYaml !== 'object' || Array.isArray(parsedYaml)) {
+          throw new Error(`Cannot apply replace_orchestration: existing orchestration.yaml did not parse to a plain object: ${orchPath}`);
+        }
+        const existing = parsedYaml as Record<string, unknown>;
+
+        // Translate camelCase agent fields to snake_case, merge over existing
+        const mergedPlans = fix.plans.map(p => {
+          const planEntry: Record<string, unknown> = {
+            id: p.id,
+            name: p.name,
+            depends_on: p.dependsOn,
+            branch: p.branch,
+          };
+          if (p.build !== undefined) planEntry.build = p.build;
+          if (p.review !== undefined) planEntry.review = p.review;
+          if (p.agents !== undefined) planEntry.agents = p.agents;
+          // Preserve build/review/agents/max_continuations from existing plan entry if not supplied
+          if (p.build === undefined || p.review === undefined || p.agents === undefined) {
+            const existingPlans = Array.isArray(existing.plans)
+              ? (existing.plans as Array<Record<string, unknown>>)
+              : [];
+            const existingPlan = existingPlans.find(ep => ep.id === p.id);
+            if (existingPlan) {
+              if (p.build === undefined && existingPlan.build !== undefined) planEntry.build = existingPlan.build;
+              if (p.review === undefined && existingPlan.review !== undefined) planEntry.review = existingPlan.review;
+              // Issue #1: preserve agents when not supplied
+              if (p.agents === undefined && existingPlan.agents !== undefined) planEntry.agents = existingPlan.agents;
+              // Issue #2: preserve max_continuations when present
+              if (existingPlan.max_continuations !== undefined) planEntry.max_continuations = existingPlan.max_continuations;
+            }
+          }
+          return planEntry;
+        });
+
+        const updated: Record<string, unknown> = {
+          ...existing,
+          description: fix.description,
+          base_branch: fix.baseBranch,
+          validate: fix.validate,
+          plans: mergedPlans,
+        };
+        // pipeline is always preserved from existing
+
+        await writeFile(orchPath, stringifyYaml(updated), 'utf-8');
+      } else if (fix.kind === 'replace_plan_file') {
+        // Issue #3: validate planId before resolving path
+        validatePlanId(fix.planId);
+        // Issue #5: planId and frontmatter.id must match
+        if (fix.planId !== fix.frontmatter.id) {
+          throw new Error(`Cannot apply replace_plan_file: planId "${fix.planId}" does not match frontmatter.id "${fix.frontmatter.id}"`);
+        }
+        const planPath = resolve(planDir, `${fix.planId}.md`);
+        // Issue #7: use shared serialization helper
+        const content = `${serializePlanFrontmatter(fix.frontmatter)}\n${fix.body}`;
+        await writeFile(planPath, content, 'utf-8');
+      } else if (fix.kind === 'replace_plan_body') {
+        // Issue #3: validate planId before resolving path
+        validatePlanId(fix.planId);
+        const planPath = resolve(planDir, `${fix.planId}.md`);
+        const raw = await readFile(planPath, 'utf-8');
+        // Issue #8: use shared splitFrontmatter helper
+        const split = splitFrontmatter(raw);
+        if (!split) {
+          throw new Error(`Cannot apply replace_plan_body: plan file has no valid frontmatter: ${planPath}`);
+        }
+        await writeFile(planPath, `${split.frontmatterBlock}\n${fix.body}`, 'utf-8');
+      }
+    } catch (err) {
+      errors.push(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+  // Issue #6: report all fix errors after attempting every fix
+  if (errors.length > 0) {
+    const messages = errors.map((e, i) => `  Fix ${i + 1}: ${e.message}`).join('\n');
+    throw new Error(`applyPlanReviewFixes encountered ${errors.length} error(s):\n${messages}`);
+  }
+}
+
+/**
+ * Options for applying cohesion-reviewer fixes.
+ */
+export interface ApplyCohesionReviewFixesOptions {
+  cwd: string;
+  outputDir: string;
+  planSetName: string;
+  fixes: import('./schemas.js').CohesionReviewSubmission['fixes'];
+}
+
+/**
+ * Apply fixes emitted by the cohesion-reviewer agent to module plan artifacts.
+ * Operates on files under <planSet>/modules/.
+ * Does NOT run git add — fixes remain unstaged.
+ */
+export async function applyCohesionReviewFixes(options: ApplyCohesionReviewFixesOptions): Promise<void> {
+  const { cwd, outputDir, planSetName, fixes } = options;
+  if (fixes.length === 0) return;
+
+  const modulesDir = resolve(cwd, outputDir, planSetName, 'modules');
+
+  const errors: Error[] = [];
+  for (const fix of fixes) {
+    try {
+      if (fix.kind === 'replace_plan_file') {
+        // Issue #3: validate planId before resolving path
+        validatePlanId(fix.planId);
+        // Issue #5: planId and frontmatter.id must match
+        if (fix.planId !== fix.frontmatter.id) {
+          throw new Error(`Cannot apply replace_plan_file: planId "${fix.planId}" does not match frontmatter.id "${fix.frontmatter.id}"`);
+        }
+        const planPath = resolve(modulesDir, `${fix.planId}.md`);
+        // Issue #7: use shared serialization helper
+        const content = `${serializePlanFrontmatter(fix.frontmatter)}\n${fix.body}`;
+        await writeFile(planPath, content, 'utf-8');
+      } else if (fix.kind === 'replace_plan_body') {
+        // Issue #3: validate planId before resolving path
+        validatePlanId(fix.planId);
+        const planPath = resolve(modulesDir, `${fix.planId}.md`);
+        const raw = await readFile(planPath, 'utf-8');
+        // Issue #8: use shared splitFrontmatter helper
+        const split = splitFrontmatter(raw);
+        if (!split) {
+          throw new Error(`Cannot apply replace_plan_body: module plan file has no valid frontmatter: ${planPath}`);
+        }
+        await writeFile(planPath, `${split.frontmatterBlock}\n${fix.body}`, 'utf-8');
+      }
+    } catch (err) {
+      errors.push(err instanceof Error ? err : new Error(String(err)));
+    }
+  }
+  // Issue #6: report all fix errors after attempting every fix
+  if (errors.length > 0) {
+    const messages = errors.map((e, i) => `  Fix ${i + 1}: ${e.message}`).join('\n');
+    throw new Error(`applyCohesionReviewFixes encountered ${errors.length} error(s):\n${messages}`);
+  }
+}
+
+/**
+ * Options for applying architecture-reviewer fixes.
+ */
+export interface ApplyArchitectureReviewFixesOptions {
+  cwd: string;
+  outputDir: string;
+  planSetName: string;
+  fixes: import('./schemas.js').ArchitectureReviewSubmission['fixes'];
+}
+
+/**
+ * Apply fixes emitted by the architecture-reviewer agent to the architecture document.
+ * Writes architecture.md verbatim.
+ * Does NOT run git add — fixes remain unstaged.
+ */
+export async function applyArchitectureReviewFixes(options: ApplyArchitectureReviewFixesOptions): Promise<void> {
+  const { cwd, outputDir, planSetName, fixes } = options;
+  if (fixes.length === 0) return;
+
+  const planDir = resolve(cwd, outputDir, planSetName);
+
+  for (const fix of fixes) {
+    if (fix.kind === 'replace_architecture') {
+      await writeFile(resolve(planDir, 'architecture.md'), fix.content, 'utf-8');
+    }
+  }
 }
 
 /**

@@ -676,6 +676,123 @@ export function getArchitectureSubmissionSchemaYaml(): string {
 }
 
 // ---------------------------------------------------------------------------
+// Plan Review Submission schemas
+// ---------------------------------------------------------------------------
+
+/**
+ * Schema for a single fix applied by the plan-reviewer agent.
+ * Discriminated union with three variants: replace_orchestration, replace_plan_file, replace_plan_body.
+ */
+export const planReviewFixSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('replace_orchestration').describe('Replace the entire orchestration.yaml content'),
+    description: z.string().min(1).describe('Plan set description'),
+    baseBranch: z.string().min(1).describe('Base git branch'),
+    validate: z.array(z.string()).describe('Validation commands to run'),
+    plans: z.array(z.object({
+      id: z.string().min(1).describe('Plan ID'),
+      name: z.string().min(1).describe('Human-readable plan name'),
+      dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
+      branch: z.string().min(1).describe('Git branch name'),
+      build: z.array(pipelineBuildStageSpecSchema).optional().describe('Per-plan build stage pipeline'),
+      review: pipelineReviewProfileConfigSchema.optional().describe('Per-plan review configuration'),
+      agents: planAgentsSchema,
+    })).min(1).describe('Orchestration plan entries'),
+  }).describe('Replace the orchestration.yaml content; pipeline is preserved from disk'),
+  z.object({
+    kind: z.literal('replace_plan_file').describe('Replace an entire plan file (frontmatter + body)'),
+    planId: z.string().min(1).describe('Plan ID (e.g., plan-01-auth) — used to resolve the file path'),
+    frontmatter: z.object({
+      id: z.string().min(1).describe('Plan identifier'),
+      name: z.string().min(1).describe('Human-readable plan name'),
+      branch: z.string().min(1).describe('Git branch name for this plan'),
+      migrations: z.array(z.object({
+        timestamp: z.string().regex(/^\d{14}$/, 'Migration timestamp must be 14 digits (YYYYMMDDHHmmss)').describe('Migration timestamp in YYYYMMDDHHmmss format'),
+        description: z.string().describe('Migration description'),
+      })).optional().describe('Database migrations included in this plan'),
+      agents: planAgentsSchema,
+    }).describe('Plan file frontmatter'),
+    body: z.string().describe('Plan markdown body'),
+  }).describe('Replace an entire plan .md file with new frontmatter and body'),
+  z.object({
+    kind: z.literal('replace_plan_body').describe('Replace only the markdown body of a plan file, preserving frontmatter'),
+    planId: z.string().min(1).describe('Plan ID (e.g., plan-01-auth) — used to resolve the file path'),
+    body: z.string().describe('New markdown body (frontmatter is preserved verbatim)'),
+  }).describe('Replace only the body of a plan .md file, leaving frontmatter byte-identical'),
+]).describe('A single fix to apply to plan artifacts');
+
+export const planReviewSubmissionSchema = z.object({
+  fixes: z.array(planReviewFixSchema).describe('Fixes to apply to plan artifacts; may be empty if no fixable issues were found'),
+});
+
+export type PlanReviewSubmission = z.output<typeof planReviewSubmissionSchema>;
+
+/**
+ * Schema for a single fix applied by the cohesion-reviewer agent.
+ * Operates on module plan files in <planSet>/modules/.
+ */
+export const cohesionReviewFixSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('replace_plan_file').describe('Replace an entire module plan file (frontmatter + body)'),
+    planId: z.string().min(1).describe('Plan/module ID (e.g., auth) — used to resolve the file path under modules/'),
+    frontmatter: z.object({
+      id: z.string().min(1).describe('Plan identifier'),
+      name: z.string().min(1).describe('Human-readable plan name'),
+      branch: z.string().min(1).describe('Git branch name for this plan'),
+      migrations: z.array(z.object({
+        timestamp: z.string().regex(/^\d{14}$/, 'Migration timestamp must be 14 digits (YYYYMMDDHHmmss)').describe('Migration timestamp in YYYYMMDDHHmmss format'),
+        description: z.string().describe('Migration description'),
+      })).optional().describe('Database migrations included in this plan'),
+      agents: planAgentsSchema,
+    }).describe('Plan file frontmatter'),
+    body: z.string().describe('Plan markdown body'),
+  }).describe('Replace an entire module plan .md file with new frontmatter and body'),
+  z.object({
+    kind: z.literal('replace_plan_body').describe('Replace only the markdown body of a module plan file, preserving frontmatter'),
+    planId: z.string().min(1).describe('Plan/module ID — used to resolve the file path under modules/'),
+    body: z.string().describe('New markdown body (frontmatter is preserved verbatim)'),
+  }).describe('Replace only the body of a module plan .md file, leaving frontmatter byte-identical'),
+]).describe('A single fix to apply to module plan artifacts');
+
+export const cohesionReviewSubmissionSchema = z.object({
+  fixes: z.array(cohesionReviewFixSchema).describe('Fixes to apply to module plan artifacts; may be empty if no fixable issues were found'),
+});
+
+export type CohesionReviewSubmission = z.output<typeof cohesionReviewSubmissionSchema>;
+
+/**
+ * Schema for a single fix applied by the architecture-reviewer agent.
+ * Operates on the architecture.md file in <planSet>/.
+ */
+export const architectureReviewFixSchema = z.discriminatedUnion('kind', [
+  z.object({
+    kind: z.literal('replace_architecture').describe('Replace the entire architecture.md content'),
+    content: z.string().min(1).describe('New architecture.md markdown content'),
+  }).describe('Replace the entire architecture.md file'),
+]).describe('A single fix to apply to architecture artifacts');
+
+export const architectureReviewSubmissionSchema = z.object({
+  fixes: z.array(architectureReviewFixSchema).describe('Fixes to apply to architecture artifacts; may be empty if no fixable issues were found'),
+});
+
+export type ArchitectureReviewSubmission = z.output<typeof architectureReviewSubmissionSchema>;
+
+/** Schema YAML for plan-reviewer fix submissions. */
+export function getPlanReviewSubmissionSchemaYaml(): string {
+  return getSchemaYaml('plan-review-submission', planReviewSubmissionSchema);
+}
+
+/** Schema YAML for cohesion-reviewer fix submissions. */
+export function getCohesionReviewSubmissionSchemaYaml(): string {
+  return getSchemaYaml('cohesion-review-submission', cohesionReviewSubmissionSchema);
+}
+
+/** Schema YAML for architecture-reviewer fix submissions. */
+export function getArchitectureReviewSubmissionSchemaYaml(): string {
+  return getSchemaYaml('architecture-review-submission', architectureReviewSubmissionSchema);
+}
+
+// ---------------------------------------------------------------------------
 // Pipeline Composition schema
 // ---------------------------------------------------------------------------
 

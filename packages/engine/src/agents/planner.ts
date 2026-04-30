@@ -62,7 +62,7 @@ ${rows.join('\n')}`;
  * and abandon in favor of Write. An explicit per-path breakdown plus an
  * explicit "call the tool again" instruction flips that behavior to a retry.
  */
-function formatSubmissionValidationError(issues: readonly { path: readonly (string | number | symbol)[]; message: string }[]): string {
+export function formatSubmissionValidationError(issues: readonly { path: readonly (string | number | symbol)[]; message: string }[]): string {
   const lines = issues.map((issue) => {
     const path = issue.path.length > 0 ? issue.path.map(String).join('.') : '(root)';
     return `  - ${path}: ${issue.message}`;
