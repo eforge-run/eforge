@@ -1250,6 +1250,53 @@ describe('mergePartialConfigs monitor', () => {
   });
 });
 
+// ---------------------------------------------------------------------------
+// mergePartialConfigs chained twice — three-tier deep-merge
+// ---------------------------------------------------------------------------
+
+describe('mergePartialConfigs chained-twice three-tier deep-merge', () => {
+  it('scalar override at leaf: local wins over project wins over user', () => {
+    const user: PartialEforgeConfig = { agents: { maxTurns: 10 } };
+    const project: PartialEforgeConfig = { agents: { maxTurns: 20 } };
+    const local: PartialEforgeConfig = { agents: { maxTurns: 99 } };
+    const merged = mergePartialConfigs(mergePartialConfigs(user, project), local);
+    expect(merged.agents?.maxTurns).toBe(99);
+  });
+
+  it('object section merge across two layers: fields from all three tiers survive when non-overlapping', () => {
+    const user: PartialEforgeConfig = {
+      agents: { maxTurns: 5, permissionMode: 'default' },
+    };
+    const project: PartialEforgeConfig = {
+      agents: { maxContinuations: 3 },
+    };
+    const local: PartialEforgeConfig = {
+      agents: { bare: true },
+    };
+    const merged = mergePartialConfigs(mergePartialConfigs(user, project), local);
+    expect(merged.agents?.maxTurns).toBe(5);
+    expect(merged.agents?.permissionMode).toBe('default');
+    expect(merged.agents?.maxContinuations).toBe(3);
+    expect(merged.agents?.bare).toBe(true);
+  });
+
+  it('array replacement at leaf: local array replaces project and user arrays', () => {
+    const user: PartialEforgeConfig = { build: { postMergeCommands: ['user-cmd'] } };
+    const project: PartialEforgeConfig = { build: { postMergeCommands: ['project-cmd'] } };
+    const local: PartialEforgeConfig = { build: { postMergeCommands: ['local-cmd'] } };
+    const merged = mergePartialConfigs(mergePartialConfigs(user, project), local);
+    expect(merged.build?.postMergeCommands).toEqual(['local-cmd']);
+  });
+
+  it('project wins over user when local omits the field', () => {
+    const user: PartialEforgeConfig = { agents: { maxTurns: 5 } };
+    const project: PartialEforgeConfig = { agents: { maxTurns: 30 } };
+    const local: PartialEforgeConfig = {};
+    const merged = mergePartialConfigs(mergePartialConfigs(user, project), local);
+    expect(merged.agents?.maxTurns).toBe(30);
+  });
+});
+
 // (The configYamlSchema tests above replaced this section — see
 // "configYamlSchema rejects legacy top-level fields" describe near the top.)
 

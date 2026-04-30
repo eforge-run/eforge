@@ -14,7 +14,7 @@ import type { VersionResponse } from './routes.js';
  * the version. Removing a field, renaming a route, or changing a response's
  * required fields IS breaking and must bump the version.
  */
-export const DAEMON_API_VERSION = 11; // v11: /api/profile/create accepts agentRuntimes + defaultAgentRuntime body shape
+export const DAEMON_API_VERSION = 12; // v12: profile `source` enum gains `'project'`; the existing `'local'` value's semantics shift from `eforge/.active-profile` to `.eforge/.active-profile`. Profile `scope` and `shadowedBy` enums gain `'local'`. `/api/profile/{list,use,create,delete}` accept `scope: 'local'`. `/api/config/show?verbose=1` returns `{ resolved, sources }`.
 
 /** Per-process cache: maps `${port}:${pid}` to the verified daemon version. */
 const verifiedDaemons = new Map<string, number>();

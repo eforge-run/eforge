@@ -62,8 +62,8 @@ export interface RunInfo {
 
 export type SessionProfile = {
   profileName: string | null;
-  source: 'local' | 'user-local' | 'missing' | 'none';
-  scope: 'project' | 'user' | null;
+  source: 'local' | 'project' | 'user-local' | 'missing' | 'none';
+  scope: 'local' | 'project' | 'user' | null;
   config: unknown | null;
 };
 

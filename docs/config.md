@@ -336,24 +336,26 @@ The user-scope active-backend marker lives at `~/.config/eforge/.active-backend`
 
 ### Active Profile Precedence
 
-The active backend profile is resolved using a 5-step precedence chain (highest to lowest):
+The active agent runtime profile is resolved using a 6-step precedence chain (highest to lowest):
 
-1. **Project marker** - `eforge/.active-backend` file in the project
-2. **Project config** - `backend:` field in `eforge/config.yaml`
-3. **User marker** - `~/.config/eforge/.active-backend` file
-4. **User config** - `backend:` field in `~/.config/eforge/config.yaml`
-5. **None** - no profile configured
+1. **Project-local marker** - `.eforge/.active-profile` file in the repo root (gitignored)
+2. **Project marker** - `eforge/.active-profile` file in the project
+3. **Project config** - `defaultAgentRuntime:` field in `eforge/config.yaml`
+4. **User marker** - `~/.config/eforge/.active-profile` file
+5. **User config** - `defaultAgentRuntime:` field in `~/.config/eforge/config.yaml`
+6. **None** - no profile configured
 
-When a profile name is resolved, the profile file is looked up project-first, then user-fallback. A user-scope marker can resolve to a project-scope profile file if one exists with that name. Conversely, a project profile with the same name as a user profile shadows the user profile.
+When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback. A local profile shadows project and user profiles with the same name.
 
 ### Scope Parameter
 
 The `scope` parameter is available on `create`, `use`, and `delete` operations:
 
-- `scope: "project"` (default) - operates on `eforge/backends/` and `eforge/.active-backend`
-- `scope: "user"` - operates on `~/.config/eforge/backends/` and `~/.config/eforge/.active-backend`
+- `scope: "local"` - operates on `.eforge/profiles/` and `.eforge/.active-profile` (gitignored, dev-personal)
+- `scope: "project"` (default) - operates on `eforge/profiles/` and `eforge/.active-profile`
+- `scope: "user"` - operates on `~/.config/eforge/profiles/` and `~/.config/eforge/.active-profile`
 
-When listing profiles, both scopes are shown. User entries shadowed by a project profile of the same name are annotated with `shadowedBy: project`.
+When listing profiles, all three scopes are shown. Entries shadowed by a higher-priority profile of the same name are annotated with `shadowedBy: local` or `shadowedBy: project`.
 
 ## Plugins
 
@@ -365,14 +367,15 @@ Hooks are fire-and-forget shell commands triggered by `eforge` events - useful f
 
 ## Config Layers
 
-Config merges from two levels (lowest to highest priority):
+Config merges from three levels (lowest to highest priority):
 
 1. **Global** - `~/.config/eforge/config.yaml` (respects `$XDG_CONFIG_HOME`)
 2. **Project** - `eforge/config.yaml` found by walking up from cwd
+3. **Project-local** - `.eforge/config.yaml` in the repo root (gitignored; highest priority)
 
 Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`, `pi`) shallow-merge per-field. Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
 
-Backend profiles follow the same two-level pattern. Profile files can exist in both `eforge/backends/` (project scope) and `~/.config/eforge/backends/` (user scope). The active-backend marker can be set at either level: `eforge/.active-backend` (project) or `~/.config/eforge/.active-backend` (user). Active profile resolution walks a 5-step precedence: (1) project marker, (2) project config `backend:` field, (3) user marker, (4) global config `backend:` field, (5) none. When a profile name is resolved, the profile file is looked up project-first, then user-fallback - so a user-scope marker can still resolve to a project-scope profile file if one exists with that name.
+Agent runtime profiles follow the same three-level pattern. Profile files can exist at project-local scope (`.eforge/profiles/` - gitignored), project scope (`eforge/profiles/`), or user scope (`~/.config/eforge/profiles/`). The active-profile marker can be set at any level: `.eforge/.active-profile` (project-local, highest precedence), `eforge/.active-profile` (project), or `~/.config/eforge/.active-profile` (user). Active profile resolution walks a 6-step precedence: (1) project-local marker, (2) project marker, (3) project config `defaultAgentRuntime:` field, (4) user marker, (5) global config `defaultAgentRuntime:` field, (6) none. When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 
 ## Parallelism
 

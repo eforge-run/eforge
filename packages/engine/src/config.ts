@@ -862,7 +862,7 @@ async function readProjectConfigOrEmpty(configDir: string): Promise<PartialEforg
  * Consumers with an active event stream should yield `config:warning` events;
  * bootstrap consumers (CLI startup, daemon startup) should write to stderr.
  */
-export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; warnings: string[]; profile: { name: string | null; source: ActiveProfileSource; scope: 'project' | 'user' | null; config: PartialEforgeConfig | null } }> {
+export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; warnings: string[]; profile: { name: string | null; source: ActiveProfileSource; scope: 'local' | 'project' | 'user' | null; config: PartialEforgeConfig | null } }> {
   const globalConfig = await loadUserConfig();
   const allWarnings: string[] = [];
 
@@ -913,18 +913,40 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
   // Resolve and merge active profile, if present.
   // Strict: validation errors from the active profile propagate so the user
   // sees a clear schema error instead of a silent default-config fallback.
+  // Determine the project root so the local tier (.eforge/) resolves consistently
+  // for both config and profiles. When findConfigFile walked up from a subdirectory,
+  // dirname(configDir) is the project root rather than startDir.
+  const projectRoot = configPath ? dirname(dirname(configPath)) : startDir;
+
+  // Load project-local config (.eforge/config.yaml) — gitignored, dev-personal, highest precedence
+  let localConfig: PartialEforgeConfig = {};
+  try {
+    const localCfgPath = localConfigPath(projectRoot);
+    const localRaw = await readFile(localCfgPath, 'utf-8');
+    const localData = parseYaml(localRaw);
+    if (localData && typeof localData === 'object') {
+      localConfig = parseRawConfig(localData as Record<string, unknown>);
+    }
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err;
+    // Missing .eforge/config.yaml is silent (ENOENT swallowed)
+  }
+
   let profileConfig: PartialEforgeConfig | null = null;
   let resolvedProfileName: string | null = null;
   let resolvedProfileSource: ActiveProfileSource = 'none';
-  let resolvedProfileScope: 'project' | 'user' | null = null;
-  if (configPath) {
-    const configDir = dirname(configPath);
-    const { name, source, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig);
+  let resolvedProfileScope: 'local' | 'project' | 'user' | null = null;
+  // Anchor configDir to the resolved project root when no project config exists,
+  // so the local marker (.eforge/.active-profile) can drive profile resolution
+  // even without an eforge/config.yaml present.
+  const configDir = configPath ? dirname(configPath) : projectRoot;
+  {
+    const { name, source, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig, projectRoot);
     allWarnings.push(...warnings);
     resolvedProfileName = name;
     resolvedProfileSource = source;
     if (name) {
-      const result = await loadProfile(configDir, name);
+      const result = await loadProfile(configDir, name, projectRoot);
       if (result) {
         profileConfig = result.profile;
         resolvedProfileScope = result.scope;
@@ -932,7 +954,8 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
     }
   }
 
-  const baseMerged = mergePartialConfigs(globalConfig, projectConfig);
+  // Merge sequence: user → project → local (three-tier deep merge)
+  const baseMerged = mergePartialConfigs(mergePartialConfigs(globalConfig, projectConfig), localConfig);
   const merged = profileConfig ? mergePartialConfigs(baseMerged, profileConfig) : baseMerged;
   return {
     config: resolveConfig(merged),
@@ -953,13 +976,14 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
 /**
  * Source of the active profile resolution.
  *
- * - `local`: marker file `eforge/.active-profile` selected the profile (dev-local override)
+ * - `local`: marker file `.eforge/.active-profile` selected the profile (project-local, gitignored, dev-personal)
+ * - `project`: marker file `eforge/.active-profile` selected the profile (project-team marker)
  * - `user-local`: user-scope marker `~/.config/eforge/.active-profile` selected the profile
  * - `missing`: marker present, but the referenced profile file is missing
- *   (a one-shot stderr warning is logged; fallback to user-marker or none)
+ *   (a one-shot stderr warning is logged; fallback to next source or none)
  * - `none`: no profile applied (no marker found)
  */
-export type ActiveProfileSource = 'local' | 'user-local' | 'missing' | 'none';
+export type ActiveProfileSource = 'local' | 'project' | 'user-local' | 'missing' | 'none';
 
 /** Marker filename inside the eforge config directory. */
 const ACTIVE_PROFILE_MARKER = '.active-profile';
@@ -1000,8 +1024,36 @@ function userMarkerPath(): string {
   return resolve(userEforgeConfigDir(), ACTIVE_PROFILE_MARKER);
 }
 
-/** Check whether a profile file exists in either project or user scope. */
-async function profileExistsInAnyScope(configDir: string, name: string): Promise<boolean> {
+// ---------------------------------------------------------------------------
+// Project-local tier paths (.eforge/ inside project root — gitignored)
+// ---------------------------------------------------------------------------
+
+const LOCAL_CONFIG_SUBDIR = '.eforge';
+
+/** Return the project-local profiles directory (<cwd>/.eforge/profiles/). */
+function localProfilesDir(cwd: string): string {
+  return resolve(cwd, LOCAL_CONFIG_SUBDIR, PROFILES_SUBDIR);
+}
+
+/** Return the path to a project-local profile file. */
+function localProfilePath(cwd: string, name: string): string {
+  return resolve(cwd, LOCAL_CONFIG_SUBDIR, PROFILES_SUBDIR, `${name}.yaml`);
+}
+
+/** Return the path to the project-local active-profile marker file. */
+function localMarkerPath(cwd: string): string {
+  return resolve(cwd, LOCAL_CONFIG_SUBDIR, ACTIVE_PROFILE_MARKER);
+}
+
+/** Return the path to the project-local config file. */
+function localConfigPath(cwd: string): string {
+  return resolve(cwd, LOCAL_CONFIG_SUBDIR, 'config.yaml');
+}
+
+/** Check whether a profile file exists in local, project, or user scope. */
+async function profileExistsInAnyScope(configDir: string, name: string, cwd?: string): Promise<boolean> {
+  const effectiveCwd = cwd ?? dirname(configDir);
+  if (await fileExists(localProfilePath(effectiveCwd, name))) return true;
   if (await fileExists(profilePath(configDir, name))) return true;
   if (await fileExists(userProfilePath(name))) return true;
   return false;
@@ -1197,10 +1249,12 @@ export async function getConfigDir(cwd?: string): Promise<string | null> {
  * Resolve the active agent runtime profile name and how it was selected.
  *
  * Resolution precedence:
- * 1. Project marker `eforge/.active-profile` (dev-local) — wins when present and the
- *    referenced profile file exists in either project or user scope.
- * 2. User marker `~/.config/eforge/.active-profile` — user-level dev-local override.
- * 3. Otherwise no profile is applied.
+ * 1. Local marker `.eforge/.active-profile` (project-local, gitignored) — wins when present and the
+ *    referenced profile file exists in any scope.
+ * 2. Project marker `eforge/.active-profile` (project-team) — wins when present and the
+ *    referenced profile file exists in any scope.
+ * 3. User marker `~/.config/eforge/.active-profile` — user-level dev-local override.
+ * 4. Otherwise no profile is applied.
  *
  * Returns `{ name, source, warnings }` where `warnings` carries any diagnostic
  * messages (e.g. stale marker warnings). Consumers should surface these to the user.
@@ -1209,25 +1263,41 @@ export async function resolveActiveProfileName(
   configDir: string,
   projectConfig: PartialEforgeConfig,
   userConfig?: PartialEforgeConfig,
+  cwd?: string,
 ): Promise<{ name: string | null; source: ActiveProfileSource; warnings: string[] }> {
   const warnings: string[] = [];
+  const effectiveCwd = cwd ?? dirname(configDir);
 
-  // Step 1: Project marker
+  // Step 0: Local marker (.eforge/.active-profile) — project-local, gitignored, highest precedence
+  const localMarkerName = await readMarkerName(localMarkerPath(effectiveCwd));
+  if (localMarkerName !== null) {
+    if (await profileExistsInAnyScope(configDir, localMarkerName, effectiveCwd)) {
+      return { name: localMarkerName, source: 'local', warnings };
+    }
+    // Local marker is stale — collect warning, fall through to project marker
+    warnings.push(
+      `[eforge] Active profile marker ${localMarkerPath(effectiveCwd)} points at ` +
+      `"${localMarkerName}" but no profile file exists in any scope. ` +
+      `Falling back to next available source.`,
+    );
+  }
+
+  // Step 1: Project marker (eforge/.active-profile)
   const projectMarkerName = await readMarkerName(markerPath(configDir));
 
   if (projectMarkerName !== null) {
-    if (await profileExistsInAnyScope(configDir, projectMarkerName)) {
-      return { name: projectMarkerName, source: 'local', warnings };
+    if (await profileExistsInAnyScope(configDir, projectMarkerName, effectiveCwd)) {
+      return { name: projectMarkerName, source: 'project', warnings };
     }
     // Marker is stale — collect warning, then attempt fallbacks
     warnings.push(
       `[eforge] Active profile marker ${markerPath(configDir)} points at ` +
-      `"${projectMarkerName}" but no profile file exists in project or user scope. ` +
+      `"${projectMarkerName}" but no profile file exists in any scope. ` +
       `Falling back to next available source.`,
     );
     // Try user marker as fallback
     const userMarker = await readMarkerName(userMarkerPath());
-    if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
+    if (userMarker && await profileExistsInAnyScope(configDir, userMarker, effectiveCwd)) {
       return { name: userMarker, source: 'user-local', warnings };
     }
     return { name: null, source: 'missing', warnings };
@@ -1235,7 +1305,7 @@ export async function resolveActiveProfileName(
 
   // Step 2: User marker
   const userMarker = await readMarkerName(userMarkerPath());
-  if (userMarker && await profileExistsInAnyScope(configDir, userMarker)) {
+  if (userMarker && await profileExistsInAnyScope(configDir, userMarker, effectiveCwd)) {
     return { name: userMarker, source: 'user-local', warnings };
   }
 
@@ -1262,21 +1332,29 @@ async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | 
 }
 
 /**
- * Load and parse a profile file. Looks up in project scope first
- * (`eforge/profiles/`), then user scope (`~/.config/eforge/profiles/`).
- * Returns null when the profile file does not exist in either scope.
+ * Load and parse a profile file. Looks up in local scope first
+ * (`.eforge/profiles/`), then project scope (`eforge/profiles/`),
+ * then user scope (`~/.config/eforge/profiles/`).
+ * Returns null when the profile file does not exist in any scope.
  * Profile files use the same partial-config schema as `config.yaml`.
  */
 export async function loadProfile(
   configDir: string,
   name: string,
-): Promise<{ profile: PartialEforgeConfig; scope: 'project' | 'user' } | null> {
-  // Try project scope first
+  cwd?: string,
+): Promise<{ profile: PartialEforgeConfig; scope: 'local' | 'project' | 'user' } | null> {
+  const effectiveCwd = cwd ?? dirname(configDir);
+  // Try local scope first (.eforge/profiles/)
+  const localResult = await loadProfileFromPath(localProfilePath(effectiveCwd, name));
+  if (localResult !== null) {
+    return { profile: localResult, scope: 'local' };
+  }
+  // Try project scope (eforge/profiles/)
   const projectResult = await loadProfileFromPath(profilePath(configDir, name));
   if (projectResult !== null) {
     return { profile: projectResult, scope: 'project' };
   }
-  // Try user scope fallback
+  // Try user scope fallback (~/.config/eforge/profiles/)
   const userResult = await loadProfileFromPath(userProfilePath(name));
   if (userResult !== null) {
     return { profile: userResult, scope: 'user' };
@@ -1285,13 +1363,13 @@ export async function loadProfile(
 }
 
 /** Shared entry type returned by scanProfilesDir. */
-type ScannedProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user' };
+type ScannedProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user' };
 
 /**
  * Scan a profiles directory and return an entry for each `.yaml` file.
  * Non-YAML files and unreadable files are silently skipped.
  */
-async function scanProfilesDir(dir: string, scope: 'project' | 'user'): Promise<ScannedProfileEntry[]> {
+async function scanProfilesDir(dir: string, scope: 'local' | 'project' | 'user'): Promise<ScannedProfileEntry[]> {
   let entries: string[];
   try {
     entries = await readdir(dir);
@@ -1325,30 +1403,42 @@ async function scanProfilesDir(dir: string, scope: 'project' | 'user'): Promise<
 }
 
 /**
- * List all profile files from both project (`eforge/profiles/`) and
- * user (`~/.config/eforge/profiles/`) scopes. Each entry includes the profile
+ * List all profile files from local (`.eforge/profiles/`), project (`eforge/profiles/`),
+ * and user (`~/.config/eforge/profiles/`) scopes. Each entry includes the profile
  * name, its declared `backend`, the absolute file path, the scope it belongs to,
- * and `shadowedBy: 'project'` when a user-scope entry is shadowed by a
- * project-scope entry with the same name. Unreadable or non-YAML files are
- * skipped silently.
+ * and `shadowedBy` when an entry is shadowed by a higher-precedence scope.
+ * Shadow rule: `local` shadows `project` and `user`; `project` shadows `user`.
+ * Unreadable or non-YAML files are skipped silently.
  */
 export async function listProfiles(
   configDir: string,
-): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' }>> {
-  type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'project' | 'user'; shadowedBy?: 'project' };
+  cwd?: string,
+): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user'; shadowedBy?: 'local' | 'project' }>> {
+  type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user'; shadowedBy?: 'local' | 'project' };
+  const effectiveCwd = cwd ?? dirname(configDir);
 
+  const localEntries = await scanProfilesDir(localProfilesDir(effectiveCwd), 'local') as ProfileEntry[];
   const projectEntries = await scanProfilesDir(profilesDir(configDir), 'project') as ProfileEntry[];
   const userEntries = await scanProfilesDir(userProfilesDir(), 'user') as ProfileEntry[];
 
-  // Mark user entries that are shadowed by project entries with the same name
+  // Shadow rule: local shadows project and user; project shadows user
+  const localNames = new Set(localEntries.map((e) => e.name));
   const projectNames = new Set(projectEntries.map((e) => e.name));
+
+  for (const entry of projectEntries) {
+    if (localNames.has(entry.name)) {
+      entry.shadowedBy = 'local';
+    }
+  }
   for (const entry of userEntries) {
-    if (projectNames.has(entry.name)) {
+    if (localNames.has(entry.name)) {
+      entry.shadowedBy = 'local';
+    } else if (projectNames.has(entry.name)) {
       entry.shadowedBy = 'project';
     }
   }
 
-  return [...projectEntries, ...userEntries];
+  return [...localEntries, ...projectEntries, ...userEntries];
 }
 
 /**
@@ -1408,21 +1498,25 @@ export async function loadUserProfile(name: string): Promise<{ profile: PartialE
  *
  * When `opts.scope` is `'user'`, the user-scope marker
  * (`~/.config/eforge/.active-profile`) is written instead of the project marker.
+ * When `opts.scope` is `'local'`, the project-local marker
+ * (`.eforge/.active-profile`) is written.
  */
 export async function setActiveProfile(
   configDir: string,
   name: string,
-  opts?: { scope?: 'project' | 'user' },
+  opts?: { scope?: 'local' | 'project' | 'user' },
+  cwd?: string,
 ): Promise<void> {
   const scope = opts?.scope ?? 'project';
+  const effectiveCwd = cwd ?? dirname(configDir);
   name = name.trim();
   if (name.length === 0) {
     throw new Error('Profile name must be a non-empty string');
   }
 
   // Validate profile exists in at least one scope
-  if (!(await profileExistsInAnyScope(configDir, name))) {
-    throw new Error(`Profile "${name}" not found in project or user scope`);
+  if (!(await profileExistsInAnyScope(configDir, name, effectiveCwd))) {
+    throw new Error(`Profile "${name}" not found in local, project, or user scope`);
   }
 
   // Load project config and global config to validate the merged result.
@@ -1431,7 +1525,7 @@ export async function setActiveProfile(
   const globalConfig = await loadUserConfig();
   const projectConfig = await readProjectConfigOrEmpty(configDir);
 
-  const profileResult = await loadProfile(configDir, name);
+  const profileResult = await loadProfile(configDir, name, effectiveCwd);
   if (!profileResult) {
     throw new Error(`Profile "${name}" could not be parsed`);
   }
@@ -1448,7 +1542,9 @@ export async function setActiveProfile(
   }
 
   // Atomic write: tmp file + rename
-  const target = scope === 'user' ? userMarkerPath() : markerPath(configDir);
+  const target = scope === 'user' ? userMarkerPath()
+    : scope === 'local' ? localMarkerPath(effectiveCwd)
+    : markerPath(configDir);
   await mkdir(dirname(target), { recursive: true });
   const tmp = `${target}.${randomBytes(6).toString('hex')}.tmp`;
   await writeFile(tmp, `${name}\n`, 'utf-8');
@@ -1469,7 +1565,7 @@ export type CreateProfileInput =
       pi?: PartialEforgeConfig['pi'];
       agents?: PartialEforgeConfig['agents'];
       overwrite?: boolean;
-      scope?: 'project' | 'user';
+      scope?: 'local' | 'project' | 'user';
     }
   // New multi-runtime input
   | {
@@ -1478,7 +1574,7 @@ export type CreateProfileInput =
       defaultAgentRuntime: string;
       agents?: PartialEforgeConfig['agents'];
       overwrite?: boolean;
-      scope?: 'project' | 'user';
+      scope?: 'local' | 'project' | 'user';
     };
 
 /**
@@ -1495,16 +1591,20 @@ export type CreateProfileInput =
 export async function createAgentRuntimeProfile(
   configDir: string,
   input: CreateProfileInput,
+  cwd?: string,
 ): Promise<{ path: string }> {
   const { name, agents, overwrite, scope: inputScope } = input;
   const scope = inputScope ?? 'project';
+  const effectiveCwd = cwd ?? dirname(configDir);
   if (!name || typeof name !== 'string' || !/^[A-Za-z0-9._-]+$/.test(name)) {
     throw new Error(
       `Invalid profile name "${name}": must contain only letters, digits, dot, underscore, or dash.`,
     );
   }
 
-  const targetDir = scope === 'user' ? userProfilesDir() : profilesDir(configDir);
+  const targetDir = scope === 'user' ? userProfilesDir()
+    : scope === 'local' ? localProfilesDir(effectiveCwd)
+    : profilesDir(configDir);
   const path = resolve(targetDir, `${name}.yaml`);
   if (await fileExists(path)) {
     if (!overwrite) {
@@ -1675,45 +1775,58 @@ export async function deleteAgentRuntimeProfile(
   configDir: string,
   name: string,
   force?: boolean,
-  scope?: 'project' | 'user',
+  scope?: 'local' | 'project' | 'user',
+  cwd?: string,
 ): Promise<void> {
   name = name.trim();
   if (name.length === 0) {
     throw new Error('Profile name must be a non-empty string');
   }
+  const effectiveCwd = cwd ?? dirname(configDir);
 
+  const localPath = localProfilePath(effectiveCwd, name);
   const projectPath = profilePath(configDir, name);
   const userPath = userProfilePath(name);
+  const existsInLocal = await fileExists(localPath);
   const existsInProject = await fileExists(projectPath);
   const existsInUser = await fileExists(userPath);
 
   if (scope === undefined) {
     // Infer scope — error if ambiguous
-    if (existsInProject && existsInUser) {
+    const existingScopes = (
+      [existsInLocal && 'local', existsInProject && 'project', existsInUser && 'user'] as const
+    ).filter(Boolean) as Array<'local' | 'project' | 'user'>;
+
+    if (existingScopes.length > 1) {
       throw new Error(
-        `Profile "${name}" exists in both project and user scope. ` +
-        `Specify scope: 'project' or 'user' to disambiguate.`,
+        `Profile "${name}" exists in multiple scopes (${existingScopes.join(', ')}). ` +
+        `Specify scope: ${existingScopes.map((s) => `'${s}'`).join(' or ')} to disambiguate.`,
       );
     }
-    if (existsInProject) {
+    if (existsInLocal) {
+      scope = 'local';
+    } else if (existsInProject) {
       scope = 'project';
     } else if (existsInUser) {
       scope = 'user';
     } else {
-      throw new Error(`Profile "${name}" not found in project or user scope`);
+      throw new Error(`Profile "${name}" not found in local, project, or user scope`);
     }
   }
 
-  const targetPath = scope === 'user' ? userPath : projectPath;
+  const targetPath = scope === 'user' ? userPath
+    : scope === 'local' ? localPath
+    : projectPath;
   if (!(await fileExists(targetPath))) {
     throw new Error(`Profile "${name}" not found in ${scope} scope at ${targetPath}`);
   }
 
-  // Determine if this profile is currently active via either marker
+  // Determine if this profile is currently active via any marker
+  const localMarkerName = await readMarkerName(localMarkerPath(effectiveCwd));
   const projectMarkerName = await readMarkerName(markerPath(configDir));
   const userMarkerName = await readMarkerName(userMarkerPath());
 
-  if ((projectMarkerName === name || userMarkerName === name) && !force) {
+  if ((localMarkerName === name || projectMarkerName === name || userMarkerName === name) && !force) {
     throw new Error(
       `Profile "${name}" is currently active. ` +
       `Pass force: true to delete it.`,
@@ -1724,6 +1837,13 @@ export async function deleteAgentRuntimeProfile(
 
   // If we forced, clear any marker(s) that pointed at this profile
   if (force) {
+    if (localMarkerName === name) {
+      try {
+        await unlink(localMarkerPath(effectiveCwd));
+      } catch {
+        // marker already gone
+      }
+    }
     if (projectMarkerName === name) {
       try {
         await unlink(markerPath(configDir));

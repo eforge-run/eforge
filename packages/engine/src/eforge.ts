@@ -142,9 +142,9 @@ export class EforgeEngine {
   /** Config warnings collected during loadConfig — emitted as config:warning events. */
   private readonly configWarnings: string[];
   /** Profile data collected during loadConfig — emitted as session:profile event. */
-  private readonly configProfile: { name: string | null; source: 'local' | 'user-local' | 'missing' | 'none'; scope: 'project' | 'user' | null; config: unknown | null };
+  private readonly configProfile: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none'; scope: 'local' | 'project' | 'user' | null; config: unknown | null };
 
-  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'user-local' | 'missing' | 'none'; scope: 'project' | 'user' | null; config: unknown | null }) {
+  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }) {
     this.config = config;
     this.configWarnings = configWarnings;
     this.configProfile = configProfile ?? { name: null, source: 'none', scope: null, config: null };

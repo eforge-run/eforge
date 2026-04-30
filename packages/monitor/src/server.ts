@@ -1088,10 +1088,10 @@ export async function startServer(
           await import('@eforge-build/engine/config');
         const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
         const params = new URLSearchParams(queryString);
-        const scopeParam = params.get('scope') as 'project' | 'user' | 'all' | null;
+        const scopeParam = params.get('scope') as 'local' | 'project' | 'user' | 'all' | null;
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
-          if (scopeParam === 'project') {
+          if (scopeParam === 'project' || scopeParam === 'local') {
             sendJson(res, { profiles: [], active: null, source: 'none' });
             return;
           }
@@ -1104,8 +1104,8 @@ export async function startServer(
           sendJson(res, { profiles, active: name, source });
           return;
         }
-        let profiles = await listProfiles(configDir);
-        if (scopeParam === 'project' || scopeParam === 'user') {
+        let profiles = await listProfiles(configDir, options?.cwd);
+        if (scopeParam === 'local' || scopeParam === 'project' || scopeParam === 'user') {
           profiles = profiles.filter((p) => p.scope === scopeParam);
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
@@ -1114,6 +1114,7 @@ export async function startServer(
           configDir,
           projectConfig as Parameters<typeof resolveActiveProfileName>[1],
           userConfig as Parameters<typeof resolveActiveProfileName>[2],
+          options?.cwd,
         );
         for (const warning of warnings) {
           process.stderr.write(`${warning}\n`);
@@ -1151,15 +1152,16 @@ export async function startServer(
           configDir,
           projectConfig as Parameters<typeof resolveActiveProfileName>[1],
           userConfig as Parameters<typeof resolveActiveProfileName>[2],
+          options?.cwd,
         );
         for (const warning of resolveWarnings) {
           process.stderr.write(`${warning}\n`);
         }
         let profile: unknown = null;
         let harness: 'claude-sdk' | 'pi' | undefined;
-        let profileScope: 'project' | 'user' | undefined;
+        let profileScope: 'local' | 'project' | 'user' | undefined;
         if (name) {
-          const result = await loadProfile(configDir, name);
+          const result = await loadProfile(configDir, name, options?.cwd);
           if (result) {
             profile = result.profile;
             profileScope = result.scope;
@@ -1180,7 +1182,7 @@ export async function startServer(
           sendJsonError(res, 400, 'Missing required field: name (string)');
           return;
         }
-        const scopeVal = body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
+        const scopeVal = body.scope === 'local' || body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
         const { getConfigDir, setActiveProfile } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
@@ -1189,7 +1191,7 @@ export async function startServer(
           return;
         }
         try {
-          await setActiveProfile(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined);
+          await setActiveProfile(configDir, body.name, scopeVal ? { scope: scopeVal } : undefined, options?.cwd);
           sendJson(res, { active: body.name });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Failed to set active profile';
@@ -1221,7 +1223,7 @@ export async function startServer(
           sendJsonError(res, 400, 'Missing required field: name (string)');
           return;
         }
-        const scopeVal = body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
+        const scopeVal = body.scope === 'local' || body.scope === 'project' || body.scope === 'user' ? body.scope : undefined;
         const { getConfigDir, createAgentRuntimeProfile } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
@@ -1248,7 +1250,7 @@ export async function startServer(
               agents: body.agents as PartialEforgeConfig['agents'],
               overwrite: body.overwrite === true,
               scope: scopeVal,
-            });
+            }, options?.cwd);
           } else {
             // Legacy single-runtime shape
             if (body.harness !== 'claude-sdk' && body.harness !== 'pi') {
@@ -1262,7 +1264,7 @@ export async function startServer(
               agents: body.agents as PartialEforgeConfig['agents'],
               overwrite: body.overwrite === true,
               scope: scopeVal,
-            });
+            }, options?.cwd);
           }
           sendJson(res, { path: result.path });
         } catch (err) {
@@ -1287,11 +1289,11 @@ export async function startServer(
       }
       try {
         let force = false;
-        let scopeVal: 'project' | 'user' | undefined;
+        let scopeVal: 'local' | 'project' | 'user' | undefined;
         try {
           const body = await parseJsonBody(req) as { force?: unknown; scope?: unknown };
           force = body.force === true;
-          if (body.scope === 'project' || body.scope === 'user') {
+          if (body.scope === 'local' || body.scope === 'project' || body.scope === 'user') {
             scopeVal = body.scope;
           }
         } catch {
@@ -1305,7 +1307,7 @@ export async function startServer(
           return;
         }
         try {
-          await deleteAgentRuntimeProfile(configDir, name, force, scopeVal);
+          await deleteAgentRuntimeProfile(configDir, name, force, scopeVal, options?.cwd);
           sendJson(res, { deleted: name });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Failed to delete agent runtime profile';
@@ -1368,12 +1370,46 @@ export async function startServer(
       serveHealth(req, res);
     } else if (req.method === 'GET' && url === API_ROUTES.version) {
       sendJson(res, { version: DAEMON_API_VERSION });
-    } else if (url === API_ROUTES.configShow) {
+    } else if (url === API_ROUTES.configShow || (req.method === 'GET' && url.startsWith(`${API_ROUTES.configShow}?`))) {
       try {
-        const { loadConfig } = await import('@eforge-build/engine/config');
+        const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+        const qParams = new URLSearchParams(queryString);
+        const verboseVal = qParams.get('verbose');
+        const verbose = verboseVal === '1' || verboseVal === 'true';
+        const { loadConfig, findConfigFile, getUserConfigPath } = await import('@eforge-build/engine/config');
         const { config: resolved, warnings } = await loadConfig(options?.cwd);
         for (const warning of warnings) { process.stderr.write(`${warning}\n`); }
-        sendJson(res, resolved);
+        if (verbose) {
+          const { access: fsAccess } = await import('node:fs/promises');
+          const { resolve: pathResolve, dirname: pathDirname } = await import('node:path');
+          // Mirror loadConfig's startDir fallback so the verbose contract is honored
+          // whether or not the daemon was started with options.cwd set.
+          const effectiveCwd = options?.cwd ?? process.cwd();
+          const configPath = await findConfigFile(effectiveCwd);
+          // Anchor `.eforge/` to the resolved project root (parent of the eforge/
+          // dir that holds config.yaml) so subdirectory invocations report the
+          // same path that loadConfig actually reads from. Falls back to the
+          // request cwd when no project config exists.
+          const projectRoot = configPath ? pathDirname(pathDirname(configPath)) : effectiveCwd;
+          const localPath = pathResolve(projectRoot, '.eforge', 'config.yaml');
+          const projectPath = configPath ?? null;
+          const userPath = getUserConfigPath();
+          const [localExists, projectExists, userExists] = await Promise.all([
+            fsAccess(localPath).then(() => true).catch(() => false),
+            projectPath ? fsAccess(projectPath).then(() => true).catch(() => false) : Promise.resolve(false),
+            fsAccess(userPath).then(() => true).catch(() => false),
+          ]);
+          sendJson(res, {
+            resolved,
+            sources: {
+              local: { path: localPath, found: localExists },
+              project: { path: projectPath, found: projectExists },
+              user: { path: userPath, found: userExists },
+            },
+          });
+        } else {
+          sendJson(res, resolved);
+        }
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to load config');
       }

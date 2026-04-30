@@ -11,11 +11,12 @@ interface ProfileBadgeProps {
   profile: SessionProfile;
 }
 
-function sourceScopeBadgeText(source: SessionProfile['source'], scope: SessionProfile['scope']): string {
-  const parts: string[] = [];
-  if (source !== 'none' && source !== 'missing') parts.push(source);
-  if (scope) parts.push(scope);
-  return parts.join(' · ');
+function sourceScopeBadgeText(source: SessionProfile['source'], _scope: SessionProfile['scope']): string {
+  if (source === 'none' || source === 'missing') return '';
+  if (source === 'local') return 'project-local';
+  if (source === 'project') return 'project';
+  if (source === 'user-local') return 'user';
+  return source;
 }
 
 function RawYamlBlock({ config }: { config: unknown }) {

@@ -130,7 +130,15 @@ defaultAgentRuntime: claude-sdk
 
 ## Configuration
 
-Configured via `eforge/config.yaml` (searched upward from cwd), a global config at `~/.config/eforge/config.yaml`, environment variables, and auto-discovered files. Agent runtime profiles, custom workflow profiles, hooks, MCP servers, and plugins are all configurable. Agent runtime profiles can be scoped to a project (`eforge/profiles/`) or to the user (`~/.config/eforge/profiles/`) for reuse across projects. See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
+eforge supports three config tiers, merged lowest to highest priority:
+
+| Tier | Path | Committed? | Purpose |
+|------|------|-----------|---------|
+| User | `~/.config/eforge/config.yaml` | No | Cross-project, personal |
+| Project | `eforge/config.yaml` | Yes | Team-canonical |
+| Project-local | `.eforge/config.yaml` | No (gitignored) | Dev-personal override, highest priority |
+
+The project-local tier (`.eforge/`) is automatically gitignored by `/eforge:init`. Use it for personal tuning that should not be committed - it deep-merges over the project and user tiers. Agent runtime profiles, custom workflow profiles, hooks, MCP servers, and plugins are all configurable. Agent runtime profiles follow the same three-tier pattern: `eforge/profiles/` (project scope), `~/.config/eforge/profiles/` (user scope), and `.eforge/profiles/` (project-local scope, highest precedence). See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
 
 ## Development
 

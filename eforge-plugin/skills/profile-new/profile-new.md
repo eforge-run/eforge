@@ -13,8 +13,9 @@ Interactively create a new named agent runtime profile (e.g. `pi-anthropic`, `pi
 
 ### Step 0: Ask scope
 
-Ask: "Where should this profile live? **Project scope** (`eforge/profiles/`) or **user scope** (`~/.config/eforge/profiles/`)?"
+Ask: "Where should this profile live? **Project-local scope** (`.eforge/profiles/`), **project scope** (`eforge/profiles/`), or **user scope** (`~/.config/eforge/profiles/`)?"
 
+- **Project-local scope** - profile lives in `.eforge/profiles/`, gitignored and dev-personal. Takes highest precedence but is never committed.
 - **Project scope** (default) - profile is committed with the project, shared with the team.
 - **User scope** - profile lives in `~/.config/eforge/profiles/`, reusable across all projects on this machine.
 
@@ -25,7 +26,7 @@ If the user does not specify, default to project scope. Remember the chosen scop
 - If `$ARGUMENTS` is non-empty, treat the first token as the profile name.
 - Otherwise ask the user: "What should this profile be called? (e.g. `pi-anthropic`, `pi-glm`, `claude-fast`)"
 
-The name will be used as the filename (project: `eforge/profiles/<name>.yaml`, user: `~/.config/eforge/profiles/<name>.yaml`).
+The name will be used as the filename (local: `.eforge/profiles/<name>.yaml`, project: `eforge/profiles/<name>.yaml`, user: `~/.config/eforge/profiles/<name>.yaml`).
 
 ### Step 2: Pick the harness
 
@@ -101,7 +102,7 @@ Build the profile object that will go to the tool:
 }
 ```
 
-Show the user a rendered preview of the YAML that will land in the chosen scope directory (project: `eforge/profiles/<name>.yaml`, user: `~/.config/eforge/profiles/<name>.yaml`):
+Show the user a rendered preview of the YAML that will land in the chosen scope directory (local: `.eforge/profiles/<name>.yaml`, project: `eforge/profiles/<name>.yaml`, user: `~/.config/eforge/profiles/<name>.yaml`):
 
 ```yaml
 harness: pi
@@ -129,7 +130,7 @@ Call `mcp__eforge__eforge_profile` with:
 {
   action: "create",
   name: "<name>",
-  scope: "<project|user>",   // from Step 0
+  scope: "<local|project|user>",   // from Step 0
   harness: "<claude-sdk|pi>",
   pi: { ... }?,       // omit if empty
   agents: { ... }?,   // omit if empty
@@ -143,7 +144,7 @@ If the tool reports the profile already exists, ask the user whether to retry wi
 
 Ask: "Make `{name}` the active profile for this project?"
 
-If yes, call `mcp__eforge__eforge_profile` with `{ action: "use", name: "<name>", scope: "<project|user>" }` (using the scope from Step 0). This writes the active-profile marker at the chosen scope. Confirm success and let the user know the next eforge build will use the new profile.
+If yes, call `mcp__eforge__eforge_profile` with `{ action: "use", name: "<name>", scope: "<local|project|user>" }` (using the scope from Step 0). This writes the active-profile marker at the chosen scope. Confirm success and let the user know the next eforge build will use the new profile.
 
 If no, remind the user they can switch later with `/eforge:profile <name>`.
 

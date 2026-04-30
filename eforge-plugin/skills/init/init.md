@@ -26,19 +26,20 @@ If `eforge/config.yaml` already exists, also read its current `build.postMergeCo
 Present your suggested commands to the user briefly: "I'd suggest these postMergeCommands based on your project: ..." and ask if they look right. Accept corrections.
 
 <!-- parity-skip-start -->
-### Step 1.5: Existing user-scope profiles
+### Step 1.5: Existing local- and user-scope profiles
 
-Call `mcp__eforge__eforge_profile { action: "list", scope: "user" }` to check for existing user-scope profiles.
+Call `mcp__eforge__eforge_profile { action: "list", scope: "local" }` and `mcp__eforge__eforge_profile { action: "list", scope: "user" }` to check for existing profiles outside the project tier.
 
-If the response contains no profiles (empty list), skip this step entirely and proceed to Step 2.
+If both responses contain no profiles (both lists empty), skip this step entirely and proceed to Step 2.
 
-If profiles exist, present them to the user:
+If any profiles exist, present them in a combined table:
 
-| Name | Harness | Max model |
-|------|---------|-----------|
-| `<name>` | `<agentRuntimes[defaultAgentRuntime].harness>` | `<models.max.id>` |
+| Name | Scope | Harness | Max model |
+|------|-------|---------|-----------|
+| `<name>` | `local` | `<agentRuntimes[defaultAgentRuntime].harness>` | `<models.max.id>` |
+| `<name>` | `user`  | `<agentRuntimes[defaultAgentRuntime].harness>` | `<models.max.id>` |
 
-Ask: "Would you like to use one of these existing user-scope profiles, or create a new project profile?"
+Ask: "Would you like to use one of these existing profiles, or create a new project profile?"
 
 **On pick (existing profile):**
 
@@ -46,16 +47,19 @@ Call `mcp__eforge__eforge_init` with:
 
 ```json
 {
-  "existingProfile": { "name": "<chosen>", "scope": "user" },
+  "existingProfile": { "name": "<chosen>", "scope": "<local|user>" },
   "postMergeCommands": [...]
 }
 ```
 
 Include `force: true` if `$ARGUMENTS` contains `--force` or `force`.
 
-Skip Steps 2–6. Proceed directly to the result message:
+Skip Steps 2–6. Proceed directly to the result message.
 
-> eforge initialized with user-scope profile `<name>` activated. The profile lives at `~/.config/eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands.
+- For a **local**-scope pick:
+  > eforge initialized with local-scope profile `<name>` activated. The profile lives at `.eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands.
+- For a **user**-scope pick:
+  > eforge initialized with user-scope profile `<name>` activated. The profile lives at `~/.config/eforge/profiles/<name>.yaml`. `eforge/config.yaml` was written with the agreed postMergeCommands.
 
 **On "create new project profile":** Fall through to Step 2.
 

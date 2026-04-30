@@ -8,7 +8,7 @@ argument-hint: "[--init|--edit]"
 
 Create or modify an `eforge/config.yaml` configuration file interactively. Supports two modes - init for new projects and edit for existing configs. Validation uses the eforge daemon.
 
-`eforge/config.yaml` holds **team-wide settings only** (postMergeCommands, agent tuning, hooks, queue config, etc.). Agent runtime profiles live in named profile files (`eforge/profiles/<name>.yaml` for project scope, or `~/.config/eforge/profiles/<name>.yaml` for user scope) and are managed by `/eforge:init` and `/eforge:profile-new`. The `agentRuntimes:` and `defaultAgentRuntime:` fields are **top-level keys** in `eforge/config.yaml` for registering and selecting profiles.
+`eforge/config.yaml` holds **team-wide settings only** (postMergeCommands, agent tuning, hooks, queue config, etc.). Personal dev overrides can be placed in `.eforge/config.yaml` (gitignored, highest priority) - it deep-merges over the project and user tiers. Agent runtime profiles live in named profile files (`.eforge/profiles/<name>.yaml` for project-local scope, `eforge/profiles/<name>.yaml` for project scope, or `~/.config/eforge/profiles/<name>.yaml` for user scope) and are managed by `/eforge:init` and `/eforge:profile-new`. The `agentRuntimes:` and `defaultAgentRuntime:` fields are **top-level keys** in `eforge/config.yaml` for registering and selecting profiles.
 
 ## Mode Detection
 

@@ -39,13 +39,14 @@ describe('eforge-plugin/skills/profile/profile.md - user-scope updates', () => {
     expect(raw).toContain('user (shadowed)');
   });
 
-  it('documents all 5 precedence steps', () => {
+  it('documents all 6 precedence steps', () => {
     expect(raw).toContain('## Active Profile Precedence');
-    expect(raw).toMatch(/1\.\s+\*\*Project marker\*\*/);
-    expect(raw).toMatch(/2\.\s+\*\*Project config\*\*/);
-    expect(raw).toMatch(/3\.\s+\*\*User marker\*\*/);
-    expect(raw).toMatch(/4\.\s+\*\*User config\*\*/);
-    expect(raw).toMatch(/5\.\s+\*\*None\*\*/);
+    expect(raw).toMatch(/1\.\s+\*\*Project-local marker\*\*/);
+    expect(raw).toMatch(/2\.\s+\*\*Project marker\*\*/);
+    expect(raw).toMatch(/3\.\s+\*\*Project config\*\*/);
+    expect(raw).toMatch(/4\.\s+\*\*User marker\*\*/);
+    expect(raw).toMatch(/5\.\s+\*\*User config\*\*/);
+    expect(raw).toMatch(/6\.\s+\*\*None\*\*/);
   });
 
   it('documents the scope parameter section', () => {
@@ -97,7 +98,7 @@ describe('eforge-plugin/skills/profile-new/profile-new.md - user-scope updates',
   });
 
   it('passes scope to create action in Step 7', () => {
-    expect(raw).toMatch(/scope:\s*["']<project\|user>["']/);
+    expect(raw).toMatch(/scope:\s*["']<local\|project\|user>["']/);
   });
 
   it('passes scope to use action in Step 8', () => {
@@ -127,13 +128,14 @@ describe('packages/pi-eforge/skills/eforge-profile/SKILL.md - user-scope updates
     expect(raw).toContain('user (shadowed)');
   });
 
-  it('documents all 5 precedence steps', () => {
+  it('documents all 6 precedence steps', () => {
     expect(raw).toContain('## Active Profile Precedence');
-    expect(raw).toMatch(/1\.\s+\*\*Project marker\*\*/);
-    expect(raw).toMatch(/2\.\s+\*\*Project config\*\*/);
-    expect(raw).toMatch(/3\.\s+\*\*User marker\*\*/);
-    expect(raw).toMatch(/4\.\s+\*\*User config\*\*/);
-    expect(raw).toMatch(/5\.\s+\*\*None\*\*/);
+    expect(raw).toMatch(/1\.\s+\*\*Project-local marker\*\*/);
+    expect(raw).toMatch(/2\.\s+\*\*Project marker\*\*/);
+    expect(raw).toMatch(/3\.\s+\*\*Project config\*\*/);
+    expect(raw).toMatch(/4\.\s+\*\*User marker\*\*/);
+    expect(raw).toMatch(/5\.\s+\*\*User config\*\*/);
+    expect(raw).toMatch(/6\.\s+\*\*None\*\*/);
   });
 
   it('documents the scope parameter section', () => {
@@ -180,7 +182,7 @@ describe('packages/pi-eforge/skills/eforge-profile-new/SKILL.md - user-scope upd
   });
 
   it('passes scope to create action in Step 7', () => {
-    expect(raw).toMatch(/scope:\s*["']<project\|user>["']/);
+    expect(raw).toMatch(/scope:\s*["']<local\|project\|user>["']/);
   });
 
   it('uses bare tool names (no mcp__eforge__ prefix) - Pi convention', () => {
@@ -245,7 +247,7 @@ describe('docs/config.md - Backend Profiles section', () => {
     expect(raw).toContain('~/.config/eforge/.active-backend');
   });
 
-  it('documents the 5-step precedence chain', () => {
+  it('documents the 6-step precedence chain', () => {
     // Find the Backend Profiles section
     const sectionStart = raw.indexOf('## Backend Profiles');
     expect(sectionStart).toBeGreaterThan(-1);
@@ -253,11 +255,12 @@ describe('docs/config.md - Backend Profiles section', () => {
     const nextSection = raw.indexOf('\n## ', sectionStart + 1);
     const section = raw.slice(sectionStart, nextSection > -1 ? nextSection : undefined);
 
-    expect(section).toMatch(/1\.\s+\*\*Project marker\*\*/);
-    expect(section).toMatch(/2\.\s+\*\*Project config\*\*/);
-    expect(section).toMatch(/3\.\s+\*\*User marker\*\*/);
-    expect(section).toMatch(/4\.\s+\*\*User config\*\*/);
-    expect(section).toMatch(/5\.\s+\*\*None\*\*/);
+    expect(section).toMatch(/1\.\s+\*\*Project-local marker\*\*/);
+    expect(section).toMatch(/2\.\s+\*\*Project marker\*\*/);
+    expect(section).toMatch(/3\.\s+\*\*Project config\*\*/);
+    expect(section).toMatch(/4\.\s+\*\*User marker\*\*/);
+    expect(section).toMatch(/5\.\s+\*\*User config\*\*/);
+    expect(section).toMatch(/6\.\s+\*\*None\*\*/);
   });
 
   it('documents the scope parameter for create, use, delete', () => {
@@ -294,11 +297,12 @@ describe('plugin <-> Pi skill parity for user-scope updates', () => {
   const pluginInit = readRepoFile('eforge-plugin/skills/init/init.md');
   const piInit = readRepoFile('packages/pi-eforge/skills/eforge-init/SKILL.md');
 
-  it('both profile skills have the same 5-step precedence list', () => {
-    // Both should document all 5 steps
+  it('both profile skills have the same 6-step precedence list', () => {
+    // Both should document all 6 steps
     for (const raw of [pluginBackend, piBackend]) {
-      expect(raw).toMatch(/1\.\s+\*\*Project marker\*\*/);
-      expect(raw).toMatch(/5\.\s+\*\*None\*\*/);
+      expect(raw).toMatch(/1\.\s+\*\*Project-local marker\*\*/);
+      expect(raw).toMatch(/2\.\s+\*\*Project marker\*\*/);
+      expect(raw).toMatch(/6\.\s+\*\*None\*\*/);
     }
   });
 

@@ -402,13 +402,18 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_config
   createDaemonTool(server, cwd, {
     name: 'eforge_config',
-    description: 'Show resolved eforge configuration or validate eforge/config.yaml.',
+    description: 'Show resolved eforge configuration or validate eforge/config.yaml. Config merges three tiers: user (~/.config/eforge/config.yaml), project (eforge/config.yaml), and project-local (.eforge/config.yaml, gitignored). Pass verbose: true with action "show" to see per-tier file presence.',
     schema: {
       action: z.enum(['show', 'validate']).describe("'show' returns resolved config, 'validate' checks for errors"),
+      verbose: z.boolean().optional().describe('When true and action is "show", returns per-tier file presence alongside the merged result.'),
     },
-    handler: async ({ action }, { cwd: toolCwd }) => {
-      const path = action === 'validate' ? API_ROUTES.configValidate : API_ROUTES.configShow;
-      const { data } = await daemonRequest(toolCwd, 'GET', path);
+    handler: async ({ action, verbose }, { cwd: toolCwd }) => {
+      if (action === 'validate') {
+        const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.configValidate);
+        return data;
+      }
+      const qs = verbose ? '?verbose=1' : '';
+      const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.configShow}${qs}`);
       return data;
     },
   });
@@ -416,7 +421,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_profile
   createDaemonTool(server, cwd, {
     name: 'eforge_profile',
-    description: 'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with harness; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+    description: 'Manage named profiles in eforge/profiles/ (project), .eforge/profiles/ (local, gitignored), or ~/.config/eforge/profiles/ (user). Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with harness; "use" writes the active-profile marker to switch profiles; "create" writes a new profile; "delete" removes a profile (refuses when active unless force: true).',
     schema: {
       action: z.enum(['list', 'show', 'use', 'create', 'delete']).describe(
         "'list' enumerates profiles, 'show' returns the resolved active profile, 'use' switches the active profile, 'create' writes a new profile, 'delete' removes a profile",
@@ -427,8 +432,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       agents: z.record(z.string(), z.any()).optional().describe('Agents config block to embed in the profile (optional, "create" only)'),
       overwrite: z.boolean().optional().describe('Overwrite an existing profile when creating. Default: false.'),
       force: z.boolean().optional().describe('Delete even if the profile is currently active. Default: false.'),
-      scope: z.enum(['project', 'user', 'all']).optional().describe(
-        'Scope for the operation. "list" accepts project|user|all (default: all). "use", "create", "delete" accept project|user (default: project). "show" ignores scope (resolves via precedence).',
+      scope: z.enum(['local', 'project', 'user', 'all']).optional().describe(
+        'Scope for the operation. "list" accepts local|project|user|all (default: all). "use", "create", "delete" accept local|project|user (default: project). "local" targets .eforge/ (gitignored, dev-personal, highest precedence). "show" ignores scope (resolves via precedence).',
       ),
     },
     handler: async ({ action, name, harness, pi, agents, overwrite, force, scope }, { cwd: toolCwd }) => {

@@ -199,12 +199,12 @@ export interface AgentRuntimeProfileInfo {
   name: string;
   harness: 'claude-sdk' | 'pi' | undefined;
   path: string;
-  scope: 'project' | 'user';
-  shadowedBy?: 'project';
+  scope: 'local' | 'project' | 'user';
+  shadowedBy?: 'local' | 'project';
 }
 
 /** Source of the active agent runtime profile resolution. */
-export type AgentRuntimeProfileSource = 'local' | 'user-local' | 'missing' | 'none';
+export type AgentRuntimeProfileSource = 'local' | 'project' | 'user-local' | 'missing' | 'none';
 
 // GET /api/profile/list
 export interface ProfileListResponse {
@@ -221,19 +221,19 @@ export interface ProfileShowResponse {
     harness: 'claude-sdk' | 'pi' | undefined;
     /** The parsed profile partial config. Opaque to the client. */
     profile: unknown | null;
-    scope?: 'project' | 'user';
+    scope?: 'local' | 'project' | 'user';
   };
 }
 
 /** Optional scope filter for the list endpoint. */
 export interface ProfileListRequest {
-  scope?: 'project' | 'user' | 'all';
+  scope?: 'local' | 'project' | 'user' | 'all';
 }
 
 // POST /api/profile/use
 export interface ProfileUseRequest {
   name: string;
-  scope?: 'project' | 'user';
+  scope?: 'local' | 'project' | 'user';
 }
 
 export interface ProfileUseResponse {
@@ -249,7 +249,7 @@ export interface ProfileCreateRequest {
   /** Optional agents config block — opaque to the client. */
   agents?: unknown;
   overwrite?: boolean;
-  scope?: 'project' | 'user';
+  scope?: 'local' | 'project' | 'user';
 }
 
 export interface ProfileCreateResponse {
@@ -259,7 +259,7 @@ export interface ProfileCreateResponse {
 // DELETE /api/profile/:name
 export interface ProfileDeleteRequest {
   force?: boolean;
-  scope?: 'project' | 'user';
+  scope?: 'local' | 'project' | 'user';
 }
 
 export interface ProfileDeleteResponse {

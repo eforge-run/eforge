@@ -5,7 +5,7 @@ argument-hint: "[name]"
 
 # /eforge:profile
 
-List, inspect, and switch named agent runtime profiles stored in `eforge/profiles/` (project scope) or `~/.config/eforge/profiles/` (user scope). The active profile is tracked by a marker file at either level; resolution follows a 5-step precedence chain (see below).
+List, inspect, and switch named agent runtime profiles stored in `.eforge/profiles/` (project-local scope), `eforge/profiles/` (project scope), or `~/.config/eforge/profiles/` (user scope). The active profile is tracked by a marker file at any level; resolution follows a 6-step precedence chain (see below).
 
 ## Workflow
 
@@ -23,19 +23,19 @@ Call the `mcp__eforge__eforge_profile` tool with `{ action: "show" }`.
 Parse the response (shape: `{ active, source, resolved: { harness, profile } }`) and report:
 
 - **Active profile**: `{active}` (or "(none - using team default)" when `active` is null)
-- **Source**: `{source}` (`local` when the active profile is picked via the `eforge/.active-profile` marker, `team` when no marker is present and the resolution falls back to the `defaultAgentRuntime:` field in `eforge/config.yaml`, `missing` when the marker points at a profile file that does not exist (stale marker), `none` when no profile is configured at all)
+- **Source**: `{source}` (`local` when the active profile is picked via the `.eforge/.active-profile` marker, `project` when picked via the `eforge/.active-profile` marker, `team` when no marker is present and the resolution falls back to the `defaultAgentRuntime:` field in `eforge/config.yaml`, `missing` when the marker points at a profile file that does not exist (stale marker), `none` when no profile is configured at all)
 - **Resolved harness**: `{resolved.harness}` (e.g. `claude-sdk` or `pi`)
 
 Then call `mcp__eforge__eforge_profile` with `{ action: "list" }` to show the user what other profiles are available, rendering a table with the following columns:
 
 | Name | Scope | Harness | Active |
 |------|-------|---------|--------|
-| `pi-anthropic` | `project` | `pi` | `●` |
+| `pi-anthropic` | `local` | `pi` | `●` |
+| `pi-glm` | `project (shadowed)` | `pi` | |
 | `claude-fast` | `user` | `claude-sdk` | |
-| `pi-glm` | `user (shadowed)` | `pi` | |
 
-- **Scope**: `project` for profiles in `eforge/profiles/`, `user` for profiles in `~/.config/eforge/profiles/`.
-- User entries shadowed by a project profile of the same name show `user (shadowed)` in the Scope column (the project profile takes precedence when resolved by name).
+- **Scope**: `local` for profiles in `.eforge/profiles/` (gitignored, project-local), `project` for profiles in `eforge/profiles/`, `user` for profiles in `~/.config/eforge/profiles/`.
+- Local entries shadow project and user entries of the same name. Project entries shadow user entries of the same name. Shadowed entries show `project (shadowed)` or `user (shadowed)` in the Scope column.
 - Mark the active profile with `●`.
 
 If no profiles exist, suggest `/eforge:profile-new` to create one.
@@ -44,7 +44,7 @@ If no profiles exist, suggest `/eforge:profile-new` to create one.
 
 Call `mcp__eforge__eforge_profile` with `{ action: "use", name: "<arg>" }`. To set the active profile at user scope instead of project scope, pass `scope: "user"`: `{ action: "use", name: "<arg>", scope: "user" }`.
 
-On success, the daemon writes `eforge/.active-profile` with the new profile name. Then call `{ action: "show" }` again and report the new active profile plus the resolved harness:
+On success, the daemon writes the active-profile marker at the chosen scope (`.eforge/.active-profile` for local, `eforge/.active-profile` for project, `~/.config/eforge/.active-profile` for user). Then call `{ action: "show" }` again and report the new active profile plus the resolved harness:
 
 > Switched to `{name}`. Resolved harness: `{resolved.harness}`. The next eforge build will use this profile.
 
@@ -54,20 +54,21 @@ On error (e.g. the profile does not exist), surface the error message and sugges
 
 The `scope` parameter is available on `list`, `use`, `create`, and `delete` actions:
 
-- **`list`**: `scope` accepts `"project"`, `"user"`, or `"all"` (default `"all"`) - shows profiles from both scopes when omitted.
-- **`use` / `create` / `delete`**: `scope` accepts `"project"` or `"user"` (default `"project"`) - operates on `eforge/profiles/` and `eforge/.active-profile` for project scope, `~/.config/eforge/profiles/` and `~/.config/eforge/.active-profile` for user scope.
+- **`list`**: `scope` accepts `"local"`, `"project"`, `"user"`, or `"all"` (default `"all"`) - shows profiles from all scopes when omitted.
+- **`use` / `create` / `delete`**: `scope` accepts `"local"`, `"project"`, or `"user"` (default `"project"`) - operates on `.eforge/profiles/` and `.eforge/.active-profile` for local scope, `eforge/profiles/` and `eforge/.active-profile` for project scope, `~/.config/eforge/profiles/` and `~/.config/eforge/.active-profile` for user scope.
 
 ## Active Profile Precedence
 
-The active agent runtime profile is resolved using a 5-step precedence chain (highest to lowest):
+The active agent runtime profile is resolved using a 6-step precedence chain (highest to lowest):
 
-1. **Project marker** - `eforge/.active-profile` file in the project
-2. **Project config** - `defaultAgentRuntime:` field in `eforge/config.yaml`
-3. **User marker** - `~/.config/eforge/.active-profile` file
-4. **User config** - `defaultAgentRuntime:` field in `~/.config/eforge/config.yaml`
-5. **None** - no profile configured
+1. **Project-local marker** - `.eforge/.active-profile` file in the repo root (gitignored)
+2. **Project marker** - `eforge/.active-profile` file in the project
+3. **Project config** - `defaultAgentRuntime:` field in `eforge/config.yaml`
+4. **User marker** - `~/.config/eforge/.active-profile` file
+5. **User config** - `defaultAgentRuntime:` field in `~/.config/eforge/config.yaml`
+6. **None** - no profile configured
 
-When a profile name is resolved, the profile file is looked up project-first, then user-fallback - so a user-scope marker can still resolve to a project-scope profile file if one exists with that name.
+When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 
 ## Error Handling
 

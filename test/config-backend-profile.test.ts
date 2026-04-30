@@ -91,7 +91,7 @@ describe('resolveActiveProfileName', () => {
     await writeFile(join(configDir, '.active-profile'), 'pi-prod\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
-    expect(result).toEqual({ name: 'pi-prod', source: 'local', warnings: [] });
+    expect(result).toEqual({ name: 'pi-prod', source: 'project', warnings: [] });
   });
 
   it('marker absent + no matching profile → source=none (backend: in config.yaml no longer used for resolution)', async () => {
@@ -642,7 +642,7 @@ describe('user-scope: resolveActiveProfileName', () => {
     expect(result).toEqual({ name: 'default', source: 'user-local', warnings: [] });
   });
 
-  it('returns source=local (project) when both project and user markers exist', async () => {
+  it('returns source=project when both project and user markers exist', async () => {
     // Create profiles in both scopes
     await mkdir(join(configDir, 'profiles'), { recursive: true });
     await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: pi\n', 'utf-8');
@@ -653,7 +653,7 @@ describe('user-scope: resolveActiveProfileName', () => {
     await writeFile(join(userEforgeDir, '.active-profile'), 'usr\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
-    expect(result).toEqual({ name: 'proj', source: 'local', warnings: [] });
+    expect(result).toEqual({ name: 'proj', source: 'project', warnings: [] });
   });
 
   it('user marker wins over user config backend field', async () => {
@@ -690,7 +690,7 @@ describe('user-scope: resolveActiveProfileName', () => {
     await writeFile(join(configDir, '.active-profile'), 'shared\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
-    expect(result).toEqual({ name: 'shared', source: 'local', warnings: [] });
+    expect(result).toEqual({ name: 'shared', source: 'project', warnings: [] });
   });
 });
 
@@ -812,7 +812,7 @@ describe('user-scope: deleteAgentRuntimeProfile', () => {
     await writeFile(join(userEforgeDir, 'profiles', 'dup.yaml'), 'backend: pi\n', 'utf-8');
 
     await expect(deleteAgentRuntimeProfile(configDir, 'dup')).rejects.toThrow(
-      /both project and user scope/i,
+      /multiple scopes/i,
     );
   });
 
@@ -1385,6 +1385,209 @@ describe('user-scope helpers without configDir', () => {
 // ---------------------------------------------------------------------------
 // parseRawConfigLegacy
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// Three-tier (local/.eforge/) tests
+// ---------------------------------------------------------------------------
+
+describe('three-tier: local scope (.eforge/)', () => {
+  let projectDir: string;
+  let configDir: string;
+  let userHomeDir: string;
+  let userEforgeDir: string;
+  let origXdg: string | undefined;
+
+  beforeEach(async () => {
+    ({ projectDir, configDir } = await makeProject({ configYaml: 'agents:\n  maxTurns: 10\n' }));
+    ({ userHomeDir, userEforgeDir } = await makeUserHome());
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = userHomeDir;
+  });
+
+  afterEach(async () => {
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(userHomeDir, { recursive: true, force: true });
+  });
+
+  it('a. local-only profile resolves via loadProfile with scope: local', async () => {
+    await mkdir(join(projectDir, '.eforge', 'profiles'), { recursive: true });
+    await writeFile(
+      join(projectDir, '.eforge', 'profiles', 'foo.yaml'),
+      'backend: claude-sdk\nagents:\n  maxTurns: 77\n',
+      'utf-8',
+    );
+    const result = await loadProfile(configDir, 'foo', projectDir);
+    expect(result).not.toBeNull();
+    expect(result?.scope).toBe('local');
+    expect(result?.profile.agents?.maxTurns).toBe(77);
+  });
+
+  it('b. local profile shadows same-named project profile in loadProfile', async () => {
+    // Create project-scope profile
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(
+      join(configDir, 'profiles', 'foo.yaml'),
+      'agents:\n  maxTurns: 20\n',
+      'utf-8',
+    );
+    // Create local-scope profile with different value
+    await mkdir(join(projectDir, '.eforge', 'profiles'), { recursive: true });
+    await writeFile(
+      join(projectDir, '.eforge', 'profiles', 'foo.yaml'),
+      'agents:\n  maxTurns: 99\n',
+      'utf-8',
+    );
+
+    const result = await loadProfile(configDir, 'foo', projectDir);
+    expect(result?.scope).toBe('local');
+    expect(result?.profile.agents?.maxTurns).toBe(99);
+
+    // listProfiles should show project entry with shadowedBy: 'local'
+    const profiles = await listProfiles(configDir, projectDir);
+    const projectEntry = profiles.find((p) => p.scope === 'project' && p.name === 'foo');
+    expect(projectEntry?.shadowedBy).toBe('local');
+  });
+
+  it('c. local profile shadows user profile when no project entry exists', async () => {
+    // Create user-scope profile
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'foo.yaml'), 'agents:\n  maxTurns: 5\n', 'utf-8');
+    // Create local-scope profile
+    await mkdir(join(projectDir, '.eforge', 'profiles'), { recursive: true });
+    await writeFile(
+      join(projectDir, '.eforge', 'profiles', 'foo.yaml'),
+      'agents:\n  maxTurns: 88\n',
+      'utf-8',
+    );
+
+    const result = await loadProfile(configDir, 'foo', projectDir);
+    expect(result?.scope).toBe('local');
+    expect(result?.profile.agents?.maxTurns).toBe(88);
+
+    const profiles = await listProfiles(configDir, projectDir);
+    const userEntry = profiles.find((p) => p.scope === 'user' && p.name === 'foo');
+    expect(userEntry?.shadowedBy).toBe('local');
+  });
+
+  it('d. three-tier shadow chain: same name in all three tiers', async () => {
+    // local
+    await mkdir(join(projectDir, '.eforge', 'profiles'), { recursive: true });
+    await writeFile(join(projectDir, '.eforge', 'profiles', 'foo.yaml'), 'agents:\n  maxTurns: 100\n', 'utf-8');
+    // project
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'foo.yaml'), 'agents:\n  maxTurns: 50\n', 'utf-8');
+    // user
+    await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
+    await writeFile(join(userEforgeDir, 'profiles', 'foo.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
+
+    // loadProfile returns local
+    const result = await loadProfile(configDir, 'foo', projectDir);
+    expect(result?.scope).toBe('local');
+    expect(result?.profile.agents?.maxTurns).toBe(100);
+
+    // listProfiles: project shadowed by local, user shadowed by local
+    const profiles = await listProfiles(configDir, projectDir);
+    const projectEntry = profiles.find((p) => p.scope === 'project' && p.name === 'foo');
+    const userEntry = profiles.find((p) => p.scope === 'user' && p.name === 'foo');
+    expect(projectEntry?.shadowedBy).toBe('local');
+    expect(userEntry?.shadowedBy).toBe('local');
+  });
+
+  it('e. .eforge/.active-profile takes precedence over eforge/.active-profile', async () => {
+    // Create project-scope profile
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'proj\n', 'utf-8');
+
+    // Create local-scope profile and marker
+    await mkdir(join(projectDir, '.eforge', 'profiles'), { recursive: true });
+    await writeFile(join(projectDir, '.eforge', 'profiles', 'loc.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(projectDir, '.eforge', '.active-profile'), 'loc\n', 'utf-8');
+
+    const result = await resolveActiveProfileName(configDir, {}, undefined, projectDir);
+    expect(result.name).toBe('loc');
+    expect(result.source).toBe('local');
+    expect(result.warnings).toHaveLength(0);
+  });
+
+  it('f. stale .eforge/.active-profile falls through to eforge/.active-profile', async () => {
+    // Local marker points at nonexistent profile
+    await mkdir(join(projectDir, '.eforge'), { recursive: true });
+    await writeFile(join(projectDir, '.eforge', '.active-profile'), 'gone\n', 'utf-8');
+
+    // Project marker points at valid profile
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'proj\n', 'utf-8');
+
+    const result = await resolveActiveProfileName(configDir, {}, undefined, projectDir);
+    expect(result.name).toBe('proj');
+    expect(result.source).toBe('project');
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('gone');
+  });
+
+  it('g. missing .eforge/ → behavior identical to existing two-tier (regression guard)', async () => {
+    // Only project scope exists - no .eforge/ directory
+    await mkdir(join(configDir, 'profiles'), { recursive: true });
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, '.active-profile'), 'proj\n', 'utf-8');
+
+    const result = await resolveActiveProfileName(configDir, {}, undefined, projectDir);
+    expect(result.name).toBe('proj');
+    expect(result.source).toBe('project');
+    expect(result.warnings).toHaveLength(0);
+
+    const loadResult = await loadProfile(configDir, 'proj', projectDir);
+    expect(loadResult?.scope).toBe('project');
+  });
+});
+
+describe('three-tier: loadConfig with .eforge/config.yaml', () => {
+  let projectDir: string;
+  let configDir: string;
+  let userHomeDir: string;
+  let origXdg: string | undefined;
+
+  beforeEach(async () => {
+    ({ projectDir, configDir } = await makeProject({ configYaml: 'agents:\n  maxTurns: 10\n' }));
+    ({ userHomeDir } = await makeUserHome());
+    origXdg = process.env.XDG_CONFIG_HOME;
+    process.env.XDG_CONFIG_HOME = userHomeDir;
+  });
+
+  afterEach(async () => {
+    if (origXdg === undefined) {
+      delete process.env.XDG_CONFIG_HOME;
+    } else {
+      process.env.XDG_CONFIG_HOME = origXdg;
+    }
+    await rm(projectDir, { recursive: true, force: true });
+    await rm(userHomeDir, { recursive: true, force: true });
+  });
+
+  it('local config overrides project config when .eforge/config.yaml exists', async () => {
+    await mkdir(join(projectDir, '.eforge'), { recursive: true });
+    await writeFile(
+      join(projectDir, '.eforge', 'config.yaml'),
+      'agents:\n  maxTurns: 99\n',
+      'utf-8',
+    );
+    const { config: cfg } = await loadConfig(projectDir);
+    expect(cfg.agents.maxTurns).toBe(99);
+  });
+
+  it('missing .eforge/config.yaml is silent — project config still applies', async () => {
+    // No .eforge/ directory at all
+    const { config: cfg } = await loadConfig(projectDir);
+    expect(cfg.agents.maxTurns).toBe(10); // from project config
+  });
+});
 
 describe('parseRawConfigLegacy', () => {
   it('extracts backend config into profile and leaves remaining clean', () => {

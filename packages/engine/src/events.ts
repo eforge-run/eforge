@@ -147,7 +147,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   // Session lifecycle (one per eforge invocation, wraps all phases)
   | { type: 'session:start'; sessionId: string }
   | { type: 'session:end'; sessionId: string; result: EforgeResult }
-  | { type: 'session:profile'; profileName: string | null; source: 'local' | 'user-local' | 'missing' | 'none'; scope: 'project' | 'user' | null; config: unknown | null }
+  | { type: 'session:profile'; profileName: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }
 
   // Phase lifecycle (one per compile/build phase)
   | { type: 'phase:start'; runId: string; planSet: string; command: 'compile' | 'build' }
