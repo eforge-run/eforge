@@ -31,20 +31,34 @@ function buildConfigOverrides(options: { maxConcurrentBuilds?: number; plugins?:
 
 let activeMonitor: Monitor | undefined;
 
-function setupSignalHandlers(): AbortController {
+export function setupSignalHandlers(): AbortController {
   const controller = new AbortController();
-  const handler = () => {
+  let teardownStarted = false;
+
+  const handleSignal = (exitCode: number) => {
+    if (teardownStarted) return;
+    teardownStarted = true;
     controller.abort();
     stopAllSpinners();
-    const timer = setTimeout(() => process.exit(130), SHUTDOWN_TIMEOUT_MS);
+    const timer = setTimeout(() => process.exit(exitCode), SHUTDOWN_TIMEOUT_MS);
     timer.unref();
     if (activeMonitor) {
       try { activeMonitor.stop(); } catch {}
       activeMonitor = undefined;
     }
   };
-  process.on('SIGINT', handler);
-  process.on('SIGTERM', handler);
+
+  const handleException = (exitCode: number, err: unknown) => {
+    process.stderr.write(`[eforge] unhandled error: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
+    handleSignal(exitCode);
+  };
+
+  process.on('SIGINT', () => handleSignal(130));
+  process.on('SIGTERM', () => handleSignal(130));
+  process.on('SIGHUP', () => handleSignal(130));
+  process.on('uncaughtException', (err) => handleException(1, err));
+  process.on('unhandledRejection', (reason) => handleException(1, reason));
+
   return controller;
 }
 

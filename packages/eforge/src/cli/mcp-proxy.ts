@@ -1001,4 +1001,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
+
+  installStdinExitHandlers(process.stdin);
+}
+
+export function installStdinExitHandlers(stdin: NodeJS.ReadableStream): void {
+  stdin.on('close', () => process.exit(0));
+  stdin.on('end', () => process.exit(0));
 }
