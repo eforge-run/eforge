@@ -307,7 +307,7 @@ describe('backward-compat sweep (no user tiers, all 24 roles covered)', () => {
     'doc-updater': 20,
     'test-writer': 30,
     'gap-closer': 20,
-    planner: 30,
+    planner: 80,
     reviewer: 30,
     'review-fixer': 30,
     evaluator: 30,

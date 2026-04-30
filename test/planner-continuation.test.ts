@@ -264,11 +264,11 @@ describe('resolveAgentConfig for builder', () => {
   });
 });
 
-// --- resolveAgentConfig for planner is 30 ---
+// --- resolveAgentConfig for planner is 80 ---
 
 describe('resolveAgentConfig for planner', () => {
-  it('returns maxTurns of 30 (global default, no role-specific override)', () => {
+  it('returns maxTurns of 80 (built-in role default matches builder)', () => {
     const result = resolveAgentConfig('planner', DEFAULT_CONFIG);
-    expect(result.maxTurns).toBe(30);
+    expect(result.maxTurns).toBe(80);
   });
 });

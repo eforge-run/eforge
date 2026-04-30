@@ -92,6 +92,7 @@ export const AGENT_ROLE_MODEL_CLASS_OVERRIDES: Partial<Record<AgentRole, ModelCl
  */
 export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, Partial<ResolvedAgentConfig>>> = {
   builder: { maxTurns: 80, effort: 'high' },  // effort exception: implementation tier default is medium
+  planner: { maxTurns: 80 },
   tester: { maxTurns: 40 },
   'module-planner': { maxTurns: 20 },
   'doc-updater': { maxTurns: 20 },
