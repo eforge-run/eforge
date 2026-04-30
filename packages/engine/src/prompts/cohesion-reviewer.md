@@ -88,11 +88,13 @@ Any match is a `warning` / `feasibility` issue. Include:
 
 When you identify an issue that has a clear, unambiguous fix:
 
-1. Write the fix directly to the plan file using your editing tools.
-2. **Do NOT stage the fix.** Do not run `git add` on any file.
-3. **Do NOT commit.** Do not run `git commit`.
-4. Only write fixes for issues where the correct change is obvious and uncontroversial.
-5. For ambiguous issues, describe the problem and possible fixes in the issue description but do not modify files.
+1. Collect all fixes into a single call to `{{submitTool}}` with a `fixes` array.
+2. **Do NOT use Write, Edit, or NotebookEdit tools** — these tools are unavailable and will fail. All fixes must go through `{{submitTool}}`.
+3. **Do NOT stage the fix.** Do not run `git add` on any file.
+4. **Do NOT commit.** Do not run `git commit`.
+5. Only include fixes for issues where the correct change is obvious and uncontroversial.
+6. For ambiguous issues, describe the problem and possible fixes in the issue description but do not include them in the fixes array.
+7. If you find no fixable issues, call `{{submitTool}}` with an empty `fixes` array, or skip calling it entirely.
 
 # Fix Criteria
 
@@ -106,6 +108,18 @@ A fix is NOT appropriate when:
 - The fix would restructure plans or change scope boundaries
 - The fix would alter module boundaries defined in the architecture
 - The fix requires understanding why the planner made a particular decision
+
+# Fix Submission Schema
+
+The following YAML documents the schema for `{{submitTool}}`:
+
+```yaml
+{{submission_schema}}
+```
+
+**Variant reference:**
+- `replace_plan_file` — supply `planId` (module ID under `modules/`), `frontmatter` (with `id`, `name`, `branch`), and `body`.
+- `replace_plan_body` — supply `planId` and `body`. The existing frontmatter is preserved byte-identically.
 
 # Review Issue Schema
 
@@ -133,7 +147,7 @@ Rules:
 - The `category` attribute must be one of: `cohesion`, `completeness`, `correctness`, `feasibility`, `dependency`, `scope`
 - The `file` attribute is the relative path from the repository root
 - The `line` attribute is optional — include it when you can identify a specific line
-- The `<fix>` element is optional — include it only when you wrote a fix to the file
+- The `<fix>` element is optional — include it only when you submitted a fix via `{{submitTool}}`
 - If you find no issues, output an empty block: `<review-issues></review-issues>`
 - Always output exactly one `<review-issues>` block at the end of your response
 
@@ -141,6 +155,7 @@ Rules:
 
 - Do NOT run `git add` — fixes must remain unstaged
 - Do NOT run `git commit` — the evaluator decides what to accept
+- Do NOT use Write, Edit, or NotebookEdit tools — these are unavailable; use `{{submitTool}}` instead
 - Do NOT modify files outside `{{outputDir}}/{{plan_set_name}}/`
 - Review ONLY the module plan files — do not review or modify source code
 - Do NOT restructure plans (split, merge, reorder) — only fix individual issues within existing plans
