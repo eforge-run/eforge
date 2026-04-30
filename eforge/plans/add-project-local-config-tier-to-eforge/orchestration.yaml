@@ -1,0 +1,87 @@
+name: add-project-local-config-tier-to-eforge
+description: Add a third highest-precedence config tier (.eforge/, gitignored,
+  project-local) by extending packages/engine/src/config.ts and propagating the
+  ActiveProfileSource rename through engine, daemon API, monitor UI, CLI/MCP,
+  skills, and tests.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-three-tier-config
+    name: Add project-local config tier (.eforge/) to eforge
+    depends_on: []
+    branch: add-project-local-config-tier-to-eforge/three-tier-config
+    build:
+      - - implement
+        - doc-update
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Three-tier extension touches packages/engine/src/config.ts plus a
+          coupled ActiveProfileSource rename across engine, client, monitor,
+          monitor-ui, CLI/MCP. Type rename must stay coherent across packages or
+          type-check breaks.
+      reviewer:
+        effort: high
+        rationale: Cross-package rename + new precedence semantics + shadow rules —
+          needs careful review for symmetry between project/user/local code
+          paths and consistent labelling.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - consistency
+      - completeness
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This PRD is a classic excursion: a type rename + tier extension that
+    ripples through known consumers. The negative-expedition signals dominate —
+    it's a type/interface refactor (`ActiveProfileSource`) where changing the
+    definition touches all consumers (a rename-and-update-all-callers pattern),
+    with sequential dependencies (extend config.ts → update consumers → update
+    MCP/CLI → update skills/tests). It is not 4+ independent subsystems; it's
+    one core module (`packages/engine/src/config.ts`) plus mechanical fan-out to
+    known files (eforge.ts, cli/index.ts, mcp-proxy.ts, 8 skill markdown files,
+    2 test files). A single planner session can enumerate every file change and
+    dependency, so excursion fits cleanly. Compile uses `planner` +
+    `plan-review-cycle` because the PRD calls for careful tier-precedence
+    semantics, internal type renames, and plugin/Pi parity across 8 skill files
+    — a plan-quality gate is worth the cost to avoid missing a consumer or
+    mislabeling a precedence step. Build uses `implement` then `review-cycle`
+    (sequential, since `review-cycle` depends on `implement`). I omit
+    `doc-update` and `test-write` because the PRD already enumerates explicit
+    doc updates (README, AGENTS, 8 skill files, plugin.json version bump) and
+    explicit test cases in named existing files
+    (`test/config-backend-profile.test.ts`, `test/config.test.ts`) — the builder
+    handles these inline, and adding the stages would duplicate work. Review
+    uses `single` strategy with three perspectives covering the main risk
+    surfaces: `correctness` (precedence ordering, ENOENT silence, zod
+    validation), `consistency` (the `'local'` semantics flip — old meaning
+    becomes `'project'`, new tier takes the freed `'local'` label, which must be
+    applied uniformly across engine + CLI + MCP + skills), and `completeness`
+    (plugin/Pi skill parity per AGENTS.md, all 8 skill files updated, plugin
+    version bumped, MCP tool scope enum extended). `maxRounds: 2` is appropriate
+    for an excursion of this size; `standard` strictness suits a non-security
+    refactor where the main risks are subtle semantic drift rather than data
+    integrity."
