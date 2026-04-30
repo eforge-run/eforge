@@ -18,6 +18,9 @@ import { RecoverySidecarSheet } from '@/components/recovery/sidecar-sheet';
 const STATUS_ORDER: Record<string, number> = {
   running: 0,
   pending: 1,
+  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+  waiting: 2,
+  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 };
 
 function statusDotClass(status: string): string {
@@ -32,6 +35,10 @@ function statusDotClass(status: string): string {
       return 'bg-red';
     case 'skipped':
       return 'bg-text-dim';
+    // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+    case 'waiting':
+      return 'bg-text-dim/50';
+    // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
     default:
       return 'bg-text-dim';
   }
@@ -155,6 +162,25 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
   const sorted = useMemo(() => sortQueueItems(pendingItems), [pendingItems]);
   const pendingCount = pendingItems.length;
 
+  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+  // Build parent-child map for nested rendering: childId -> parentId
+  const childOf = useMemo(() => {
+    const itemIds = new Set(sorted.map((i) => i.id));
+    const map = new Map<string, string>();
+    for (const item of sorted) {
+      if (item.dependsOn) {
+        for (const dep of item.dependsOn) {
+          if (itemIds.has(dep)) {
+            map.set(item.id, dep);
+            break; // use first matching parent
+          }
+        }
+      }
+    }
+    return map;
+  }, [sorted]);
+  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+
   if (pendingCount === 0) return null;
 
   return (
@@ -191,12 +217,23 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
           const isRecoveryPending = item.status === 'failed' && sidecarVerdict == null;
           // --- eforge:endregion plan-04-monitor-ui ---
 
+          // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+          const isChild = childOf.has(item.id);
+          // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+
           return (
             <div
               key={item.id}
-              className="px-2.5 py-1.5 rounded-md mb-0.5"
+              // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+              className={cn('py-1.5 rounded-md mb-0.5', isChild ? 'pl-5 pr-2.5' : 'px-2.5')}
+              // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
             >
               <div className="flex items-center gap-2">
+                {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}
+                {isChild && (
+                  <span className="text-[10px] text-text-dim/60 flex-shrink-0">↳</span>
+                )}
+                {/* --- eforge:endregion plan-05-piggyback-and-queue-scheduling --- */}
                 <span
                   className={cn('w-2 h-2 rounded-full flex-shrink-0', statusDotClass(item.status))}
                 />
@@ -246,6 +283,11 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
                     p{item.priority}
                   </span>
                 )}
+                {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}
+                {item.status === 'waiting' && (
+                  <span className="text-[10px] text-text-dim/60 italic">waiting</span>
+                )}
+                {/* --- eforge:endregion plan-05-piggyback-and-queue-scheduling --- */}
               </div>
               {/* --- eforge:region plan-04-monitor-ui --- */}
               {sidecar != null && sidecarVerdict != null && (
@@ -256,7 +298,10 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
               {/* --- eforge:endregion plan-04-monitor-ui --- */}
               {item.dependsOn && item.dependsOn.length > 0 && (
                 <div className="pl-[calc(8px+0.5rem)] text-[11px] text-text-dim truncate">
-                  blocked by: {item.dependsOn.join(', ')}
+                  {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}
+                  {item.status === 'waiting' ? 'waiting for: ' : 'blocked by: '}
+                  {/* --- eforge:endregion plan-05-piggyback-and-queue-scheduling --- */}
+                  {item.dependsOn.join(', ')}
                 </div>
               )}
             </div>

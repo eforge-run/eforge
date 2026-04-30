@@ -207,15 +207,15 @@ Same numbered-list approach as Step 4.1. Pre-select from `$ARGUMENTS` if provide
 
 ### 5.2: Check for in-flight builds
 
-Call `eforge_queue_list {}` to get current queue items. Filter for `status: "running"` or `"queued"`.
+Call `eforge_queue_list {}` to get current queue items. Filter for `status: "running"` or `"pending"`. Build a numbered list indexed starting at 1.
 
-- **If no active items**: enqueue immediately.
-- **If active items exist**: list them by **title** (never show queue ids):
+- **If no active items**: enqueue immediately (skip to 5.3).
+- **If active items exist**: list them by **title** with index numbers (never show queue ids):
 
 ```
 There are active builds in the queue:
   1. [running] Update documentation site
-  2. [queued] Add dark mode support
+  2. [pending] Add dark mode support
 
 Would you like to:
   a. Run now (no dependency)
@@ -223,12 +223,27 @@ Would you like to:
   c. Wait for build 2 to finish, then run
 ```
 
-Resolve the user's pick to the internal queue id. The user never types or sees a queue id.
+**Resolving selection:**
+- Internally map the user's pick (letter or number) to the corresponding item's internal queue id.
+- The user never types or sees the queue id at any point.
+
+**Handling ambiguity:**
+- If the user provides a free-text name, find all items whose title contains the mention.
+- Exactly one match: proceed. Multiple matches: ask user to pick by number.
+
+**Confirm before enqueueing:**
+> "Got it — `{playbook-name}` will run after **{selected-build-title}** finishes."
+
+Await user confirmation. Only call the enqueue tool if confirmed.
 
 ### 5.3: Enqueue
 
 - **Run now**: Call `eforge_playbook { action: "enqueue", name: "<name>" }`.
 - **Wait for build**: Call `eforge_playbook { action: "enqueue", name: "<name>", afterQueueId: "<resolved-id>" }`.
+
+The `afterQueueId` is the internal queue id resolved in Step 5.2 — never the title and never typed by the user.
+
+If enqueue returns 404 (upstream no longer active), tell the user it already finished and run the playbook immediately without `afterQueueId`.
 
 ---
 

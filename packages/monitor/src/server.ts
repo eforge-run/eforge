@@ -722,17 +722,20 @@ export async function startServer(
       }
     }
 
-    // Scan main queue dir (pending/running) and subdirectories (failed, skipped)
+    // Scan main queue dir (pending/running), waiting/, and terminal subdirectories
     await Promise.all([
       loadFromDir(queueDir, 'pending'),
       loadFromDir(resolve(queueDir, 'failed'), 'failed'),
       loadFromDir(resolve(queueDir, 'skipped'), 'skipped'),
+      // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+      loadFromDir(resolve(queueDir, 'waiting'), 'waiting'),
+      // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
     ]);
 
     // Post-filter dependsOn to mirror resolveQueueOrder runtime semantics:
     // terminal items expose no dependsOn; live items retain only deps on other live items.
     const liveIds = new Set(
-      items.filter((i) => i.status === 'pending' || i.status === 'running').map((i) => i.id),
+      items.filter((i) => i.status === 'pending' || i.status === 'running' || i.status === 'waiting').map((i) => i.id),
     );
     for (const item of items) {
       if (item.status === 'failed' || item.status === 'skipped') {
@@ -1474,7 +1477,9 @@ export async function startServer(
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
         const { loadPlaybook, playbookToSessionPlan } = await import('@eforge-build/engine/playbook');
-        const { enqueuePrd, inferTitle } = await import('@eforge-build/engine/prd-queue');
+        // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+        const { enqueuePrd, inferTitle, validateDependsOnExists } = await import('@eforge-build/engine/prd-queue');
+        // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
@@ -1484,12 +1489,29 @@ export async function startServer(
         const plan = playbookToSessionPlan(playbook);
         const queueDir = options?.queueDir ?? 'eforge/queue';
         const title = inferTitle(plan.source, plan.name);
+
+        // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+        // Validate upstream exists before enqueueing; reject with 404 if not found.
+        if (afterQueueId) {
+          try {
+            await validateDependsOnExists([afterQueueId], queueDir, cwd);
+          } catch (validationErr) {
+            const msg = validationErr instanceof Error ? validationErr.message : 'Invalid afterQueueId';
+            sendJsonError(res, 404, msg);
+            return;
+          }
+        }
+        // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+
         const result = await enqueuePrd({
           body: plan.source,
           title,
           queueDir,
           cwd,
           depends_on: afterQueueId ? [afterQueueId] : undefined,
+          // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+          intoWaiting: afterQueueId ? true : false,
+          // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
         });
         sendJson(res, { id: result.id });
       } catch (err) {

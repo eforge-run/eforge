@@ -213,15 +213,15 @@ Same numbered-list approach as Step 4.1. If a name was provided via `$ARGUMENTS`
 
 Call `mcp__eforge__eforge_queue_list {}` to get current queue items.
 
-Filter for items where `status` is `"running"` or `"queued"` (pending).
+Filter for items where `status` is `"running"` or `"pending"` (queued). Build a numbered list indexed starting at 1.
 
 - **If no active items**: skip to Step 5.3 and enqueue immediately.
-- **If active items exist**: list them by **title** (never show queue ids):
+- **If active items exist**: list them by **title** with index numbers (never show queue ids):
 
 ```
 There are active builds in the queue:
   1. [running] Update documentation site
-  2. [queued] Add dark mode support
+  2. [pending] Add dark mode support
 
 Would you like to:
   a. Run now (enqueue immediately, no dependency)
@@ -229,17 +229,33 @@ Would you like to:
   c. Wait for build 2 to finish, then run
 ```
 
-If the user picks a wait option, resolve the selected build's **title** to its internal queue id internally (from the `eforge_queue_list` response). The user never types or sees the queue id.
+**Resolving selection:**
+- Internally map the user's pick (letter b/c or number 1/2) to the corresponding queue item's internal id.
+- The user never types or sees the queue id at any point.
 
-On multi-match (two items with similar titles), ask the user to pick which one to wait for.
+**Handling ambiguity:**
+- If the user provides a free-text name instead of a number (e.g. "wait for the docs build"), find all items whose title contains the mention.
+- If exactly one match: proceed.
+- If multiple matches: ask the user to pick by number from the numbered list above.
+
+**Before enqueueing, confirm the mapping:**
+> "Got it — `{playbook-name}` will run after **{selected-build-title}** finishes."
+
+Await user confirmation (y/n or just Enter). Only proceed if confirmed.
 
 ### 5.3: Enqueue
 
 - **Run now**: Call `mcp__eforge__eforge_playbook { action: "enqueue", name: "<name>" }`.
 - **Wait for build**: Call `mcp__eforge__eforge_playbook { action: "enqueue", name: "<name>", afterQueueId: "<resolved-id>" }`.
 
+The `afterQueueId` is the internal queue id resolved in Step 5.2 — never the title and never typed by the user.
+
 Report:
 > "Playbook `{name}` enqueued. {If afterQueueId: 'It will start after `{build-title}` completes.'}"
+
+If the enqueue fails because the upstream is no longer active (404 from daemon), tell the user:
+> "The build you selected has already finished. Running `{name}` now instead."
+Then call `mcp__eforge__eforge_playbook { action: "enqueue", name: "<name>" }` without `afterQueueId`.
 
 ---
 

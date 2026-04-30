@@ -387,7 +387,7 @@ eforge has two dimensions of parallelism:
 
 Controls the maximum number of PRDs built concurrently when processing the queue (`eforge build --queue` or `eforge queue run`). Default: `2`.
 
-PRDs with `depends_on` frontmatter wait for their dependencies to complete before starting. If a dependency fails, all transitive dependents are marked as blocked and skipped.
+PRDs with `depends_on` frontmatter are held in a `waiting` state until their upstream builds reach a terminal state. When an upstream build completes, its dependents transition from `waiting` to `pending` and are dispatched normally. If an upstream build fails or is cancelled, all transitive dependents transition to `skipped` with a reason recording the upstream id and terminal state. Skip propagation is recursive - if a `skipped` entry itself has dependents, those also become `skipped`.
 
 CLI override: `--max-concurrent-builds <n>`
 

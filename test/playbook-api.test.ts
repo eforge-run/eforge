@@ -321,23 +321,33 @@ describe('POST /api/playbook/enqueue', () => {
     const teamDir = resolve(configDir, 'playbooks');
     await mkdir(teamDir, { recursive: true });
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw(), 'utf-8');
+    await writeFile(resolve(teamDir, 'my-dependent.md'), validPlaybookRaw(), 'utf-8');
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
     server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
 
-    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookEnqueue}`, {
+    // First enqueue the predecessor so it exists in the queue
+    const predecessorRes = await post(`http://localhost:${server.port}${API_ROUTES.playbookEnqueue}`, {
       name: 'my-feature',
-      afterQueueId: 'some-predecessor-id',
+    });
+    expect(predecessorRes.status).toBe(200);
+    const { id: predecessorId } = await predecessorRes.json() as { id: string };
+
+    // Now enqueue the dependent with afterQueueId pointing to the predecessor
+    const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookEnqueue}`, {
+      name: 'my-dependent',
+      afterQueueId: predecessorId,
     });
     expect(res.status).toBe(200);
 
     const data = await res.json() as { id: string };
-    const queueFile = resolve(tmpDir, 'eforge', 'queue', `${data.id}.md`);
+    // When afterQueueId is provided, the PRD goes into waiting/ not queue root
+    const queueFile = resolve(tmpDir, 'eforge', 'queue', 'waiting', `${data.id}.md`);
     const content = await readFile(queueFile, 'utf-8');
 
     // The PRD frontmatter should include depends_on
     expect(content).toContain('depends_on');
-    expect(content).toContain('some-predecessor-id');
+    expect(content).toContain(predecessorId);
   });
 
   it('enqueued PRD is visible via GET /api/queue', async () => {

@@ -277,6 +277,7 @@ async function handleRunBranch(
   );
 
   let afterQueueId: string | undefined;
+  let afterBuildTitle: string | undefined;
 
   if (runningItems.length > 0) {
     // Build wait-or-run-now options (user sees titles, never queue ids)
@@ -301,12 +302,35 @@ async function handleRunBranch(
     if (!waitChoice) return;
 
     if (waitChoice !== "now") {
-      // Resolve title -> queue id internally
+      // Resolve title -> queue id internally; user never sees the queue id
       afterQueueId = waitChoice;
+      afterBuildTitle =
+        runningItems.find((i) => i.id === waitChoice)?.title ?? waitChoice;
+
+      // Confirm the mapping before enqueueing
+      const confirmChoice = await showSelectOverlay(
+        ctx,
+        `eforge - Confirm Wait`,
+        [
+          {
+            value: "confirm",
+            label: `Run after: ${afterBuildTitle}`,
+            description: `"${selectedName}" will start once this build finishes`,
+          },
+          {
+            value: "cancel",
+            label: "Cancel",
+            description: "Go back to the previous menu",
+          },
+        ],
+      );
+      if (!confirmChoice || confirmChoice === "cancel") return;
     }
   }
 
   // Step 4: Enqueue
+  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+  let enqueueSuccess = false;
   try {
     await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
       apiPlaybookEnqueue({
@@ -316,17 +340,49 @@ async function handleRunBranch(
           : { name: selectedName! },
       }),
     );
+    enqueueSuccess = true;
   } catch (err) {
-    await showInfoOverlay(
-      ctx,
-      "eforge - Error",
-      `Failed to enqueue playbook "${selectedName}":\n\n${err instanceof Error ? err.message : String(err)}`,
-    );
-    return;
+    const msg = err instanceof Error ? err.message : String(err);
+    // If upstream no longer active (404), fall back to immediate enqueue
+    if (afterQueueId && /not found|404/i.test(msg)) {
+      await showInfoOverlay(
+        ctx,
+        "eforge - Build Already Finished",
+        `The build you selected has already finished. Running **${selectedName}** now instead.`,
+      );
+      try {
+        await withLoader(ctx, `Enqueueing ${selectedName}...`, () =>
+          apiPlaybookEnqueue({
+            cwd: ctx.cwd,
+            body: { name: selectedName! },
+          }),
+        );
+        afterQueueId = undefined;
+        afterBuildTitle = undefined;
+        enqueueSuccess = true;
+      } catch (fallbackErr) {
+        await showInfoOverlay(
+          ctx,
+          "eforge - Error",
+          `Failed to enqueue playbook "${selectedName}":\n\n${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`,
+        );
+        return;
+      }
+    } else {
+      await showInfoOverlay(
+        ctx,
+        "eforge - Error",
+        `Failed to enqueue playbook "${selectedName}":\n\n${msg}`,
+      );
+      return;
+    }
   }
+  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
-  const afterNote = afterQueueId
-    ? `\n\nIt will start after the selected build finishes.`
+  if (!enqueueSuccess) return;
+
+  const afterNote = afterBuildTitle
+    ? `\n\nIt will start after **${afterBuildTitle}** completes.`
     : "";
   await showInfoOverlay(
     ctx,
