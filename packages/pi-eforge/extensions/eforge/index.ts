@@ -44,6 +44,7 @@ import type {
 } from '@eforge-build/client';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
+import { handlePlaybookCommand } from './playbook-commands';
 import type { UIContext } from './ui-helpers';
 
 // ---------------------------------------------------------------------------
@@ -1749,4 +1750,15 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       await handleConfigCommand(pi, _latestCtx, args);
     },
   });
+
+  // --- eforge:region plan-04-skills-handheld-uis ---
+
+  pi.registerCommand("eforge:playbook", {
+    description: "Create, edit, run, list, and promote eforge playbooks",
+    handler: async (args) => {
+      await handlePlaybookCommand(pi, _latestCtx, args ?? "");
+    },
+  });
+
+  // --- eforge:endregion plan-04-skills-handheld-uis ---
 }
