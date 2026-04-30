@@ -10,6 +10,16 @@ disable-model-invocation: true
 Initialize eforge in this project. This skill targets the Pi harness exclusively. Presents a two-track setup flow (Quick or Mix-and-match) to assemble a named agent runtime profile (all runtimes use `harness: pi`), then creates it under `eforge/profiles/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.) with `agentRuntimes:` and `defaultAgentRuntime:` as top-level keys.
 <!-- parity-skip-end -->
 
+## Welcome
+
+Before starting Step 1, print this welcome message to the user verbatim:
+
+> Welcome to eforge — an agentic build system that turns plans into code. You stay close to the code (planning, decisions) while eforge implements, blind-reviews, and validates in the background.
+>
+> This setup configures your agent runtime profile and post-merge validation commands.
+
+Then proceed to Step 1.
+
 ## Workflow
 
 ### Step 1: Determine postMergeCommands
