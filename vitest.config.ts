@@ -6,6 +6,7 @@ const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
   test: {
+    setupFiles: ['./test/setup-test-env.ts'],
     include: [
       'test/**/*.test.ts',
       'packages/engine/test/**/*.test.ts',
