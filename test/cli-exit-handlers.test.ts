@@ -9,9 +9,9 @@
  * Follows AGENTS.md conventions: no mocks, real code, inline data objects.
  */
 
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
 import { PassThrough } from 'node:stream';
-import { setupSignalHandlers } from '../packages/eforge/src/cli/index.js';
+import { setupSignalHandlers, setActiveMonitor } from '../packages/eforge/src/cli/index.js';
 import { installStdinExitHandlers } from '../packages/eforge/src/cli/mcp-proxy.js';
 import type { Monitor } from '@eforge-build/monitor';
 
@@ -20,13 +20,30 @@ import type { Monitor } from '@eforge-build/monitor';
 // ---------------------------------------------------------------------------
 
 describe('setupSignalHandlers', () => {
+  let preExceptionListeners: Function[];
+  let preRejectionListeners: Function[];
+
+  beforeEach(() => {
+    preExceptionListeners = process.listeners('uncaughtException').slice();
+    preRejectionListeners = process.listeners('unhandledRejection').slice();
+  });
+
   afterEach(() => {
-    // Remove all listeners added during tests so they don't bleed into other tests
+    setActiveMonitor(undefined);
+    // Remove only the listeners added during the test so vitest's own handlers survive
+    for (const listener of process.listeners('uncaughtException')) {
+      if (!preExceptionListeners.includes(listener)) {
+        process.removeListener('uncaughtException', listener as (...args: unknown[]) => void);
+      }
+    }
+    for (const listener of process.listeners('unhandledRejection')) {
+      if (!preRejectionListeners.includes(listener)) {
+        process.removeListener('unhandledRejection', listener as (...args: unknown[]) => void);
+      }
+    }
     process.removeAllListeners('SIGINT');
     process.removeAllListeners('SIGTERM');
     process.removeAllListeners('SIGHUP');
-    process.removeAllListeners('uncaughtException');
-    process.removeAllListeners('unhandledRejection');
   });
 
   function makeMonitorStub(): Monitor {
@@ -38,12 +55,7 @@ describe('setupSignalHandlers', () => {
     } as unknown as Monitor;
   }
 
-  it('aborts the controller and calls monitor.stop() on SIGTERM', () => {
-    // We need to wire activeMonitor — setupSignalHandlers reads the module-level
-    // activeMonitor. We set it by running withMonitor indirectly; instead, we
-    // exercise the handler by relying on the fact that the signal fires the
-    // closure. Since activeMonitor is module-private, we verify the abort signal
-    // directly and the exit spy.
+  it('aborts the controller on SIGTERM', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
 
     const controller = setupSignalHandlers();
@@ -170,29 +182,32 @@ describe('setupSignalHandlers', () => {
     vi.useRealTimers();
   });
 
-  it('monitor.stop() is called exactly once even when handler fires twice', () => {
-    // We work around the module-private activeMonitor by directly testing
-    // that the re-entry guard prevents double-invocation of any side effects.
-    // The stub monitor is injected by observing that the guard works (see
-    // the re-entry test above). For direct stop() verification we construct
-    // a fresh module instance via dynamic import isolation is not needed because
-    // the guard is tested via the exit count assertion in the re-entry test.
-    //
-    // Here we verify the guard behaviorally: after two SIGTERM emissions,
-    // only one watchdog timer fires.
-    vi.useFakeTimers();
+  it('calls monitor.stop() exactly once on SIGTERM', () => {
     const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const monitor = makeMonitorStub();
+    setActiveMonitor(monitor);
+
+    setupSignalHandlers();
+    process.emit('SIGTERM');
+
+    expect(monitor.stop).toHaveBeenCalledTimes(1);
+
+    setActiveMonitor(undefined);
+    exitSpy.mockRestore();
+  });
+
+  it('monitor.stop() is called exactly once even when handler fires twice', () => {
+    const exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {}) as never);
+    const monitor = makeMonitorStub();
+    setActiveMonitor(monitor);
 
     setupSignalHandlers();
     process.emit('SIGTERM');
     process.emit('SIGHUP');
 
-    vi.runAllTimers();
-    // Only the first invocation arms the watchdog; second is a no-op
-    expect(exitSpy).toHaveBeenCalledTimes(1);
+    expect(monitor.stop).toHaveBeenCalledTimes(1);
 
     exitSpy.mockRestore();
-    vi.useRealTimers();
   });
 });
 

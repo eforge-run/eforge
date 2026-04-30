@@ -31,6 +31,11 @@ function buildConfigOverrides(options: { maxConcurrentBuilds?: number; plugins?:
 
 let activeMonitor: Monitor | undefined;
 
+/** Exposed for testing only — sets the module-level active monitor. */
+export function setActiveMonitor(m: Monitor | undefined): void {
+  activeMonitor = m;
+}
+
 export function setupSignalHandlers(): AbortController {
   const controller = new AbortController();
   let teardownStarted = false;
