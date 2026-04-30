@@ -12,6 +12,7 @@ import type { EforgeEvent } from '@eforge-build/engine/events';
 import { withHooks } from '@eforge-build/engine/hooks';
 import { withSessionId, withRunId, runSession } from '@eforge-build/engine/session';
 import { initDisplay, renderEvent, renderStatus, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
+import { registerPlaybookCommand } from './playbook.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { registerDebugComposerCommand } from './debug-composer.js';
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '@eforge-build/monitor';
@@ -821,6 +822,10 @@ export function createProgram(abortController?: AbortController): Command {
       },
     );
   // --- eforge:endregion plan-01-backend-apply-recovery ---
+
+  // --- eforge:region plan-03-cli-playbook-commands ---
+  registerPlaybookCommand(program);
+  // --- eforge:endregion plan-03-cli-playbook-commands ---
 
   // MCP proxy command — runs the stdio MCP server that bridges to the daemon
   program

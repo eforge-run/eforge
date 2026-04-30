@@ -106,6 +106,14 @@ Standalone CLI:
 ```bash
 npx @eforge-build/eforge build "Add rate limiting to the API"
 npx @eforge-build/eforge build plans/my-feature-prd.md
+
+# Run a saved playbook
+npx @eforge-build/eforge play docs-sync
+
+# Manage playbooks
+npx @eforge-build/eforge playbook list
+npx @eforge-build/eforge playbook run docs-sync --after q-abc
+npx @eforge-build/eforge playbook promote tech-debt-sweep
 ```
 
 Or install globally: `npm install -g @eforge-build/eforge`
@@ -138,7 +146,7 @@ eforge supports three config tiers, merged lowest to highest priority:
 | Project | `eforge/config.yaml` | Yes | Team-canonical |
 | Project-local | `.eforge/config.yaml` | No (gitignored) | Dev-personal override, highest priority |
 
-The project-local tier (`.eforge/`) is automatically gitignored by `/eforge:init`. Use it for personal tuning that should not be committed - it deep-merges over the project and user tiers. Agent runtime profiles, custom workflow profiles, hooks, MCP servers, and plugins are all configurable. Agent runtime profiles follow the same three-tier pattern: `eforge/profiles/` (project scope), `~/.config/eforge/profiles/` (user scope), and `.eforge/profiles/` (project-local scope, highest precedence). Playbooks follow the same pattern using `eforge/playbooks/`, `~/.config/eforge/playbooks/`, and `.eforge/playbooks/` respectively - higher-precedence tiers shadow lower ones by name. See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
+The project-local tier (`.eforge/`) is automatically gitignored by `/eforge:init`. Use it for personal tuning that should not be committed - it deep-merges over the project and user tiers. Agent runtime profiles, custom workflow profiles, hooks, MCP servers, and plugins are all configurable. Agent runtime profiles follow the same three-tier pattern: `eforge/profiles/` (project scope), `~/.config/eforge/profiles/` (user scope), and `.eforge/profiles/` (project-local scope, highest precedence). Playbooks follow the same pattern using `eforge/playbooks/`, `~/.config/eforge/playbooks/`, and `.eforge/playbooks/` respectively - higher-precedence tiers shadow lower ones by name. Use `eforge playbook list` to see available playbooks with their source and shadow chain, `eforge playbook run <name>` (or the shortcut `eforge play <name>`) to enqueue one, and `eforge playbook edit <name>` to modify it in `$EDITOR`. `eforge playbook promote` moves a playbook from project-local to project scope (staged for commit); `eforge playbook demote` moves it back. See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
 
 ## Development
 

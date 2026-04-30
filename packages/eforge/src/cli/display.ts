@@ -3,6 +3,7 @@ import ora, { type Ora } from 'ora';
 import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
+import type { PlaybookListEntry } from '@eforge-build/client';
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();
@@ -955,6 +956,54 @@ export function renderQueueList(groups: {
   renderGroup(groups.running, 'Running', false);
   renderGroup(groups.failed, 'Failed', true);
   renderGroup(groups.skipped, 'Skipped', true);
+}
+
+const PLAYBOOK_SOURCE_COLORS: Record<string, (s: string) => string> = {
+  'project-local': chalk.yellow,
+  'project-team': chalk.cyan,
+  'user': chalk.blue,
+};
+
+/**
+ * Render the playbook listing with name, source label, description, and shadow chain.
+ * Source labels are color-coded: yellow=project-local, cyan=project-team, blue=user.
+ */
+export function renderPlaybookList(playbooks: PlaybookListEntry[]): void {
+  if (playbooks.length === 0) {
+    console.log(chalk.dim('No playbooks found.'));
+    return;
+  }
+
+  const NAME_COL = 24;
+  const SRC_COL = 16;
+  const DESC_COL = 36;
+
+  console.log('');
+  console.log(`  ${'Name'.padEnd(NAME_COL)}  ${'Source'.padEnd(SRC_COL)}  Description`);
+  console.log(chalk.dim(`  ${'─'.repeat(NAME_COL)}  ${'─'.repeat(SRC_COL)}  ${'─'.repeat(DESC_COL)}`));
+
+  for (const pb of playbooks) {
+    const name = pb.name.length > NAME_COL
+      ? pb.name.slice(0, NAME_COL - 1) + '…'
+      : pb.name.padEnd(NAME_COL);
+
+    const srcLabel = `[${pb.source}]`.padEnd(SRC_COL);
+    const colorFn = PLAYBOOK_SOURCE_COLORS[pb.source] ?? chalk.dim;
+    const srcColored = colorFn(srcLabel);
+
+    const desc = pb.description.length > DESC_COL
+      ? pb.description.slice(0, DESC_COL - 1) + '…'
+      : pb.description;
+
+    console.log(`  ${name}  ${srcColored}  ${desc}`);
+
+    if (pb.shadows.length > 0) {
+      const shadowSources = pb.shadows.map((s) => s.source).join(', ');
+      console.log(chalk.dim(`    shadows ${shadowSources}`));
+    }
+  }
+
+  console.log('');
 }
 
 /**
