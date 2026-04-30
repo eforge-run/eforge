@@ -5,7 +5,7 @@
  * same dependency graph algorithm as plan orchestration.
  */
 
-import { readFile, readdir, writeFile, mkdir, rm, open } from 'node:fs/promises';
+import { readFile, readdir, writeFile, mkdir, rm, open, rename } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
 import { resolve, basename } from 'node:path';
@@ -29,6 +29,7 @@ const prdFrontmatterSchema = z.object({
   created: z.string().optional(),
   priority: z.number().int().optional(),
   depends_on: z.array(z.string()).optional(),
+  skip_reason: z.string().optional(),
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -527,6 +528,12 @@ export interface EnqueuePrdOptions {
   priority?: number;
   /** Optional dependency list */
   depends_on?: string[];
+  /** If true, write to waiting/ subdirectory (for piggybacked PRDs awaiting upstream completion) */
+  intoWaiting?: boolean;
+  /** Agent runtime profile name to use when executing this PRD (forwarded from playbook frontmatter) */
+  agentRuntime?: string;
+  /** Commands to run after the build merges (forwarded from playbook frontmatter) */
+  postMerge?: string[];
 }
 
 export interface EnqueuePrdResult {
@@ -559,11 +566,16 @@ function slugify(title: string): string {
  * - Slug generation from title
  * - Duplicate slug handling (-2, -3 suffix)
  * - Queue directory auto-creation
+ * - Optional `intoWaiting` flag to write to the waiting/ subdirectory
  */
 export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrdResult> {
-  const { body, title, queueDir, cwd, priority, depends_on } = options;
+  const { body, title, queueDir, cwd, priority, depends_on, intoWaiting, agentRuntime, postMerge } = options;
 
-  const absDir = resolve(cwd, queueDir);
+  // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
+  const targetSubdir = intoWaiting ? 'waiting' : undefined;
+  const absDir = targetSubdir
+    ? resolve(cwd, queueDir, targetSubdir)
+    : resolve(cwd, queueDir);
 
   // Create queue dir if needed
   await mkdir(absDir, { recursive: true });
@@ -607,6 +619,12 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   if (depends_on !== undefined && depends_on.length > 0) {
     fmLines.push(`depends_on: [${depends_on.map((d) => `"${d}"`).join(', ')}]`);
   }
+  if (agentRuntime !== undefined) {
+    fmLines.push(`agentRuntime: ${agentRuntime}`);
+  }
+  if (postMerge !== undefined && postMerge.length > 0) {
+    fmLines.push(`postMerge:\n${postMerge.map((cmd) => `  - ${cmd}`).join('\n')}`);
+  }
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;
   const filePath = resolve(absDir, `${slug}.md`);
@@ -617,4 +635,185 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
     filePath,
     frontmatter,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Piggyback scheduling helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Find all PRDs in the given array that list `upstreamId` in their `depends_on`.
+ */
+export function findDependents(prds: QueuedPrd[], upstreamId: string): QueuedPrd[] {
+  return prds.filter((p) => p.frontmatter.depends_on?.includes(upstreamId) ?? false);
+}
+
+/**
+ * Move a PRD file from `waiting/` to a destination directory.
+ *
+ * Tries `git mv` first (for git-tracked files), then falls back to
+ * `fs.rename` + `git add` for untracked files (e.g. written by the
+ * daemon without a prior commit). Non-fatal when git is unavailable.
+ */
+async function movePrdFromWaiting(
+  filePath: string,
+  destDir: string,
+  cwd: string,
+  message: string,
+): Promise<void> {
+  const destPath = resolve(destDir, basename(filePath));
+  await mkdir(destDir, { recursive: true });
+  const prdId = basename(filePath, '.md');
+
+  // Try git mv first (tracked files)
+  try {
+    await retryOnLock(() => exec('git', ['mv', '--', filePath, destPath], { cwd }), cwd);
+    await forgeCommit(cwd, composeCommitMessage(`queue(${prdId}): ${message}`), { paths: [filePath, destPath] });
+    return;
+  } catch {
+    // Not tracked — fall back to fs rename
+  }
+
+  // fs rename for untracked files
+  await rename(filePath, destPath);
+  try {
+    await retryOnLock(() => exec('git', ['add', '--', destPath], { cwd }), cwd);
+    await forgeCommit(cwd, composeCommitMessage(`queue(${prdId}): ${message}`), { paths: [destPath] });
+  } catch {
+    // No git repo — non-fatal, file is in the correct location
+  }
+}
+
+/**
+ * Validate that all `depends_on` ids currently exist in the queue
+ * (pending/running or waiting). Throws with a descriptive error if any
+ * upstream is not found, so enqueue callers can surface the error to users.
+ *
+ * Does NOT check the `failed/` or `skipped/` directories — those are
+ * terminal states and cannot serve as live upstream dependencies.
+ */
+export async function validateDependsOnExists(
+  depends_on: string[],
+  queueDir: string,
+  cwd: string,
+): Promise<void> {
+  if (depends_on.length === 0) return;
+
+  const [pendingPrds, waitingPrds] = await Promise.all([
+    loadQueue(queueDir, cwd).catch((): QueuedPrd[] => []),
+    loadQueue(`${queueDir}/waiting`, cwd).catch((): QueuedPrd[] => []),
+  ]);
+
+  const existingIds = new Set([
+    ...pendingPrds.map((p) => p.id),
+    ...waitingPrds.map((p) => p.id),
+  ]);
+
+  for (const dep of depends_on) {
+    if (!existingIds.has(dep)) {
+      throw new Error(
+        `depends_on references unknown queue item: "${dep}". ` +
+        `Only pending, running, or waiting queue items can be used as upstream dependencies.`,
+      );
+    }
+  }
+}
+
+/**
+ * Recursively transition waiting dependents of `upstreamId` to `skipped/`.
+ *
+ * Called when an upstream PRD transitions to a terminal failure state
+ * (`failed` or `cancelled`). Dependents are moved from `waiting/` to
+ * `skipped/` with a reason string, then their own dependents are also
+ * skipped (cascade).
+ */
+export async function propagateSkip(
+  queueDir: string,
+  cwd: string,
+  upstreamId: string,
+  reason: string,
+): Promise<void> {
+  let waitingPrds: QueuedPrd[];
+  try {
+    waitingPrds = await loadQueue(`${queueDir}/waiting`, cwd);
+  } catch {
+    return; // No waiting directory or read error — nothing to do
+  }
+
+  const dependents = findDependents(waitingPrds, upstreamId);
+  if (dependents.length === 0) return;
+
+  const skippedDir = resolve(cwd, queueDir, 'skipped');
+
+  for (const dep of dependents) {
+    const depReason = `upstream ${upstreamId} ${reason}`;
+    await movePrdFromWaiting(
+      dep.filePath,
+      skippedDir,
+      cwd,
+      `skipped - ${depReason}`,
+    );
+    // Cascade: skip dependents of this now-skipped PRD
+    await propagateSkip(queueDir, cwd, dep.id, 'skipped');
+  }
+}
+
+/**
+ * Unblock waiting PRDs whose upstream `completedId` has now finished.
+ *
+ * Moves qualifying PRDs from `waiting/` back to the queue root so the
+ * normal dispatcher can pick them up. A waiting PRD is unblocked when
+ * ALL of its `depends_on` entries are either the just-completed id or
+ * no longer present in the active queue (pending/waiting).
+ *
+ * Returns the ids of PRDs that were moved to pending.
+ */
+export async function unblockWaiting(
+  queueDir: string,
+  cwd: string,
+  completedId: string,
+): Promise<string[]> {
+  let waitingPrds: QueuedPrd[];
+  try {
+    waitingPrds = await loadQueue(`${queueDir}/waiting`, cwd);
+  } catch {
+    return [];
+  }
+
+  if (waitingPrds.length === 0) return [];
+
+  // Build the set of ids that are still actively blocked (pending or waiting)
+  const pendingPrds = await loadQueue(queueDir, cwd).catch((): QueuedPrd[] => []);
+  const stillActiveIds = new Set<string>([
+    ...waitingPrds.map((p) => p.id),
+    ...pendingPrds.map((p) => p.id),
+  ]);
+  // The just-completed PRD is no longer active
+  stillActiveIds.delete(completedId);
+
+  const queueRoot = resolve(cwd, queueDir);
+  const unblocked: string[] = [];
+
+  for (const prd of waitingPrds) {
+    const deps: string[] = prd.frontmatter.depends_on ?? [];
+    // A dep is satisfied when it's the just-completed id or not in any active queue
+    const allSatisfied = deps.every(
+      (dep: string) => dep === completedId || !stillActiveIds.has(dep),
+    );
+
+    if (allSatisfied) {
+      await movePrdFromWaiting(
+        prd.filePath,
+        queueRoot,
+        cwd,
+        `unblocked - ${completedId} completed`,
+      );
+      unblocked.push(prd.id);
+      // Remove from stillActiveIds so other waiting PRDs that depend on
+      // this one can also be unblocked in subsequent loop iterations.
+      stillActiveIds.delete(prd.id);
+    }
+  }
+
+  return unblocked;
 }

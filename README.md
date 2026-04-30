@@ -99,13 +99,21 @@ The main `@eforge-build/eforge` npm package is the standalone CLI and daemon run
 
 The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. If you already have user-scope profiles in `~/.config/eforge/profiles/`, it offers to activate one of those instead of creating a new project profile. Otherwise it walks you through a Quick setup (one harness and model for every tier) or a Mix-and-match flow (different harness, provider, or model per tier). In Claude Code you choose between `claude-sdk` and `pi`; in Pi the harness is pinned to `pi` and you pick from available providers and models. For further customization, run `/eforge:config --edit`.
 
-The Pi package also provides native interactive commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations — exploring scope, code impact, architecture, design decisions, documentation, and risks — before handing off to `/eforge:build`.
+The Pi package also provides native interactive commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations — exploring scope, code impact, architecture, design decisions, documentation, and risks — before handing off to `/eforge:build`. Both surfaces also expose `/eforge:playbook` for creating, editing, running, and managing reusable automation playbooks that encode recurring workflows as named, version-controlled templates.
 
 Standalone CLI:
 
 ```bash
 npx @eforge-build/eforge build "Add rate limiting to the API"
 npx @eforge-build/eforge build plans/my-feature-prd.md
+
+# Run a saved playbook
+npx @eforge-build/eforge play docs-sync
+
+# Manage playbooks
+npx @eforge-build/eforge playbook list
+npx @eforge-build/eforge playbook run docs-sync --after q-abc
+npx @eforge-build/eforge playbook promote tech-debt-sweep
 ```
 
 Or install globally: `npm install -g @eforge-build/eforge`
@@ -138,7 +146,7 @@ eforge supports three config tiers, merged lowest to highest priority:
 | Project | `eforge/config.yaml` | Yes | Team-canonical |
 | Project-local | `.eforge/config.yaml` | No (gitignored) | Dev-personal override, highest priority |
 
-The project-local tier (`.eforge/`) is automatically gitignored by `/eforge:init`. Use it for personal tuning that should not be committed - it deep-merges over the project and user tiers. Agent runtime profiles, custom workflow profiles, hooks, MCP servers, and plugins are all configurable. Agent runtime profiles follow the same three-tier pattern: `eforge/profiles/` (project scope), `~/.config/eforge/profiles/` (user scope), and `.eforge/profiles/` (project-local scope, highest precedence). See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
+The project-local tier (`.eforge/`) is automatically gitignored by `/eforge:init`. Use it for personal tuning that should not be committed - it deep-merges over the project and user tiers. Agent runtime profiles, custom workflow profiles, hooks, MCP servers, and plugins are all configurable. Agent runtime profiles follow the same three-tier pattern: `eforge/profiles/` (project scope), `~/.config/eforge/profiles/` (user scope), and `.eforge/profiles/` (project-local scope, highest precedence). Playbooks follow the same pattern using `eforge/playbooks/`, `~/.config/eforge/playbooks/`, and `.eforge/playbooks/` respectively - higher-precedence tiers shadow lower ones by name. Use `eforge playbook list` to see available playbooks with their source and shadow chain, `eforge playbook run <name>` (or the shortcut `eforge play <name>`) to enqueue one, and `eforge playbook edit <name>` to modify it in `$EDITOR`. `eforge playbook promote` moves a playbook from project-local to project scope (staged for commit); `eforge playbook demote` moves it back. See [docs/config.md](docs/config.md) and [docs/hooks.md](docs/hooks.md).
 
 ## Development
 

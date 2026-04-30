@@ -44,6 +44,7 @@ import type {
 } from '@eforge-build/client';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
+import { handlePlaybookCommand } from './playbook-commands';
 import type { UIContext } from './ui-helpers';
 
 // ---------------------------------------------------------------------------
@@ -1509,6 +1510,165 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
   // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
+  // --- eforge:region plan-02-daemon-http-and-mcp-tool ---
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_playbook
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_playbook",
+    label: "eforge playbook",
+    description:
+      'Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook\'s frontmatter and body; "save" validates and writes a playbook to the target tier; "enqueue" loads a playbook and enqueues it as a PRD, optionally chained after another queue entry; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing.',
+    parameters: Type.Object({
+      action: StringEnum(["list", "show", "save", "enqueue", "promote", "demote", "validate"] as const, {
+        description: "Operation to perform on playbooks",
+      }),
+      name: Type.Optional(
+        Type.String({
+          description: 'Playbook name (required for "show", "enqueue", "promote", "demote")',
+        }),
+      ),
+      scope: Type.Optional(
+        StringEnum(["user", "project-team", "project-local"] as const, {
+          description: 'Target scope for "save" (determines which tier directory to write to)',
+        }),
+      ),
+      playbook: Type.Optional(
+        Type.Object({
+          frontmatter: Type.Object({
+            name: Type.String(),
+            description: Type.String(),
+            scope: StringEnum(["user", "project-team", "project-local"] as const),
+            agentRuntime: Type.Optional(Type.String()),
+            postMerge: Type.Optional(Type.Array(Type.String())),
+          }),
+          body: Type.Object({
+            goal: Type.String(),
+            outOfScope: Type.Optional(Type.String()),
+            acceptanceCriteria: Type.Optional(Type.String()),
+            plannerNotes: Type.Optional(Type.String()),
+          }),
+        }, {
+          description: 'Playbook content (required for "save")',
+        }),
+      ),
+      afterQueueId: Type.Optional(
+        Type.String({
+          description: 'Queue entry ID to depend on (optional, "enqueue" only). When set, the new PRD will have dependsOn: [afterQueueId].',
+        }),
+      ),
+      raw: Type.Optional(
+        Type.String({
+          description: 'Raw Markdown playbook string (required for "validate")',
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { action, name, scope, playbook, afterQueueId, raw } = params;
+
+      if (action === "list") {
+        const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.playbookList);
+        return jsonResult(data);
+      }
+
+      if (action === "show") {
+        if (!name) throw new Error('"name" is required when action is "show"');
+        const { data } = await daemonRequest(
+          ctx.cwd,
+          "GET",
+          `${API_ROUTES.playbookShow}?name=${encodeURIComponent(name)}`,
+        );
+        return jsonResult(data);
+      }
+
+      if (action === "save") {
+        if (!scope) throw new Error('"scope" is required when action is "save"');
+        if (!playbook) throw new Error('"playbook" is required when action is "save"');
+        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookSave, { scope, playbook });
+        return jsonResult(data);
+      }
+
+      if (action === "enqueue") {
+        if (!name) throw new Error('"name" is required when action is "enqueue"');
+        const body: Record<string, unknown> = { name };
+        if (afterQueueId !== undefined) body.afterQueueId = afterQueueId;
+        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookEnqueue, body);
+        return jsonResult(data);
+      }
+
+      if (action === "promote") {
+        if (!name) throw new Error('"name" is required when action is "promote"');
+        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookPromote, { name });
+        return jsonResult(data);
+      }
+
+      if (action === "demote") {
+        if (!name) throw new Error('"name" is required when action is "demote"');
+        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookDemote, { name });
+        return jsonResult(data);
+      }
+
+      // action === "validate"
+      if (!raw) throw new Error('"raw" is required when action is "validate"');
+      const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.playbookValidate, { raw });
+      return jsonResult(data);
+    },
+
+    renderCall(args, theme) {
+      const action = typeof args.action === "string" ? args.action : "?";
+      const name = typeof args.name === "string" ? args.name : "";
+      const suffix = name ? ` ${name}` : "";
+      return new Text(
+        theme.fg("toolTitle", theme.bold(`eforge playbook ${action}${suffix}`)),
+        0,
+        0,
+      );
+    },
+
+    renderResult(result, _options, theme) {
+      const text = result.content[0];
+      if (!text || text.type !== "text") {
+        return new Text(theme.fg("muted", "No data"), 0, 0);
+      }
+      try {
+        const data = JSON.parse(text.text) as Record<string, unknown>;
+        const lines: string[] = [];
+
+        if (Array.isArray((data as { playbooks?: unknown }).playbooks)) {
+          const playbooks = (data as { playbooks: Array<{ name: string; description: string; source: string }> }).playbooks;
+          lines.push(theme.fg("accent", `${playbooks.length} playbook(s)`));
+          for (const p of playbooks) {
+            const source = theme.fg("dim", ` [${p.source}]`);
+            lines.push(`  ${theme.fg("text", p.name)}${source}  ${theme.fg("muted", p.description)}`);
+          }
+        } else if ((data as { path?: unknown }).path) {
+          lines.push(theme.fg("success", "✓ ") + theme.fg("text", String((data as { path: string }).path)));
+        } else if ((data as { id?: unknown }).id) {
+          lines.push(theme.fg("success", "✓ Enqueued: ") + theme.fg("accent", String((data as { id: string }).id)));
+        } else if ((data as { ok?: unknown }).ok !== undefined) {
+          const ok = (data as { ok: boolean }).ok;
+          const errors = (data as { errors?: string[] }).errors ?? [];
+          if (ok) {
+            lines.push(theme.fg("success", "✓ Valid"));
+          } else {
+            lines.push(theme.fg("error", "✗ Invalid"));
+            for (const err of errors) {
+              lines.push(`  ${theme.fg("warning", err)}`);
+            }
+          }
+        } else {
+          lines.push(theme.fg("muted", text.text.slice(0, 200)));
+        }
+        return new Text(lines.join("\n"), 0, 0);
+      } catch {
+        return new Text(theme.fg("muted", text.text.slice(0, 200)), 0, 0);
+      }
+    },
+  });
+
+  // --- eforge:endregion plan-02-daemon-http-and-mcp-tool ---
+
   // ------------------------------------------------------------------
   // Command aliases — map /eforge:* to /skill:eforge-*
   // Pi has no programmatic skill invocation API, so we delegate via
@@ -1590,4 +1750,15 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       await handleConfigCommand(pi, _latestCtx, args);
     },
   });
+
+  // --- eforge:region plan-04-skills-handheld-uis ---
+
+  pi.registerCommand("eforge:playbook", {
+    description: "Create, edit, run, list, and promote eforge playbooks",
+    handler: async (args) => {
+      await handlePlaybookCommand(pi, _latestCtx, args ?? "");
+    },
+  });
+
+  // --- eforge:endregion plan-04-skills-handheld-uis ---
 }

@@ -228,12 +228,17 @@ This skill supports long, iterative conversations. Key behaviors:
 | User wants to abandon a session | Set status to `abandoned` in frontmatter |
 | User wants to restart from scratch | Create a new session, leave old one as-is |
 
+## Saving a Plan as a Playbook
+
+If the user asks to save the in-progress plan as a reusable playbook (e.g. "save this as a playbook", "turn this into a playbook", "I want to reuse this"), hand off to `/eforge:playbook` (Create branch) with the current session plan as the draft starting point. The playbook skill handles scope classification (project-local vs. project-team vs. user) and persists the playbook via the daemon.
+
 ## Related Skills
 
 | Skill | Command | When to suggest |
 |-------|---------|----------------|
 | Init | `/eforge:init` | No eforge config found in the project |
 | Build | `/eforge:build` | User wants to enqueue work for the daemon to build |
+| Playbook | `/eforge:playbook` | User wants to save this plan as a reusable playbook, or manage existing playbooks |
 | Config | `/eforge:config` | User wants to view, edit, or validate the eforge config |
 | Status | `/eforge:status` | User wants to check build progress or queue state |
 | Restart | `/eforge:restart` | User wants to restart the eforge daemon |

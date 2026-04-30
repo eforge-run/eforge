@@ -377,6 +377,8 @@ Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `
 
 Agent runtime profiles follow the same three-level pattern. Profile files can exist at project-local scope (`.eforge/profiles/` - gitignored), project scope (`eforge/profiles/`), or user scope (`~/.config/eforge/profiles/`). The active-profile marker can be set at any level: `.eforge/.active-profile` (project-local, highest precedence), `eforge/.active-profile` (project), or `~/.config/eforge/.active-profile` (user). Active profile resolution walks a 6-step precedence: (1) project-local marker, (2) project marker, (3) project config `defaultAgentRuntime:` field, (4) user marker, (5) global config `defaultAgentRuntime:` field, (6) none. When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 
+Playbooks follow the same three-tier pattern: `.eforge/playbooks/` (project-local, highest precedence), `eforge/playbooks/` (project scope), and `~/.config/eforge/playbooks/` (user scope). When the same playbook name exists at multiple tiers, the highest-precedence tier wins and lower-tier copies are reported as shadows. Each playbook carries a `scope` frontmatter field that must match the tier it was loaded from; a mismatch is surfaced as a warning in the listing. The `eforge playbook` command manages playbooks from the CLI: `list` shows all available playbooks with source labels and shadow chains; `new` scaffolds a new playbook file non-interactively (accepts `--scope`, `--name`, `--description`, `--from <file>`); `edit <name>` opens the resolved playbook in `$EDITOR` and validates the result before saving; `run <name> [--after <queue-id>]` enqueues the playbook (also available as `eforge play <name>`); `promote <name>` moves a playbook from `.eforge/playbooks/` to `eforge/playbooks/` and stages the new file; `demote <name>` moves it back to project-local scope.
+
 ## Parallelism
 
 eforge has two dimensions of parallelism:
@@ -385,7 +387,7 @@ eforge has two dimensions of parallelism:
 
 Controls the maximum number of PRDs built concurrently when processing the queue (`eforge build --queue` or `eforge queue run`). Default: `2`.
 
-PRDs with `depends_on` frontmatter wait for their dependencies to complete before starting. If a dependency fails, all transitive dependents are marked as blocked and skipped.
+PRDs with `depends_on` frontmatter are held in a `waiting` state until their upstream builds reach a terminal state. When an upstream build completes, its dependents transition from `waiting` to `pending` and are dispatched normally. If an upstream build fails or is cancelled, all transitive dependents transition to `skipped` with a reason recording the upstream id and terminal state. Skip propagation is recursive - if a `skipped` entry itself has dependents, those also become `skipped`.
 
 CLI override: `--max-concurrent-builds <n>`
 

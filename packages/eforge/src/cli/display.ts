@@ -3,6 +3,7 @@ import ora, { type Ora } from 'ora';
 import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from '@eforge-build/engine/events';
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
+import type { PlaybookListEntry } from '@eforge-build/client';
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();
@@ -893,15 +894,21 @@ export function renderStatus(status: EforgeStatus): void {
 
 /**
  * Render the PRD queue as a formatted table, grouped by location-based status.
- * Accepts separate arrays for each state (pending, running, failed, skipped).
+ * Accepts separate arrays for each state (pending, running, waiting, failed, skipped).
+ *
+ * PRDs with `depends_on` referencing another PRD in the same listing are
+ * rendered indented under their parent with a `  \u21b3 ` prefix.
  */
 export function renderQueueList(groups: {
   pending: QueuedPrd[];
   running: QueuedPrd[];
   failed: QueuedPrd[];
   skipped: QueuedPrd[];
+  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+  waiting?: QueuedPrd[];
+  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 }): void {
-  const total = groups.pending.length + groups.running.length + groups.failed.length + groups.skipped.length;
+  const total = groups.pending.length + groups.running.length + groups.failed.length + groups.skipped.length + (groups.waiting?.length ?? 0);
   if (total === 0) {
     console.log(chalk.dim('No PRDs in queue.'));
     return;
@@ -913,6 +920,28 @@ export function renderQueueList(groups: {
     if (days <= 14) return chalk.yellow(padded);
     return chalk.red(padded);
   }
+
+  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+  /**
+   * Build a parent-to-children map for nesting display.
+   * A PRD is a child if its `depends_on` references another PRD in the same group.
+   */
+  function buildChildMap(group: QueuedPrd[]): Map<string, string> {
+    const groupIds = new Set(group.map((p) => p.id));
+    // childId -> parentId (first matching parent in group)
+    const childOf = new Map<string, string>();
+    for (const prd of group) {
+      const deps = prd.frontmatter.depends_on ?? [];
+      for (const dep of deps) {
+        if (groupIds.has(dep)) {
+          childOf.set(prd.id, dep);
+          break;
+        }
+      }
+    }
+    return childOf;
+  }
+  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
   function renderGroup(group: QueuedPrd[], label: string, dim: boolean): void {
     if (group.length === 0) return;
@@ -927,11 +956,20 @@ export function renderQueueList(groups: {
     console.log(chalk.dim('  --------  -----------------------------  -----------  -----  ----------'));
 
     const TITLE_COL_WIDTH = 29;
+    // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+    const childOf = buildChildMap(group);
+    const rendered = new Set<string>();
 
-    for (const prd of group) {
+    function renderPrd(prd: QueuedPrd, isChild: boolean): void {
+      if (rendered.has(prd.id)) return;
+      rendered.add(prd.id);
+
+      const indent = isChild ? chalk.cyan('  \u21b3 ') : '  ';
+      const indentWidth = isChild ? 4 : 2; // \u21b3 + space = 4 chars wide (visual)
+      const effectiveTitleWidth = isChild ? TITLE_COL_WIDTH - 2 : TITLE_COL_WIDTH;
       const pri = prd.frontmatter.priority !== undefined ? String(prd.frontmatter.priority) : '-';
-      const title = prd.frontmatter.title.length > TITLE_COL_WIDTH
-        ? prd.frontmatter.title.slice(0, TITLE_COL_WIDTH - 1) + '\u2026'
+      const title = prd.frontmatter.title.length > effectiveTitleWidth
+        ? prd.frontmatter.title.slice(0, effectiveTitleWidth - 1) + '\u2026'
         : prd.frontmatter.title;
       const created = prd.frontmatter.created ?? '-';
       const deps = prd.frontmatter.depends_on?.join(', ') ?? '-';
@@ -946,15 +984,87 @@ export function renderQueueList(groups: {
         staleDaysStr = '    -';
       }
 
-      const line = `  ${pri.padEnd(10)}${title.padEnd(TITLE_COL_WIDTH + 2)}  ${created.padEnd(13)}${staleDaysStr}  ${deps}`;
+      const padding = isChild ? '' : ' '.repeat(indentWidth - 2);
+      const line = `${indent}${padding}${pri.padEnd(10)}${title.padEnd(effectiveTitleWidth + 2)}  ${created.padEnd(13)}${staleDaysStr}  ${deps}`;
       console.log(dim ? chalk.dim(line) : line);
+    }
+
+    // Render parents first, then their immediate children
+    for (const prd of group) {
+      if (childOf.has(prd.id)) continue; // skip children in first pass
+      renderPrd(prd, false);
+      // Render direct children of this parent
+      for (const child of group) {
+        if (childOf.get(child.id) === prd.id) {
+          renderPrd(child, true);
+        }
+      }
+    }
+
+    // Render any unrendered PRDs (orphaned children whose parent is in a different group)
+    for (const prd of group) {
+      if (!rendered.has(prd.id)) {
+        renderPrd(prd, false);
+      }
+    }
+    // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+  }
+
+  renderGroup(groups.running, 'Running', false);
+  renderGroup(groups.pending, 'Pending', false);
+  // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+  renderGroup(groups.waiting ?? [], 'Waiting (blocked by upstream)', false);
+  // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+  renderGroup(groups.failed, 'Failed', true);
+  renderGroup(groups.skipped, 'Skipped', true);
+}
+
+const PLAYBOOK_SOURCE_COLORS: Record<string, (s: string) => string> = {
+  'project-local': chalk.yellow,
+  'project-team': chalk.cyan,
+  'user': chalk.blue,
+};
+
+/**
+ * Render the playbook listing with name, source label, description, and shadow chain.
+ * Source labels are color-coded: yellow=project-local, cyan=project-team, blue=user.
+ */
+export function renderPlaybookList(playbooks: PlaybookListEntry[]): void {
+  if (playbooks.length === 0) {
+    console.log(chalk.dim('No playbooks found.'));
+    return;
+  }
+
+  const NAME_COL = 24;
+  const SRC_COL = 16;
+  const DESC_COL = 36;
+
+  console.log('');
+  console.log(`  ${'Name'.padEnd(NAME_COL)}  ${'Source'.padEnd(SRC_COL)}  Description`);
+  console.log(chalk.dim(`  ${'─'.repeat(NAME_COL)}  ${'─'.repeat(SRC_COL)}  ${'─'.repeat(DESC_COL)}`));
+
+  for (const pb of playbooks) {
+    const name = pb.name.length > NAME_COL
+      ? pb.name.slice(0, NAME_COL - 1) + '…'
+      : pb.name.padEnd(NAME_COL);
+
+    const srcLabel = `[${pb.source}]`.padEnd(SRC_COL);
+    const colorFn = PLAYBOOK_SOURCE_COLORS[pb.source] ?? chalk.dim;
+    const srcColored = colorFn(srcLabel);
+
+    const desc = pb.description.length > DESC_COL
+      ? pb.description.slice(0, DESC_COL - 1) + '…'
+      : pb.description;
+
+    console.log(`  ${name}  ${srcColored}  ${desc}`);
+
+    if (pb.shadows.length > 0) {
+      const shadowSources = pb.shadows.map((s) => s.source).join(', ');
+      console.log(chalk.dim(`    shadows ${shadowSources}`));
     }
   }
 
-  renderGroup(groups.pending, 'Pending', false);
-  renderGroup(groups.running, 'Running', false);
-  renderGroup(groups.failed, 'Failed', true);
-  renderGroup(groups.skipped, 'Skipped', true);
+  console.log('');
 }
 
 /**

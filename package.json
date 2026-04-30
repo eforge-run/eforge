@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@eforge-build/client": "workspace:*",
+    "commander": "^14.0.3",
     "@eforge-build/engine": "workspace:*",
     "@eforge-build/monitor": "workspace:*",
     "@eforge-build/monitor-ui": "workspace:*",

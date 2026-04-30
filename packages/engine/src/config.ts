@@ -14,6 +14,12 @@ import type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
 import { shardScopeSchema } from './schemas.js';
 import type { ShardScope } from './schemas.js';
+import {
+  loadSetArtifact,
+  projectLocalSetDir,
+  projectTeamSetDir,
+  userSetDir,
+} from './set-resolver.js';
 export type { ShardScope } from './schemas.js';
 
 // Re-export shared types from @eforge-build/client so engine-internal callers
@@ -991,6 +997,9 @@ const ACTIVE_PROFILE_MARKER = '.active-profile';
 /** Profile subdirectory inside the eforge config directory. */
 const PROFILES_SUBDIR = 'profiles';
 
+/** Set kind descriptor for profiles — used by the generic set-resolver. */
+const PROFILES_KIND = { dirSegment: PROFILES_SUBDIR, fileExtension: 'yaml' } as const;
+
 function profilePath(configDir: string, name: string): string {
   return resolve(configDir, PROFILES_SUBDIR, `${name}.yaml`);
 }
@@ -1337,6 +1346,8 @@ async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | 
  * then user scope (`~/.config/eforge/profiles/`).
  * Returns null when the profile file does not exist in any scope.
  * Profile files use the same partial-config schema as `config.yaml`.
+ *
+ * Delegates tier resolution to the generic `loadSetArtifact` resolver.
  */
 export async function loadProfile(
   configDir: string,
@@ -1344,22 +1355,15 @@ export async function loadProfile(
   cwd?: string,
 ): Promise<{ profile: PartialEforgeConfig; scope: 'local' | 'project' | 'user' } | null> {
   const effectiveCwd = cwd ?? dirname(configDir);
-  // Try local scope first (.eforge/profiles/)
-  const localResult = await loadProfileFromPath(localProfilePath(effectiveCwd, name));
-  if (localResult !== null) {
-    return { profile: localResult, scope: 'local' };
-  }
-  // Try project scope (eforge/profiles/)
-  const projectResult = await loadProfileFromPath(profilePath(configDir, name));
-  if (projectResult !== null) {
-    return { profile: projectResult, scope: 'project' };
-  }
-  // Try user scope fallback (~/.config/eforge/profiles/)
-  const userResult = await loadProfileFromPath(userProfilePath(name));
-  if (userResult !== null) {
-    return { profile: userResult, scope: 'user' };
-  }
-  return null;
+  const artifact = await loadSetArtifact(PROFILES_KIND, name, { configDir, cwd: effectiveCwd });
+  if (!artifact) return null;
+  const profile = await loadProfileFromPath(artifact.path);
+  if (profile === null) return null;
+  // Map set-resolver source labels to the legacy scope labels used by the public API.
+  const scope = artifact.source === 'project-local' ? 'local'
+    : artifact.source === 'project-team' ? 'project'
+    : 'user';
+  return { profile, scope };
 }
 
 /** Shared entry type returned by scanProfilesDir. */
@@ -1409,6 +1413,8 @@ async function scanProfilesDir(dir: string, scope: 'local' | 'project' | 'user')
  * and `shadowedBy` when an entry is shadowed by a higher-precedence scope.
  * Shadow rule: `local` shadows `project` and `user`; `project` shadows `user`.
  * Unreadable or non-YAML files are skipped silently.
+ *
+ * Delegates tier directory resolution to the generic set-resolver path helpers.
  */
 export async function listProfiles(
   configDir: string,
@@ -1417,9 +1423,10 @@ export async function listProfiles(
   type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user'; shadowedBy?: 'local' | 'project' };
   const effectiveCwd = cwd ?? dirname(configDir);
 
-  const localEntries = await scanProfilesDir(localProfilesDir(effectiveCwd), 'local') as ProfileEntry[];
-  const projectEntries = await scanProfilesDir(profilesDir(configDir), 'project') as ProfileEntry[];
-  const userEntries = await scanProfilesDir(userProfilesDir(), 'user') as ProfileEntry[];
+  // Use set-resolver path helpers for tier directories.
+  const localEntries = await scanProfilesDir(projectLocalSetDir(PROFILES_KIND, effectiveCwd), 'local') as ProfileEntry[];
+  const projectEntries = await scanProfilesDir(projectTeamSetDir(PROFILES_KIND, configDir), 'project') as ProfileEntry[];
+  const userEntries = await scanProfilesDir(userSetDir(PROFILES_KIND), 'user') as ProfileEntry[];
 
   // Shadow rule: local shadows project and user; project shadows user
   const localNames = new Set(localEntries.map((e) => e.name));

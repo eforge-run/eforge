@@ -23,7 +23,7 @@ import type {
   RecoveryVerdict,
   BuildFailureSummary,
 } from './events.js';
-import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveAndCommitFailedWithSidecar, QueueExecExitCode, QueueSkipReason } from './prd-queue.js';
+import { loadQueue, resolveQueueOrder, getHeadHash, getPrdDiffSummary, enqueuePrd, inferTitle, claimPrd, releasePrd, movePrdToSubdir, moveAndCommitFailedWithSidecar, QueueExecExitCode, QueueSkipReason, propagateSkip as propagateSkipFS, unblockWaiting } from './prd-queue.js';
 import { runStalenessAssessor } from './agents/staleness-assessor.js';
 import { runRecoveryAnalyst } from './agents/recovery-analyst.js';
 import { buildFailureSummary } from './recovery/failure-summary.js';
@@ -1464,6 +1464,7 @@ export class EforgeEngine {
       // before removeProducer), so we only need to update counters here.
       if (event.type === 'queue:prd:complete') {
         const completionStatus = (event as { status: string }).status;
+        const completedPrdId = (event as { prdId: string }).prdId;
         if (completionStatus === 'skipped') {
           skipped++;
         } else {
@@ -1472,6 +1473,31 @@ export class EforgeEngine {
 
         // Keep the queue open during discovery so pushed events are not dropped
         eventQueue.addProducer();
+
+        // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+        // Transition filesystem state for waiting PRDs before discovering new ones.
+        // This ensures discoverNewPrds() finds any newly unblocked PRDs.
+        if (completionStatus === 'completed') {
+          try {
+            await unblockWaiting(queueDir, cwd, completedPrdId);
+          } catch {
+            // Non-fatal: filesystem unblock failure doesn't stop the scheduler
+          }
+        } else if (completionStatus === 'failed') {
+          try {
+            await propagateSkipFS(queueDir, cwd, completedPrdId, 'failed');
+          } catch {
+            // Non-fatal: filesystem skip propagation failure doesn't stop the scheduler
+          }
+        } else if (completionStatus === 'skipped') {
+          try {
+            await propagateSkipFS(queueDir, cwd, completedPrdId, 'cancelled');
+          } catch {
+            // Non-fatal
+          }
+        }
+        // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
+
         // Discover any new PRDs enqueued mid-cycle, then launch newly-ready PRDs
         await discoverNewPrds();
         startReadyPrds();
@@ -1801,11 +1827,35 @@ export class EforgeEngine {
 
       if (event.type === 'queue:prd:complete') {
         const completionStatus = event.status;
+        const completedPrdId = event.prdId;
         if (completionStatus === 'skipped') {
           skipped++;
         } else {
           processed++;
         }
+
+        // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+        // Transition filesystem state for waiting PRDs before discovering new ones.
+        if (completionStatus === 'completed') {
+          try {
+            await unblockWaiting(queueDir, cwd, completedPrdId);
+          } catch {
+            // Non-fatal
+          }
+        } else if (completionStatus === 'failed') {
+          try {
+            await propagateSkipFS(queueDir, cwd, completedPrdId, 'failed');
+          } catch {
+            // Non-fatal
+          }
+        } else if (completionStatus === 'skipped') {
+          try {
+            await propagateSkipFS(queueDir, cwd, completedPrdId, 'cancelled');
+          } catch {
+            // Non-fatal
+          }
+        }
+        // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
         // Discover any new PRDs and launch newly-ready PRDs
         await discoverNewPrds();
