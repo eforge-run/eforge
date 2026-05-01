@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.7.8] - 2026-04-30
+
+### Features
+
+- **core**: Add commitEnqueuedPrd helper and adopt at both enqueue paths
+- **core**: Add project-local config tier (.eforge/) to eforge
+- **core**: Add Welcome Section to Init Skills
+- **core**: Cancel button confirmation + global pointer cursor
+- **core**: CLI and MCP proxy exit handlers
+- **core**: CLI: eforge playbook commands and eforge play shortcut
+- **core**: Close plugin/Pi parity gaps and extend parity script
+- **core**: Daemon HTTP routes, client helpers, and MCP tool registration
+- **core**: Decouple failed-PRD discovery from session state
+- **core**: Disable auto-build on first failed queue:prd:complete
+- **core**: Engine: generalized set-artifact resolver and playbook API
+- **core**: Isolate user-tier config in vitest via XDG_CONFIG_HOME
+- **core**: Phase 2: piggyback scheduling and queue-list nesting
+- **core**: PRD Gap Close
+- **core**: Skills: /eforge:playbook handheld UX in Claude Code plugin and Pi extension
+- **core**: Structured plan-review fix submissions
+- **eforge-playbooks**: add plugin/pi parity audit playbook
+- **eforge-playbooks**: Codify recurring change shapes as named, three-tier playbooks (user / project-team / project-local) invokable via a handheld /eforge:playbook skill, CLI, and daemon HTTP. Phase 1 ships authoring + direct invocation; Phase 2 ships piggyback scheduling so a playbook auto-fires after a chosen build completes.
+- **engine**: raise planner maxTurns default to 80
+
+### Bug Fixes
+
+- **core**: disable FK enforcement in DatabaseSync to allow daemon-level events
+- **core**: resolve validation failures
+
+### Maintenance
+
+- **core**: post-parallel-group auto-commit
+
 ## [0.7.7] - 2026-04-29
 
 ### Bug Fixes
@@ -331,12 +364,6 @@ Maintenance release
 ### Maintenance
 
 - Add claude-sdk backend profile
-
-## [0.5.6] - 2026-04-16
-
-### Documentation
-
-- clarify excursion vs expedition scope guidance
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
