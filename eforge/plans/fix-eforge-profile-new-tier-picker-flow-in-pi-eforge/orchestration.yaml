@@ -1,0 +1,61 @@
+name: fix-eforge-profile-new-tier-picker-flow-in-pi-eforge
+description: Replace hardcoded preset shortcuts in /eforge:profile:new flow with
+  a session-aware tier picker that offers Copy from <tier> for every previously
+  configured tier, plus Custom. Updates pi-eforge flow code, syncs Claude Code
+  plugin skill docs, and bumps the plugin version.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build
+plans:
+  - id: plan-01-tier-picker-flow
+    name: Replace presets with session-aware Copy from <tier> options
+    depends_on: []
+    branch: fix-eforge-profile-new-tier-picker-flow-in-pi-eforge/tier-picker-flow
+    build:
+      - - implement
+        - doc-update
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - review-cycle
+      - doc-update
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - ux
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This is a focused bug fix touching three files across two
+    consumer-facing packages (pi-eforge extension, eforge-plugin skill doc,
+    plugin.json version bump). It is clearly an excursion: more than a trivial
+    errand because it spans both consumer integrations (per AGENTS.md sync rule)
+    and includes a documentation/skill update, but well within a single planner
+    session - no independent subsystems requiring delegated module planning.
+    Compile uses planner + plan-review-cycle to ensure the plan correctly
+    captures the parity update to the skill doc and the version bump alongside
+    the code change (easy to miss). Build runs implement, then review-cycle in
+    parallel with doc-update; review-cycle gates correctness of the new
+    tier-picker loop logic and the inferred-defaults fallback for the Custom
+    branch, while doc-update can refresh any adjacent docs that mention presets.
+    Review uses 'correctness' (verify the loop emits one entry per prior tier in
+    TIER_ORDER and that __copy_<tierName>__ branches spread the right selection)
+    and 'ux' (the bug is fundamentally a UX regression in an interactive flow,
+    so a UX lens helps validate the prompts/labels match the skill doc).
+    maxRounds=2 is sufficient for a tight scope; standard strictness fits a
+    non-security UX fix; autoAcceptBelow=suggestion keeps cosmetic noise from
+    blocking."
