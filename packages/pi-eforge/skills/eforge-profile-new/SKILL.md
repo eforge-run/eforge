@@ -35,7 +35,7 @@ Walk the four built-in tiers in fixed order: **planning** → **implementation**
 
 For each tier, present the following options:
 
-**Copy from a previously configured tier**: From the second tier onward, present one `Copy from <tierName> (<modelId>)` entry per tier already configured in this session (e.g. on `review`: `Copy from planning` and `Copy from implementation`, in `TIER_ORDER` order). The default selection is copy-from-immediately-previous when the user just presses enter.
+**Copy from a previously configured tier** (available from `implementation` onward): From the second tier onward, present one `Copy from <tierName> (<modelId>)` entry per tier already configured in this session (e.g. on `review`: `Copy from planning` and `Copy from implementation`, in `TIER_ORDER` order). The default selection is copy-from-immediately-previous when the user just presses enter.
 
 **Custom**: walk the sub-flow:
 1. **Harness**: ask `claude-sdk` or `pi`.
