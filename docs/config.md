@@ -288,7 +288,7 @@ Available per-role override fields: `tier`, `effort`, `thinking`, `maxTurns`, `a
 
 Workflow profile selection (`errand`, `excursion`, or `expedition`) is determined per-build by the `pipeline-composer` agent, which classifies the incoming PRD by complexity and selects the appropriate compile pipeline. Custom YAML profiles with `extends:` / `compile:` keys are not configurable in `eforge/config.yaml` - the schema rejects a top-level `profiles:` key.
 
-## Agent Runtime Profiles
+## Backend Profiles
 
 Agent runtime profiles are named YAML files that bundle tier recipes (harness, model, effort, provider) into a reusable unit. Profiles can be defined at project scope or user scope.
 
