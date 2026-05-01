@@ -10,6 +10,17 @@ import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  AlertDialog,
+  AlertDialogTrigger,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogCancel,
+  AlertDialogAction,
+} from '@/components/ui/alert-dialog';
 import { QueueSection } from './queue-section';
 import { EnqueueSection } from './enqueue-section';
 
@@ -69,19 +80,38 @@ function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
             </span>
             <div className="flex items-center gap-1.5">
               {showCancel && (
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="icon"
-                  title="Cancel this session"
-                  className="h-auto w-auto p-0"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    cancelSession(group.key);
-                  }}
-                >
-                  <CircleStop size={14} />
-                </Button>
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      title="Cancel this session"
+                      className="h-auto w-auto p-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <CircleStop size={14} />
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent onClick={(e) => e.stopPropagation()}>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Cancel this build?</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        The running worker will be terminated and any in-progress work will be lost.
+                        Files staged in the worktree may remain.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Keep running</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={() => cancelSession(group.key)}
+                      >
+                        Cancel build
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
               )}
               <span className="text-[11px] text-text-dim">{relative}</span>
             </div>
