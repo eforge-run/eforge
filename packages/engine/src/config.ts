@@ -402,7 +402,7 @@ export const configYamlSchema = eforgeConfigBaseSchema.partial()
     if (legacyTopLevel.has(key)) {
       ctx.addIssue({
         code: 'custom',
-        message: `"${key}:" is no longer valid in config.yaml. Each tier under agents.tiers is now a self-contained recipe with harness + model + effort. Migrate accordingly.`,
+        message: `"${key}:" is no longer valid in config.yaml. Each tier under agents.tiers is now a self-contained recipe with harness + model + effort. See docs/config-migration.md for before/after examples.`,
         path: [key],
       });
     } else if (!knownConfigYamlKeys.has(key)) {
@@ -418,7 +418,7 @@ export const configYamlSchema = eforgeConfigBaseSchema.partial()
   if (agents && typeof agents === 'object' && 'models' in (agents as Record<string, unknown>)) {
     ctx.addIssue({
       code: 'custom',
-      message: '"agents.models" is no longer supported. Each tier under agents.tiers carries its own model.',
+      message: '"agents.models" is no longer supported. Each tier under agents.tiers carries its own model. See docs/config-migration.md for before/after examples.',
       path: ['agents', 'models'],
     });
   }
@@ -618,7 +618,8 @@ export function parseRawConfig(data: Record<string, unknown>, context: 'config' 
       `        harness: claude-sdk\n` +
       `        model: claude-opus-4-7\n` +
       `        effort: high\n\n` +
-      `Offending field(s): ${offending.join(', ')}`,
+      `Offending field(s): ${offending.join(', ')}. ` +
+      `See docs/config-migration.md for before/after examples.`,
     );
   }
 
@@ -627,7 +628,8 @@ export function parseRawConfig(data: Record<string, unknown>, context: 'config' 
   if (agentsField && typeof agentsField === 'object' && 'models' in agentsField) {
     throw new ConfigMigrationError(
       `"agents.models" is no longer supported. Each tier under agents.tiers carries its own model. ` +
-      `Move per-class model ids onto the corresponding tier(s).`,
+      `Move per-class model ids onto the corresponding tier(s). ` +
+      `See docs/config-migration.md for before/after examples.`,
     );
   }
 

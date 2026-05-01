@@ -10,11 +10,9 @@
 > ```
 > Running eforge without migrating now aborts with a clear `ConfigMigrationError`.
 
-The `backend` field is required. All other fields are optional with defaults shown below:
+All fields are optional with defaults shown below:
 
 ```yaml
-backend: claude-sdk            # REQUIRED - 'claude-sdk' or 'pi'
-
 plugins:
   enabled: true               # Auto-discover Claude Code plugins
   # include:                  # Allowlist - only load these (plugin identifiers)
@@ -28,48 +26,43 @@ agents:
   settingSources:             # Which Claude Code settings to load
     - project                 # Loads CLAUDE.md and project settings
   bare: false                 # Pass --bare to Claude Code subprocess (auto-true when ANTHROPIC_API_KEY set)
-  # model:                             # Global model override for all agents (bypasses class system)
-  #   id: claude-sonnet-4-6            #   Shape: { id: "model-name" } - provider lives on the agentRuntime entry
-  # thinking:                 # Global thinking config
-  #   type: adaptive          # 'adaptive', 'enabled' (with optional budgetTokens), or 'disabled'
-  # effort: high              # Global effort level: 'low', 'medium', 'high', 'xhigh', 'max'
-  # models:                    # Map model classes to model refs (override backend defaults)
-  #   max:                     # Used by most roles by default
-  #     id: claude-opus-4-7
-  #   balanced:                # Default for builder, review-fixer, validation-fixer, test-writer, tester, staleness-assessor, prd-validator, dependency-detector, recovery-analyst
-  #     id: claude-sonnet-4-6
-  #   fast:                    # Available via per-role modelClass override
-  #     id: claude-haiku-4-5
   # promptDir: eforge/prompts  # Directory of .md files that shadow bundled prompts by name match.
   #                            # If eforge/prompts/reviewer.md exists, it replaces the bundled reviewer prompt.
-  # tiers:                    # Per-tier overrides applied to every role in the tier
-  #   planning:               # Tiers: planning, implementation, review, evaluation
-  #     effort: high          #   - Most users only need to set tiers, not 24 individual roles
-  #     modelClass: max
+  # tiers:                    # Per-tier recipes — each tier is a self-contained harness + model + effort unit
+  #   planning:               # Four built-in tiers: planning, implementation, review, evaluation
+  #     harness: claude-sdk   #   harness: 'claude-sdk' or 'pi'
+  #     model: claude-opus-4-7 #  model: plain string model identifier
+  #     effort: high          #   effort: 'low', 'medium', 'high', 'xhigh', 'max'
+  #     # thinking:           #   Optional thinking config (harness-specific)
+  #     #   type: adaptive
+  #     # pi:                 #   Pi-specific sub-block (ignored unless harness: pi)
+  #     #   provider: openrouter
+  #     # claudeSdk:          #   Claude SDK-specific sub-block (ignored unless harness: claude-sdk)
+  #     #   disableSubagents: false
   #   implementation:
+  #     harness: claude-sdk
+  #     model: claude-sonnet-4-6
   #     effort: medium
-  #     modelClass: balanced
   #   review:
+  #     harness: claude-sdk
+  #     model: claude-opus-4-7
   #     effort: high
-  #     modelClass: max
   #   evaluation:
-  #     effort: low           #   Evaluators only judge fixes; low effort is sufficient
-  #     modelClass: max
-  # roles:                    # Per-agent role overrides (override tier and global settings)
-  #   formatter:              # Per-role options: model, modelClass, thinking, effort, maxBudgetUsd,
-  #     effort: low           #   fallbackModel, allowedTools, disallowedTools, maxTurns, promptAppend
+  #     harness: claude-sdk
+  #     model: claude-opus-4-7
+  #     effort: high
+  # roles:                    # Per-agent role overrides
+  #   formatter:              # Per-role options: tier, model, thinking, effort, maxBudgetUsd,
+  #     effort: low           #   allowedTools, disallowedTools, maxTurns, promptAppend
   #   builder:                # Available roles: planner, module-planner, builder, reviewer,
-  #     model:                #   evaluator, plan-reviewer, plan-evaluator,
-  #       id: claude-sonnet-4-6
+  #     model: claude-sonnet-4-6  #  evaluator, plan-reviewer, plan-evaluator,
   #     maxTurns: 50          #   architecture-reviewer, architecture-evaluator,
   #   staleness-assessor:     #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
-  #     modelClass: fast      #   review-fixer, merge-conflict-resolver, staleness-assessor,
+  #     tier: implementation  #   review-fixer, merge-conflict-resolver, staleness-assessor,
   #   reviewer:               #   formatter, doc-updater, test-writer, tester,
   #     promptAppend: |       #   prd-validator, dependency-detector, gap-closer,
   #       ## Project Rules    #   recovery-analyst
   #       - Flag raw SQL queries
-  #   tester:                 # Per-role `tier:` reassigns a role to a different tier
-  #     tier: review          #   so it picks up the review tier's defaults instead of implementation
 
 maxConcurrentBuilds: 2        # Max concurrent PRD builds from the queue (default: 2)
 
@@ -97,176 +90,202 @@ daemon:
 
 monitor:
   retentionCount: 20          # Number of recent builds to retain in the monitor DB (oldest pruned)
-
-pi:                            # Pi backend config
-  # apiKey: ...                # Optional API key override (env vars and ~/.pi/agent/auth.json used automatically)
-  thinkingLevel: medium        # 'off', 'low', 'medium', 'high', 'xhigh'
-  extensions:
-    autoDiscover: true         # Auto-discover extensions from .pi/extensions/
-  compaction:
-    enabled: true              # Enable context compaction
-    threshold: 100000          # Token threshold for compaction
-  retry:
-    maxRetries: 3              # Max retry attempts
-    backoffMs: 1000            # Backoff between retries (ms)
-
-claudeSdk:                     # Claude SDK backend config (ignored under backend: pi)
-  disableSubagents: false      # When true, the `Task` tool is disallowed on every agent run
-                               #   so agents cannot spawn subagents.
 ```
+
+## Tiers
+
+eforge uses four tiers as the single configuration axis for agent routing. Each tier is a self-contained recipe: `harness + model + effort`, with optional harness-specific sub-blocks.
+
+### Built-in Tier Defaults
+
+| Tier | Default harness | Default model | Default effort |
+|------|----------------|---------------|----------------|
+| `planning` | `claude-sdk` | `claude-opus-4-7` | `high` |
+| `implementation` | `claude-sdk` | `claude-sonnet-4-6` | `medium` |
+| `review` | `claude-sdk` | `claude-opus-4-7` | `high` |
+| `evaluation` | `claude-sdk` | `claude-opus-4-7` | `high` |
+
+Override any tier by specifying it under `agents.tiers` in `eforge/config.yaml`. You only need to list the tiers you want to change - unspecified tiers keep their engine defaults.
+
+### Complete Tier Recipe
+
+Each tier supports the following fields:
+
+```yaml
+agents:
+  tiers:
+    planning:
+      harness: claude-sdk       # Required: 'claude-sdk' or 'pi'
+      model: claude-opus-4-7   # Required: plain string model identifier
+      effort: high             # Required: 'low', 'medium', 'high', 'xhigh', 'max'
+      thinking:                # Optional: thinking config
+        type: adaptive         # 'adaptive', 'enabled', or 'disabled'
+        budgetTokens: 10000    # Only when type: enabled
+      maxTurns: 30             # Optional: max turns override for all roles in this tier
+      maxBudgetUsd: 5.0        # Optional: per-run cost cap (USD)
+      pi:                      # Optional: Pi-specific config (ignored unless harness: pi)
+        provider: openrouter   # Provider name (openrouter, google, openai, etc.)
+      claudeSdk:               # Optional: Claude SDK-specific config (ignored unless harness: claude-sdk)
+        disableSubagents: false # Prevent agents in this tier from spawning subagents
+```
+
+### Pi Backend Tiers
+
+To use the Pi multi-provider backend for a tier, set `harness: pi` and provide a `pi.provider`:
+
+```yaml
+agents:
+  tiers:
+    planning:
+      harness: pi
+      model: anthropic/claude-opus-4-6
+      effort: high
+      pi:
+        provider: openrouter
+    implementation:
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
+      effort: medium
+      pi:
+        provider: openrouter
+    review:
+      harness: pi
+      model: anthropic/claude-opus-4-6
+      effort: high
+      pi:
+        provider: openrouter
+    evaluation:
+      harness: pi
+      model: anthropic/claude-opus-4-6
+      effort: high
+      pi:
+        provider: openrouter
+```
+
+The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which supports API keys, environment variables, and OAuth tokens automatically.
+
+**Pi Authentication** resolves credentials in this order:
+
+1. **Environment variables** - Provider-specific env vars (e.g. `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)
+2. **Auth file** - `~/.pi/agent/auth.json` - supports both API keys and OAuth tokens
+
+**OAuth Providers** (like `openai-codex` and `github-copilot`) use OAuth for authentication:
+
+1. Run `pi auth login <provider>` to authenticate (writes tokens to `~/.pi/agent/auth.json`)
+2. Set the provider on the tier - e.g. `pi.provider: openai-codex` - and use a plain model id (e.g. `codex-mini`)
+3. No API key or environment variable is needed - tokens are read from the auth file automatically
+
+### Claude SDK Tiers
+
+The `claudeSdk:` sub-block on a tier holds options specific to the Claude SDK harness:
+
+- **`disableSubagents: true`** appends `'Task'` to every agent run's `disallowedTools` for all roles in that tier, preventing agents from spawning Claude Code subagents. Useful for debugging, cost control, or determinism.
+
+```yaml
+agents:
+  tiers:
+    implementation:
+      harness: claude-sdk
+      model: claude-sonnet-4-6
+      effort: medium
+      claudeSdk:
+        disableSubagents: true
+```
+
+Per-role `agents.roles.<role>.disallowedTools` values are preserved; `'Task'` is appended (de-duplicated).
 
 ## Model References
 
-Model references are **objects**, not plain strings. The shape is the same regardless of harness:
+Model references are **plain strings**, not objects. Examples:
 
-- `{ id: "model-name" }` - e.g. `{ id: claude-sonnet-4-6 }` or `{ id: anthropic/claude-opus-4-6 }`
+- `claude-opus-4-7` - Claude SDK model identifier
+- `claude-sonnet-4-6`
+- `anthropic/claude-opus-4-6` - Pi / OpenRouter model identifier (provider prefix + model name)
+- `gemini-flash` - Google provider model identifier
 
-For the Pi harness, the provider is **not** part of the model ref. Provider selection is a property of the runtime/harness binding and lives on the agentRuntime entry under `agentRuntimes.<name>.pi.provider`. The resolver splices the runtime's provider onto the resolved model at run time.
-
-> **Migration note:** String model refs (e.g. `model: claude-sonnet-4-6`) are no longer valid. Use the object form instead. The `provider:` field on a model ref is also no longer accepted - move it to `agentRuntimes.<name>.pi.provider`.
-
-## Model Classes
-
-eforge uses a three-tier model class system to assign models to agent roles. Each role has a default class, and users can override it via configuration.
-
-| Class | Default model ref (claude-sdk) | Notes |
-|-------|-------------------------------|-------|
-| `max` | `{ id: claude-opus-4-7 }` | Most capable - used by 15 of 24 roles |
-| `balanced` | `{ id: claude-sonnet-4-6 }` | Mid-tier - used by 9 of 24 roles that don't need max capability |
-| `fast` | `{ id: claude-haiku-4-5 }` | Lightweight - available via per-role `modelClass` override |
-
-The Pi backend has no built-in class defaults - users must configure `agents.models.max` at minimum (and any other classes they assign to roles) using `{ id }` model refs. The provider is taken from the active `agentRuntime` entry's `pi.provider`, not from the model ref.
-
-### Per-Role Default Model Classes
-
-Each of the 24 agent roles has a built-in default model class:
-
-| Role | Default Class | Category |
-|------|--------------|----------|
-| `planner` | `max` | Planning |
-| `module-planner` | `max` | Planning |
-| `builder` | `balanced` | Building |
-| `reviewer` | `max` | Review/Eval |
-| `evaluator` | `max` | Review/Eval |
-| `plan-reviewer` | `max` | Review/Eval |
-| `plan-evaluator` | `max` | Review/Eval |
-| `architecture-reviewer` | `max` | Review/Eval |
-| `architecture-evaluator` | `max` | Review/Eval |
-| `cohesion-reviewer` | `max` | Review/Eval |
-| `cohesion-evaluator` | `max` | Review/Eval |
-| `validation-fixer` | `balanced` | Fixers |
-| `review-fixer` | `balanced` | Fixers |
-| `merge-conflict-resolver` | `max` | Fixers |
-| `formatter` | `max` | Utilities |
-| `doc-updater` | `max` | Utilities |
-| `test-writer` | `balanced` | Utilities |
-| `tester` | `balanced` | Utilities |
-| `pipeline-composer` | `max` | Utilities |
-| `gap-closer` | `max` | Utilities |
-| `staleness-assessor` | `balanced` | Utilities |
-| `prd-validator` | `balanced` | Utilities |
-| `dependency-detector` | `balanced` | Utilities |
-
-### Model Resolution Order
-
-Model selection follows this priority chain (highest to lowest):
-
-1. **Per-role `model`** - `agents.roles.<role>.model` - explicit model ref for a specific role
-2. **Global `model`** - `agents.model` - explicit model ref for all roles
-3. **User class override** - `agents.models.<class>` - custom model ref for the role's effective class
-4. **Backend class default** - built-in model ref for the class (see table above)
-5. **Fallback chain** - if the effective class has no configured model (neither user nor backend default), walk tiers to find one (see below)
-
-The "effective class" for a role is determined by: per-role `modelClass` override > built-in class assignment.
-
-### Fallback Chain
-
-When a role's effective model class has no configured model (no user override and no backend default), eforge walks the tier list to find a usable model. The tier order is `max` > `balanced` > `fast`.
-
-The algorithm:
-1. Start at the role's effective class
-2. Walk **ascending** toward more capable tiers (e.g. `balanced` -> `max`)
-3. If no model found ascending, walk **descending** toward less capable tiers (e.g. `balanced` -> `fast`)
-4. If no model found in any tier, throw a descriptive error (non-claude-sdk backends only; the Claude SDK falls back to its own default)
-
-**Example 1: Pi backend with only `max` configured**
+Specify the model directly on the tier recipe:
 
 ```yaml
-agentRuntimes:
-  default:
-    harness: pi
-    pi:
-      provider: openrouter
-defaultAgentRuntime: default
 agents:
-  models:
-    max:
-      id: anthropic/claude-opus-4-6
+  tiers:
+    planning:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
 ```
 
-The `staleness-assessor` role defaults to `balanced`, but no `balanced` model is configured. The fallback chain walks ascending from `balanced` to `max` and finds the configured model. All 23 roles resolve to `anthropic/claude-opus-4-6` on the `openrouter` provider.
+> **Migration note:** The old object form (`model: { id: claude-sonnet-4-6 }`) is no longer valid. Use plain strings. The `provider:` field that used to live on model refs now lives on the tier's `pi.provider`. See [config-migration.md](config-migration.md) for worked examples.
 
-**Example 2: Pi backend with `balanced` and `fast` configured**
+## Role-to-Tier Assignment
+
+Every agent role has a built-in default tier. Most projects never need to change these defaults.
+
+### Built-in Tier Assignments
+
+| Role | Default Tier | Description |
+|------|-------------|-------------|
+| `planner` | `planning` | Orchestration and composition |
+| `module-planner` | `planning` | Module-level planning |
+| `formatter` | `planning` | PRD formatting |
+| `pipeline-composer` | `planning` | Pipeline composition |
+| `merge-conflict-resolver` | `planning` | Merge conflict resolution |
+| `doc-updater` | `planning` | Documentation updates |
+| `gap-closer` | `planning` | Gap analysis and filling |
+| `builder` | `implementation` | Code writing |
+| `review-fixer` | `implementation` | Applies reviewer feedback |
+| `validation-fixer` | `implementation` | Applies validation feedback |
+| `test-writer` | `implementation` | Test authoring |
+| `tester` | `implementation` | Test execution and analysis |
+| `recovery-analyst` | `implementation` | Build failure diagnosis |
+| `dependency-detector` | `implementation` | Dependency analysis |
+| `prd-validator` | `implementation` | PRD validation |
+| `staleness-assessor` | `implementation` | Staleness detection |
+| `reviewer` | `review` | Code and design review |
+| `architecture-reviewer` | `review` | Architecture review |
+| `cohesion-reviewer` | `review` | Cross-module cohesion review |
+| `plan-reviewer` | `review` | Plan review |
+| `evaluator` | `evaluation` | Build acceptance verdict |
+| `architecture-evaluator` | `evaluation` | Architecture acceptance verdict |
+| `cohesion-evaluator` | `evaluation` | Cohesion acceptance verdict |
+| `plan-evaluator` | `evaluation` | Plan acceptance verdict |
+
+### Overriding Role-to-Tier Assignment
+
+Use `agents.roles[role].tier:` to reassign a role to a different tier. The role then inherits all settings from the target tier (harness, model, effort, provider, etc.):
 
 ```yaml
-agentRuntimes:
-  default:
-    harness: pi
-    pi:
-      provider: openrouter
-defaultAgentRuntime: default
 agents:
-  models:
-    balanced:
-      id: anthropic/claude-sonnet-4-6
-    fast:
-      id: anthropic/claude-haiku-4-5
-```
-
-Roles defaulting to `max` (like `reviewer`) find no `max` model configured. The fallback walks descending from `max` to `balanced` and resolves to `anthropic/claude-sonnet-4-6`. Roles defaulting to `balanced` (like `staleness-assessor`) resolve directly. No role uses the `fast` model unless explicitly assigned via `modelClass`.
-
-```yaml
-# Example: downgrade some roles to cheaper models (claude-sdk backend)
-agents:
-  models:
-    balanced:                          # Define what 'balanced' class maps to
-      id: claude-sonnet-4-6
-    fast:                              # Define what 'fast' class maps to
-      id: claude-haiku-4-5
   roles:
+    # Move staleness-assessor from 'implementation' to a lighter tier config
+    staleness-assessor:
+      tier: implementation    # keep in implementation (default), or reassign
+    # Move reviewer to implementation tier (lighter model, less effort)
     reviewer:
-      modelClass: balanced             # Move reviewer from 'max' to 'balanced' class
-    formatter:
-      modelClass: fast                 # Move formatter to 'fast' class
-    staleness-assessor:
-      model:                           # Explicit model ref - bypasses the class system entirely
-        id: claude-haiku-4-5
+      tier: implementation
 ```
 
+## Per-Role Field Overrides
+
+Per-role overrides let you tune individual fields without reassigning the role to a different tier. The role stays in its natural tier but the specified fields take precedence over the tier recipe:
+
 ```yaml
-# Example: Pi backend with multiple named runtimes for cross-provider routing
-agentRuntimes:
-  default:
-    harness: pi
-    pi:
-      provider: openrouter
-  gemini:
-    harness: pi
-    pi:
-      provider: google
-defaultAgentRuntime: default
 agents:
-  models:
-    max:
-      id: anthropic/claude-opus-4-6
-    balanced:
-      id: anthropic/claude-sonnet-4-6
   roles:
+    builder:
+      effort: high          # Override effort for this role only
+      maxTurns: 80          # Override maxTurns for this role only
+    formatter:
+      effort: low           # Formatter only needs low effort
+    reviewer:
+      model: claude-sonnet-4-6  # Cheaper model, keep reviewer tier's other settings
+      promptAppend: |           # Append project-specific rules to this role's prompt
+        ## Project Rules
+        - Flag raw SQL queries
     staleness-assessor:
-      agentRuntime: gemini       # Route this role to the gemini runtime
-      model:
-        id: gemini-flash
+      model: claude-haiku-4-5  # Lightweight model for a lightweight task
 ```
+
+Available per-role override fields: `tier`, `model`, `thinking`, `effort`, `maxBudgetUsd`, `allowedTools`, `disallowedTools`, `maxTurns`, `promptAppend`.
 
 ## Profiles
 
@@ -284,49 +303,9 @@ profiles:
 
 Build stages and review config are per-plan, determined by the planner during compile and stored in `orchestration.yaml` - profiles only control compile stages.
 
-## MCP Servers
-
-MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). All `eforge` agents receive the same MCP servers.
-
-## Claude SDK Backend
-
-The `claudeSdk:` block holds options that are only meaningful when `backend: claude-sdk`. When a Pi profile is active the block is ignored.
-
-- **`disableSubagents: true`** appends `'Task'` to every agent run's `disallowedTools`, preventing agents from spawning Claude Code subagents. Useful when you want a single-agent trace (e.g. for debugging, cost control, or determinism) instead of letting a role fan out into Task-spawned helpers. Per-role `agents.roles.<role>.disallowedTools` values are preserved; `'Task'` is appended to them (de-duplicated).
-
-The Pi backend has no `Task` tool or subagent concept, so this flag has no Pi equivalent.
-
-```yaml
-backend: claude-sdk
-claudeSdk:
-  disableSubagents: true
-```
-
-## Pi Backend
-
-Declare an `agentRuntimes` entry with `harness: pi` (and set it as `defaultAgentRuntime` or assign it per-role/tier) to use the Pi multi-provider backend instead of the Claude SDK. The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which supports API keys, environment variables, and OAuth tokens automatically. Configure model refs (using `{ id }` form) via `agents.models.*` or `agents.model`, declare the provider on the runtime entry as `agentRuntimes.<name>.pi.provider`, and put any other Pi-specific settings under that runtime entry's `pi:` block. The Pi backend supports the same compile/build pipeline as the Claude SDK backend.
-
-### Authentication
-
-Pi resolves credentials in this order:
-
-1. **Explicit override** - `pi.apiKey` in `eforge/config.yaml` (highest priority)
-2. **Environment variables** - Provider-specific env vars (e.g. `OPENROUTER_API_KEY`, `OPENAI_API_KEY`)
-3. **Auth file** - `~/.pi/agent/auth.json` - supports both API keys and OAuth tokens
-
-The `pi.apiKey` config option is optional. Most users should rely on environment variables or the auth file.
-
-### OAuth Providers
-
-Providers like `openai-codex` and `github-copilot` use OAuth for authentication. To set up an OAuth provider:
-
-1. Run `pi auth login <provider>` to authenticate (this writes tokens to `~/.pi/agent/auth.json`)
-2. Set the provider on the agentRuntime entry - e.g. `agentRuntimes.default.pi.provider: openai-codex` - and use a plain `{ id: codex-mini }` model ref
-3. No `pi.apiKey` or environment variable is needed - tokens are read from the auth file automatically
-
 ## Backend Profiles
 
-Backend profiles are named YAML files that bundle backend kind, provider, model selections, and tuning into a reusable unit. Profiles can be defined at project scope or user scope.
+Backend profiles are named YAML files that bundle tier recipes (harness, model, effort, provider) into a reusable unit. Profiles can be defined at project scope or user scope.
 
 ### User-Scoped Profiles
 
@@ -336,14 +315,12 @@ The user-scope active-backend marker lives at `~/.config/eforge/.active-backend`
 
 ### Active Profile Precedence
 
-The active agent runtime profile is resolved using a 6-step precedence chain (highest to lowest):
+The active backend profile is resolved using a precedence chain (highest to lowest):
 
 1. **Project-local marker** - `.eforge/.active-profile` file in the repo root (gitignored)
 2. **Project marker** - `eforge/.active-profile` file in the project
-3. **Project config** - `defaultAgentRuntime:` field in `eforge/config.yaml`
-4. **User marker** - `~/.config/eforge/.active-profile` file
-5. **User config** - `defaultAgentRuntime:` field in `~/.config/eforge/config.yaml`
-6. **None** - no profile configured
+3. **User marker** - `~/.config/eforge/.active-profile` file
+4. **None** - no profile configured; engine defaults apply
 
 When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback. A local profile shadows project and user profiles with the same name.
 
@@ -356,6 +333,10 @@ The `scope` parameter is available on `create`, `use`, and `delete` operations:
 - `scope: "user"` - operates on `~/.config/eforge/profiles/` and `~/.config/eforge/.active-profile`
 
 When listing profiles, all three scopes are shown. Entries shadowed by a higher-priority profile of the same name are annotated with `shadowedBy: local` or `shadowedBy: project`.
+
+## MCP Servers
+
+MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). All `eforge` agents receive the same MCP servers.
 
 ## Plugins
 
@@ -373,9 +354,9 @@ Config merges from three levels (lowest to highest priority):
 2. **Project** - `eforge/config.yaml` found by walking up from cwd
 3. **Project-local** - `.eforge/config.yaml` in the repo root (gitignored; highest priority)
 
-Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`, `pi`) shallow-merge per-field. Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
+Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`) shallow-merge per-field. Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
 
-Agent runtime profiles follow the same three-level pattern. Profile files can exist at project-local scope (`.eforge/profiles/` - gitignored), project scope (`eforge/profiles/`), or user scope (`~/.config/eforge/profiles/`). The active-profile marker can be set at any level: `.eforge/.active-profile` (project-local, highest precedence), `eforge/.active-profile` (project), or `~/.config/eforge/.active-profile` (user). Active profile resolution walks a 6-step precedence: (1) project-local marker, (2) project marker, (3) project config `defaultAgentRuntime:` field, (4) user marker, (5) global config `defaultAgentRuntime:` field, (6) none. When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
+Agent runtime profiles follow the same three-level pattern. Profile files can exist at project-local scope (`.eforge/profiles/` - gitignored), project scope (`eforge/profiles/`), or user scope (`~/.config/eforge/profiles/`). The active-profile marker can be set at any level: `.eforge/.active-profile` (project-local, highest precedence), `eforge/.active-profile` (project), or `~/.config/eforge/.active-profile` (user). When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 
 Playbooks follow the same three-tier pattern: `.eforge/playbooks/` (project-local, highest precedence), `eforge/playbooks/` (project scope), and `~/.config/eforge/playbooks/` (user scope). When the same playbook name exists at multiple tiers, the highest-precedence tier wins and lower-tier copies are reported as shadows. Each playbook carries a `scope` frontmatter field that must match the tier it was loaded from; a mismatch is surfaced as a warning in the listing. The `eforge playbook` command manages playbooks from the CLI: `list` shows all available playbooks with source labels and shadow chains; `new` scaffolds a new playbook file non-interactively (accepts `--scope`, `--name`, `--description`, `--from <file>`); `edit <name>` opens the resolved playbook in `$EDITOR` and validates the result before saving; `run <name> [--after <queue-id>]` enqueues the playbook (also available as `eforge play <name>`); `promote <name>` moves a playbook from `.eforge/playbooks/` to `eforge/playbooks/` and stages the new file; `demote <name>` moves it back to project-local scope.
 
