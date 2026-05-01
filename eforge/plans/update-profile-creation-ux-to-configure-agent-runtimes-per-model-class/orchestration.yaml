@@ -1,0 +1,72 @@
+name: update-profile-creation-ux-to-configure-agent-runtimes-per-model-class
+description: Rework /eforge:profile:new so users pick an agent runtime per model
+  class (max, balanced, fast) instead of one global harness/provider, drop
+  global tuning prompts, and emit only valid existing profile config
+  (agentRuntimes, defaultAgentRuntime, agents.models, optional valid tier
+  overrides).
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-runtime-per-model-class-wizard
+    name: Per-model-class agent runtime wizard
+    depends_on: []
+    branch: update-profile-creation-ux-to-configure-agent-runtimes-per-model-class/runtime-per-model-class
+    build:
+      - - implement
+        - doc-update
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - review-cycle
+      - doc-update
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - ux
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This PRD is a focused consumer-facing UX change touching one Pi
+    native command (profile-commands.ts) and two skill documentation files (Pi
+    fallback skill + Claude plugin skill). It is not trivial enough for an
+    errand: there is multi-step wizard state, valid-config translation concerns,
+    and three coordinated surfaces that must stay in sync. It is not large
+    enough for an expedition: no engine schema changes, no independent
+    subsystems, no module-level planning needed - a single planner session can
+    enumerate all plans, file changes, and cross-file dependencies. The PRD
+    itself recommends Excursion. Compile uses planner + plan-review-cycle to
+    ensure the wizard's branching logic (max -> balanced -> fast with
+    conditional runtime offerings) is correctly decomposed and that all three
+    doc/code surfaces are covered before build. Default build runs implement
+    first, then review-cycle in parallel with doc-update because the PRD
+    explicitly requires updating two skill docs (Pi fallback SKILL.md and Claude
+    plugin profile-new.md) plus mentioning fast-class behavior in preview/docs -
+    doc-update does not declare implement as a predecessor in the catalog so
+    they could parallelize, but here we need implement first for review-cycle to
+    operate on, and doc-update can run alongside review-cycle. Review strategy
+    is 'single' with 'correctness' (validating emitted profile schema is valid -
+    no invalid agents.tiers.max keys, no agents.effort writes, provider stays on
+    agentRuntimes.<name>.pi.provider) and 'ux' (validating the per-model-class
+    wizard flow matches PRD acceptance criteria) perspectives. maxRounds=2 keeps
+    iteration bounded; standard strictness fits a feature-level UX change
+    without security/data risk. No test-write or test-cycle since the PRD
+    targets interactive wizard flows and doc updates - existing test conventions
+    in AGENTS.md note CLI/wizard flows are integration-level rather than
+    unit-tested."
