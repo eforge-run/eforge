@@ -33,8 +33,7 @@ agents:
   #     harness: claude-sdk   #   harness: 'claude-sdk' or 'pi'
   #     model: claude-opus-4-7 #  model: plain string model identifier
   #     effort: high          #   effort: 'low', 'medium', 'high', 'xhigh', 'max'
-  #     # thinking:           #   Optional thinking config (harness-specific)
-  #     #   type: adaptive
+  #     # thinking: true      #   Optional: enable thinking; coerced to adaptive for adaptive-only models
   #     # pi:                 #   Pi-specific sub-block (ignored unless harness: pi)
   #     #   provider: openrouter
   #     # claudeSdk:          #   Claude SDK-specific sub-block (ignored unless harness: claude-sdk)
@@ -52,13 +51,13 @@ agents:
   #     model: claude-opus-4-7
   #     effort: high
   # roles:                    # Per-agent role overrides
-  #   formatter:              # Per-role options: tier, model, thinking, effort, maxBudgetUsd,
-  #     effort: low           #   allowedTools, disallowedTools, maxTurns, promptAppend
+  #   formatter:              # Per-role options: tier, effort, thinking, maxTurns, promptAppend,
+  #     effort: low           #   allowedTools, disallowedTools, shards (builder-only)
   #   builder:                # Available roles: planner, module-planner, builder, reviewer,
-  #     model: claude-sonnet-4-6  #  evaluator, plan-reviewer, plan-evaluator,
+  #     effort: high          #  evaluator, plan-reviewer, plan-evaluator,
   #     maxTurns: 50          #   architecture-reviewer, architecture-evaluator,
   #   staleness-assessor:     #   cohesion-reviewer, cohesion-evaluator, validation-fixer,
-  #     tier: implementation  #   review-fixer, merge-conflict-resolver, staleness-assessor,
+  #     tier: planning        #   review-fixer, merge-conflict-resolver, staleness-assessor,
   #   reviewer:               #   formatter, doc-author, doc-syncer, test-writer, tester,
   #     promptAppend: |       #   prd-validator, dependency-detector, gap-closer,
   #       ## Project Rules    #   recovery-analyst, pipeline-composer
@@ -118,14 +117,11 @@ agents:
       harness: claude-sdk       # Required: 'claude-sdk' or 'pi'
       model: claude-opus-4-7   # Required: plain string model identifier
       effort: high             # Required: 'low', 'medium', 'high', 'xhigh', 'max'
-      # thinkingLevel: xhigh  # Pi only: 'off', 'low', 'medium', 'high', 'xhigh'
-      thinking:                # Optional: thinking config
-        type: adaptive         # 'adaptive', 'enabled', or 'disabled'
-        budgetTokens: 10000    # Only when type: enabled
+      thinking: true           # Optional: enable thinking; coerced to adaptive for adaptive-only models
       maxTurns: 30             # Optional: max turns override for all roles in this tier
-      maxBudgetUsd: 5.0        # Optional: per-run cost cap (USD)
       pi:                      # Optional: Pi-specific config (ignored unless harness: pi)
         provider: openrouter   # Provider name (openrouter, google, openai, etc.)
+        # thinkingLevel: xhigh # Pi only: 'off', 'low', 'medium', 'high', 'xhigh'
       claudeSdk:               # Optional: Claude SDK-specific config (ignored unless harness: claude-sdk)
         disableSubagents: false # Prevent agents in this tier from spawning subagents
 ```
@@ -279,35 +275,22 @@ agents:
     formatter:
       effort: low           # Formatter only needs low effort
     reviewer:
-      model: claude-sonnet-4-6  # Cheaper model, keep reviewer tier's other settings
       promptAppend: |           # Append project-specific rules to this role's prompt
         ## Project Rules
         - Flag raw SQL queries
     staleness-assessor:
-      model: claude-haiku-4-5  # Lightweight model for a lightweight task
+      tier: planning            # Move staleness-assessor to a heavier-weight tier
 ```
 
-Available per-role override fields: `tier`, `model`, `thinking`, `effort`, `maxBudgetUsd`, `allowedTools`, `disallowedTools`, `maxTurns`, `promptAppend`.
+Available per-role override fields: `tier`, `effort`, `thinking`, `maxTurns`, `allowedTools`, `disallowedTools`, `promptAppend`, `shards` (builder-only).
 
-## Profiles
+## Workflow Profiles
 
-Workflow profiles control which compile stages run. Built-in profiles (`errand`, `excursion`, `expedition`) cover the common cases - define custom profiles in `eforge/config.yaml` or via `--profiles` files to extend or override them.
+Workflow profile selection (`errand`, `excursion`, or `expedition`) is determined per-build by the `pipeline-composer` agent, which classifies the incoming PRD by complexity and selects the appropriate compile pipeline. Custom YAML profiles with `extends:` / `compile:` keys are not configurable in `eforge/config.yaml` - the schema rejects a top-level `profiles:` key.
 
-```yaml
-profiles:
-  my-profile:
-    description: "Custom workflow with extra review"
-    extends: excursion          # Inherit from a built-in or other custom profile
-    compile:
-      - planner
-      - plan-review-cycle
-```
+## Agent Runtime Profiles
 
-Build stages and review config are per-plan, determined by the planner during compile and stored in `orchestration.yaml` - profiles only control compile stages.
-
-## Backend Profiles
-
-Backend profiles are named YAML files that bundle tier recipes (harness, model, effort, provider) into a reusable unit. Profiles can be defined at project scope or user scope.
+Agent runtime profiles are named YAML files that bundle tier recipes (harness, model, effort, provider) into a reusable unit. Profiles can be defined at project scope or user scope.
 
 ### User-Scoped Profiles
 
@@ -317,7 +300,7 @@ The user-scope active-profile marker lives at `~/.config/eforge/.active-profile`
 
 ### Active Profile Precedence
 
-The active backend profile is resolved using a precedence chain (highest to lowest):
+The active agent runtime profile is resolved using a precedence chain (highest to lowest):
 
 1. **Project-local marker** - `.eforge/.active-profile` file in the repo root (gitignored)
 2. **Project marker** - `eforge/.active-profile` file in the project

@@ -35,7 +35,7 @@ An agentic build system applies build-system thinking to this multi-agent pipeli
 
 ## Use Cases
 
-Plan a feature interactively, then hand it off to eforge with `/eforge:build`. A daemon picks up the plan and runs planning, building, blind review, and validation autonomously. A web monitor (default `localhost:4567`) tracks progress, cost, and token usage in real time.
+Plan a feature interactively, then hand it off to eforge with `/eforge:build`. A daemon picks up the plan and runs planning, building, blind review, and validation autonomously. A web monitor (port assigned deterministically per project in the 4567-4667 range) tracks progress, cost, and token usage in real time.
 
 Because the coding agent you drive from and the agent library eforge delegates to are independent, a few ways this plays out:
 

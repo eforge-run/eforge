@@ -139,14 +139,14 @@ graph LR
 | `doc-author` | Authors plan-specified documentation in parallel with implement |
 | `doc-sync` | Syncs existing documentation against the post-implement diff |
 | `test-write` | Writes tests from the plan spec (TDD - runs before `implement`) |
-| `test-cycle` | Composite: expands to `test` -> `test-fix` -> `evaluate` |
+| `test-cycle` | Composite: iterates `test` then `evaluate` up to `maxRounds`. The tester agent runs tests, debugs failures, and writes production fixes inline; the evaluator then judges those fixes. There is no separate `test-fix` substage. |
 | `validate` | Runs validation commands (compile, test, lint) |
 
 Build stages support parallel groups - arrays in the stage list run concurrently. For example, `[['implement', 'doc-author'], 'doc-sync', 'review-cycle']` runs implement and doc-author in parallel, then doc-sync sequentially, then review-cycle after both complete.
 
 ## Workflow Profiles
 
-Profiles control which compile stages run. The planner assesses input complexity and selects a profile, or the user can specify one explicitly.
+Profiles control which compile stages run. The `pipeline-composer` agent classifies input complexity and selects a profile, or the user can specify one explicitly.
 
 **Errand** - Small, self-contained changes. Compile: `[planner]`. The planner generates a single simple plan or skips if nothing to do.
 
@@ -154,7 +154,7 @@ Profiles control which compile stages run. The planner assesses input complexity
 
 **Expedition** - Large cross-cutting work. Compile: `[planner, architecture-review-cycle, module-planning, cohesion-review-cycle, compile-expedition]`. Decomposes work into modules, each planned independently with architecture and cohesion review across the set.
 
-Custom profiles can be defined in `eforge/config.yaml` with `extends` chains for incremental customization. See [config.md](config.md) for details.
+The three built-in profiles cover the supported workflow modes; the `pipeline-composer` selects among them per build. See [config.md](config.md) for tier and role configuration.
 
 ## Agents
 
@@ -173,7 +173,7 @@ Agent roles by function:
 | **Review** | reviewer, parallel-reviewer, review-fixer, plan-evaluator, cohesion-reviewer, architecture-reviewer |
 | **Recovery** | validation-fixer, merge-conflict-resolver, gap-closer, recovery-analyst |
 
-Per-role configuration (model, thinking mode, effort level, budget, tool filters) is set via `eforge/config.yaml` under `agents.roles`. See [config.md](config.md).
+Per-role configuration (effort level, thinking, tool filters, maxTurns, promptAppend, and builder-only shards) is set via `eforge/config.yaml` under `agents.roles`. See [config.md](config.md). Model, harness, and provider always flow from the role's tier - they cannot be overridden per role.
 
 ### Blind review
 
@@ -230,7 +230,7 @@ When a build fails, the queue parent's finalize handler runs the recovery-analys
 
 ## Monitor
 
-The web monitor tracks cost, token usage, and progress in real time on a dynamically assigned port.
+The web monitor tracks cost, token usage, and progress in real time. Each project's preferred port is deterministically derived from a hash of the project directory within the 4567-4667 range. If that port is already claimed by another running eforge monitor (per the registry at `~/.config/eforge/monitors.json`), the allocator scans the range from the preferred port for the next free port. The actual chosen port is written to the daemon lockfile.
 
 **Recording** is decoupled from the dashboard. Every `EforgeEvent` is written to SQLite regardless of whether the web server is running. This means event history is always available for inspection.
 
