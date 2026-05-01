@@ -621,16 +621,15 @@ describe('agent config threading', () => {
     expect(result.maxTurns).toBe(42);
   });
 
-  it('resolveAgentConfig returns model class default for SDK fields when not configured', async () => {
+  it('resolveAgentConfig returns tier defaults for SDK fields when not configured', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const result = resolveAgentConfig('builder', DEFAULT_CONFIG, 'claude-sdk');
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG);
     expect(result.maxTurns).toBe(80);
-    // builder defaults to 'balanced' class, so claude-sdk default is { id: 'claude-sonnet-4-6' }
+    // builder maps to implementation tier: claude-sonnet-4-6, effort: medium
     expect(result.model).toEqual({ id: 'claude-sonnet-4-6' });
     expect(result.thinking).toBeUndefined();
-    expect(result.effort).toBe('high'); // builder per-role default
-    expect(result.effortSource).toBe('default');
-    expect(result.maxBudgetUsd).toBeUndefined();
+    expect(result.effort).toBe('medium'); // from implementation tier recipe
+    expect(result.effortSource).toBe('tier');
     expect(result.fallbackModel).toBeUndefined();
     expect(result.allowedTools).toBeUndefined();
     expect(result.disallowedTools).toBeUndefined();
@@ -688,14 +687,11 @@ describe('agent config threading', () => {
     expect(result.maxTurns).toBe(80);
   });
 
-  it('resolveAgentConfig: user global model propagates to roles without overrides (overriding class)', async () => {
+  it('resolveAgentConfig: tier model flows to reviewer role', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const config = {
-      ...DEFAULT_CONFIG,
-      agents: { ...DEFAULT_CONFIG.agents, model: { id: 'claude-sonnet' } },
-    };
-    const result = resolveAgentConfig('reviewer', config);
-    expect(result.model).toEqual({ id: 'claude-sonnet' });
+    // reviewer maps to review tier which uses claude-opus-4-7 in DEFAULT_CONFIG
+    const result = resolveAgentConfig('reviewer', DEFAULT_CONFIG);
+    expect(result.model).toEqual({ id: 'claude-opus-4-7' });
   });
 
   it('resolveAgentConfig: user per-role thinking overrides user global thinking', async () => {
@@ -844,169 +840,102 @@ describe('EforgeEngineOptions type', () => {
 // Model Class Resolution Tests
 // ---------------------------------------------------------------------------
 
-describe('model class resolution', () => {
-  it('nine roles default to balanced class, the rest default to max', async () => {
-    const { resolveAgentConfig, AGENT_ROLE_TIERS, BUILTIN_TIER_DEFAULTS, AGENT_ROLE_MODEL_CLASS_OVERRIDES } = await import('@eforge-build/engine/pipeline');
-    const balancedRoles = [
-      'builder',
-      'review-fixer',
-      'validation-fixer',
-      'test-writer',
-      'tester',
-      'staleness-assessor',
-      'prd-validator',
-      'dependency-detector',
-      'recovery-analyst',
-    ];
-    for (const role of Object.keys(AGENT_ROLE_TIERS) as Array<keyof typeof AGENT_ROLE_TIERS>) {
-      const tier = AGENT_ROLE_TIERS[role];
-      const effectiveClass = AGENT_ROLE_MODEL_CLASS_OVERRIDES[role] ?? BUILTIN_TIER_DEFAULTS[tier].modelClass;
-      if (balancedRoles.includes(role)) {
-        expect(effectiveClass, `${role} should be balanced`).toBe('balanced');
-        const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
-        expect(result.model).toEqual({ id: 'claude-sonnet-4-6' });
-      } else {
-        expect(effectiveClass, `${role} should be max`).toBe('max');
-        const result = resolveAgentConfig(role, DEFAULT_CONFIG, 'claude-sdk');
-        expect(result.model).toEqual({ id: 'claude-opus-4-7' });
-      }
+describe('tier-based model resolution', () => {
+  it('implementation tier roles use claude-sonnet-4-6 by default', async () => {
+    const { resolveAgentConfig, AGENT_ROLE_TIERS } = await import('@eforge-build/engine/pipeline');
+    const implementationRoles = Object.entries(AGENT_ROLE_TIERS)
+      .filter(([, tier]) => tier === 'implementation')
+      .map(([role]) => role);
+
+    for (const role of implementationRoles) {
+      const result = resolveAgentConfig(role as import('@eforge-build/engine/events').AgentRole, DEFAULT_CONFIG);
+      expect(result.model, `${role} should use sonnet`).toEqual({ id: 'claude-sonnet-4-6' });
     }
   });
 
-  it('per-role modelClass override to max resolves to opus on claude-sdk over the balanced default', async () => {
+  it('planning/review/evaluation tier roles use claude-opus-4-7 by default', async () => {
+    const { resolveAgentConfig, AGENT_ROLE_TIERS } = await import('@eforge-build/engine/pipeline');
+    const nonImplRoles = Object.entries(AGENT_ROLE_TIERS)
+      .filter(([, tier]) => tier !== 'implementation')
+      .map(([role]) => role);
+
+    for (const role of nonImplRoles) {
+      const result = resolveAgentConfig(role as import('@eforge-build/engine/events').AgentRole, DEFAULT_CONFIG);
+      expect(result.model, `${role} should use opus`).toEqual({ id: 'claude-opus-4-7' });
+    }
+  });
+
+  it('per-role tier reassignment changes the model', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
+    // builder normally uses implementation tier (sonnet); reassign to planning tier (opus)
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
         roles: {
-          builder: { modelClass: 'max' as const },
+          builder: { tier: 'planning' as const },
         },
       },
     };
-    const result = resolveAgentConfig('builder', config, 'claude-sdk');
-    expect(result.model).toEqual({ id: 'claude-opus-4-7' });
-  });
-
-  it('per-role model overrides class-based resolution', async () => {
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const config = {
-      ...DEFAULT_CONFIG,
-      agents: {
-        ...DEFAULT_CONFIG.agents,
-        roles: {
-          planner: { model: { id: 'custom-model' } },
-        },
-      },
-    };
-    const result = resolveAgentConfig('planner', config);
-    expect(result.model).toEqual({ id: 'custom-model' });
-  });
-
-  it('global model overrides class-based resolution', async () => {
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const config = {
-      ...DEFAULT_CONFIG,
-      agents: { ...DEFAULT_CONFIG.agents, model: { id: 'global-override' } },
-    };
-    const result = resolveAgentConfig('planner', config);
-    expect(result.model).toEqual({ id: 'global-override' });
-  });
-
-  it('pi harness with no model config throws for default balanced class with fallback tiers listed', async () => {
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const piConfig = { ...DEFAULT_CONFIG, agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } }, defaultAgentRuntime: 'pi' };
-    expect(() => resolveAgentConfig('builder', piConfig)).toThrow(
-      /No model configured for role "builder".*model class "balanced".*harness "pi".*Tried fallback: max, fast/,
-    );
-  });
-
-  it('fallback ascending: balanced role resolves to max model when only max is configured', async () => {
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const config = {
-      ...DEFAULT_CONFIG,
-      agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } },
-      defaultAgentRuntime: 'pi',
-      agents: {
-        ...DEFAULT_CONFIG.agents,
-        models: { max: { id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
-      },
-    };
-    // staleness-assessor defaults to balanced; provider spliced from runtime entry
-    const result = resolveAgentConfig('staleness-assessor', config);
-    expect(result.model).toEqual({ provider: 'openrouter', id: 'big-model' });
-    expect(result.fallbackFrom).toBe('balanced');
-  });
-
-  it('fallback descending: max role resolves to balanced model when only balanced is configured', async () => {
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const config = {
-      ...DEFAULT_CONFIG,
-      agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } },
-      defaultAgentRuntime: 'pi',
-      agents: {
-        ...DEFAULT_CONFIG.agents,
-        models: { balanced: { id: 'medium-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
-      },
-    };
-    // provider spliced from runtime entry
-    const result = resolveAgentConfig('reviewer', config);
-    expect(result.model).toEqual({ provider: 'openrouter', id: 'medium-model' });
-    expect(result.fallbackFrom).toBe('max');
-  });
-
-  it('fallback total failure lists attempted tiers in error', async () => {
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const piConfig = { ...DEFAULT_CONFIG, agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } }, defaultAgentRuntime: 'pi' };
-    expect(() => resolveAgentConfig('builder', piConfig)).toThrow(
-      /Tried fallback: max, fast/,
-    );
-  });
-
-  it('fallbackFrom metadata is populated on fallback resolution', async () => {
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const config = {
-      ...DEFAULT_CONFIG,
-      agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } },
-      defaultAgentRuntime: 'pi',
-      agents: {
-        ...DEFAULT_CONFIG.agents,
-        models: { max: { id: 'big-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
-      },
-    };
-    // prd-validator defaults to balanced, should fall back to max; provider spliced from runtime entry
-    const result = resolveAgentConfig('prd-validator', config);
-    expect(result.fallbackFrom).toBe('balanced');
-    expect(result.model).toEqual({ provider: 'openrouter', id: 'big-model' });
-  });
-
-  it('pi harness with agents.models.max configured resolves correctly', async () => {
-    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
-    const config = {
-      ...DEFAULT_CONFIG,
-      agentRuntimes: { pi: { harness: 'pi' as const, pi: { provider: 'openrouter' } } },
-      defaultAgentRuntime: 'pi',
-      agents: {
-        ...DEFAULT_CONFIG.agents,
-        models: { max: { id: 'auto' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
-      },
-    };
-    // provider spliced from runtime entry
     const result = resolveAgentConfig('builder', config);
-    expect(result.model).toEqual({ provider: 'openrouter', id: 'auto' });
+    expect(result.model).toEqual({ id: 'claude-opus-4-7' });
+    expect(result.tierSource).toBe('role');
   });
 
-  it('user agents.models override applies to class resolution', async () => {
+  it('pi harness tier resolves with provider from pi config', async () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
     const config = {
       ...DEFAULT_CONFIG,
       agents: {
         ...DEFAULT_CONFIG.agents,
-        models: { max: { id: 'my-custom-max-model' } } as Record<string, import('@eforge-build/engine/config').ModelRef>,
+        tiers: {
+          ...DEFAULT_CONFIG.agents.tiers,
+          implementation: { harness: 'pi' as const, pi: { provider: 'openrouter' }, model: 'qwen-coder', effort: 'medium' as const },
+        },
       },
     };
-    const result = resolveAgentConfig('planner', config);
-    expect(result.model).toEqual({ id: 'my-custom-max-model' });
+    const result = resolveAgentConfig('builder', config);
+    expect(result.harness).toBe('pi');
+    expect(result.model).toEqual({ id: 'qwen-coder', provider: 'openrouter' });
+  });
+
+  it('missing tier recipe throws with actionable message', async () => {
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
+    const config = {
+      ...DEFAULT_CONFIG,
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        // Remove the implementation tier entirely
+        tiers: {
+          planning: DEFAULT_CONFIG.agents.tiers.planning,
+          review: DEFAULT_CONFIG.agents.tiers.review,
+          evaluation: DEFAULT_CONFIG.agents.tiers.evaluation,
+        },
+      },
+    };
+    expect(() => resolveAgentConfig('builder', config)).toThrow(/tier "implementation".*no tier recipe/);
+  });
+
+  it('plan-file tier override reassigns role to different tier', async () => {
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
+    // builder normally maps to implementation (sonnet); plan overrides to planning (opus)
+    const result = resolveAgentConfig('builder', DEFAULT_CONFIG, {
+      agents: { builder: { tier: 'planning' } },
+    });
+    expect(result.model).toEqual({ id: 'claude-opus-4-7' });
+    expect(result.tierSource).toBe('plan');
+  });
+
+  it('tier recipe effort flows to all roles in that tier', async () => {
+    const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
+    // Default: planning=high, implementation=medium, review=high, evaluation=high
+    const planner = resolveAgentConfig('planner', DEFAULT_CONFIG);
+    expect(planner.effort).toBe('high');
+    expect(planner.effortSource).toBe('tier');
+
+    const builder = resolveAgentConfig('builder', DEFAULT_CONFIG);
+    expect(builder.effort).toBe('medium');
+    expect(builder.effortSource).toBe('tier');
   });
 });
 

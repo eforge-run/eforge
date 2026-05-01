@@ -29,14 +29,16 @@ export interface SdkPassthroughConfig {
   fallbackModel?: string;
   allowedTools?: string[];
   disallowedTools?: string[];
-  /** Set when the resolved model came from a fallback class instead of the role's effective class. */
-  fallbackFrom?: import('./config.js').ModelClass;
   /** Text appended to the agent prompt after variable substitution. Not passed to the backend SDK. */
   promptAppend?: string;
 }
 
-/** Keys that are part of SdkPassthroughConfig but should NOT be forwarded to the backend SDK. */
-const NON_SDK_KEYS = new Set(['promptAppend', 'effortClamped', 'effortOriginal', 'effortSource', 'thinkingSource', 'thinkingCoerced', 'thinkingOriginal', 'agentRuntimeName', 'tier', 'tierSource']);
+/** Keys that are part of resolved agent config but should NOT be forwarded to the backend SDK. */
+const NON_SDK_KEYS = new Set([
+  'promptAppend', 'effortClamped', 'effortOriginal', 'effortSource',
+  'thinkingSource', 'thinkingCoerced', 'thinkingOriginal',
+  'tier', 'tierSource', 'harness', 'harnessSource',
+]);
 
 /**
  * Strip `undefined` values from an SdkPassthroughConfig so the SDK
@@ -108,8 +110,6 @@ export interface AgentRunOptions {
   allowedTools?: string[];
   disallowedTools?: string[];
   abortSignal?: AbortSignal;
-  /** Set when the resolved model came from a fallback class instead of the role's effective class. */
-  fallbackFrom?: import('./config.js').ModelClass;
   /** Custom tools to inject into the agent run (e.g. submission tools for planners). */
   customTools?: CustomTool[];
   /** True when the resolved effort was clamped to the model's maximum supported level. */
@@ -117,23 +117,21 @@ export interface AgentRunOptions {
   /** The original effort level before clamping was applied. */
   effortOriginal?: EffortLevel;
   /** Provenance of the resolved effort value. */
-  effortSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
+  effortSource?: 'tier' | 'role' | 'plan';
   /** Provenance of the resolved thinking value. */
-  thinkingSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
+  thinkingSource?: 'tier' | 'role' | 'plan';
   /** True when thinking was coerced from 'enabled' to 'adaptive' for models that only support adaptive thinking. */
   thinkingCoerced?: boolean;
   /** The original thinking config before coercion was applied. */
   thinkingOriginal?: ThinkingConfig;
-  /**
-   * The resolved agentRuntime config name (e.g. "opus"). Injected by the
-   * AgentRuntimeRegistry wrapper so harnesses can include it in agent:start events.
-   * Not forwarded to the underlying SDK.
-   */
-  agentRuntimeName?: string;
   /** The resolved tier for this role. Stamped from resolveAgentConfig. */
   tier?: string;
   /** Provenance of the resolved tier value. */
-  tierSource?: string;
+  tierSource?: 'tier' | 'role' | 'plan';
+  /** Harness kind for this role. Stamped from resolveAgentConfig. */
+  harness?: 'claude-sdk' | 'pi';
+  /** Provenance of the resolved harness value. */
+  harnessSource?: 'tier';
 }
 
 /**
@@ -166,10 +164,6 @@ export interface AgentHarness {
  * `eforge debug-composer` command and other diagnostic tooling to compare how
  * different backends frame the same agent run (system prompt, tools, model,
  * etc.) without needing to proxy the actual HTTP traffic.
- *
- * The payload captures what the backend hands off to its SDK / subprocess.
- * Downstream layers (the Claude Code CLI, pi-ai transport) may add their own
- * framing on top; for those cases, use native SDK debug facilities.
  */
 export interface HarnessDebugPayload {
   /** Which harness produced this payload. */
@@ -178,16 +172,7 @@ export interface HarnessDebugPayload {
   agent: AgentRole;
   /** The user prompt string passed into the run. */
   userPrompt: string;
-  /**
-   * The fully-constructed system prompt as the backend sees it.
-   *
-   * - Claude SDK: this is what eforge passes to the SDK. `""` means eforge
-   *   did not set one and the SDK coerces `undefined` to `""`. The Claude
-   *   Code CLI subprocess may still inject its own preset preamble on top
-   *   of this when `systemPreset` is `'claude_code'`.
-   * - Pi: this is the full prompt including the pi-coding-agent preamble,
-   *   tool snippets, ancestor AGENTS.md/CLAUDE.md context, skills, date, cwd.
-   */
+  /** The fully-constructed system prompt as the backend sees it. */
   systemPrompt: string;
   /** Tool definitions the backend will expose to the model. Empty array means no tools. */
   tools: Array<{ name: string; description?: string; parameters?: unknown }>;
@@ -216,9 +201,6 @@ export type HarnessDebugCallback = (payload: HarnessDebugPayload) => void | Prom
 
 /**
  * Terminal error subtypes mirrored from the Claude Agent SDK's `SDKResultError`.
- * Backends should throw `AgentTerminalError` with one of these values so the
- * pipeline can make structured decisions (e.g. continuation on `error_max_turns`)
- * without parsing error message strings.
  */
 export type AgentTerminalSubtype =
   | 'error_max_turns'
@@ -228,8 +210,6 @@ export type AgentTerminalSubtype =
 
 /**
  * Thrown by backends when an agent run ends with a terminal SDK error.
- * Carries the machine-readable subtype so downstream continuation loops can
- * branch on the exact cause without inspecting `.message`.
  */
 export class AgentTerminalError extends Error {
   readonly subtype: AgentTerminalSubtype;
@@ -248,15 +228,7 @@ export function isMaxTurnsError(err: unknown): err is AgentTerminalError {
 
 /**
  * Thrown by the planner agent runner when the agent stream ends without ever
- * calling a submission tool (`submit_plan_set` / `submit_architecture`) and
- * without emitting a `<skip>` block. This is an engine-level detection — not
- * an SDK-level `AgentTerminalError` subtype — because eforge is observing that
- * the required structured-tool-use did not occur, rather than the SDK reporting
- * a structural failure.
- *
- * The pipeline's planner continuation loop treats this as retryable, sharing
- * the existing `AGENT_MAX_CONTINUATIONS_DEFAULTS['planner']` budget with
- * `error_max_turns` retries.
+ * calling a submission tool.
  */
 export class PlannerSubmissionError extends Error {
   constructor(message: string) {

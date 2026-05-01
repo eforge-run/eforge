@@ -1,8 +1,22 @@
 maxConcurrentBuilds: 2
-agentRuntimes:
-  claude-sdk:
-    harness: claude-sdk
-defaultAgentRuntime: claude-sdk
+agents:
+  tiers:
+    planning:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+    implementation:
+      harness: claude-sdk
+      model: claude-sonnet-4-6
+      effort: medium
+    review:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+    evaluation:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
 build:
   postMergeCommands:
     - pnpm install

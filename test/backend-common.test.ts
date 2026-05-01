@@ -7,16 +7,20 @@ describe('buildAgentStartEvent', () => {
       agentId: 'agent-1',
       agent: 'builder',
       model: 'claude-sonnet-4',
-      agentRuntime: 'default',
       harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'implementation',
+      tierSource: 'tier',
     });
 
     expect(event.type).toBe('agent:start');
     expect(event.agentId).toBe('agent-1');
     expect(event.agent).toBe('builder');
     expect(event.model).toBe('claude-sonnet-4');
-    expect(event.agentRuntime).toBe('default');
     expect(event.harness).toBe('claude-sdk');
+    expect(event.harnessSource).toBe('tier');
+    expect(event.tier).toBe('implementation');
+    expect(event.tierSource).toBe('tier');
     expect(typeof event.timestamp).toBe('string');
     expect(() => new Date(event.timestamp).toISOString()).not.toThrow();
 
@@ -30,7 +34,6 @@ describe('buildAgentStartEvent', () => {
     // None of the optional keys should be present at all.
     const optionalKeys = [
       'planId',
-      'fallbackFrom',
       'effort',
       'thinking',
       'effortClamped',
@@ -51,15 +54,16 @@ describe('buildAgentStartEvent', () => {
       agentId: 'agent-2',
       agent: 'planner',
       model: 'claude-opus-4',
-      agentRuntime: 'my-pi',
       harness: 'pi',
-      fallbackFrom: 'balanced',
+      harnessSource: 'tier',
+      tier: 'planning',
+      tierSource: 'tier',
       effort: 'high',
       thinking: { type: 'enabled', budgetTokens: 10_000 },
       effortClamped: true,
       effortOriginal: 'max',
-      effortSource: 'planner',
-      thinkingSource: 'role-config',
+      effortSource: 'plan',
+      thinkingSource: 'role',
       thinkingCoerced: true,
       thinkingOriginal: { type: 'enabled' },
     });
@@ -70,15 +74,16 @@ describe('buildAgentStartEvent', () => {
       agentId: 'agent-2',
       agent: 'planner',
       model: 'claude-opus-4',
-      agentRuntime: 'my-pi',
       harness: 'pi',
-      fallbackFrom: 'balanced',
+      harnessSource: 'tier',
+      tier: 'planning',
+      tierSource: 'tier',
       effort: 'high',
       thinking: { type: 'enabled', budgetTokens: 10_000 },
       effortClamped: true,
       effortOriginal: 'max',
-      effortSource: 'planner',
-      thinkingSource: 'role-config',
+      effortSource: 'plan',
+      thinkingSource: 'role',
       thinkingCoerced: true,
       thinkingOriginal: { type: 'enabled' },
     });
@@ -89,11 +94,12 @@ describe('buildAgentStartEvent', () => {
       agentId: 'agent-3',
       agent: 'builder',
       model: 'm',
-      agentRuntime: 'default',
       harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'implementation',
+      tierSource: 'tier',
       // Explicit undefineds simulate the common caller pattern of forwarding
       // AgentRunOptions fields directly without pre-filtering.
-      fallbackFrom: undefined,
       effort: undefined,
       thinking: undefined,
       effortClamped: undefined,
@@ -109,7 +115,6 @@ describe('buildAgentStartEvent', () => {
       expect(value, `key ${key} should not be undefined`).not.toBeUndefined();
     }
     expect('planId' in event).toBe(false);
-    expect('fallbackFrom' in event).toBe(false);
     expect('effort' in event).toBe(false);
     expect('thinking' in event).toBe(false);
   });

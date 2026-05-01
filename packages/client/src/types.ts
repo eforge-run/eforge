@@ -243,10 +243,10 @@ export interface ProfileUseResponse {
 // POST /api/profile/create
 export interface ProfileCreateRequest {
   name: string;
-  harness: 'claude-sdk' | 'pi';
-  /** Optional pi config block — opaque to the client. */
-  pi?: unknown;
-  /** Optional agents config block — opaque to the client. */
+  /**
+   * Agents config block — opaque to the client. Should carry tier recipes
+   * under `agents.tiers` (each with self-contained harness + model + effort).
+   */
   agents?: unknown;
   overwrite?: boolean;
   scope?: 'local' | 'project' | 'user';

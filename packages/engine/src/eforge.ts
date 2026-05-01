@@ -1181,10 +1181,7 @@ export class EforgeEngine {
             try {
               let verdictResult: RecoveryVerdict | null = null;
               const harness = agentRuntimes.forRole('recovery-analyst');
-              const agentConfig =
-                config.agentRuntimes && Object.keys(config.agentRuntimes).length > 0
-                  ? resolveAgentConfig('recovery-analyst', config)
-                  : {};
+              const agentConfig = resolveAgentConfig('recovery-analyst', config);
 
               try {
                 for await (const event of runRecoveryAnalyst({
@@ -1969,10 +1966,7 @@ export class EforgeEngine {
 
       // Get recovery-analyst harness and config
       const harness = this.agentRuntimes.forRole('recovery-analyst');
-      const agentConfig =
-        this.config.agentRuntimes && Object.keys(this.config.agentRuntimes).length > 0
-          ? resolveAgentConfig('recovery-analyst', this.config)
-          : {};
+      const agentConfig = resolveAgentConfig('recovery-analyst', this.config);
 
       // Run recovery analyst — collect verdict or error
       let verdictResult: RecoveryVerdict | null = null;
@@ -2236,11 +2230,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     prdQueue: overrides.prdQueue ? { ...base.prdQueue, ...overrides.prdQueue } : base.prdQueue,
     daemon: overrides.daemon ? { ...base.daemon, ...overrides.daemon } : base.daemon,
     monitor: overrides.monitor ? { ...base.monitor, ...overrides.monitor } : base.monitor,
-    pi: overrides.pi ? { ...base.pi, ...overrides.pi } : base.pi,
-    claudeSdk: overrides.claudeSdk ? { ...base.claudeSdk, ...overrides.claudeSdk } : base.claudeSdk,
     hooks: overrides.hooks ?? base.hooks,
-    agentRuntimes: overrides.agentRuntimes ?? base.agentRuntimes,
-    defaultAgentRuntime: overrides.defaultAgentRuntime ?? base.defaultAgentRuntime,
   };
 }
 

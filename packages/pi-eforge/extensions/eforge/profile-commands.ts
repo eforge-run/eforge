@@ -10,7 +10,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { daemonRequest, API_ROUTES, buildPath } from "@eforge-build/client";
 import { showSelectOverlay, showSearchableSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
-import { buildProfileCreatePayload, runtimeName, type ModelClassSelection, type ProfileCreatePayload } from "./profile-payload";
+import { buildProfileCreatePayload, type TierSelection, type ProfileCreatePayload } from "./profile-payload";
 
 // ---------------------------------------------------------------------------
 // Inline response types for daemon API calls
@@ -156,6 +156,19 @@ interface ModelInfo {
   releasedAt?: string;
 }
 
+/** Preset tier shortcut names. */
+type PresetName = 'max' | 'balanced' | 'fast';
+
+/** Built-in preset shortcuts. */
+const PRESETS: Record<PresetName, TierSelection> = {
+  max:      { harness: 'claude-sdk', modelId: 'claude-opus-4-7',   effort: 'high' },
+  balanced: { harness: 'claude-sdk', modelId: 'claude-sonnet-4-6', effort: 'medium' },
+  fast:     { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+};
+
+const TIER_ORDER = ['planning', 'implementation', 'review', 'evaluation'] as const;
+type TierName = typeof TIER_ORDER[number];
+
 /** Load model list from the daemon for a given harness/provider. Returns null on error (error shown). */
 async function loadModelsList(
   ctx: UIContext,
@@ -188,16 +201,15 @@ async function loadModelsList(
 }
 
 /**
- * Run the runtime + model sub-flow for a single model class.
- * Picks harness, optional provider (Pi), then model from that runtime's list.
+ * Run the custom harness + provider + model + effort sub-flow for a single tier.
  */
-async function pickRuntimeAndModel(
+async function pickCustomTier(
   ctx: UIContext,
-  stepLabel: string,
+  tierLabel: string,
   defaultHarness: "claude-sdk" | "pi",
   defaultProvider?: string,
-): Promise<{ harness: "claude-sdk" | "pi"; provider?: string; modelId: string } | null> {
-  // Harness picker — smart default order
+): Promise<TierSelection | null> {
+  // Harness picker
   const harnessItems =
     defaultHarness === "claude-sdk"
       ? [
@@ -213,7 +225,7 @@ async function pickRuntimeAndModel(
           { value: "claude-sdk", label: "Claude SDK", description: "Claude Code's built-in SDK" },
         ];
 
-  const harness = (await showSelectOverlay(ctx, `eforge - ${stepLabel}: Runtime`, harnessItems)) as
+  const harness = (await showSelectOverlay(ctx, `eforge - ${tierLabel}: Harness`, harnessItems)) as
     | "claude-sdk"
     | "pi"
     | null;
@@ -241,7 +253,6 @@ async function pickRuntimeAndModel(
       return null;
     }
 
-    // Default provider to top when previously selected
     const providerItems =
       defaultProvider && providers.includes(defaultProvider)
         ? [
@@ -254,7 +265,7 @@ async function pickRuntimeAndModel(
 
     const selectedProvider = await showSearchableSelectOverlay(
       ctx,
-      `eforge - ${stepLabel}: Provider`,
+      `eforge - ${tierLabel}: Provider`,
       providerItems,
     );
     if (!selectedProvider) return null;
@@ -271,37 +282,35 @@ async function pickRuntimeAndModel(
     description: [m.provider, m.releasedAt].filter(Boolean).join(" - ") || undefined,
   }));
 
-  const modelId = await showSearchableSelectOverlay(ctx, `eforge - ${stepLabel}: Model`, modelItems);
+  const modelId = await showSearchableSelectOverlay(ctx, `eforge - ${tierLabel}: Model`, modelItems);
   if (!modelId) return null;
 
-  return { harness, provider, modelId };
+  // Effort picker
+  const effortItems = [
+    { value: "high",   label: "high",   description: "Maximum capability — best for planning and complex tasks" },
+    { value: "medium", label: "medium", description: "Balanced — good for most implementation work" },
+    { value: "low",    label: "low",    description: "Fast and efficient — good for review and evaluation" },
+  ];
+  const effort = await showSelectOverlay(ctx, `eforge - ${tierLabel}: Effort`, effortItems);
+  if (!effort) return null;
+
+  return { harness, provider, modelId, effort };
 }
 
 /** Build a human-readable YAML preview of the profile payload. */
 function buildYamlPreview(payload: ProfileCreatePayload): string {
   const lines: string[] = ["```yaml"];
-  lines.push("agentRuntimes:");
-  for (const [rtName, entry] of Object.entries(payload.agentRuntimes)) {
-    lines.push(`  ${rtName}:`);
-    lines.push(`    harness: ${entry.harness}`);
-    if (entry.pi?.provider) {
-      lines.push(`    pi:`);
-      lines.push(`      provider: ${entry.pi.provider}`);
-    }
-  }
-  lines.push(`defaultAgentRuntime: ${payload.defaultAgentRuntime}`);
   lines.push("agents:");
-  lines.push("  models:");
-  lines.push(`    max:`);
-  lines.push(`      id: ${payload.agents.models.max.id}`);
-  lines.push(`    balanced:`);
-  lines.push(`      id: ${payload.agents.models.balanced.id}`);
-  lines.push(`    fast: # not currently used by default by any built-in tier`);
-  lines.push(`      id: ${payload.agents.models.fast.id}`);
-  if (payload.agents.tiers) {
-    lines.push("  tiers:");
-    lines.push("    implementation:");
-    lines.push(`      agentRuntime: ${payload.agents.tiers.implementation.agentRuntime}`);
+  lines.push("  tiers:");
+  for (const [tier, entry] of Object.entries(payload.agents.tiers)) {
+    lines.push(`    ${tier}:`);
+    lines.push(`      harness: ${entry.harness}`);
+    if (entry.pi?.provider) {
+      lines.push(`      pi:`);
+      lines.push(`        provider: ${entry.pi.provider}`);
+    }
+    lines.push(`      model: ${entry.model}`);
+    lines.push(`      effort: ${entry.effort}`);
   }
   lines.push("```");
   return lines.join("\n");
@@ -322,7 +331,7 @@ export async function handleProfileNewCommand(
   const name = args.trim();
   if (!name) {
     pi.sendUserMessage(
-      "Please provide a name for the new profile. For example: `/eforge:profile:new pi-anthropic`",
+      "Please provide a name for the new profile. For example: `/eforge:profile:new my-profile`",
     );
     return;
   }
@@ -339,116 +348,109 @@ export async function handleProfileNewCommand(
   ]) as "project" | "user" | "local" | null;
   if (!scope) return;
 
-  // Step 2: Max model class — pick runtime + model
-  const defaultHarness = name.startsWith("claude-") ? "claude-sdk" : "pi";
-  const maxResult = await pickRuntimeAndModel(ctx, "New Profile: max", defaultHarness);
-  if (!maxResult) return;
+  // Step 2-5: Walk each tier in order
+  const tierSelections: Partial<Record<TierName, TierSelection>> = {};
 
-  const maxSelection: ModelClassSelection = {
-    harness: maxResult.harness,
-    provider: maxResult.provider,
-    modelId: maxResult.modelId,
-  };
-  const maxRtName = runtimeName(maxSelection.harness, maxSelection.provider);
+  for (let i = 0; i < TIER_ORDER.length; i++) {
+    const tier = TIER_ORDER[i];
+    const tierLabel = `New Profile: ${tier}`;
+    const prevTier = i > 0 ? TIER_ORDER[i - 1] : null;
+    const prevSelection = prevTier ? tierSelections[prevTier] : null;
 
-  // Step 3: Balanced model class
-  // Offer "Same as max" at top, then "Different runtime"
-  const balancedChoice = await showSelectOverlay(ctx, "eforge - New Profile: balanced", [
-    {
-      value: "__same__",
-      label: `Same as max (${maxResult.modelId})`,
-      description: `Runtime: ${maxRtName}`,
-    },
-    {
-      value: "__different__",
-      label: "Different runtime",
-      description: "Choose a different harness, provider, or model",
-    },
-  ]);
-  if (!balancedChoice) return;
+    // Build choice items
+    const choiceItems: Array<{ value: string; label: string; description: string }> = [];
 
-  let balancedSelection: ModelClassSelection;
-  if (balancedChoice === "__same__") {
-    balancedSelection = maxSelection;
-  } else {
-    const balancedResult = await pickRuntimeAndModel(
-      ctx,
-      "New Profile: balanced",
-      maxResult.harness,
-      maxResult.provider,
-    );
-    if (!balancedResult) return;
-    balancedSelection = {
-      harness: balancedResult.harness,
-      provider: balancedResult.provider,
-      modelId: balancedResult.modelId,
-    };
-  }
-  const balancedRtName = runtimeName(balancedSelection.harness, balancedSelection.provider);
-
-  // Step 4: Fast model class
-  // Offer "Same as balanced" first; add "Same as max" when runtimes differ; then "Different runtime"
-  const fastChoiceItems: Array<{ value: string; label: string; description: string }> = [
-    {
-      value: "__same_balanced__",
-      label: `Same as balanced (${balancedSelection.modelId})`,
-      description: `Runtime: ${balancedRtName}`,
-    },
-  ];
-  if (maxRtName !== balancedRtName) {
-    fastChoiceItems.push({
-      value: "__same_max__",
-      label: `Same as max (${maxSelection.modelId})`,
-      description: `Runtime: ${maxRtName}`,
+    // Preset shortcuts always available
+    choiceItems.push({
+      value: "__preset_max__",
+      label: "max preset",
+      description: `claude-sdk · claude-opus-4-7 · effort: high`,
     });
-  }
-  fastChoiceItems.push({
-    value: "__different__",
-    label: "Different runtime",
-    description: "Choose a different harness, provider, or model",
-  });
+    choiceItems.push({
+      value: "__preset_balanced__",
+      label: "balanced preset",
+      description: `claude-sdk · claude-sonnet-4-6 · effort: medium`,
+    });
+    choiceItems.push({
+      value: "__preset_fast__",
+      label: "fast preset",
+      description: `claude-sdk · claude-haiku-4-5 · effort: low`,
+    });
 
-  const fastChoice = await showSelectOverlay(ctx, "eforge - New Profile: fast", fastChoiceItems);
-  if (!fastChoice) return;
+    // Copy from previous tier (if not first)
+    if (prevSelection) {
+      const prevDesc = [
+        prevSelection.harness,
+        prevSelection.provider,
+        prevSelection.modelId,
+        `effort: ${prevSelection.effort}`,
+      ].filter(Boolean).join(" · ");
+      choiceItems.push({
+        value: "__copy_prev__",
+        label: `Copy from ${prevTier} (${prevSelection.modelId})`,
+        description: prevDesc,
+      });
+    }
 
-  let fastSelection: ModelClassSelection;
-  if (fastChoice === "__same_balanced__") {
-    fastSelection = balancedSelection;
-  } else if (fastChoice === "__same_max__") {
-    fastSelection = maxSelection;
-  } else {
-    const fastResult = await pickRuntimeAndModel(
-      ctx,
-      "New Profile: fast",
-      balancedSelection.harness,
-      balancedSelection.provider,
-    );
-    if (!fastResult) return;
-    fastSelection = {
-      harness: fastResult.harness,
-      provider: fastResult.provider,
-      modelId: fastResult.modelId,
-    };
+    // Custom option
+    choiceItems.push({
+      value: "__custom__",
+      label: "Custom",
+      description: "Choose harness, provider, model, and effort manually",
+    });
+
+    const choice = await showSelectOverlay(ctx, `eforge - ${tierLabel}`, choiceItems);
+    if (!choice) return;
+
+    let selection: TierSelection;
+
+    if (choice === "__preset_max__") {
+      selection = { ...PRESETS.max };
+    } else if (choice === "__preset_balanced__") {
+      selection = { ...PRESETS.balanced };
+    } else if (choice === "__preset_fast__") {
+      selection = { ...PRESETS.fast };
+    } else if (choice === "__copy_prev__" && prevSelection) {
+      selection = { ...prevSelection };
+    } else {
+      // Custom flow
+      const defaultHarness = prevSelection?.harness ?? (name.startsWith("claude-") ? "claude-sdk" : "pi");
+      const result = await pickCustomTier(ctx, tierLabel, defaultHarness as "claude-sdk" | "pi", prevSelection?.provider);
+      if (!result) return;
+      selection = result;
+    }
+
+    tierSelections[tier] = selection;
   }
+
+  const tiers = tierSelections as Record<TierName, TierSelection>;
 
   // Build the daemon payload
   const payload = buildProfileCreatePayload({
     name,
     scope,
-    max: maxSelection,
-    balanced: balancedSelection,
-    fast: fastSelection,
+    tiers: {
+      planning: tiers.planning,
+      implementation: tiers.implementation,
+      review: tiers.review,
+      evaluation: tiers.evaluation,
+    },
   });
 
-  // Step 5: YAML preview
+  // YAML preview
   const yamlPreview = buildYamlPreview(payload);
   await showInfoOverlay(
     ctx,
     `eforge - Profile Preview: ${name}`,
-    `Profile **${name}** will be written to ${scope} scope:\n\n${yamlPreview}\n\nThe \`fast\` model is declared for future/manual use and is not currently used by default by any built-in tier.`,
+    `Profile **${name}** will be written to ${scope} scope:\n\n${yamlPreview}\n\nPresets are starting points — edit the YAML file directly to fine-tune per-tier settings.`,
   );
 
-  // Step 6: Confirm or cancel
+  // Confirm or cancel
+  const planningModel = tiers.planning.modelId;
+  const implModel = tiers.implementation.modelId;
+  const reviewModel = tiers.review.modelId;
+  const evalModel = tiers.evaluation.modelId;
+
   const confirm = await showSelectOverlay(
     ctx,
     `eforge - Confirm: ${name} (${scope})`,
@@ -456,14 +458,14 @@ export async function handleProfileNewCommand(
       {
         value: "create",
         label: "✓ Create profile",
-        description: `max: ${maxSelection.modelId} / balanced: ${balancedSelection.modelId} / fast: ${fastSelection.modelId}`,
+        description: `planning: ${planningModel} / impl: ${implModel} / review: ${reviewModel} / eval: ${evalModel}`,
       },
       { value: "cancel", label: "✗ Cancel", description: "Abort" },
     ],
   );
   if (confirm !== "create") return;
 
-  // Step 7: Create the profile
+  // Create the profile
   try {
     await withLoader(ctx, "Creating profile...", () =>
       daemonRequest(ctx.cwd, "POST", API_ROUTES.profileCreate, payload as unknown as Record<string, unknown>),
@@ -477,7 +479,7 @@ export async function handleProfileNewCommand(
     return;
   }
 
-  // Step 8: Offer activation
+  // Offer activation
   const activate = await showSelectOverlay(ctx, "eforge - Activate Profile?", [
     { value: "yes", label: `Activate ${name}`, description: "Make this the active profile" },
     { value: "no", label: "Not now", description: `Switch later with /eforge:profile ${name}` },

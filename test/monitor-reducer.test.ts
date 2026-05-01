@@ -1098,7 +1098,6 @@ describe('effort/thinking fields on AgentThread', () => {
         agent: 'builder',
         planId: 'plan-01',
         model: 'claude',
-        agentRuntime: 'default',
         harness: 'pi',
         timestamp: '2024-01-01T00:00:00Z',
       } as unknown as EforgeEvent,
@@ -1113,6 +1112,50 @@ describe('effort/thinking fields on AgentThread', () => {
     expect(thread!.effortOriginal).toBeUndefined();
     expect(thread!.effortSource).toBeUndefined();
     expect(thread!.thinkingSource).toBeUndefined();
+    expect(thread!.harnessSource).toBeUndefined();
+  });
+
+  it('populates harness from agent:start event', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        harness: 'claude-sdk',
+        timestamp: '2024-01-01T00:00:00Z',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.harness).toBe('claude-sdk');
+    expect(thread!.harnessSource).toBeUndefined();
+  });
+
+  it('populates harnessSource from agent:start event', () => {
+    const state = eforgeReducer(initialRunState, {
+      type: 'ADD_EVENT',
+      event: {
+        type: 'agent:start',
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        model: 'claude',
+        harness: 'pi',
+        harnessSource: 'tier',
+        timestamp: '2024-01-01T00:00:00Z',
+      } as unknown as EforgeEvent,
+      eventId: '1',
+    });
+
+    const thread = state.agentThreads.find((t) => t.agentId === 'a1');
+    expect(thread).toBeDefined();
+    expect(thread!.harness).toBe('pi');
+    expect(thread!.harnessSource).toBe('tier');
   });
 
   it('handles effortSource values for config sources', () => {

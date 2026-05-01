@@ -86,7 +86,18 @@ export class StubHarness implements AgentHarness {
     this.customToolSets.push(options.customTools);
 
     const agentId = crypto.randomUUID();
-    yield { type: 'agent:start', planId, agent, agentId, model: options.model?.id ?? 'stub-model', agentRuntime: options.agentRuntimeName ?? 'stub', harness: 'claude-sdk' as const, timestamp: new Date().toISOString() };
+    yield {
+      type: 'agent:start',
+      planId,
+      agent,
+      agentId,
+      model: options.model?.id ?? 'stub-model',
+      harness: options.harness ?? 'claude-sdk' as const,
+      harnessSource: options.harnessSource ?? 'tier',
+      tier: options.tier ?? 'stub',
+      tierSource: options.tierSource ?? 'tier',
+      timestamp: new Date().toISOString(),
+    };
 
     if (options.thinkingCoerced) {
       yield { type: 'agent:warning', planId, agentId, agent, code: 'thinking-coerced', message: `Thinking coerced from 'enabled' to 'adaptive': model ${options.model?.id ?? 'unknown'} only supports adaptive thinking`, timestamp: new Date().toISOString() };

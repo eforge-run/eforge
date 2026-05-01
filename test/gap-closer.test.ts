@@ -13,7 +13,17 @@ const PRD_CONTENT = '# Feature PRD\n\n## Requirements\n\n- Must support dark mod
 
 function makePipelineContext() {
   return {
-    config: { agents: { maxTurns: 30 }, agentRuntimes: { default: { harness: 'claude-sdk' } }, defaultAgentRuntime: 'default' } as never,
+    config: {
+      agents: {
+        maxTurns: 30,
+        tiers: {
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+          implementation: { harness: 'claude-sdk', model: 'claude-sonnet-4-6', effort: 'medium' },
+          review: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+          evaluation: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+        },
+      },
+    } as never,
     pipeline: { compile: [], build: [] } as never,
     tracing: { createSpan: () => ({ setInput: () => {}, end: () => {}, error: () => {} }) } as never,
     planSetName: 'test-set',

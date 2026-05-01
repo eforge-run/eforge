@@ -1,36 +1,45 @@
 /**
  * AgentRuntimeRegistry — maps agent roles to harness instances.
  *
- * Supports multiple named harness configurations with lazy instance creation.
- * Pi module is imported lazily: only when the config declares at least one Pi
- * runtime entry. Instances are memoized by entry name.
+ * With tier recipes, the registry's job is simple: for any role, look up
+ * the role's tier and return the harness instance for that tier. Pi
+ * harness instances are memoized by (harness, provider) so two tiers that
+ * share `pi` + provider share one instance.
  */
 
 import type { AgentRole } from './events.js';
-import type { EforgeConfig, AgentRuntimeEntry, PiConfig } from './config.js';
-import type { AgentHarness, AgentRunOptions } from './harness.js';
+import type { EforgeConfig, TierConfig, PiConfig, AgentTier } from './config.js';
+import type { AgentHarness } from './harness.js';
 import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
 import { ClaudeSDKHarness } from './harnesses/claude-sdk.js';
-import { resolveAgentRuntimeForRole } from './pipeline/agent-config.js';
+import { AGENT_ROLE_TIERS } from './pipeline/agent-config.js';
 
 // ---------------------------------------------------------------------------
 // Public interface
 // ---------------------------------------------------------------------------
 
 /**
- * Registry that maps agent roles (and named entries) to harness instances.
- * All methods are synchronous — async work (Pi import) is done in the factory.
+ * Minimal plan-entry shape consumed by the registry — only the tier override
+ * field is needed here.
+ */
+export interface PlanEntryForRegistry {
+  agents?: Record<string, { tier?: string; [key: string]: unknown }>;
+}
+
+/**
+ * Registry that maps agent roles to harness instances.
  */
 export interface AgentRuntimeRegistry {
-  /** Resolve the harness for an agent role. */
-  forRole(role: AgentRole): AgentHarness;
-  /** Look up a harness instance by agentRuntime entry name. */
-  byName(name: string): AgentHarness;
-  /** Get the agentRuntime entry name for a role. */
-  nameForRole(role: AgentRole): string;
-  /** List all configured entry names. */
-  configured(): string[];
+  /**
+   * Resolve the harness for an agent role.
+   *
+   * @param role - The agent role to resolve.
+   * @param planEntry - Optional plan-file entry. When the plan overrides a
+   *   role's tier, the harness instance for the plan-resolved tier is returned
+   *   so the advertised harness matches the harness actually running the role.
+   */
+  forRole(role: AgentRole, planEntry?: PlanEntryForRegistry): AgentHarness;
 }
 
 // ---------------------------------------------------------------------------
@@ -48,16 +57,12 @@ export interface RegistryGlobalOptions {
 // ---------------------------------------------------------------------------
 
 /**
- * Create a registry where every role (and every name) resolves to the same
- * harness instance. Used by test code to wrap a single StubHarness so all
- * agent roles dispatch to it.
+ * Create a registry where every role resolves to the same harness instance.
+ * Used by test code to wrap a single StubHarness.
  */
 export function singletonRegistry(harness: AgentHarness): AgentRuntimeRegistry {
   return {
-    forRole(_role: AgentRole): AgentHarness { return harness; },
-    byName(_name: string): AgentHarness { return harness; },
-    nameForRole(_role: AgentRole): string { return 'singleton'; },
-    configured(): string[] { return ['singleton']; },
+    forRole(_role: AgentRole, _planEntry?: PlanEntryForRegistry): AgentHarness { return harness; },
   };
 }
 
@@ -66,42 +71,27 @@ export function singletonRegistry(harness: AgentHarness): AgentRuntimeRegistry {
 // ---------------------------------------------------------------------------
 
 /**
- * Wrap a harness instance so every `run()` call automatically receives the
- * runtime name (from the `agentRuntimes` map key) in `options.agentRuntimeName`.
- * This lets harnesses emit `agentRuntime: name` in `agent:start` events without
- * requiring every agent function to be aware of the runtime name.
+ * Build a PiConfig from a tier's pi block, filling in defaults for any
+ * unspecified fields.
  */
-function wrapWithRuntimeName(harness: AgentHarness, runtimeName: string): AgentHarness {
+function buildPiConfig(piBlock: TierConfig['pi'] | undefined): PiConfig {
   return {
-    effectiveCustomToolName(name: string) { return harness.effectiveCustomToolName(name); },
-    async *run(options: AgentRunOptions, agent: AgentRole, planId?: string) {
-      yield* harness.run({ ...options, agentRuntimeName: runtimeName }, agent, planId);
-    },
-  };
-}
-
-/**
- * Merge an optional per-entry Pi config with the global Pi defaults to produce
- * a fully resolved PiConfig.
- */
-function mergepiConfig(global: PiConfig, override?: AgentRuntimeEntry['pi']): PiConfig {
-  if (!override) return global;
-  return {
-    apiKey: override.apiKey ?? global.apiKey,
-    thinkingLevel: override.thinkingLevel ?? global.thinkingLevel,
+    apiKey: piBlock?.apiKey,
+    provider: piBlock?.provider,
+    thinkingLevel: piBlock?.thinkingLevel ?? 'medium',
     extensions: {
-      autoDiscover: override.extensions?.autoDiscover ?? global.extensions.autoDiscover,
-      include: override.extensions?.include ?? global.extensions.include,
-      exclude: override.extensions?.exclude ?? global.extensions.exclude,
-      paths: override.extensions?.paths ?? global.extensions.paths,
+      autoDiscover: piBlock?.extensions?.autoDiscover ?? true,
+      include: piBlock?.extensions?.include,
+      exclude: piBlock?.extensions?.exclude,
+      paths: piBlock?.extensions?.paths,
     },
     compaction: {
-      enabled: override.compaction?.enabled ?? global.compaction.enabled,
-      threshold: override.compaction?.threshold ?? global.compaction.threshold,
+      enabled: piBlock?.compaction?.enabled ?? true,
+      threshold: piBlock?.compaction?.threshold ?? 100_000,
     },
     retry: {
-      maxRetries: override.retry?.maxRetries ?? global.retry.maxRetries,
-      backoffMs: override.retry?.backoffMs ?? global.retry.backoffMs,
+      maxRetries: piBlock?.retry?.maxRetries ?? 3,
+      backoffMs: piBlock?.retry?.backoffMs ?? 1000,
     },
   };
 }
@@ -113,28 +103,26 @@ function mergepiConfig(global: PiConfig, override?: AgentRuntimeEntry['pi']): Pi
 /**
  * Build an `AgentRuntimeRegistry` from config.
  *
- * Lazily imports `./backends/pi.js` the first time a `pi` entry is needed
- * (i.e. only when the config declares at least one Pi runtime). Instances are
- * memoized by entry name so two roles pointing at the same name share one instance.
- *
- * @param config - Fully resolved EforgeConfig.
- * @param globalOptions - Infrastructure options forwarded from EforgeEngine.create().
+ * Lazily imports `./harnesses/pi.js` the first time a Pi tier is needed.
+ * Pi instances are memoized by (harness, provider) so tiers sharing the same
+ * pi.provider reuse a single harness instance. Claude SDK has a single shared
+ * instance because its config is harness-global.
  */
 export async function buildAgentRuntimeRegistry(
   config: EforgeConfig,
   globalOptions: RegistryGlobalOptions = {},
 ): Promise<AgentRuntimeRegistry> {
-  if (!config.agentRuntimes || Object.keys(config.agentRuntimes).length === 0) {
+  const tiers = config.agents.tiers;
+  if (!tiers || Object.keys(tiers).length === 0) {
     throw new Error(
-      'buildAgentRuntimeRegistry: "agentRuntimes" is not declared or is empty in config. ' +
-      'Add "agentRuntimes" and "defaultAgentRuntime" to eforge/config.yaml or the active profile.',
+      'buildAgentRuntimeRegistry: "agents.tiers" is not declared or is empty in config. ' +
+      'Add agents.tiers entries (each with harness + model + effort) to eforge/config.yaml.',
     );
   }
-  const entries = config.agentRuntimes;
 
-  // Lazily import Pi module only when at least one Pi entry is configured.
+  // Detect whether any tier uses Pi so we can lazily import the module.
   let PiHarnessCtor: (typeof import('./harnesses/pi.js'))['PiHarness'] | undefined;
-  const hasPi = Object.values(entries).some((e) => e.harness === 'pi');
+  const hasPi = Object.values(tiers).some((t) => t?.harness === 'pi');
   if (hasPi) {
     try {
       const piModule = await import('./harnesses/pi.js');
@@ -148,22 +136,24 @@ export async function buildAgentRuntimeRegistry(
     }
   }
 
-  // Memoized instances keyed by entry name.
+  // Memoize instances keyed by (harness, provider). Provider is empty string
+  // for claude-sdk (which is harness-global) and the pi.provider value for pi.
   const instances = new Map<string, AgentHarness>();
 
-  function createInstance(name: string): AgentHarness {
-    const entry = entries[name];
-    if (!entry) {
-      throw new Error(
-        `Unknown agentRuntime name: "${name}". Configured: ${Object.keys(entries).join(', ')}.`,
-      );
-    }
+  function makeKey(harness: 'claude-sdk' | 'pi', provider?: string): string {
+    return harness === 'pi' ? `pi:${provider ?? ''}` : 'claude-sdk';
+  }
+
+  function instanceForTier(tierRecipe: TierConfig): AgentHarness {
+    const provider = tierRecipe.harness === 'pi' ? tierRecipe.pi?.provider : undefined;
+    const key = makeKey(tierRecipe.harness, provider);
+    const existing = instances.get(key);
+    if (existing) return existing;
 
     let harness: AgentHarness;
-
-    if (entry.harness === 'pi') {
-      if (!PiHarnessCtor) throw new Error('Internal: Pi module not loaded despite pi entry');
-      const piCfg = mergepiConfig(config.pi, entry.pi);
+    if (tierRecipe.harness === 'pi') {
+      if (!PiHarnessCtor) throw new Error('Internal: Pi module not loaded despite pi tier');
+      const piCfg = buildPiConfig(tierRecipe.pi);
       harness = new PiHarnessCtor({
         mcpServers: globalOptions.mcpServers,
         piConfig: piCfg,
@@ -176,39 +166,34 @@ export async function buildAgentRuntimeRegistry(
         },
       });
     } else {
-      // claude-sdk entry
       harness = new ClaudeSDKHarness({
         mcpServers: globalOptions.mcpServers,
         plugins: globalOptions.plugins,
         settingSources: globalOptions.settingSources ?? config.agents.settingSources as SettingSource[] | undefined,
         bare: config.agents.bare,
-        disableSubagents: entry.claudeSdk?.disableSubagents ?? config.claudeSdk.disableSubagents,
+        disableSubagents: tierRecipe.claudeSdk?.disableSubagents ?? false,
       });
     }
 
-    // Wrap so every run() call receives agentRuntimeName for agent:start events.
-    return wrapWithRuntimeName(harness, name);
+    instances.set(key, harness);
+    return harness;
   }
 
   const registry: AgentRuntimeRegistry = {
-    forRole(role: AgentRole): AgentHarness {
-      const { agentRuntimeName } = resolveAgentRuntimeForRole(role, config);
-      return registry.byName(agentRuntimeName);
-    },
-
-    byName(name: string): AgentHarness {
-      if (!instances.has(name)) {
-        instances.set(name, createInstance(name));
+    forRole(role: AgentRole, planEntry?: PlanEntryForRegistry): AgentHarness {
+      // Resolve role's tier using the same precedence as resolveAgentConfig:
+      // plan-file override > per-role config override > built-in AGENT_ROLE_TIERS.
+      const planTier = planEntry?.agents?.[role]?.tier as AgentTier | undefined;
+      const userRoleTier = (config.agents.roles?.[role] as { tier?: AgentTier } | undefined)?.tier;
+      const tier = planTier ?? userRoleTier ?? AGENT_ROLE_TIERS[role];
+      const tierRecipe = tiers[tier];
+      if (!tierRecipe) {
+        throw new Error(
+          `Role "${role}" resolves to tier "${tier}" but no tier recipe is configured. ` +
+          `Add agents.tiers.${tier} to eforge/config.yaml.`,
+        );
       }
-      return instances.get(name)!;
-    },
-
-    nameForRole(role: AgentRole): string {
-      return resolveAgentRuntimeForRole(role, config).agentRuntimeName;
-    },
-
-    configured(): string[] {
-      return Object.keys(entries);
+      return instanceForTier(tierRecipe);
     },
   };
 

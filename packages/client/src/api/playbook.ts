@@ -32,7 +32,6 @@ export interface PlaybookData {
   name: string;
   description: string;
   scope: PlaybookScope;
-  agentRuntime?: string;
   postMerge?: string[];
   goal: string;
   outOfScope: string;
@@ -45,7 +44,6 @@ export interface PlaybookFrontmatterFields {
   name: string;
   description: string;
   scope: PlaybookScope;
-  agentRuntime?: string;
   postMerge?: string[];
 }
 

@@ -1,24 +1,23 @@
 /**
- * Agent config resolution — role/model tables and resolveAgentConfig.
+ * Agent config resolution — single-axis tier recipes.
  *
- * resolveAgentConfig is split into focused sub-functions:
- *   resolveSdkPassthrough  — SDK field resolution with provenance tracking
- *   resolveModel           — per-role/global/class/fallback model resolution
- *   applyEffortClamp       — clamps effort to model maximum
- *   applyThinkingCoercion  — coerces thinking mode for adaptive-only models
+ * Each tier (planning/implementation/review/evaluation) is a self-contained
+ * recipe: harness + harness-specific config + model + effort + tuning. There
+ * is no separate model-class table, no separate runtime registry. A role
+ * picks a tier; the tier carries everything else.
  *
- * Resolution precedence (highest → lowest) for every field:
- *   1. Plan-file override (planEntry.agents[role])
- *   2. User per-role override (config.agents.roles[role])
- *   3. User per-tier (config.agents.tiers[tierForRole(role)])
- *   4. User global (config.agents.{model,thinking,effort,maxTurns})
- *   5. Built-in per-role defaults (AGENT_ROLE_DEFAULTS[role]) — exceptions only
- *   6. Built-in per-tier defaults (BUILTIN_TIER_DEFAULTS[tier])
+ * `resolveAgentConfig` is a 6-step algorithm:
+ *   1. Determine tier name (role default → role override → plan override)
+ *   2. Take the tier recipe from config
+ *   3. Apply role-level field overrides
+ *   4. Apply plan-level field overrides
+ *   5. Clamp effort, coerce thinking
+ *   6. Stamp provenance (`tier|role|plan`) for every overridable field
  */
 
 import type { AgentRole } from '../events.js';
-import type { EforgeConfig, ModelRef, ModelClass, ResolvedAgentConfig, AgentTier, ShardScope } from '../config.js';
-import type { EffortLevel } from '../harness.js';
+import type { EforgeConfig, ModelRef, ResolvedAgentConfig, AgentTier, ShardScope, TierConfig } from '../config.js';
+import type { EffortLevel, ThinkingConfig } from '../harness.js';
 import { clampEffort, lookupCapabilities } from '../model-capabilities.js';
 
 /**
@@ -32,24 +31,24 @@ export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
   'module-planner': 'planning',
   formatter: 'planning',
   'pipeline-composer': 'planning',
-  'dependency-detector': 'planning',
+  'merge-conflict-resolver': 'planning',
+  'doc-updater': 'planning',
+  'gap-closer': 'planning',
   // Implementation tier — code-writing and transformation agents
   builder: 'implementation',
   'review-fixer': 'implementation',
   'validation-fixer': 'implementation',
-  'merge-conflict-resolver': 'implementation',
-  'doc-updater': 'implementation',
   'test-writer': 'implementation',
   tester: 'implementation',
-  'gap-closer': 'implementation',
   'recovery-analyst': 'implementation',
+  'dependency-detector': 'implementation',
+  'prd-validator': 'implementation',
+  'staleness-assessor': 'implementation',
   // Review tier — inspection and feedback agents
   reviewer: 'review',
   'architecture-reviewer': 'review',
   'cohesion-reviewer': 'review',
   'plan-reviewer': 'review',
-  'staleness-assessor': 'review',
-  'prd-validator': 'review',
   // Evaluation tier — verdict and acceptance agents
   evaluator: 'evaluation',
   'architecture-evaluator': 'evaluation',
@@ -57,41 +56,9 @@ export const AGENT_ROLE_TIERS: Record<AgentRole, AgentTier> = {
   'plan-evaluator': 'evaluation',
 };
 
-/**
- * Built-in per-tier defaults applied when no higher-precedence source sets a value.
- * - planning/review/evaluation: effort=high, modelClass=max
- * - implementation: effort=medium, modelClass=balanced
- */
-export const BUILTIN_TIER_DEFAULTS: Record<AgentTier, { effort: EffortLevel; modelClass: ModelClass }> = {
-  planning: { effort: 'high', modelClass: 'max' },
-  implementation: { effort: 'medium', modelClass: 'balanced' },
-  review: { effort: 'high', modelClass: 'max' },
-  evaluation: { effort: 'high', modelClass: 'max' },
-};
-
-/**
- * Per-role model class overrides for roles whose built-in class differs from their tier default.
- * Only roles that DON'T match their tier's default modelClass appear here.
- * - implementation tier defaults to `balanced`, but these roles use `max`:
- * - planning/review tier defaults to `max`, but these roles use `balanced` (historical):
- */
-export const AGENT_ROLE_MODEL_CLASS_OVERRIDES: Partial<Record<AgentRole, ModelClass>> = {
-  'merge-conflict-resolver': 'max',
-  'doc-updater': 'max',
-  'gap-closer': 'max',
-  'dependency-detector': 'balanced',
-  'prd-validator': 'balanced',
-  'staleness-assessor': 'balanced',
-};
-
-/**
- * Per-role built-in defaults. Only genuine per-role exceptions: turn budgets
- * and the builder effort outlier (implementation tier defaults to medium, but
- * builder's historical default is high — preserved for backward compatibility).
- * All per-role effort entries that match their tier default have been removed.
- */
-export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, Partial<ResolvedAgentConfig>>> = {
-  builder: { maxTurns: 80, effort: 'high' },  // effort exception: implementation tier default is medium
+/** Per-role default maxTurns for agents that have a non-default budget. */
+export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, { maxTurns?: number }>> = {
+  builder: { maxTurns: 80 },
   planner: { maxTurns: 80 },
   tester: { maxTurns: 40 },
   'module-planner': { maxTurns: 20 },
@@ -109,211 +76,198 @@ export const AGENT_MAX_CONTINUATIONS_DEFAULTS: Partial<Record<AgentRole, number>
   'architecture-evaluator': 1,
 };
 
-/** Per-backend default ModelRef objects for each model class. `undefined` means the SDK picks its own model. */
-export const MODEL_CLASS_DEFAULTS: Record<string, Record<ModelClass, ModelRef | undefined>> = {
-  'claude-sdk': {
-    max: { id: 'claude-opus-4-7' },
-    balanced: { id: 'claude-sonnet-4-6' },
-    fast: { id: 'claude-haiku-4-5' },
-  },
-  pi: {
-    max: undefined,
-    balanced: undefined,
-    fast: undefined,
-  },
-};
-
-/** Ordered tier list for fallback resolution: index 0 is the most capable. */
-const MODEL_CLASS_TIER: ModelClass[] = ['max', 'balanced', 'fast'];
-
-type EffortSource = 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
-type ThinkingSource = 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
+/** Provenance tag for a tunable field. `tier` = from tier recipe; `role` = role override; `plan` = plan-file override. */
+type Provenance = 'tier' | 'role' | 'plan';
 
 /**
  * Resolve the tier for a given role.
- * Precedence: user per-role tier override > built-in AGENT_ROLE_TIERS.
+ * Precedence: plan-file tier override > user per-role tier override > built-in AGENT_ROLE_TIERS.
  */
 function resolveTierForRole(
   role: AgentRole,
   config: EforgeConfig,
-): { tier: AgentTier; tierSource: 'role-config' | 'role-default' } {
-  const userRoleTier = config.agents.roles?.[role]?.tier as AgentTier | undefined;
+  planEntry?: { agents?: Record<string, { tier?: string; [key: string]: unknown }> },
+): { tier: AgentTier; tierSource: Provenance } {
+  const planTier = planEntry?.agents?.[role]?.tier as AgentTier | undefined;
+  if (planTier !== undefined) {
+    return { tier: planTier, tierSource: 'plan' };
+  }
+  const userRoleTier = (config.agents.roles?.[role] as { tier?: AgentTier } | undefined)?.tier;
   if (userRoleTier !== undefined) {
-    return { tier: userRoleTier, tierSource: 'role-config' };
+    return { tier: userRoleTier, tierSource: 'role' };
   }
-  return { tier: AGENT_ROLE_TIERS[role], tierSource: 'role-default' };
+  return { tier: AGENT_ROLE_TIERS[role], tierSource: 'tier' };
+}
+
+/** Plan-entry shape used by resolveAgentConfig. */
+type PlanEntry = {
+  agents?: Record<string, {
+    effort?: string;
+    thinking?: boolean | object;
+    tier?: string;
+    maxTurns?: number;
+    allowedTools?: string[];
+    disallowedTools?: string[];
+    promptAppend?: string;
+    shards?: ShardScope[];
+    rationale?: string;
+    [key: string]: unknown;
+  }>;
+  filePath?: string;
+};
+
+/** Coerce a raw `thinking` value into a ThinkingConfig, or undefined when absent. */
+function coerceThinking(raw: unknown): ThinkingConfig | undefined {
+  if (raw === undefined || raw === null) return undefined;
+  if (typeof raw === 'boolean') {
+    return raw ? { type: 'enabled' } : { type: 'disabled' };
+  }
+  if (typeof raw === 'object') {
+    const t = (raw as { type?: unknown }).type;
+    if (t === 'adaptive' || t === 'enabled' || t === 'disabled') {
+      return raw as ThinkingConfig;
+    }
+  }
+  return undefined;
 }
 
 /**
- * Resolve SDK passthrough fields (maxTurns + SDK_FIELDS) with provenance tracking.
- * Returns the resolved field values and effort/thinking provenance.
+ * Resolve agent config for a given role.
  *
- * Resolution order for effort/thinking (highest → lowest):
- *   1. Plan-file override
- *   2. User per-role (config.agents.roles[role])
- *   3. User per-tier (config.agents.tiers[tier])
- *   4. User global (config.agents.effort / thinking)
- *   5. Built-in per-role (AGENT_ROLE_DEFAULTS[role])
- *   6. Built-in per-tier (BUILTIN_TIER_DEFAULTS[tier])
+ * Six-step algorithm:
+ *   1. Determine tier name (role default → role override → plan override)
+ *   2. Take tier recipe from config
+ *   3. Apply role-level field overrides
+ *   4. Apply plan-level field overrides
+ *   5. Clamp effort, coerce thinking
+ *   6. Stamp provenance (`tier|role|plan`)
  */
-function resolveSdkPassthrough(
+export function resolveAgentConfig(
   role: AgentRole,
   config: EforgeConfig,
-  planEntry: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string }> } | undefined,
-  builtinRoleDefaults: Partial<ResolvedAgentConfig>,
-  tier: AgentTier,
-): { fields: Partial<ResolvedAgentConfig>; effortSource: EffortSource; thinkingSource: ThinkingSource } {
-  const SDK_FIELDS = ['thinking', 'effort', 'maxBudgetUsd', 'fallbackModel', 'allowedTools', 'disallowedTools', 'promptAppend'] as const;
-  const userRole = config.agents.roles?.[role] ?? {};
-  const userTier = (config.agents.tiers?.[tier] ?? {}) as Record<string, unknown>;
-  const builtinTierDefaults = BUILTIN_TIER_DEFAULTS[tier] as Record<string, unknown>;
-  const userGlobal: Partial<ResolvedAgentConfig> = {
-    maxTurns: config.agents.maxTurns,
-    model: config.agents.model,
-    thinking: config.agents.thinking,
-    effort: config.agents.effort,
-  };
-  const planOverride = planEntry?.agents?.[role];
-  const fields: Partial<ResolvedAgentConfig> = {};
+  planEntry?: PlanEntry,
+): ResolvedAgentConfig {
+  // Step 1: tier
+  const { tier, tierSource } = resolveTierForRole(role, config, planEntry);
 
-  // maxTurns: user per-role > user per-tier > built-in per-role > user global
-  fields.maxTurns = userRole.maxTurns ?? (userTier['maxTurns'] as number | undefined) ?? builtinRoleDefaults.maxTurns ?? userGlobal.maxTurns;
-
-  let effortSource: EffortSource = 'default';
-  let thinkingSource: ThinkingSource = 'default';
-
-  for (const field of SDK_FIELDS) {
-    let value: unknown;
-    if (field === 'effort' || field === 'thinking') {
-      const planVal = planOverride?.[field];
-      if (planVal !== undefined) {
-        value = planVal;
-        if (field === 'effort') effortSource = 'planner';
-        if (field === 'thinking') thinkingSource = 'planner';
-      } else if (userRole[field] !== undefined) {
-        value = userRole[field];
-        if (field === 'effort') effortSource = 'role-config';
-        if (field === 'thinking') thinkingSource = 'role-config';
-      } else if (userTier[field] !== undefined) {
-        value = userTier[field];
-        if (field === 'effort') effortSource = 'tier-config';
-        if (field === 'thinking') thinkingSource = 'tier-config';
-      } else if (userGlobal[field] !== undefined) {
-        value = userGlobal[field];
-        if (field === 'effort') effortSource = 'global-config';
-        if (field === 'thinking') thinkingSource = 'global-config';
-      } else if (builtinRoleDefaults[field] !== undefined) {
-        value = builtinRoleDefaults[field];
-        // effortSource/thinkingSource stays 'default'
-      } else if (builtinTierDefaults[field] !== undefined) {
-        value = builtinTierDefaults[field];
-        // stays 'default'
-      }
-    } else {
-      value = userRole[field] ?? userTier[field] ?? userGlobal[field] ?? builtinRoleDefaults[field];
-    }
-    if (value !== undefined) {
-      (fields as Record<string, unknown>)[field] = value;
-    }
-  }
-
-  return { fields, effortSource, thinkingSource };
-}
-
-/** Walk MODEL_CLASS_TIER ascending then descending from effectiveClass to find any configured model. */
-function resolveFallbackModel(
-  harness: 'claude-sdk' | 'pi',
-  effectiveClass: ModelClass,
-  config: EforgeConfig,
-): { model?: ModelRef; fallbackFrom?: ModelClass; attempted: ModelClass[] } {
-  const effectiveIdx = MODEL_CLASS_TIER.indexOf(effectiveClass);
-  const attempted: ModelClass[] = [];
-
-  // Ascending (toward more capable)
-  for (let i = effectiveIdx - 1; i >= 0; i--) {
-    const tier = MODEL_CLASS_TIER[i];
-    attempted.push(tier);
-    const userModel = config.agents.models?.[tier];
-    if (userModel !== undefined) return { model: userModel, fallbackFrom: effectiveClass, attempted };
-    const harnessModel = MODEL_CLASS_DEFAULTS[harness]?.[tier];
-    if (harnessModel !== undefined) return { model: harnessModel, fallbackFrom: effectiveClass, attempted };
-  }
-
-  // Descending (toward less capable)
-  for (let i = effectiveIdx + 1; i < MODEL_CLASS_TIER.length; i++) {
-    const tier = MODEL_CLASS_TIER[i];
-    attempted.push(tier);
-    const userModel = config.agents.models?.[tier];
-    if (userModel !== undefined) return { model: userModel, fallbackFrom: effectiveClass, attempted };
-    const harnessModel = MODEL_CLASS_DEFAULTS[harness]?.[tier];
-    if (harnessModel !== undefined) return { model: harnessModel, fallbackFrom: effectiveClass, attempted };
-  }
-
-  return { model: undefined, attempted };
-}
-
-/**
- * Resolve the model for a given role via the six-tier chain:
- *   1. User per-role model
- *   2. User global model
- *   3. User model class override (agents.models[effectiveClass])
- *   4. Harness model class default (MODEL_CLASS_DEFAULTS[harness][effectiveClass])
- *   5. Fallback tier traversal (ascending then descending)
- *   6. undefined (no model set)
- *
- * effectiveClass resolution (highest → lowest):
- *   1. User per-role modelClass
- *   2. User per-tier modelClass
- *   3. Built-in per-role outlier (AGENT_ROLE_MODEL_CLASS_OVERRIDES)
- *   4. Built-in per-tier default (BUILTIN_TIER_DEFAULTS[tier].modelClass)
- */
-function resolveModel(
-  role: AgentRole,
-  config: EforgeConfig,
-  harness: 'claude-sdk' | 'pi' | undefined,
-  builtinRoleDefaults: Partial<ResolvedAgentConfig>,
-  tier: AgentTier,
-): { model?: ModelRef; fallbackFrom?: ModelClass; provenance?: string } {
-  const userRole = config.agents.roles?.[role] ?? {};
-  const userTier = config.agents.tiers?.[tier] ?? {};
-  const perRoleModel = userRole.model ?? builtinRoleDefaults.model;
-  const globalModel = config.agents.model;
-  const effectiveClass: ModelClass =
-    userRole.modelClass ??
-    (userTier as { modelClass?: ModelClass }).modelClass ??
-    AGENT_ROLE_MODEL_CLASS_OVERRIDES[role] ??
-    BUILTIN_TIER_DEFAULTS[tier].modelClass;
-
-  if (perRoleModel !== undefined) return { model: perRoleModel, provenance: `agents.roles.${role}.model` };
-  if ((userTier as { model?: ModelRef }).model !== undefined) return { model: (userTier as { model?: ModelRef }).model, provenance: `agents.tiers.${tier}.model` };
-  if (globalModel !== undefined) return { model: globalModel, provenance: 'agents.model' };
-
-  const userClassModel = config.agents.models?.[effectiveClass];
-  if (userClassModel !== undefined) return { model: userClassModel, provenance: `agents.models.${effectiveClass}` };
-
-  if (harness) {
-    const harnessModel = MODEL_CLASS_DEFAULTS[harness]?.[effectiveClass];
-    if (harnessModel !== undefined) return { model: harnessModel };
-    const fallback = resolveFallbackModel(harness, effectiveClass, config);
-    if (fallback.model !== undefined) return { model: fallback.model, fallbackFrom: fallback.fallbackFrom };
-    if (harness !== 'claude-sdk') {
-      throw new Error(
-        `No model configured for role "${role}" (model class "${effectiveClass}") on harness "${harness}". ` +
-        `Tried fallback: ${fallback.attempted.join(', ')}. ` +
-        `Set agents.models.${effectiveClass} in eforge/config.yaml.`,
-      );
-    }
-  }
-
-  // Non-claude-sdk harnesses without built-in defaults require user-configured model mappings.
-  if (harness !== 'claude-sdk' && harness !== undefined) {
+  // Step 2: tier recipe
+  const tierRecipe = config.agents.tiers?.[tier] as TierConfig | undefined;
+  if (!tierRecipe) {
     throw new Error(
-      `No model configured for role "${role}" (model class "${effectiveClass}") on harness "${harness}". ` +
-      `Set agents.models.${effectiveClass} in eforge/config.yaml.`,
+      `Role "${role}" resolves to tier "${tier}" but no tier recipe is configured. ` +
+      `Add agents.tiers.${tier} (with harness, model, effort) to eforge/config.yaml.`,
     );
   }
 
-  return { model: undefined };
+  // Step 3: role-level overrides
+  const roleOverride = (config.agents.roles?.[role] ?? {}) as {
+    effort?: EffortLevel;
+    thinking?: boolean;
+    maxTurns?: number;
+    allowedTools?: string[];
+    disallowedTools?: string[];
+    promptAppend?: string;
+    shards?: ShardScope[];
+  };
+
+  // Step 4: plan-level overrides
+  const planOverride = planEntry?.agents?.[role] ?? {};
+
+  // Resolve harness — always from the tier recipe.
+  const harness: 'claude-sdk' | 'pi' = tierRecipe.harness;
+
+  // Resolve model — always from the tier recipe; provider spliced for pi.
+  const baseModel: ModelRef = { id: tierRecipe.model };
+  const model: ModelRef = harness === 'pi'
+    ? { ...baseModel, provider: tierRecipe.pi?.provider }
+    : baseModel;
+
+  // Resolve effort with provenance.
+  let effort: EffortLevel = tierRecipe.effort;
+  let effortSource: Provenance = 'tier';
+  if (planOverride.effort !== undefined) {
+    effort = planOverride.effort as EffortLevel;
+    effortSource = 'plan';
+  } else if (roleOverride.effort !== undefined) {
+    effort = roleOverride.effort;
+    effortSource = 'role';
+  }
+
+  // Resolve thinking with provenance.
+  let thinking: ThinkingConfig | undefined = tierRecipe.thinking !== undefined
+    ? (tierRecipe.thinking ? { type: 'enabled' as const } : { type: 'disabled' as const })
+    : undefined;
+  let thinkingSource: Provenance = 'tier';
+  const planThinking = coerceThinking(planOverride.thinking);
+  if (planThinking !== undefined) {
+    thinking = planThinking;
+    thinkingSource = 'plan';
+  } else if (roleOverride.thinking !== undefined) {
+    thinking = coerceThinking(roleOverride.thinking);
+    thinkingSource = 'role';
+  }
+
+  // Resolve maxTurns: plan > role > builtin-role > tier > global
+  const builtinRoleMaxTurns = AGENT_ROLE_DEFAULTS[role]?.maxTurns;
+  const maxTurns =
+    planOverride.maxTurns
+    ?? roleOverride.maxTurns
+    ?? builtinRoleMaxTurns
+    ?? tierRecipe.maxTurns
+    ?? config.agents.maxTurns;
+
+  // Resolve other tunables: plan > role > tier
+  const allowedTools = planOverride.allowedTools ?? roleOverride.allowedTools ?? tierRecipe.allowedTools;
+  const disallowedTools = planOverride.disallowedTools ?? roleOverride.disallowedTools ?? tierRecipe.disallowedTools;
+  const promptAppend = planOverride.promptAppend ?? roleOverride.promptAppend ?? tierRecipe.promptAppend;
+  const fallbackModel = tierRecipe.fallbackModel;
+
+  // Build initial result.
+  const result: ResolvedAgentConfig = {
+    harness,
+    harnessSource: 'tier',
+    tier,
+    tierSource,
+    model,
+    effort,
+    effortSource,
+    thinkingSource,
+    ...(thinking !== undefined ? { thinking } : {}),
+    ...(maxTurns !== undefined ? { maxTurns } : {}),
+    ...(fallbackModel !== undefined ? { fallbackModel } : {}),
+    ...(allowedTools !== undefined ? { allowedTools } : {}),
+    ...(disallowedTools !== undefined ? { disallowedTools } : {}),
+    ...(promptAppend !== undefined ? { promptAppend } : {}),
+  };
+
+  // Step 5: clamp effort + coerce thinking
+  applyEffortClamp(result);
+  applyThinkingCoercion(result);
+
+  // Thread shards from plan / role for builder.
+  if (role === 'builder') {
+    const planShards = planOverride.shards;
+    const roleShards = roleOverride.shards;
+    const shards = planShards ?? roleShards;
+    if (shards !== undefined && shards.length > 0) {
+      const ids = shards.map((s) => s.id);
+      const seen = new Set<string>();
+      const duplicates = new Set<string>();
+      for (const id of ids) {
+        if (seen.has(id)) duplicates.add(id);
+        seen.add(id);
+      }
+      if (duplicates.size > 0) {
+        throw new Error(
+          `Builder config has duplicate shard IDs: ${[...duplicates].join(', ')}. ` +
+          `Each shard must have a unique id within the plan.`,
+        );
+      }
+      result.shards = shards;
+    }
+  }
+
+  return result;
 }
 
 /** Clamp effort to the model's maximum supported level (mutates result). */
@@ -340,141 +294,4 @@ function applyThinkingCoercion(result: ResolvedAgentConfig): void {
     result.thinking = { type: 'adaptive' };
     result.thinkingCoerced = true;
   }
-}
-
-/**
- * Resolve the agentRuntime name and harness kind for a given role.
- *
- * Precedence (highest → lowest):
- *   1. Plan-file agentRuntime override (planEntry.agents[role].agentRuntime)
- *   2. Per-role agentRuntime (config.agents.roles[role].agentRuntime)
- *   3. defaultAgentRuntime
- *
- * Requires config.agentRuntimes + config.defaultAgentRuntime to be present.
- * Throws when a plan-file references an undeclared runtime name (includes plan file path in error).
- */
-export function resolveAgentRuntimeForRole(
-  role: AgentRole,
-  config: EforgeConfig,
-  planEntry?: { agents?: Record<string, { agentRuntime?: string; [key: string]: unknown }>; filePath?: string },
-): { agentRuntimeName: string; harness: 'claude-sdk' | 'pi'; provider?: string } {
-  const agentRuntimes = config.agentRuntimes;
-
-  if (!agentRuntimes || Object.keys(agentRuntimes).length === 0) {
-    throw new Error(
-      `Role "${role}" could not resolve an agentRuntime: "agentRuntimes" is not declared in config. ` +
-      `Add "agentRuntimes" and "defaultAgentRuntime" to eforge/config.yaml or the active profile.`,
-    );
-  }
-
-  // Plan-file override takes top precedence
-  const planAgentRuntime = planEntry?.agents?.[role]?.agentRuntime;
-  if (planAgentRuntime !== undefined) {
-    const entry = agentRuntimes[planAgentRuntime];
-    if (!entry) {
-      const planDesc = planEntry?.filePath ? `plan file ${planEntry.filePath}` : 'plan entry';
-      throw new Error(
-        `${planDesc}: role "${role}" references agentRuntime "${planAgentRuntime}" which is not declared in agentRuntimes. ` +
-        `Declared: ${Object.keys(agentRuntimes).join(', ')}.`,
-      );
-    }
-    const provider = entry.pi?.provider;
-    return { agentRuntimeName: planAgentRuntime, harness: entry.harness, ...(provider !== undefined && { provider }) };
-  }
-
-  // Config-level role override, then tier override, then default
-  const roleConfig = config.agents.roles?.[role];
-  const { tier } = resolveTierForRole(role, config);
-  const tierConfig = config.agents.tiers?.[tier];
-  const runtimeName = roleConfig?.agentRuntime ?? (tierConfig as { agentRuntime?: string } | undefined)?.agentRuntime ?? config.defaultAgentRuntime;
-
-  if (!runtimeName) {
-    throw new Error(
-      `Role "${role}" could not resolve an agentRuntime: no agentRuntime set on the role and no defaultAgentRuntime configured.`,
-    );
-  }
-
-  const entry = agentRuntimes[runtimeName];
-  if (!entry) {
-    throw new Error(
-      `Role "${role}" has agentRuntime "${runtimeName}" which is not declared in agentRuntimes. ` +
-      `Declared: ${Object.keys(agentRuntimes).join(', ')}.`,
-    );
-  }
-
-  const provider = entry.pi?.provider;
-  return { agentRuntimeName: runtimeName, harness: entry.harness, ...(provider !== undefined && { provider }) };
-}
-
-/**
- * Resolve agent config for a given role.
- *
- * Six-tier precedence (highest → lowest) for all fields:
- *   1. Plan-file override (planEntry.agents[role])
- *   2. User per-role config (config.agents.roles[role])
- *   3. User per-tier config (config.agents.tiers[tier])
- *   4. User global config (config.agents.{thinking,effort,...})
- *   5. Built-in per-role defaults (AGENT_ROLE_DEFAULTS[role]) — exceptions only
- *   6. Built-in per-tier defaults (BUILTIN_TIER_DEFAULTS[tier])
- *
- * The resolved tier is always stamped onto the result along with its provenance.
- */
-export function resolveAgentConfig(
-  role: AgentRole,
-  config: EforgeConfig,
-  planEntry?: { agents?: Record<string, { effort?: string; thinking?: object; rationale?: string; agentRuntime?: string; shards?: ShardScope[] }>; filePath?: string },
-): ResolvedAgentConfig {
-  const { agentRuntimeName, harness, provider } = resolveAgentRuntimeForRole(role, config, planEntry);
-  const builtinRoleDefaults = AGENT_ROLE_DEFAULTS[role] ?? {};
-
-  // Resolve tier for this role
-  const { tier, tierSource } = resolveTierForRole(role, config);
-
-  const { fields, effortSource, thinkingSource } = resolveSdkPassthrough(role, config, planEntry, builtinRoleDefaults, tier);
-  let { model, fallbackFrom } = resolveModel(role, config, harness, builtinRoleDefaults, tier);
-
-  // Splice provider from agentRuntime entry into resolved model ref for Pi harness.
-  // Schema validation ensures pi.provider is set on every pi runtime entry; this
-  // preserves the wire shape (ResolvedAgentConfig.model.provider) for downstream
-  // consumers (Pi harness, monitor UI, traces) without any other code changes.
-  if (harness === 'pi' && model !== undefined) {
-    model = { ...model, provider };
-  }
-
-  const result: ResolvedAgentConfig = { ...fields, agentRuntimeName, harness, tier, tierSource };
-  if (model !== undefined) result.model = model;
-  if (fallbackFrom !== undefined) result.fallbackFrom = fallbackFrom;
-
-  applyEffortClamp(result);
-  applyThinkingCoercion(result);
-
-  // Always stamp provenance so the UI always has source data
-  result.effortSource = effortSource;
-  result.thinkingSource = thinkingSource;
-
-  // Thread shards from plan entry (builder role only). Validate unique IDs.
-  if (role === 'builder') {
-    const planShards = planEntry?.agents?.['builder']?.shards;
-    const configShards = (config.agents.roles?.['builder'] as { shards?: ShardScope[] } | undefined)?.shards;
-    // Plan-level shards take precedence over config-level shards
-    const shards = planShards ?? configShards;
-    if (shards !== undefined && shards.length > 0) {
-      const ids = shards.map((s) => s.id);
-      const seen = new Set<string>();
-      const duplicates = new Set<string>();
-      for (const id of ids) {
-        if (seen.has(id)) duplicates.add(id);
-        seen.add(id);
-      }
-      if (duplicates.size > 0) {
-        throw new Error(
-          `Builder config has duplicate shard IDs: ${[...duplicates].join(', ')}. ` +
-          `Each shard must have a unique id within the plan.`,
-        );
-      }
-      result.shards = shards;
-    }
-  }
-
-  return result;
 }

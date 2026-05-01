@@ -61,7 +61,7 @@ describe('resolveActiveProfileName', () => {
   let origXdg: string | undefined;
 
   beforeEach(async () => {
-    ({ projectDir, configDir } = await makeProject({ configYaml: 'backend: claude-sdk\n' }));
+    ({ projectDir, configDir } = await makeProject({ configYaml: 'agents:\n  maxTurns: 30\n' }));
     ({ userHomeDir } = await makeUserHome());
     origXdg = process.env.XDG_CONFIG_HOME;
     process.env.XDG_CONFIG_HOME = userHomeDir;
@@ -85,8 +85,8 @@ describe('resolveActiveProfileName', () => {
   it('marker present overrides config.yaml backend', async () => {
     // Create a team profile for claude-sdk
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'claude-sdk.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(configDir, 'profiles', 'pi-prod.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'claude-sdk.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'pi-prod.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     // Write marker pointing at pi-prod
     await writeFile(join(configDir, '.active-profile'), 'pi-prod\n', 'utf-8');
 
@@ -96,7 +96,7 @@ describe('resolveActiveProfileName', () => {
 
   it('marker absent + no matching profile → source=none (backend: in config.yaml no longer used for resolution)', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'pi.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'pi.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     // Even with a matching profile file, resolution no longer uses config.yaml backend: field
     const result = await resolveActiveProfileName(configDir, {});
@@ -105,7 +105,7 @@ describe('resolveActiveProfileName', () => {
 
   it('unknown profile name in marker returns warning and missing when no user marker', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'claude-sdk.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'claude-sdk.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'nonexistent\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
@@ -147,14 +147,13 @@ describe('loadProfile', () => {
   it('parses a valid profile file and returns scope', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
     await writeFile(
-      join(configDir, 'profiles', 'pi.yaml'),
-      'backend: pi\npi:\n  thinkingLevel: high\n',
+      join(configDir, 'profiles', 'my-profile.yaml'),
+      'agents:\n  tiers:\n    planning:\n      harness: claude-sdk\n      model: claude-opus-4-7\n      effort: high\n',
       'utf-8',
     );
-    const result = await loadProfile(configDir, 'pi');
+    const result = await loadProfile(configDir, 'my-profile');
     expect(result).not.toBeNull();
-    // profile.backend is no longer in PartialEforgeConfig; check pi-specific config instead
-    expect(result?.profile.pi?.thinkingLevel).toBe('high');
+    expect(result?.profile.agents?.tiers?.planning?.model).toBe('claude-opus-4-7');
     expect(result?.scope).toBe('project');
   });
 });
@@ -187,10 +186,20 @@ describe('listProfiles', () => {
     expect(result).toEqual([]);
   });
 
-  it('returns entries for each .yaml file with parsed backend and scope', async () => {
+  it('returns entries for each .yaml file with inferred harness from tier recipes', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'pi-prod.yaml'), 'backend: pi\n', 'utf-8');
-    await writeFile(join(configDir, 'profiles', 'claude.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    // pi-prod: pi harness in tier recipe
+    await writeFile(
+      join(configDir, 'profiles', 'pi-prod.yaml'),
+      'agents:\n  tiers:\n    planning:\n      harness: pi\n      pi:\n        provider: openrouter\n      model: big-model\n      effort: high\n',
+      'utf-8',
+    );
+    // claude: claude-sdk harness in tier recipe
+    await writeFile(
+      join(configDir, 'profiles', 'claude.yaml'),
+      'agents:\n  tiers:\n    planning:\n      harness: claude-sdk\n      model: claude-opus-4-7\n      effort: high\n',
+      'utf-8',
+    );
     await writeFile(join(configDir, 'profiles', 'README.md'), '# skip me', 'utf-8');
 
     const result = await listProfiles(configDir);
@@ -223,11 +232,16 @@ describe('setActiveProfile', () => {
 
   it('writes the marker when the profile exists and merged config validates', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'pi-prod.yaml'), 'backend: pi\n', 'utf-8');
+    // Write a valid tier-recipe profile
+    await writeFile(
+      join(configDir, 'profiles', 'my-profile.yaml'),
+      'agents:\n  tiers:\n    planning:\n      harness: claude-sdk\n      model: claude-opus-4-7\n      effort: high\n    implementation:\n      harness: claude-sdk\n      model: claude-sonnet-4-6\n      effort: medium\n    review:\n      harness: claude-sdk\n      model: claude-opus-4-7\n      effort: high\n    evaluation:\n      harness: claude-sdk\n      model: claude-opus-4-7\n      effort: high\n',
+      'utf-8',
+    );
 
-    await setActiveProfile(configDir, 'pi-prod');
+    await setActiveProfile(configDir, 'my-profile');
     const marker = await readFile(join(configDir, '.active-profile'), 'utf-8');
-    expect(marker.trim()).toBe('pi-prod');
+    expect(marker.trim()).toBe('my-profile');
   });
 });
 
@@ -243,13 +257,17 @@ describe('createAgentRuntimeProfile', () => {
     await rm(projectDir, { recursive: true, force: true });
   });
 
-  it('accepts pi profile with pi.provider (provider now schema-required on pi runtimes)', async () => {
-    // Provider is now required at schema time on agentRuntimes.<name>.pi.provider
+  it('accepts pi profile with pi.provider', async () => {
     const result = await createAgentRuntimeProfile(configDir, {
       name: 'pi-with-provider',
-      harness: 'pi',
-      pi: { provider: 'openrouter' },
-      agents: { model: { id: 'some-model' } } as PartialEforgeConfig['agents'],
+      agents: {
+        tiers: {
+          planning: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'claude-opus-4-7', effort: 'high' },
+          implementation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'claude-sonnet-4-6', effort: 'medium' },
+          review: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'claude-opus-4-7', effort: 'high' },
+          evaluation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'claude-opus-4-7', effort: 'high' },
+        },
+      } as PartialEforgeConfig['agents'],
     });
     expect(await fileExists(result.path)).toBe(true);
   });
@@ -257,9 +275,14 @@ describe('createAgentRuntimeProfile', () => {
   it('creates a valid pi profile with provider in pi config', async () => {
     const result = await createAgentRuntimeProfile(configDir, {
       name: 'pi-prod',
-      harness: 'pi',
-      pi: { provider: 'openrouter' },
-      agents: { model: { id: 'anthropic/claude-sonnet-4' } } as PartialEforgeConfig['agents'],
+      agents: {
+        tiers: {
+          planning: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'anthropic/claude-sonnet-4', effort: 'high' },
+          implementation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'anthropic/claude-sonnet-4', effort: 'medium' },
+          review: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'anthropic/claude-sonnet-4', effort: 'high' },
+          evaluation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'anthropic/claude-sonnet-4', effort: 'high' },
+        },
+      } as PartialEforgeConfig['agents'],
     });
     expect(await fileExists(result.path)).toBe(true);
     const written = await readFile(result.path, 'utf-8');
@@ -268,156 +291,166 @@ describe('createAgentRuntimeProfile', () => {
   });
 
   it('refuses overwrite without overwrite: true', async () => {
-    await createAgentRuntimeProfile(configDir, { name: 'pi', harness: 'claude-sdk' });
+    await createAgentRuntimeProfile(configDir, { name: 'my-profile' });
     await expect(
-      createAgentRuntimeProfile(configDir, { name: 'pi', harness: 'claude-sdk' }),
+      createAgentRuntimeProfile(configDir, { name: 'my-profile' }),
     ).rejects.toThrow(/already exists/);
   });
 
   it('with overwrite: true replaces the file', async () => {
-    await createAgentRuntimeProfile(configDir, { name: 'pi', harness: 'claude-sdk' });
+    await createAgentRuntimeProfile(configDir, { name: 'my-profile' });
     const again = await createAgentRuntimeProfile(configDir, {
-      name: 'pi',
-      harness: 'pi',
-      pi: { provider: 'openrouter' },
+      name: 'my-profile',
+      agents: {
+        tiers: {
+          planning: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'x', effort: 'high' },
+          implementation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'x', effort: 'medium' },
+          review: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'x', effort: 'high' },
+          evaluation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'x', effort: 'high' },
+        },
+      } as PartialEforgeConfig['agents'],
       overwrite: true,
     });
     const content = await readFile(again.path, 'utf-8');
     expect(content).toContain('harness: pi');
-    expect(content).not.toContain('claude-sdk');
+    expect(content).toContain('openrouter');
   });
 
   it('rejects invalid profile names', async () => {
     await expect(
-      createAgentRuntimeProfile(configDir, { name: 'has spaces', harness: 'claude-sdk' }),
+      createAgentRuntimeProfile(configDir, { name: 'has spaces' }),
     ).rejects.toThrow(/Invalid profile name/);
   });
 
-  it('multi-runtime spec round-trips: writes correct agentRuntimes, defaultAgentRuntime, and agents', async () => {
+  it('tier recipe round-trips: writes correct agents.tiers', async () => {
     const result = await createAgentRuntimeProfile(configDir, {
       name: 'mixed',
-      agentRuntimes: {
-        'claude-sdk': { harness: 'claude-sdk' },
-        'pi-openrouter': { harness: 'pi', pi: { provider: 'openrouter' } },
-      },
-      defaultAgentRuntime: 'claude-sdk',
       agents: {
-        models: { max: { id: 'claude-opus-4-7' }, fast: { id: 'zai-glm-4-6' } },
-        tiers: { implementation: { agentRuntime: 'pi-openrouter' } },
+        tiers: {
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+          implementation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'qwen-coder', effort: 'medium' },
+          review: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+          evaluation: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+        },
       } as PartialEforgeConfig['agents'],
     });
     expect(await fileExists(result.path)).toBe(true);
     const written = await readFile(result.path, 'utf-8');
-    // Verify top-level keys include agentRuntimes, defaultAgentRuntime, agents
-    expect(written).toContain('agentRuntimes:');
-    expect(written).toContain('defaultAgentRuntime: claude-sdk');
     expect(written).toContain('agents:');
-    // agentRuntimes should contain both entries
-    expect(written).toContain('claude-sdk:');
-    expect(written).toContain('pi-openrouter:');
-    // agents.tiers.implementation.agentRuntime should be pi-openrouter
-    expect(written).toContain('pi-openrouter');
+    expect(written).toContain('tiers:');
+    expect(written).toContain('claude-sdk');
+    expect(written).toContain('pi');
+    expect(written).toContain('openrouter');
   });
 
-  it('multi-runtime: defaultAgentRuntime must exist in agentRuntimes', async () => {
+  it('pi tier requires non-empty pi.provider', async () => {
     await expect(
       createAgentRuntimeProfile(configDir, {
-        name: 'x',
-        agentRuntimes: { foo: { harness: 'pi', pi: { provider: 'openrouter' } } },
-        defaultAgentRuntime: 'missing',
-      }),
-    ).rejects.toThrow(/defaultAgentRuntime/);
-  });
-
-  it('multi-runtime: tier agentRuntime must exist in agentRuntimes', async () => {
-    await expect(
-      createAgentRuntimeProfile(configDir, {
-        name: 'x',
-        agentRuntimes: {
-          foo: { harness: 'claude-sdk' },
-          bar: { harness: 'pi', pi: { provider: 'openrouter' } },
-        },
-        defaultAgentRuntime: 'foo',
+        name: 'broken-pi',
         agents: {
-          tiers: { implementation: { agentRuntime: 'nonexistent' } },
+          tiers: {
+            planning: { harness: 'pi', model: 'x', effort: 'high' }, // missing pi.provider
+          },
         } as PartialEforgeConfig['agents'],
       }),
-    ).rejects.toThrow(/nonexistent/);
+    ).rejects.toThrow(/provider/);
+  });
+
+  it('claude-sdk tier cannot include pi config', async () => {
+    await expect(
+      createAgentRuntimeProfile(configDir, {
+        name: 'bad-tier',
+        agents: {
+          tiers: {
+            planning: { harness: 'claude-sdk', pi: { provider: 'x' }, model: 'y', effort: 'high' },
+          },
+        } as unknown as PartialEforgeConfig['agents'],
+      }),
+    ).rejects.toThrow();
   });
 });
 
 describe('deriveProfileName', () => {
-  it('single runtime, same model id across all three tiers → sanitized model id (strips claude- prefix, dots to dashes)', () => {
+  it('single harness, same model id across all tiers → sanitized model id (strips claude- prefix, dots to dashes)', () => {
     const result = deriveProfileName({
-      agentRuntimes: { main: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'main',
-      models: {
-        max: { id: 'claude-opus-4-7' },
-        balanced: { id: 'claude-opus-4-7' },
-        fast: { id: 'claude-opus-4-7' },
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+          implementation: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+          review: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+          evaluation: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+        },
       },
     });
     expect(result).toBe('opus-4-7');
   });
 
-  it('single runtime, same model id across tiers, non-claude prefix', () => {
+  it('single harness, same model id across tiers, non-claude prefix', () => {
     const result = deriveProfileName({
-      agentRuntimes: { main: { harness: 'pi', pi: { provider: 'zai' } } },
-      defaultAgentRuntime: 'main',
-      models: {
-        max: { id: 'glm-4.6' },
-        balanced: { id: 'glm-4.6' },
-        fast: { id: 'glm-4.6' },
+      agents: {
+        tiers: {
+          planning: { harness: 'pi', pi: { provider: 'zai' }, model: 'glm-4.6' },
+          implementation: { harness: 'pi', pi: { provider: 'zai' }, model: 'glm-4.6' },
+          review: { harness: 'pi', pi: { provider: 'zai' }, model: 'glm-4.6' },
+          evaluation: { harness: 'pi', pi: { provider: 'zai' }, model: 'glm-4.6' },
+        },
       },
     });
     expect(result).toBe('glm-4-6');
   });
 
-  it('single runtime, model varies across tiers, claude-sdk harness, no provider → harness name', () => {
+  it('single harness, model varies across tiers, claude-sdk harness, no provider → harness name', () => {
     const result = deriveProfileName({
-      agentRuntimes: { main: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'main',
-      models: {
-        max: { id: 'claude-opus-4-7' },
-        balanced: { id: 'claude-sonnet-4-6' },
-        fast: { id: 'claude-haiku-4' },
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+          implementation: { harness: 'claude-sdk', model: 'claude-sonnet-4-6' },
+          review: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+          evaluation: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+        },
       },
     });
     expect(result).toBe('claude-sdk');
   });
 
-  it('single runtime, model varies, pi harness with provider → harness-provider', () => {
+  it('single harness, model varies, pi harness with provider → harness-provider', () => {
     const result = deriveProfileName({
-      agentRuntimes: { main: { harness: 'pi', pi: { provider: 'anthropic' } } },
-      defaultAgentRuntime: 'main',
-      models: {
-        max: { id: 'claude-opus-4-7' },
-        balanced: { id: 'claude-sonnet-4-6' },
-        fast: { id: 'claude-haiku-4' },
+      agents: {
+        tiers: {
+          planning: { harness: 'pi', pi: { provider: 'anthropic' }, model: 'claude-opus-4-7' },
+          implementation: { harness: 'pi', pi: { provider: 'anthropic' }, model: 'claude-sonnet-4-6' },
+          review: { harness: 'pi', pi: { provider: 'anthropic' }, model: 'claude-opus-4-7' },
+          evaluation: { harness: 'pi', pi: { provider: 'anthropic' }, model: 'claude-opus-4-7' },
+        },
       },
     });
     expect(result).toBe('pi-anthropic');
   });
 
-  it('multiple runtimes, max tier assigned to claude-sdk → mixed-claude-sdk', () => {
+  it('multiple harnesses, planning tier uses claude-sdk → mixed-claude-sdk', () => {
     const result = deriveProfileName({
-      agentRuntimes: {
-        'claude-sdk': { harness: 'claude-sdk' },
-        'pi-openrouter': { harness: 'pi', pi: { provider: 'openrouter' } },
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+          implementation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'qwen-coder' },
+          review: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+          evaluation: { harness: 'claude-sdk', model: 'claude-opus-4-7' },
+        },
       },
-      defaultAgentRuntime: 'claude-sdk',
-      tiers: { max: { agentRuntime: 'claude-sdk' } },
     });
     expect(result).toBe('mixed-claude-sdk');
   });
 
-  it('multiple runtimes, max tier uses defaultAgentRuntime when tiers.max.agentRuntime is absent', () => {
+  it('multiple harnesses, planning tier uses pi → mixed-pi-openrouter', () => {
     const result = deriveProfileName({
-      agentRuntimes: {
-        'claude-sdk': { harness: 'claude-sdk' },
-        'pi-openrouter': { harness: 'pi', pi: { provider: 'openrouter' } },
+      agents: {
+        tiers: {
+          planning: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'big-model' },
+          implementation: { harness: 'claude-sdk', model: 'claude-sonnet-4-6' },
+          review: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'big-model' },
+          evaluation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'big-model' },
+        },
       },
-      defaultAgentRuntime: 'pi-openrouter',
     });
     expect(result).toBe('mixed-pi-openrouter');
   });
@@ -437,14 +470,14 @@ describe('deleteAgentRuntimeProfile', () => {
 
   it('refuses to delete the currently active profile without force', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'active.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'active\n', 'utf-8');
     await expect(deleteAgentRuntimeProfile(configDir, 'active')).rejects.toThrow(/currently active/);
   });
 
   it('with force: true removes the file and clears the marker', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'active.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'active\n', 'utf-8');
 
     await deleteAgentRuntimeProfile(configDir, 'active', true);
@@ -483,12 +516,11 @@ describe('loadConfig integration with backend profiles', () => {
     }
   });
 
-  it('no profiles/ dir: resolved config uses project settings without backend', async () => {
+  it('no profiles/ dir: resolved config uses project settings without profile', async () => {
     ({ projectDir, configDir } = await makeProject({
       configYaml: 'agents:\n  maxTurns: 25\n',
     }));
     const { config: cfg } = await loadConfig(projectDir);
-    expect(cfg.backend).toBeUndefined();
     expect(cfg.agents.maxTurns).toBe(25);
   });
 
@@ -498,12 +530,12 @@ describe('loadConfig integration with backend profiles', () => {
     }));
     await mkdir(join(configDir, 'profiles'), { recursive: true });
     await writeFile(
-      join(configDir, 'profiles', 'pi.yaml'),
-      'backend: pi\nagents:\n  maxTurns: 40\n',
+      join(configDir, 'profiles', 'fast.yaml'),
+      'agents:\n  maxTurns: 40\n',
       'utf-8',
     );
-    // Profile is only loaded when a marker is present (team resolution removed)
-    await writeFile(join(configDir, '.active-profile'), 'pi\n', 'utf-8');
+    // Profile is only loaded when a marker is present
+    await writeFile(join(configDir, '.active-profile'), 'fast\n', 'utf-8');
     const { config: cfg } = await loadConfig(projectDir);
     expect(cfg.agents.maxTurns).toBe(40);
   });
@@ -514,19 +546,18 @@ describe('loadConfig integration with backend profiles', () => {
     }));
     await mkdir(join(configDir, 'profiles'), { recursive: true });
     await writeFile(
-      join(configDir, 'profiles', 'pi.yaml'),
-      'backend: pi\nagents:\n  maxTurns: 40\n',
+      join(configDir, 'profiles', 'fast.yaml'),
+      'agents:\n  maxTurns: 40\n',
       'utf-8',
     );
     await writeFile(
       join(configDir, 'profiles', 'local.yaml'),
-      'backend: claude-sdk\nagents:\n  maxTurns: 99\n',
+      'agents:\n  maxTurns: 99\n',
       'utf-8',
     );
     await writeFile(join(configDir, '.active-profile'), 'local\n', 'utf-8');
 
     const { config: cfg } = await loadConfig(projectDir);
-    // cfg.backend is no longer part of EforgeConfig; verify agents settings from the profile
     expect(cfg.agents.maxTurns).toBe(99);
   });
 });
@@ -543,7 +574,7 @@ describe('getConfigDir', () => {
   });
 
   it('returns the eforge/ directory when config.yaml is present', async () => {
-    const { projectDir, configDir } = await makeProject({ configYaml: 'backend: claude-sdk\n' });
+    const { projectDir, configDir } = await makeProject({ configYaml: 'agents:\n  maxTurns: 30\n' });
     try {
       const result = await getConfigDir(projectDir);
       expect(result).toBe(configDir);
@@ -585,25 +616,25 @@ describe('user-scope: loadProfile', () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(
       join(userEforgeDir, 'profiles', 'shared.yaml'),
-      'backend: claude-sdk\n',
+      'agents:\n  maxTurns: 50\n',
       'utf-8',
     );
     const result = await loadProfile(configDir, 'shared');
     expect(result).not.toBeNull();
     expect(result?.scope).toBe('user');
-    // profile.backend is no longer in PartialEforgeConfig (backend: in profile files is a legacy harness indicator)
+    expect(result?.profile.agents?.maxTurns).toBe(50);
   });
 
   it('project profile shadows user profile on same-name collision', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'common.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'common.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'common.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'common.yaml'), 'agents:\n  maxTurns: 99\n', 'utf-8');
 
     const result = await loadProfile(configDir, 'common');
     expect(result).not.toBeNull();
     expect(result?.scope).toBe('project');
-    // profile.backend is no longer in PartialEforgeConfig; scope confirms project shadowing
+    expect(result?.profile.agents?.maxTurns).toBe(10); // project shadows user
   });
 });
 
@@ -634,7 +665,7 @@ describe('user-scope: resolveActiveProfileName', () => {
   it('returns source=user-local when project has no marker/config but user marker exists', async () => {
     // Create a profile file in user scope
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'default.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'default.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     // Write user marker
     await writeFile(join(userEforgeDir, '.active-profile'), 'default\n', 'utf-8');
 
@@ -645,9 +676,9 @@ describe('user-scope: resolveActiveProfileName', () => {
   it('returns source=project when both project and user markers exist', async () => {
     // Create profiles in both scopes
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'usr.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'usr.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     // Write both markers
     await writeFile(join(configDir, '.active-profile'), 'proj\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-profile'), 'usr\n', 'utf-8');
@@ -658,8 +689,8 @@ describe('user-scope: resolveActiveProfileName', () => {
 
   it('user marker wins over user config backend field', async () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'marker-pick.yaml'), 'backend: pi\n', 'utf-8');
-    await writeFile(join(userEforgeDir, 'profiles', 'config-pick.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'marker-pick.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'config-pick.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-profile'), 'marker-pick\n', 'utf-8');
 
     const result = await resolveActiveProfileName(
@@ -672,7 +703,7 @@ describe('user-scope: resolveActiveProfileName', () => {
 
   it('returns source=none when only user config backend: is set (user-team resolution removed)', async () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'team-default.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'team-default.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     // user config backend: field is no longer used for resolution
     const result = await resolveActiveProfileName(
@@ -686,7 +717,7 @@ describe('user-scope: resolveActiveProfileName', () => {
   it('project marker can resolve to a user-scope profile file', async () => {
     // Profile exists only in user scope but project marker points to it
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'shared\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
@@ -720,11 +751,31 @@ describe('user-scope: listProfiles', () => {
 
   it('returns entries from both scopes with correct scope and shadowedBy', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'shared.yaml'), 'backend: pi\n', 'utf-8');
-    await writeFile(join(configDir, 'profiles', 'proj-only.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    // project:shared uses pi harness
+    await writeFile(
+      join(configDir, 'profiles', 'shared.yaml'),
+      'agents:\n  tiers:\n    planning:\n      harness: pi\n      pi:\n        provider: openrouter\n      model: x\n      effort: high\n',
+      'utf-8',
+    );
+    // project:proj-only uses claude-sdk
+    await writeFile(
+      join(configDir, 'profiles', 'proj-only.yaml'),
+      'agents:\n  tiers:\n    planning:\n      harness: claude-sdk\n      model: claude-opus-4-7\n      effort: high\n',
+      'utf-8',
+    );
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
-    await writeFile(join(userEforgeDir, 'profiles', 'usr-only.yaml'), 'backend: pi\n', 'utf-8');
+    // user:shared uses claude-sdk (shadowed by project:shared which uses pi)
+    await writeFile(
+      join(userEforgeDir, 'profiles', 'shared.yaml'),
+      'agents:\n  tiers:\n    planning:\n      harness: claude-sdk\n      model: claude-opus-4-7\n      effort: high\n',
+      'utf-8',
+    );
+    // user:usr-only uses pi
+    await writeFile(
+      join(userEforgeDir, 'profiles', 'usr-only.yaml'),
+      'agents:\n  tiers:\n    planning:\n      harness: pi\n      pi:\n        provider: zai\n      model: y\n      effort: high\n',
+      'utf-8',
+    );
 
     const result = await listProfiles(configDir);
     const byNameAndScope = new Map(result.map((r) => [`${r.scope}:${r.name}`, r]));
@@ -771,7 +822,6 @@ describe('user-scope: createAgentRuntimeProfile', () => {
   it('with scope: user writes file under user config profiles directory', async () => {
     const result = await createAgentRuntimeProfile(configDir, {
       name: 'user-prof',
-      harness: 'claude-sdk',
       scope: 'user',
     });
     expect(result.path).toContain(userHomeDir);
@@ -807,9 +857,9 @@ describe('user-scope: deleteAgentRuntimeProfile', () => {
 
   it('throws ambiguous error when same name exists in both scopes without scope', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'dup.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'dup.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'dup.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'dup.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     await expect(deleteAgentRuntimeProfile(configDir, 'dup')).rejects.toThrow(
       /multiple scopes/i,
@@ -818,9 +868,9 @@ describe('user-scope: deleteAgentRuntimeProfile', () => {
 
   it('deletes from specified scope when name exists in both', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'dup.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'dup.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'dup.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'dup.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     await deleteAgentRuntimeProfile(configDir, 'dup', false, 'user');
     expect(await fileExists(join(userEforgeDir, 'profiles', 'dup.yaml'))).toBe(false);
@@ -857,7 +907,7 @@ describe('user-scope: setActiveProfile', () => {
   it('with scope: user writes the user marker file, not the project marker', async () => {
     // Create profile in user scope
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'user-default.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'user-default.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     await setActiveProfile(configDir, 'user-default', { scope: 'user' });
 
@@ -877,7 +927,7 @@ describe('user-scope: setActiveProfile', () => {
     // Profile exists only in project scope, but setActiveProfile with scope: user should
     // accept it because profileExistsInAnyScope checks both directories
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'proj-only.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'proj-only.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     await setActiveProfile(configDir, 'proj-only', { scope: 'user' });
     const userMarker = await readFile(join(userEforgeDir, '.active-profile'), 'utf-8');
@@ -918,7 +968,7 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
     await writeFile(join(configDir, '.active-profile'), 'gone\n', 'utf-8');
     // User marker points at a valid user-scope profile
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'fallback.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'fallback.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-profile'), 'fallback\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {});
@@ -931,7 +981,7 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
   it('stale project marker falls through to missing when no user marker exists (user-team removed)', async () => {
     await writeFile(join(configDir, '.active-profile'), 'gone\n', 'utf-8');
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'team-default.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'team-default.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     // user config backend: is no longer used for fallback
     const result = await resolveActiveProfileName(
@@ -948,10 +998,10 @@ describe('user-scope: resolveActiveProfileName edge cases', () => {
   it('user marker wins when no project marker exists (team resolution removed)', async () => {
     // Project config backend: field no longer affects resolution
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'team.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'team.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     // User marker exists
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'usr.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'usr.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-profile'), 'usr\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, { backend: 'team' } as PartialEforgeConfig);
@@ -1001,7 +1051,7 @@ describe('user-scope: deleteAgentRuntimeProfile edge cases', () => {
 
   it('force-deletes user-scope profile and clears user marker', async () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'active.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-profile'), 'active\n', 'utf-8');
 
     await deleteAgentRuntimeProfile(configDir, 'active', true, 'user');
@@ -1011,7 +1061,7 @@ describe('user-scope: deleteAgentRuntimeProfile edge cases', () => {
 
   it('refuses to delete profile active via user marker without force', async () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'active.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'active.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-profile'), 'active\n', 'utf-8');
 
     await expect(deleteAgentRuntimeProfile(configDir, 'active', false, 'user')).rejects.toThrow(
@@ -1021,7 +1071,7 @@ describe('user-scope: deleteAgentRuntimeProfile edge cases', () => {
 
   it('infers user scope when profile only exists in user scope', async () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'usr-only.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'usr-only.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     await deleteAgentRuntimeProfile(configDir, 'usr-only');
     expect(await fileExists(join(userEforgeDir, 'profiles', 'usr-only.yaml'))).toBe(false);
@@ -1029,7 +1079,7 @@ describe('user-scope: deleteAgentRuntimeProfile edge cases', () => {
 
   it('errors when profile not found in specified scope even if it exists in the other', async () => {
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     await expect(deleteAgentRuntimeProfile(configDir, 'proj', false, 'user')).rejects.toThrow(
       /not found in user scope/,
@@ -1065,7 +1115,7 @@ describe('user-scope: loadConfig integration', () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(
       join(userEforgeDir, 'profiles', 'user-override.yaml'),
-      'backend: pi\nagents:\n  maxTurns: 55\n',
+      'agents:\n  maxTurns: 55\n',
       'utf-8',
     );
     await writeFile(join(userEforgeDir, '.active-profile'), 'user-override\n', 'utf-8');
@@ -1105,7 +1155,7 @@ describe('auto-migration: backends/ to profiles/', () => {
   it('migrates eforge/backends/ to eforge/profiles/ and .active-backend to .active-profile on loadConfig', async () => {
     // Set up legacy layout: eforge/backends/a.yaml + .active-backend
     await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'a.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'backends', 'a.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(configDir, '.active-backend'), 'a\n', 'utf-8');
 
     // Invoke loadConfig — migration runs inside
@@ -1125,9 +1175,9 @@ describe('auto-migration: backends/ to profiles/', () => {
   it('does not touch eforge/backends/ when both backends/ and profiles/ exist, logs warning', async () => {
     // Set up both directories
     await mkdir(join(configDir, 'backends'), { recursive: true });
-    await writeFile(join(configDir, 'backends', 'old.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'backends', 'old.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'new.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'new.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     // Invoke loadConfig — migration should skip with warning
     await loadConfig(projectDir);
@@ -1140,7 +1190,7 @@ describe('auto-migration: backends/ to profiles/', () => {
   it('is idempotent: subsequent loadConfig calls do not re-migrate', async () => {
     // Set up already-migrated layout: profiles/ only, no backends/
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'a.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'a.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'a\n', 'utf-8');
 
     // Call loadConfig twice
@@ -1182,7 +1232,7 @@ describe('auto-migration: user-scope backends/ to profiles/', () => {
   it('migrates ~/.config/eforge/backends/ to ~/.config/eforge/profiles/ and .active-backend to .active-profile on loadConfig', async () => {
     const userEforgeDir = join(userXdgDir, 'eforge');
     await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'backends', 'shared.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-backend'), 'shared\n', 'utf-8');
 
     await loadConfig(projectDir);
@@ -1198,9 +1248,9 @@ describe('auto-migration: user-scope backends/ to profiles/', () => {
   it('skips user-scope migration when both backends/ and profiles/ exist and logs warning', async () => {
     const userEforgeDir = join(userXdgDir, 'eforge');
     await mkdir(join(userEforgeDir, 'backends'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'backends', 'old.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'backends', 'old.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'new.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'new.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
 
     await loadConfig(projectDir);
 
@@ -1211,7 +1261,7 @@ describe('auto-migration: user-scope backends/ to profiles/', () => {
   it('is idempotent for user scope: subsequent loadConfig calls do not re-migrate', async () => {
     const userEforgeDir = join(userXdgDir, 'eforge');
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(userEforgeDir, '.active-profile'), 'shared\n', 'utf-8');
 
     await loadConfig(projectDir);
@@ -1225,7 +1275,7 @@ describe('auto-migration: user-scope backends/ to profiles/', () => {
     // Simulate partial migration: directory was moved but marker rename failed
     const userEforgeDir = join(userXdgDir, 'eforge');
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
-    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(userEforgeDir, 'profiles', 'shared.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     // Old marker still present, new marker absent
     await writeFile(join(userEforgeDir, '.active-backend'), 'shared\n', 'utf-8');
 
@@ -1268,7 +1318,7 @@ describe('auto-migration: orphaned project-scope .active-backend marker recovery
   it('recovers orphaned eforge/.active-backend marker when profiles/ already exists but .active-profile is absent', async () => {
     // Simulate partial migration: directory already moved but marker rename failed
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'a.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'a.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     // Old marker still present, new marker absent, old directory gone
     await writeFile(join(configDir, '.active-backend'), 'a\n', 'utf-8');
 
@@ -1309,12 +1359,12 @@ describe('user-scope helpers without configDir', () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(
       join(userEforgeDir, 'profiles', 'claude-sdk-4-7.yaml'),
-      'backend: claude-sdk\n',
+      'agents:\n  tiers:\n    planning:\n      harness: claude-sdk\n      model: claude-opus-4-7\n      effort: high\n',
       'utf-8',
     );
     await writeFile(
       join(userEforgeDir, 'profiles', 'pi-codex-5-5.yaml'),
-      'backend: pi\n',
+      'agents:\n  tiers:\n    planning:\n      harness: pi\n      pi:\n        provider: openai\n      model: codex-5.5\n      effort: high\n',
       'utf-8',
     );
     await writeFile(join(userEforgeDir, 'profiles', 'README.md'), '# skip me', 'utf-8');
@@ -1338,7 +1388,7 @@ describe('user-scope helpers without configDir', () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(
       join(userEforgeDir, 'profiles', 'claude-sdk-4-7.yaml'),
-      'backend: claude-sdk\n',
+      'agents:\n  maxTurns: 30\n',
       'utf-8',
     );
     await writeFile(join(userEforgeDir, '.active-profile'), 'claude-sdk-4-7\n', 'utf-8');
@@ -1368,7 +1418,7 @@ describe('user-scope helpers without configDir', () => {
     await mkdir(join(userEforgeDir, 'profiles'), { recursive: true });
     await writeFile(
       join(userEforgeDir, 'profiles', 'claude-sdk-4-7.yaml'),
-      'backend: claude-sdk\nagents:\n  maxTurns: 42\n',
+      'agents:\n  maxTurns: 42\n',
       'utf-8',
     );
 
@@ -1418,7 +1468,7 @@ describe('three-tier: local scope (.eforge/)', () => {
     await mkdir(join(projectDir, '.eforge', 'profiles'), { recursive: true });
     await writeFile(
       join(projectDir, '.eforge', 'profiles', 'foo.yaml'),
-      'backend: claude-sdk\nagents:\n  maxTurns: 77\n',
+      'agents:\n  maxTurns: 77\n',
       'utf-8',
     );
     const result = await loadProfile(configDir, 'foo', projectDir);
@@ -1501,12 +1551,12 @@ describe('three-tier: local scope (.eforge/)', () => {
   it('e. .eforge/.active-profile takes precedence over eforge/.active-profile', async () => {
     // Create project-scope profile
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'proj\n', 'utf-8');
 
     // Create local-scope profile and marker
     await mkdir(join(projectDir, '.eforge', 'profiles'), { recursive: true });
-    await writeFile(join(projectDir, '.eforge', 'profiles', 'loc.yaml'), 'backend: claude-sdk\n', 'utf-8');
+    await writeFile(join(projectDir, '.eforge', 'profiles', 'loc.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(projectDir, '.eforge', '.active-profile'), 'loc\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {}, undefined, projectDir);
@@ -1522,7 +1572,7 @@ describe('three-tier: local scope (.eforge/)', () => {
 
     // Project marker points at valid profile
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'proj\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {}, undefined, projectDir);
@@ -1535,7 +1585,7 @@ describe('three-tier: local scope (.eforge/)', () => {
   it('g. missing .eforge/ → behavior identical to existing two-tier (regression guard)', async () => {
     // Only project scope exists - no .eforge/ directory
     await mkdir(join(configDir, 'profiles'), { recursive: true });
-    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'backend: pi\n', 'utf-8');
+    await writeFile(join(configDir, 'profiles', 'proj.yaml'), 'agents:\n  maxTurns: 30\n', 'utf-8');
     await writeFile(join(configDir, '.active-profile'), 'proj\n', 'utf-8');
 
     const result = await resolveActiveProfileName(configDir, {}, undefined, projectDir);

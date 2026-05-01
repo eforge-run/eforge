@@ -10,8 +10,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
-import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, sanitizeProfileName, parseRawConfigLegacy, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery } from '@eforge-build/client';
+import { stringify as stringifyYaml } from 'yaml';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   LatestRunResponse,
@@ -378,22 +378,20 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_profile
   createDaemonTool(server, cwd, {
     name: 'eforge_profile',
-    description: 'Manage named profiles in eforge/profiles/ (project), .eforge/profiles/ (local, gitignored), or ~/.config/eforge/profiles/ (user). Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with harness; "use" writes the active-profile marker to switch profiles; "create" writes a new profile; "delete" removes a profile (refuses when active unless force: true).',
+    description: 'Manage named profiles in eforge/profiles/ (project), .eforge/profiles/ (local, gitignored), or ~/.config/eforge/profiles/ (user). Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile; "use" writes the active-profile marker to switch profiles; "create" writes a new profile (pass `agents.tiers` with self-contained tier recipes); "delete" removes a profile (refuses when active unless force: true).',
     schema: {
       action: z.enum(['list', 'show', 'use', 'create', 'delete']).describe(
         "'list' enumerates profiles, 'show' returns the resolved active profile, 'use' switches the active profile, 'create' writes a new profile, 'delete' removes a profile",
       ),
       name: z.string().optional().describe('Profile name (required for "use", "create", and "delete")'),
-      harness: z.enum(['claude-sdk', 'pi']).optional().describe('Harness kind (required for "create")'),
-      pi: z.record(z.string(), z.any()).optional().describe('Pi-specific config to embed in the profile (optional, "create" only)'),
-      agents: z.record(z.string(), z.any()).optional().describe('Agents config block to embed in the profile (optional, "create" only)'),
+      agents: z.record(z.string(), z.any()).optional().describe('Agents config block to embed in the profile (required for "create"; must include agents.tiers with tier recipes)'),
       overwrite: z.boolean().optional().describe('Overwrite an existing profile when creating. Default: false.'),
       force: z.boolean().optional().describe('Delete even if the profile is currently active. Default: false.'),
       scope: z.enum(['local', 'project', 'user', 'all']).optional().describe(
         'Scope for the operation. "list" accepts local|project|user|all (default: all). "use", "create", "delete" accept local|project|user (default: project). "local" targets .eforge/ (gitignored, dev-personal, highest precedence). "show" ignores scope (resolves via precedence).',
       ),
     },
-    handler: async ({ action, name, harness, pi, agents, overwrite, force, scope }, { cwd: toolCwd }) => {
+    handler: async ({ action, name, agents, overwrite, force, scope }, { cwd: toolCwd }) => {
       if (action === 'list') {
         const params = new URLSearchParams();
         if (scope) params.set('scope', scope);
@@ -417,11 +415,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
       if (action === 'create') {
         if (!name) throw new Error('"name" is required when action is "create"');
-        if (harness !== 'claude-sdk' && harness !== 'pi') {
-          throw new Error('"harness" is required when action is "create" (must be "claude-sdk" or "pi")');
-        }
-        const body: Record<string, unknown> = { name, harness };
-        if (pi !== undefined) body.pi = pi;
+        const body: Record<string, unknown> = { name };
         if (agents !== undefined) body.agents = agents;
         if (overwrite !== undefined) body.overwrite = overwrite;
         if (scope) body.scope = scope;
@@ -541,35 +535,30 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_init
   createDaemonTool(server, cwd, {
     name: 'eforge_init',
-    description: 'Initialize eforge in a project. The skill is responsible for picking harness/runtime/model interactively; the tool is a pure persister. Pass `profile` with the assembled multi-runtime spec. With `migrate: true`, extracts legacy harness config from a pre-overhaul config.yaml.',
+    description: 'Initialize eforge in a project. The skill is responsible for picking harness/model/effort per tier interactively; the tool is a pure persister. Pass `profile.tiers` with one self-contained recipe per tier (planning/implementation/review/evaluation). Each tier carries its own harness + model + effort.',
     schema: {
       force: z.boolean().optional().describe('Overwrite existing eforge/config.yaml if it already exists. Default: false.'),
       postMergeCommands: z.array(z.string()).optional().describe('Post-merge validation commands. Only applied when creating a new config.'),
-      migrate: z.boolean().optional().describe('Extract legacy harness config from existing pre-overhaul config.yaml into a named profile. Default: false.'),
       existingProfile: z.object({
         name: z.string().describe('Name of the existing user-scope profile to activate.'),
         scope: z.enum(['user', 'project']).describe('Scope of the existing profile.'),
-      }).optional().describe('Existing user-scope profile to activate. When provided, skips profile creation and activates the profile directly. Mutually exclusive with `profile` and `migrate`.'),
+      }).optional().describe('Existing user-scope profile to activate. When provided, skips profile creation and activates the profile directly.'),
       profile: z.object({
         name: z.string().optional().describe('Profile name. Auto-derived via deriveProfileName when omitted.'),
-        agentRuntimes: z.record(z.string(), z.object({
-          harness: z.enum(['claude-sdk', 'pi']),
-          pi: z.object({ provider: z.string() }).optional(),
-        })),
-        defaultAgentRuntime: z.string(),
-        models: z.object({
-          max: z.object({ id: z.string() }).optional(),
-          balanced: z.object({ id: z.string() }).optional(),
-          fast: z.object({ id: z.string() }).optional(),
-        }).optional(),
-        tiers: z.object({
-          max: z.object({ agentRuntime: z.string() }).optional(),
-          balanced: z.object({ agentRuntime: z.string() }).optional(),
-          fast: z.object({ agentRuntime: z.string() }).optional(),
-        }).optional(),
-      }).optional().describe('Multi-runtime profile spec. When omitted, the tool falls back to a minimal default and emits a deprecation note.'),
+        tiers: z.record(
+          z.enum(['planning', 'implementation', 'review', 'evaluation']),
+          z.object({
+            harness: z.enum(['claude-sdk', 'pi']),
+            model: z.string(),
+            effort: z.enum(['low', 'medium', 'high', 'xhigh', 'max']),
+            thinking: z.boolean().optional(),
+            pi: z.object({ provider: z.string() }).optional(),
+            claudeSdk: z.object({ disableSubagents: z.boolean().optional() }).optional(),
+          }),
+        ).describe('Self-contained tier recipes — each tier carries harness + model + effort + tuning'),
+      }).optional().describe('Multi-tier profile spec. When omitted, falls back to a minimal claude-sdk default and emits a deprecation note.'),
     },
-    handler: async ({ force, postMergeCommands, migrate, existingProfile, profile }, { cwd: toolCwd }) => {
+    handler: async ({ force, postMergeCommands, existingProfile, profile }, { cwd: toolCwd }) => {
       const configDir = join(toolCwd, 'eforge');
       const configPath = join(configDir, 'config.yaml');
 
@@ -581,86 +570,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (profile) {
           throw new McpUserError({ error: '`existingProfile` and `profile` cannot be set at the same time.' });
         }
-        if (migrate) {
-          throw new McpUserError({ error: '`existingProfile` and `migrate` cannot be set at the same time.' });
-        }
         if (existingProfile.scope !== 'user') {
           throw new McpUserError({ error: 'The init skill only supports user-scope existing profiles. Use `existingProfile.scope: "user"`.' });
         }
-      }
-
-      // --- Migrate mode ---
-      if (migrate) {
-        let rawYaml: string;
-        try {
-          rawYaml = await readFile(configPath, 'utf-8');
-        } catch {
-          throw new McpUserError({ error: 'No existing eforge/config.yaml found. Nothing to migrate.' });
-        }
-
-        let data: Record<string, unknown>;
-        try {
-          const parsed = parseYaml(rawYaml);
-          if (!parsed || typeof parsed !== 'object') {
-            throw new McpUserError({ error: 'Existing config.yaml is empty or not an object.' });
-          }
-          data = parsed as Record<string, unknown>;
-        } catch (err) {
-          if (err instanceof McpUserError) throw err;
-          throw new McpUserError({ error: `Failed to parse config.yaml: ${err instanceof Error ? err.message : String(err)}` });
-        }
-
-        if (data.backend === undefined) {
-          throw new McpUserError({ error: 'config.yaml has no top-level "backend:" field. Nothing to migrate.' });
-        }
-
-        const { profile: legacyProfile, remaining } = parseRawConfigLegacy(data);
-        const harness = legacyProfile.backend as string;
-
-        let maxModelId: string | undefined;
-        let provider: string | undefined;
-        const agents = legacyProfile.agents as Record<string, unknown> | undefined;
-        if (agents?.models) {
-          const models = agents.models as Record<string, unknown>;
-          const maxModel = models.max as { id?: string; provider?: string } | undefined;
-          maxModelId = maxModel?.id;
-          provider = maxModel?.provider;
-        } else if (agents?.model) {
-          const model = agents.model as { id?: string; provider?: string };
-          maxModelId = model.id;
-          provider = model.provider;
-        }
-
-        const profileName = maxModelId
-          ? sanitizeProfileName(harness, provider, maxModelId)
-          : harness;
-
-        const createBody: Record<string, unknown> = {
-          name: profileName,
-          harness,
-          overwrite: true,
-        };
-        if (legacyProfile.agents) createBody.agents = legacyProfile.agents;
-        if (legacyProfile.pi) createBody.pi = legacyProfile.pi;
-
-        await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, createBody);
-
-        const yamlOut = Object.keys(remaining).length > 0
-          ? stringifyYaml(remaining)
-          : '';
-        await writeFile(configPath, yamlOut, 'utf-8');
-
-        await daemonRequest(toolCwd, 'POST', API_ROUTES.profileUse, { name: profileName });
-
-        return {
-          status: 'migrated',
-          configPath: 'eforge/config.yaml',
-          profileName,
-          profilePath: `eforge/profiles/${profileName}.yaml`,
-          harness,
-          moved: Object.keys(legacyProfile),
-          kept: Object.keys(remaining),
-        };
       }
 
       // --- Existing profile mode ---
@@ -719,7 +631,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         await access(configPath);
         if (!force) {
           throw new McpUserError({
-            error: 'eforge/config.yaml already exists. Use force: true to overwrite, or migrate: true to extract legacy harness config into a profile.',
+            error: 'eforge/config.yaml already exists. Use force: true to overwrite.',
           });
         }
       } catch (err) {
@@ -727,51 +639,34 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         // File does not exist - proceed
       }
 
-      // Resolve effective profile spec
+      // Resolve effective tier recipes spec
       let deprecation: string | undefined;
-      let resolvedSpec: {
-        agentRuntimes: Record<string, { harness: 'claude-sdk' | 'pi'; pi?: { provider: string } }>;
-        defaultAgentRuntime: string;
-        models?: { max?: { id: string }; balanced?: { id: string }; fast?: { id: string } };
-        tiers?: { max?: { agentRuntime: string }; balanced?: { agentRuntime: string }; fast?: { agentRuntime: string } };
-      };
+      let resolvedTiers: Record<string, { harness: 'claude-sdk' | 'pi'; model: string; effort: string; thinking?: boolean; pi?: { provider: string }; claudeSdk?: { disableSubagents?: boolean } }>;
 
       if (profile) {
-        resolvedSpec = {
-          agentRuntimes: profile.agentRuntimes,
-          defaultAgentRuntime: profile.defaultAgentRuntime,
-          models: profile.models,
-          tiers: profile.tiers,
-        };
+        resolvedTiers = profile.tiers as Record<string, { harness: 'claude-sdk' | 'pi'; model: string; effort: string; thinking?: boolean; pi?: { provider: string }; claudeSdk?: { disableSubagents?: boolean } }>;
       } else {
         // Minimal default fallback for legacy callers
-        resolvedSpec = {
-          agentRuntimes: { main: { harness: 'claude-sdk' as const } },
-          defaultAgentRuntime: 'main',
-          models: {
-            max: { id: 'claude-opus-4-7' },
-            balanced: { id: 'claude-opus-4-7' },
-            fast: { id: 'claude-opus-4-7' },
-          },
+        resolvedTiers = {
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+          implementation: { harness: 'claude-sdk', model: 'claude-sonnet-4-6', effort: 'medium' },
+          review: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+          evaluation: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
         };
         deprecation = 'eforge_init was called without a profile parameter. Future versions will require it. Update your skill or harness wrapper.';
       }
 
-      // Compute profile name (use skill-supplied name if present, otherwise derive)
-      const profileName = profile?.name ?? deriveProfileName(resolvedSpec);
+      // Compute profile name (use skill-supplied name if present, otherwise derive from tiers)
+      const profileName = profile?.name ?? deriveProfileName({ agents: { tiers: resolvedTiers } });
 
       // Build agents block
-      const agentsBlock: Record<string, unknown> = {};
-      if (resolvedSpec.models) agentsBlock.models = resolvedSpec.models;
-      if (resolvedSpec.tiers) agentsBlock.tiers = resolvedSpec.tiers;
+      const agentsBlock: Record<string, unknown> = { tiers: resolvedTiers };
 
       const createBody: Record<string, unknown> = {
         name: profileName,
         overwrite: !!force,
-        agentRuntimes: resolvedSpec.agentRuntimes,
-        defaultAgentRuntime: resolvedSpec.defaultAgentRuntime,
+        agents: agentsBlock,
       };
-      if (Object.keys(agentsBlock).length > 0) createBody.agents = agentsBlock;
 
       // Write a sentinel file so the daemon can discover the config directory.
       let wroteSentinel = false;
@@ -816,7 +711,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         configPath: 'eforge/config.yaml',
         profileName,
         profilePath: `eforge/profiles/${profileName}.yaml`,
-        agentRuntimes: Object.keys(resolvedSpec.agentRuntimes),
+        tiers: Object.keys(resolvedTiers),
       };
 
       if (validation) response.validation = validation;

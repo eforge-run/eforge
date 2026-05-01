@@ -161,7 +161,7 @@ interface SSESubscriber {
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
-  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agentRuntimes' | 'defaultAgentRuntime' | 'prdQueue'> },
+  options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
 
@@ -892,8 +892,8 @@ export async function startServer(
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
       }
-      if (options.config && (!options.config.agentRuntimes || Object.keys(options.config.agentRuntimes).length === 0)) {
-        sendJsonError(res, 422, 'No agentRuntimes configured. Add agentRuntimes and defaultAgentRuntime to eforge/config.yaml');
+      if (options.config && (!options.config.agents?.tiers || Object.keys(options.config.agents.tiers).length === 0)) {
+        sendJsonError(res, 422, 'No agent tiers configured. Add agents.tiers entries (each with harness + model + effort) to eforge/config.yaml');
         return;
       }
       try {
@@ -1210,11 +1210,7 @@ export async function startServer(
       try {
         const body = await parseJsonBody(req) as {
           name?: unknown;
-          harness?: unknown;
-          pi?: unknown;
           agents?: unknown;
-          agentRuntimes?: unknown;
-          defaultAgentRuntime?: unknown;
           overwrite?: unknown;
           scope?: unknown;
         };
@@ -1231,40 +1227,15 @@ export async function startServer(
           return;
         }
         try {
-          let result: { path: string };
-          if (body.agentRuntimes !== undefined) {
-            // New multi-runtime shape
-            if (typeof body.agentRuntimes !== 'object' || body.agentRuntimes === null || Array.isArray(body.agentRuntimes)) {
-              sendJsonError(res, 400, 'Invalid field: agentRuntimes (must be an object)');
-              return;
-            }
-            if (typeof body.defaultAgentRuntime !== 'string') {
-              sendJsonError(res, 400, 'Missing required field: defaultAgentRuntime (string) when agentRuntimes is provided');
-              return;
-            }
-            result = await createAgentRuntimeProfile(configDir, {
-              name: body.name,
-              agentRuntimes: body.agentRuntimes as Record<string, import('@eforge-build/engine/config').AgentRuntimeEntry>,
-              defaultAgentRuntime: body.defaultAgentRuntime,
-              agents: body.agents as PartialEforgeConfig['agents'],
-              overwrite: body.overwrite === true,
-              scope: scopeVal,
-            }, options?.cwd);
-          } else {
-            // Legacy single-runtime shape
-            if (body.harness !== 'claude-sdk' && body.harness !== 'pi') {
-              sendJsonError(res, 400, 'Invalid field: harness (must be "claude-sdk" or "pi")');
-              return;
-            }
-            result = await createAgentRuntimeProfile(configDir, {
-              name: body.name,
-              harness: body.harness as 'claude-sdk' | 'pi',
-              pi: body.pi as PartialEforgeConfig['pi'],
-              agents: body.agents as PartialEforgeConfig['agents'],
-              overwrite: body.overwrite === true,
-              scope: scopeVal,
-            }, options?.cwd);
-          }
+          // Single shape: profile carries `agents` (with tier recipes under
+          // agents.tiers) plus optional non-agent overrides. Tier recipes are
+          // self-contained — there is no separate harness / agentRuntimes field.
+          const result = await createAgentRuntimeProfile(configDir, {
+            name: body.name,
+            agents: body.agents as PartialEforgeConfig['agents'],
+            overwrite: body.overwrite === true,
+            scope: scopeVal,
+          }, options?.cwd);
           sendJson(res, { path: result.path });
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Failed to create agent runtime profile';
@@ -1508,7 +1479,6 @@ export async function startServer(
           // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
           intoWaiting: afterQueueId ? true : false,
           // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
-          agentRuntime: plan.agentRuntime,
           postMerge: plan.postMerge,
         });
         await commitEnqueuedPrd(result.filePath, result.id, title, cwd);

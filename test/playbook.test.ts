@@ -211,12 +211,11 @@ Just the goal.
     expect(result.playbook.plannerNotes).toBe('');
   });
 
-  it('parses optional agentRuntime and postMerge fields', () => {
+  it('parses optional postMerge field (agentRuntime is removed)', () => {
     const raw = `---
 name: full-feature
 description: Full
 scope: project-team
-agentRuntime: fast-profile
 postMerge:
   - pnpm build
   - pnpm test
@@ -229,7 +228,6 @@ Do everything.
     const result = validatePlaybook(raw);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error('unexpected');
-    expect(result.playbook.agentRuntime).toBe('fast-profile');
     expect(result.playbook.postMerge).toEqual(['pnpm build', 'pnpm test']);
   });
 });

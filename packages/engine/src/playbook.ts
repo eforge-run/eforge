@@ -91,8 +91,6 @@ export const playbookFrontmatterSchema = z.object({
   description: z.string().min(1),
   /** Which configuration tier this playbook belongs to. */
   scope: playbookScopeSchema,
-  /** Agent runtime profile name to use when executing this playbook. */
-  agentRuntime: z.string().optional(),
   /** Commands to run after the build merges (e.g. `["pnpm build"]`). */
   postMerge: z.array(z.string()).optional(),
 });
@@ -166,8 +164,6 @@ export interface SessionPlanInput {
   acceptanceCriteria: string;
   /** Raw planner notes text extracted from the playbook. */
   plannerNotes: string;
-  /** Agent runtime profile name to use when executing this playbook (forwarded from frontmatter). */
-  agentRuntime?: string;
   /** Commands to run after the build merges (forwarded from frontmatter). */
   postMerge?: string[];
 }
@@ -517,7 +513,6 @@ export function playbookToSessionPlan(playbook: Playbook): SessionPlanInput {
     outOfScope: playbook.outOfScope,
     acceptanceCriteria: playbook.acceptanceCriteria,
     plannerNotes: playbook.plannerNotes,
-    agentRuntime: playbook.agentRuntime,
     postMerge: playbook.postMerge,
   };
 }
@@ -581,7 +576,6 @@ function serializePlaybook(playbook: Playbook): string {
     description: playbook.description,
     scope: playbook.scope,
   };
-  if (playbook.agentRuntime !== undefined) fm.agentRuntime = playbook.agentRuntime;
   if (playbook.postMerge !== undefined && playbook.postMerge.length > 0) {
     fm.postMerge = playbook.postMerge;
   }

@@ -118,23 +118,35 @@ npx @eforge-build/eforge playbook promote tech-debt-sweep
 
 Or install globally: `npm install -g @eforge-build/eforge`
 
-For standalone use, create `eforge/config.yaml` with at minimum an `agentRuntimes:` entry and a `defaultAgentRuntime:` key:
+For standalone use, run `/eforge:init` (in Claude Code or Pi) to create both `eforge/config.yaml` and an active agent runtime profile under `eforge/profiles/<name>.yaml`. A profile configures one harness, model, and effort level per build tier (planning → implementation → review → evaluation). A minimal Claude Agent SDK profile looks like:
 
 ```yaml
-# Claude Agent SDK harness (Claude Max or API key):
-agentRuntimes:
-  claude-sdk:
-    harness: claude-sdk
-defaultAgentRuntime: claude-sdk
-
-# Pi harness (OpenAI Codex, OpenRouter, local models, and more):
-# agentRuntimes:
-#   pi:
-#     harness: pi
-#     pi:
-#       provider: openai-codex   # Required for harness: pi - selects the Pi provider
-# defaultAgentRuntime: pi
+# eforge/profiles/claude-sdk.yaml
+agents:
+  tiers:
+    planning:
+      harness: claude-sdk
+      model:
+        id: claude-opus-4-7
+      effort: high
+    implementation:
+      harness: claude-sdk
+      model:
+        id: claude-sonnet-4-6
+      effort: medium
+    review:
+      harness: claude-sdk
+      model:
+        id: claude-opus-4-7
+      effort: high
+    evaluation:
+      harness: claude-sdk
+      model:
+        id: claude-opus-4-7
+      effort: high
 ```
+
+For Pi (OpenAI Codex, OpenRouter, local models, and more), set `harness: pi` on each tier and add a `pi: { provider: <provider> }` block. See [docs/config.md](docs/config.md) for the full schema.
 
 ## Configuration
 

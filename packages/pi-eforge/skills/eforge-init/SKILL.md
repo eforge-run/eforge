@@ -7,7 +7,7 @@ disable-model-invocation: true
 # /eforge:init
 
 <!-- parity-skip-start -->
-Initialize eforge in this project. This skill targets the Pi harness exclusively. Presents a two-track setup flow (Quick or Mix-and-match) to assemble a named agent runtime profile (all runtimes use `harness: pi`), then creates it under `eforge/profiles/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.) with `agentRuntimes:` and `defaultAgentRuntime:` as top-level keys.
+Initialize eforge in this project. This skill targets the Pi harness exclusively. Presents a two-track setup flow (Quick or Mix-and-match) to assemble a named agent runtime profile (all tiers use `harness: pi`), then creates it under `eforge/profiles/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.).
 <!-- parity-skip-end -->
 
 ## Welcome
@@ -45,10 +45,10 @@ If both responses contain no profiles (both lists empty), skip this step entirel
 
 If any profiles exist, present them in a combined table:
 
-| Name | Scope | Harness | Max model |
-|------|-------|---------|-----------|
-| `<name>` | `local` | `<agentRuntimes[defaultAgentRuntime].harness>` | `<models.max.id>` |
-| `<name>` | `user`  | `<agentRuntimes[defaultAgentRuntime].harness>` | `<models.max.id>` |
+| Name | Scope | Harness | Planning model |
+|------|-------|---------|----------------|
+| `<name>` | `local` | `<agents.tiers.planning.harness>` | `<agents.tiers.planning.model.id>` |
+| `<name>` | `user`  | `<agents.tiers.planning.harness>` | `<agents.tiers.planning.model.id>` |
 
 Ask: "Would you like to use one of these existing profiles, or create a new project profile?"
 
@@ -76,7 +76,7 @@ Skip Steps 2–6. Proceed directly to the result message.
 
 ### Step 2: Setup mode
 
-The harness is always `pi` in this flow. Ask the user: "Quick setup (one provider and model used for every tier) or mix-and-match (pick a different provider/model per tier)?"
+The harness is always `pi` in this flow. Ask the user: "Quick setup (one provider and model for every tier) or mix-and-match (pick a different provider/model/effort per tier)?"
 
 Do not suggest a default - both options should be presented equally.
 
@@ -85,80 +85,93 @@ Do not suggest a default - both options should be presented equally.
 When the user chooses Quick setup:
 
 1. **Provider**: Call `eforge_models` with `{ action: "providers", harness: "pi" }` to get available providers. Present the list and ask the user to pick one.
-2. **Max model**: Call `eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Show the top 10 and ask the user to pick.
-3. **Balanced model**: Prompt:
-   > Pick a separate **balanced**-tier model? (Recommended — most build steps run at the balanced tier, so a cheaper/smaller model here saves a lot. Press enter to reuse `<max-id>`.)
-   Show the same top-10 list with the user's max pick highlighted as the default. If the user accepts the default, set `balanced.id = max.id`.
-4. **Fast model**: No prompt. Set `fast.id = balanced.id`.
+2. **Planning/review/evaluation model**: Call `eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Show the top 10 and ask the user to pick.
+3. **Implementation model**: Prompt:
+   > Pick a separate **implementation**-tier model? (Recommended — most build steps run at the implementation tier, so a cheaper/smaller model here saves a lot. Press enter to reuse `<planning-id>`.)
+   Show the same top-10 list with the user's planning pick highlighted as the default. If the user accepts the default, set `implementation.model.id = planning.model.id`.
 
-Assemble the single-runtime profile (runtime named `pi-<provider>`, no `tiers` block):
+Assemble the single-provider profile (same provider for all tiers, no mix):
 
 ```yaml
 profile:
-  agentRuntimes:
-    pi-anthropic:                # use pi-<chosen provider>
-      harness: pi
-      pi:
-        provider: anthropic      # the chosen provider
-  defaultAgentRuntime: pi-anthropic
-  models:
-    max:
-      id: <picked>
-    balanced:
-      id: <picked-or-max>
-    fast:
-      id: <balanced>
+  agents:
+    tiers:
+      planning:
+        harness: pi
+        provider: anthropic      # use the chosen provider
+        model:
+          id: <picked>
+        effort: high
+      implementation:
+        harness: pi
+        provider: anthropic
+        model:
+          id: <picked-or-planning>
+        effort: medium
+      review:
+        harness: pi
+        provider: anthropic
+        model:
+          id: <picked>
+        effort: high
+      evaluation:
+        harness: pi
+        provider: anthropic
+        model:
+          id: <picked>
+        effort: high
 ```
 
 ### Step 3b: Mix-and-match path
 
-When the user chooses Mix-and-match, walk tiers `max -> balanced -> fast`:
+When the user chooses Mix-and-match, walk tiers `planning -> implementation -> review -> evaluation`:
 
 For each tier:
-- **Provider**: Ask which provider to use. Default = previous tier's provider (max tier has no default). Call `eforge_models` with `{ action: "providers", harness: "pi" }` for the list.
+- **Provider**: Ask which provider to use. Default = previous tier's provider (planning tier has no default). Call `eforge_models` with `{ action: "providers", harness: "pi" }` for the list.
 - **Model**: Ask which model. Default = previous tier's model when the provider is unchanged. Call `eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` and show the top 10 newest-first.
+- **Effort**: Ask from `low | medium | high | xhigh | max`. Default: `high` for planning/review/evaluation, `medium` for implementation.
 
-After collecting all three tiers, deduplicate runtimes by provider. Name each runtime `pi-<provider>`. Assign each tier to its runtime via `agents.tiers.<tier>.agentRuntime`. Set `defaultAgentRuntime` to the runtime backing the `max` tier.
-
-Assembled profile shape example:
+Assembled profile shape example (two different Pi providers):
 
 ```yaml
 profile:
-  agentRuntimes:
-    pi-anthropic:
-      harness: pi
-      pi:
+  agents:
+    tiers:
+      planning:
+        harness: pi
         provider: anthropic
-    pi-openrouter:
-      harness: pi
-      pi:
+        model:
+          id: claude-opus-4-7
+        effort: high
+      implementation:
+        harness: pi
         provider: openrouter
-  defaultAgentRuntime: pi-anthropic
-  models:
-    max:
-      id: claude-opus-4-7
-    balanced:
-      id: claude-opus-4-7
-    fast:
-      id: mistral-large
-  tiers:
-    max:
-      agentRuntime: pi-anthropic
-    balanced:
-      agentRuntime: pi-anthropic
-    fast:
-      agentRuntime: pi-openrouter
+        model:
+          id: mistral-large
+        effort: medium
+      review:
+        harness: pi
+        provider: anthropic
+        model:
+          id: claude-opus-4-7
+        effort: high
+      evaluation:
+        harness: pi
+        provider: anthropic
+        model:
+          id: claude-opus-4-7
+        effort: high
 ```
 
 ### Step 4: Profile name
 
 Derive a candidate profile name from the assembled profile using these rules (mirrors the server-side `deriveProfileName` helper):
 
-- **Single runtime, same model id across all three tiers**: use the sanitized model ID. Sanitize by lowercasing, replacing `.` with `-`, stripping a leading `claude-` prefix, and collapsing repeated dashes. Example: `claude-opus-4-7` → `opus-4-7`.
-- **Single runtime, model varies across tiers**: use `<harness>-<provider>` (e.g. `pi-anthropic`).
-- **Multiple runtimes**: use `mixed-<runtime-backing-max>` where the backing runtime is from `tiers.max.agentRuntime` (e.g. `mixed-pi-anthropic`).
+- **Same provider+model across all four tiers**: use the sanitized model ID. Sanitize by lowercasing, replacing `.` with `-`, stripping a leading `claude-` prefix, and collapsing repeated dashes. Example: `claude-opus-4-7` → `opus-4-7`.
+- **Same provider, model varies across tiers**: use `pi-<provider>` (e.g. `pi-anthropic`).
+- **Multiple providers**: use `mixed-<planning-tier-provider>` (e.g. `mixed-anthropic`).
 
-> Note: For the Pi Quick path, expect the candidate name to be the sanitized max model id when all tiers share the same model, or `pi-<provider>` when tiers differ. (For reference, the Claude SDK Quick path in the plugin skill typically lands on `claude-sdk`, since each tier picks a different family by default.)
+> Note: For the Pi Quick path, expect the candidate name to be the sanitized planning model id when all tiers share the same model, or `pi-<provider>` when tiers differ.
 
 Show the candidate name to the user: "I'd name this profile `<candidate>`. Does that work, or would you like a different name?" Accept a one-word override (alphanumeric + dashes). If the user accepts, proceed with the candidate. Set `profile.name` to the final name before calling the tool.
 
@@ -170,17 +183,21 @@ Call `eforge_init` with:
 {
   "profile": {
     "name": "<finalName>",
-    "agentRuntimes": { ... },
-    "defaultAgentRuntime": "...",
-    "models": { ... },
-    "tiers": { ... }
+    "agents": {
+      "tiers": {
+        "planning":       { "harness": "pi", "provider": "...", "model": { "id": "..." }, "effort": "..." },
+        "implementation": { "harness": "pi", "provider": "...", "model": { "id": "..." }, "effort": "..." },
+        "review":         { "harness": "pi", "provider": "...", "model": { "id": "..." }, "effort": "..." },
+        "evaluation":     { "harness": "pi", "provider": "...", "model": { "id": "..." }, "effort": "..." }
+      }
+    }
   },
   "postMergeCommands": [...],
   "force": true
 }
 ```
 
-Include `force: true` if `$ARGUMENTS` contains `--force` or `force`. Include `tiers` only in the mix-and-match path. Omit `tiers` on the Quick path.
+Include `force: true` if `$ARGUMENTS` contains `--force` or `force`.
 
 ### Step 6: Migrate (`--migrate`)
 
@@ -188,7 +205,7 @@ If `$ARGUMENTS` contains `--migrate`, skip Steps 2-5 above. Instead call `eforge
 
 <!-- parity-skip-end -->
 
-The tool will create the profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` with `agentRuntimes:` and `defaultAgentRuntime:` as top-level keys alongside other team-wide settings.
+The tool will create the profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` alongside other team-wide settings.
 
 ### Step 7: Report
 

@@ -32,7 +32,6 @@ function playbookDataToRaw(playbook: PlaybookData): string {
   lines.push(`name: ${playbook.name}`);
   lines.push(`description: ${playbook.description}`);
   lines.push(`scope: ${playbook.scope}`);
-  if (playbook.agentRuntime) lines.push(`agentRuntime: ${playbook.agentRuntime}`);
   if (playbook.postMerge && playbook.postMerge.length > 0) {
     lines.push('postMerge:');
     for (const cmd of playbook.postMerge) {
@@ -306,7 +305,6 @@ export function registerPlaybookCommand(program: Command): void {
                 name: String(frontmatter['name'] ?? showData.playbook.name),
                 description: String(frontmatter['description'] ?? showData.playbook.description),
                 scope: targetScope,
-                ...(frontmatter['agentRuntime'] ? { agentRuntime: String(frontmatter['agentRuntime']) } : {}),
                 ...(preservedPostMerge && preservedPostMerge.length > 0
                   ? { postMerge: preservedPostMerge }
                   : {}),

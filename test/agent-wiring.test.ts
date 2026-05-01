@@ -959,9 +959,13 @@ describe('formatStageRegistry', () => {
 describe('resolveAgentConfig per-plan override', () => {
   function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
     return resolveConfig({
-      agentRuntimes: { main: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'main',
       agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
         ...overrides,
       },
     });
@@ -979,7 +983,7 @@ describe('resolveAgentConfig per-plan override', () => {
     });
 
     expect(result.effort).toBe('xhigh');
-    expect(result.effortSource).toBe('planner');
+    expect(result.effortSource).toBe('plan');
   });
 
   it('missing planEntry falls back to current behavior', () => {
@@ -993,13 +997,12 @@ describe('resolveAgentConfig per-plan override', () => {
     const resultWithoutPlan = resolveAgentConfig('builder', config, undefined);
 
     expect(resultWithPlan.effort).toBe(resultWithoutPlan.effort);
-    expect(resultWithPlan.effortSource).toBe('role-config');
+    expect(resultWithPlan.effortSource).toBe('role');
   });
 
   it('xhigh and max effort levels flow through on capable models', () => {
-    const config = makeConfig({
-      model: { id: 'claude-opus-4-7' },
-    });
+    // Use a tier with claude-opus-4-7 which supports all effort levels
+    const config = makeConfig({});
 
     const resultXhigh = resolveAgentConfig('builder', config, {
       agents: { builder: { effort: 'xhigh' } },
@@ -1007,16 +1010,24 @@ describe('resolveAgentConfig per-plan override', () => {
     expect(resultXhigh.effort).toBe('xhigh');
     expect(resultXhigh.effortClamped).toBe(false);
 
-    const resultMax = resolveAgentConfig('builder', config, {
-      agents: { builder: { effort: 'max' } },
+    const resultMax = resolveAgentConfig('reviewer', config, {
+      agents: { reviewer: { effort: 'max' } },
     });
     expect(resultMax.effort).toBe('max');
     expect(resultMax.effortClamped).toBe(false);
   });
 
   it('clamping reflects in resolved config for Sonnet model with max effort', () => {
-    const config = makeConfig({
-      model: { id: 'claude-sonnet-4-0' },
+    // Override implementation tier to use sonnet-4-0 to trigger clamping
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-0', effort: 'medium' as const },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
     });
 
     const result = resolveAgentConfig('builder', config, {
@@ -1026,7 +1037,7 @@ describe('resolveAgentConfig per-plan override', () => {
     expect(result.effort).toBe('xhigh');
     expect(result.effortClamped).toBe(true);
     expect(result.effortOriginal).toBe('max');
-    expect(result.effortSource).toBe('planner');
+    expect(result.effortSource).toBe('plan');
   });
 
   it('planEntry thinking override wins over per-role config', () => {
@@ -1044,32 +1055,30 @@ describe('resolveAgentConfig per-plan override', () => {
     expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 5000 });
   });
 
-  it('effortSource is global-config when effort comes from global config', () => {
-    const config = makeConfig({
-      effort: 'medium',
-    });
+  it('effortSource is tier when effort comes from tier recipe', () => {
+    // Implementation tier has effort: 'medium', builder maps to implementation
+    const config = makeConfig({});
 
     const result = resolveAgentConfig('builder', config);
 
     expect(result.effort).toBe('medium');
-    expect(result.effortSource).toBe('global-config');
+    expect(result.effortSource).toBe('tier');
   });
 
-  it('effortSource and thinkingSource are default when no effort/thinking is configured', () => {
+  it('effortSource and thinkingSource are tier when no overrides configured', () => {
     const config = makeConfig({});
     const result = resolveAgentConfig('builder', config);
-    // Builder now has a per-role effort default of 'high'
-    expect(result.effort).toBe('high');
-    expect(result.effortSource).toBe('default');
+    // Builder maps to implementation tier which has effort: 'medium'
+    expect(result.effort).toBe('medium');
+    expect(result.effortSource).toBe('tier');
     expect(result.thinking).toBeUndefined();
-    expect(result.thinkingSource).toBe('default');
+    expect(result.thinkingSource).toBe('tier');
   });
 
-  it('thinkingSource tracks planner provenance', () => {
+  it('thinkingSource tracks plan provenance', () => {
     const config = makeConfig({
-      model: { id: 'claude-opus-4-6' },
       roles: {
-        builder: { thinking: { type: 'disabled' } },
+        builder: { thinking: true },
       },
     });
 
@@ -1078,45 +1087,48 @@ describe('resolveAgentConfig per-plan override', () => {
     });
 
     expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 5000 });
-    expect(result.thinkingSource).toBe('planner');
+    expect(result.thinkingSource).toBe('plan');
   });
 
-  it('thinkingSource tracks role-config provenance', () => {
+  it('thinkingSource tracks role provenance', () => {
     const config = makeConfig({
-      model: { id: 'claude-opus-4-6' },
       roles: {
-        builder: { thinking: { type: 'enabled', budgetTokens: 3000 } },
+        builder: { thinking: true },
       },
     });
 
     const result = resolveAgentConfig('builder', config);
 
-    expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 3000 });
-    expect(result.thinkingSource).toBe('role-config');
+    expect(result.thinking).toEqual({ type: 'enabled' });
+    expect(result.thinkingSource).toBe('role');
   });
 
-  it('thinkingSource tracks global-config provenance', () => {
-    const config = makeConfig({
-      model: { id: 'claude-opus-4-6' },
-      thinking: { type: 'enabled', budgetTokens: 8000 },
+  it('thinkingSource tracks tier provenance when set in tier recipe', () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-6', effort: 'medium' as const, thinking: true },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
     });
 
     const result = resolveAgentConfig('builder', config);
 
-    expect(result.thinking).toEqual({ type: 'enabled', budgetTokens: 8000 });
-    expect(result.thinkingSource).toBe('global-config');
+    expect(result.thinking).toEqual({ type: 'enabled' });
+    expect(result.thinkingSource).toBe('tier');
   });
 
-  it('effortSource is always stamped even when effort is set', () => {
-    const config = makeConfig({
-      effort: 'medium',
-    });
+  it('effortSource is always stamped even when effort is set from tier', () => {
+    const config = makeConfig({});
 
     const result = resolveAgentConfig('builder', config);
 
     expect(result.effort).toBe('medium');
-    expect(result.effortSource).toBe('global-config');
-    expect(result.thinkingSource).toBe('default');
+    expect(result.effortSource).toBe('tier');
+    expect(result.thinkingSource).toBe('tier');
   });
 });
 
@@ -1125,45 +1137,55 @@ describe('resolveAgentConfig per-plan override', () => {
 describe('resolveAgentConfig per-role effort defaults', () => {
   function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
     return resolveConfig({
-      agentRuntimes: { main: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'main',
       agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
         ...overrides,
       },
     });
   }
 
+  // In the new tier-recipe system, effort flows from the tier.
+  // planning/review/evaluation tiers have effort: 'high'; implementation has effort: 'medium'.
   const effortTable: Array<{ role: string; expectedEffort: string }> = [
+    // Planning tier (effort: 'high')
     { role: 'planner', expectedEffort: 'high' },
-    { role: 'builder', expectedEffort: 'high' },
     { role: 'module-planner', expectedEffort: 'high' },
+    { role: 'merge-conflict-resolver', expectedEffort: 'high' },
+    { role: 'doc-updater', expectedEffort: 'high' },
+    { role: 'gap-closer', expectedEffort: 'high' },
+    // Review tier (effort: 'high')
     { role: 'architecture-reviewer', expectedEffort: 'high' },
-    { role: 'architecture-evaluator', expectedEffort: 'high' },
     { role: 'cohesion-reviewer', expectedEffort: 'high' },
-    { role: 'cohesion-evaluator', expectedEffort: 'high' },
     { role: 'plan-reviewer', expectedEffort: 'high' },
-    { role: 'plan-evaluator', expectedEffort: 'high' },
     { role: 'reviewer', expectedEffort: 'high' },
+    // Evaluation tier (effort: 'high')
+    { role: 'architecture-evaluator', expectedEffort: 'high' },
+    { role: 'cohesion-evaluator', expectedEffort: 'high' },
+    { role: 'plan-evaluator', expectedEffort: 'high' },
     { role: 'evaluator', expectedEffort: 'high' },
+    // Implementation tier (effort: 'medium')
+    { role: 'builder', expectedEffort: 'medium' },
     { role: 'review-fixer', expectedEffort: 'medium' },
     { role: 'validation-fixer', expectedEffort: 'medium' },
-    { role: 'merge-conflict-resolver', expectedEffort: 'medium' },
-    { role: 'doc-updater', expectedEffort: 'medium' },
     { role: 'test-writer', expectedEffort: 'medium' },
     { role: 'tester', expectedEffort: 'medium' },
-    { role: 'gap-closer', expectedEffort: 'medium' },
   ];
 
   for (const { role, expectedEffort } of effortTable) {
-    it(`${role} defaults to effort '${expectedEffort}' with effortSource 'default'`, () => {
+    it(`${role} defaults to effort '${expectedEffort}' with effortSource 'tier'`, () => {
       const config = makeConfig({});
       const result = resolveAgentConfig(role as import('@eforge-build/engine/events').AgentRole, config);
       expect(result.effort).toBe(expectedEffort);
-      expect(result.effortSource).toBe('default');
+      expect(result.effortSource).toBe('tier');
     });
   }
 
-  it('user per-role effort overrides built-in default', () => {
+  it('user per-role effort overrides tier default', () => {
     const config = makeConfig({
       roles: {
         builder: { effort: 'xhigh' },
@@ -1172,13 +1194,11 @@ describe('resolveAgentConfig per-role effort defaults', () => {
 
     const result = resolveAgentConfig('builder', config);
     expect(result.effort).toBe('xhigh');
-    expect(result.effortSource).toBe('role-config');
+    expect(result.effortSource).toBe('role');
   });
 
-  it('plan override effort overrides both user config and built-in default', () => {
-    // reviewer defaults to the 'max' model class (claude-opus-4-7), which
-    // supports the 'max' effort value without clamping - keeping this test
-    // focused on the override-chain precedence rather than effort clamping.
+  it('plan override effort overrides both user config and tier default', () => {
+    // reviewer maps to review tier which uses claude-opus-4-7 and supports 'max' effort
     const config = makeConfig({
       roles: {
         reviewer: { effort: 'xhigh' },
@@ -1189,7 +1209,7 @@ describe('resolveAgentConfig per-role effort defaults', () => {
       agents: { reviewer: { effort: 'max' } },
     });
     expect(result.effort).toBe('max');
-    expect(result.effortSource).toBe('planner');
+    expect(result.effortSource).toBe('plan');
   });
 });
 
@@ -1198,30 +1218,47 @@ describe('resolveAgentConfig per-role effort defaults', () => {
 describe('resolveAgentConfig thinking coercion', () => {
   function makeConfig(overrides?: Partial<EforgeConfig['agents']>): EforgeConfig {
     return resolveConfig({
-      agentRuntimes: { main: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'main',
       agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
         ...overrides,
       },
     });
   }
 
   it('coerces enabled thinking to adaptive on Opus 4.7', () => {
-    const config = makeConfig({
-      model: { id: 'claude-opus-4-7' },
-      thinking: { type: 'enabled', budgetTokens: 10000 },
+    // Use a tier with claude-opus-4-7 and thinking: true → gets coerced to adaptive
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'medium' as const, thinking: true },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
     });
 
     const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toEqual({ type: 'adaptive' });
     expect(result.thinkingCoerced).toBe(true);
-    expect(result.thinkingOriginal).toEqual({ type: 'enabled', budgetTokens: 10000 });
+    expect(result.thinkingOriginal).toEqual({ type: 'enabled' });
   });
 
   it('does not coerce enabled thinking on Opus 4.6', () => {
-    const config = makeConfig({
-      model: { id: 'claude-opus-4-6' },
-      thinking: { type: 'enabled' },
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-6', effort: 'high' as const },
+          implementation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-6', effort: 'medium' as const, thinking: true },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-6', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-6', effort: 'high' as const },
+        },
+      },
     });
 
     const result = resolveAgentConfig('builder', config);
@@ -1230,12 +1267,12 @@ describe('resolveAgentConfig thinking coercion', () => {
   });
 
   it('does not coerce adaptive thinking on Opus 4.7 (already the target)', () => {
-    const config = makeConfig({
-      model: { id: 'claude-opus-4-7' },
-      thinking: { type: 'adaptive' },
+    // adaptive thinking is represented as false in the tier boolean field;
+    // use plan override with explicit adaptive type instead
+    const config = makeConfig({});
+    const result = resolveAgentConfig('builder', config, {
+      agents: { builder: { thinking: { type: 'adaptive' } } },
     });
-
-    const result = resolveAgentConfig('builder', config);
     expect(result.thinking).toEqual({ type: 'adaptive' });
     expect(result.thinkingCoerced).toBeUndefined();
   });

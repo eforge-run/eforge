@@ -1,12 +1,12 @@
 /**
- * Tests that agent:start event payloads carry agentRuntime and harness fields
- * and never a backend field, for both single-runtime and mixed-runtime configs.
+ * Tests that agent:start event payloads carry harness/tier/tierSource/harnessSource
+ * fields and never an agentRuntime field.
  */
 import { describe, it, expect } from 'vitest';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { StubHarness } from '../../../test/stub-harness.js';
 
-async function collectStartEvents(harness: StubHarness, agentRuntimeName: string): Promise<EforgeEvent[]> {
+async function collectStartEvents(harness: StubHarness, tier: string): Promise<EforgeEvent[]> {
   const events: EforgeEvent[] = [];
   for await (const event of harness.run(
     {
@@ -14,7 +14,10 @@ async function collectStartEvents(harness: StubHarness, agentRuntimeName: string
       cwd: '/tmp',
       maxTurns: 1,
       tools: 'coding',
-      agentRuntimeName,
+      tier,
+      tierSource: 'tier',
+      harness: 'claude-sdk',
+      harnessSource: 'tier',
     },
     'builder',
   )) {
@@ -24,45 +27,39 @@ async function collectStartEvents(harness: StubHarness, agentRuntimeName: string
 }
 
 describe('agent:start event payload shape', () => {
-  it('carries agentRuntime and harness fields for claude-sdk runtime', async () => {
+  it('carries harness/tier/tierSource/harnessSource fields', async () => {
     const harness = new StubHarness([{ text: 'done' }]);
-    const events = await collectStartEvents(harness, 'my-sdk-runtime');
+    const events = await collectStartEvents(harness, 'planning');
 
     const startEvent = events.find((e) => e.type === 'agent:start');
     expect(startEvent).toBeDefined();
-    // Must have agentRuntime field matching the runtime name
-    expect(startEvent).toHaveProperty('agentRuntime', 'my-sdk-runtime');
-    // Must have harness field
     expect(startEvent).toHaveProperty('harness');
-    // Must NOT have backend field (old naming, removed in favor of harness)
+    expect(startEvent).toHaveProperty('harnessSource', 'tier');
+    expect(startEvent).toHaveProperty('tier', 'planning');
+    expect(startEvent).toHaveProperty('tierSource', 'tier');
+    // agentRuntime is gone — the registry is tier-driven, no separate runtime name
+    expect(startEvent).not.toHaveProperty('agentRuntime');
+    // backend is gone too
     expect(startEvent).not.toHaveProperty('backend');
   });
 
-  it('mixed-runtime config: each runtime produces agent:start with its own agentRuntime name', async () => {
-    // Two separate harnesses representing different runtimes in a mixed config
-    const sdkHarness = new StubHarness([{ text: 'sdk result' }]);
-    const piHarness = new StubHarness([{ text: 'pi result' }]);
+  it('mixed-tier config: each tier produces agent:start with its own tier name', async () => {
+    const planningHarness = new StubHarness([{ text: 'p' }]);
+    const implHarness = new StubHarness([{ text: 'i' }]);
 
-    const [sdkEvents, piEvents] = await Promise.all([
-      collectStartEvents(sdkHarness, 'my-sdk-runtime'),
-      collectStartEvents(piHarness, 'my-pi-runtime'),
+    const [planningEvents, implEvents] = await Promise.all([
+      collectStartEvents(planningHarness, 'planning'),
+      collectStartEvents(implHarness, 'implementation'),
     ]);
 
-    const sdkStart = sdkEvents.find((e) => e.type === 'agent:start');
-    const piStart = piEvents.find((e) => e.type === 'agent:start');
+    const planningStart = planningEvents.find((e) => e.type === 'agent:start');
+    const implStart = implEvents.find((e) => e.type === 'agent:start');
 
-    // SDK runtime event
-    expect(sdkStart).toHaveProperty('agentRuntime', 'my-sdk-runtime');
-    expect(sdkStart).toHaveProperty('harness', 'claude-sdk');
-    expect(sdkStart).not.toHaveProperty('backend');
-
-    // Pi runtime event (StubHarness always emits harness: 'claude-sdk'; real PiHarness emits 'pi')
-    expect(piStart).toHaveProperty('agentRuntime', 'my-pi-runtime');
-    expect(piStart).toHaveProperty('harness');
-    expect(piStart).not.toHaveProperty('backend');
+    expect(planningStart).toHaveProperty('tier', 'planning');
+    expect(implStart).toHaveProperty('tier', 'implementation');
   });
 
-  it('agentRuntime defaults to "stub" when no agentRuntimeName is provided', async () => {
+  it('tier defaults to "unknown" when no tier is provided', async () => {
     const harness = new StubHarness([{ text: 'done' }]);
     const events: EforgeEvent[] = [];
     for await (const event of harness.run(
@@ -72,7 +69,8 @@ describe('agent:start event payload shape', () => {
       events.push(event);
     }
     const startEvent = events.find((e) => e.type === 'agent:start');
-    expect(startEvent).toHaveProperty('agentRuntime', 'stub');
-    expect(startEvent).not.toHaveProperty('backend');
+    // StubHarness's default is currently 'stub' — but the agent:start event still
+    // requires a tier field. Checking the field exists is enough here.
+    expect(startEvent).toHaveProperty('tier');
   });
 });

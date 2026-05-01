@@ -121,46 +121,46 @@ async function loadConfigForProfile(
   const merged = mergePartialConfigs(baseMerged, profileResult.profile);
   const config = resolveConfig(merged);
 
-  if (!config.agentRuntimes || Object.keys(config.agentRuntimes).length === 0) {
+  if (!config.agents.tiers || Object.keys(config.agents.tiers).length === 0) {
     throw new Error(
-      `Backend profile "${resolvedName}" has no agentRuntimes configured. ` +
-      `Add agentRuntimes and defaultAgentRuntime to the profile or config.`,
+      `Backend profile "${resolvedName}" has no agent tiers configured. ` +
+      `Add agents.tiers entries (with harness + model + effort) to the profile or config.`,
     );
   }
 
   return { config, profileName: resolvedName, configDir };
 }
 
-/** Construct the right harness instance from a resolved config, with debug capture wired. */
+/** Construct the right harness instance from a resolved config, with debug capture wired.
+ *  The composer agent lives in the planning tier — pull its tier recipe and instantiate
+ *  the harness it requests. */
 async function buildBackendForDebug(
   config: EforgeConfig,
   onDebugPayload: (p: HarnessDebugPayload) => void,
 ): Promise<AgentHarness> {
-  const defaultRuntime = config.defaultAgentRuntime;
-  const entry = defaultRuntime ? config.agentRuntimes?.[defaultRuntime] : undefined;
+  const tier = config.agents.tiers?.planning;
 
-  if (entry?.harness === 'pi') {
+  if (tier?.harness === 'pi') {
     const { PiHarness } = await import('@eforge-build/engine/harnesses/pi');
-    const piCfg: import('@eforge-build/engine/config').PiConfig = entry.pi
-      ? {
-          apiKey: entry.pi.apiKey ?? config.pi.apiKey,
-          thinkingLevel: entry.pi.thinkingLevel ?? config.pi.thinkingLevel,
-          extensions: {
-            autoDiscover: entry.pi.extensions?.autoDiscover ?? config.pi.extensions.autoDiscover,
-            include: entry.pi.extensions?.include ?? config.pi.extensions.include,
-            exclude: entry.pi.extensions?.exclude ?? config.pi.extensions.exclude,
-            paths: entry.pi.extensions?.paths ?? config.pi.extensions.paths,
-          },
-          compaction: {
-            enabled: entry.pi.compaction?.enabled ?? config.pi.compaction.enabled,
-            threshold: entry.pi.compaction?.threshold ?? config.pi.compaction.threshold,
-          },
-          retry: {
-            maxRetries: entry.pi.retry?.maxRetries ?? config.pi.retry.maxRetries,
-            backoffMs: entry.pi.retry?.backoffMs ?? config.pi.retry.backoffMs,
-          },
-        }
-      : config.pi;
+    const piCfg: import('@eforge-build/engine/config').PiConfig = {
+      apiKey: tier.pi?.apiKey,
+      provider: tier.pi?.provider,
+      thinkingLevel: tier.pi?.thinkingLevel ?? 'medium',
+      extensions: {
+        autoDiscover: tier.pi?.extensions?.autoDiscover ?? true,
+        include: tier.pi?.extensions?.include,
+        exclude: tier.pi?.extensions?.exclude,
+        paths: tier.pi?.extensions?.paths,
+      },
+      compaction: {
+        enabled: tier.pi?.compaction?.enabled ?? true,
+        threshold: tier.pi?.compaction?.threshold ?? 100_000,
+      },
+      retry: {
+        maxRetries: tier.pi?.retry?.maxRetries ?? 3,
+        backoffMs: tier.pi?.retry?.backoffMs ?? 1000,
+      },
+    };
     return new PiHarness({
       piConfig: piCfg,
       bare: config.agents.bare,
@@ -170,7 +170,7 @@ async function buildBackendForDebug(
   }
 
   // default: claude-sdk
-  const disableSubagents = entry?.claudeSdk?.disableSubagents ?? config.claudeSdk.disableSubagents;
+  const disableSubagents = tier?.claudeSdk?.disableSubagents ?? false;
   return new ClaudeSDKHarness({
     settingSources: config.agents.settingSources as never,
     bare: config.agents.bare,
@@ -231,15 +231,20 @@ async function runForProfile(
     | { type: 'planning:pipeline'; scope: string; compile: unknown[]; defaultBuild: unknown[]; defaultReview: unknown; rationale: string }
     | undefined;
 
+  const planningTier = config.agents.tiers?.planning;
   const record = {
     profileName,
     source,
     capturedAt: new Date().toISOString(),
     config: {
-      defaultAgentRuntime: config.defaultAgentRuntime,
-      model: config.agents.model,
-      effort: config.agents.effort,
-      thinking: config.agents.thinking,
+      planningTier: planningTier
+        ? {
+            harness: planningTier.harness,
+            model: planningTier.model,
+            effort: planningTier.effort,
+            thinking: planningTier.thinking,
+          }
+        : null,
     },
     resolvedComposer: composerConfig,
     payload: captured,

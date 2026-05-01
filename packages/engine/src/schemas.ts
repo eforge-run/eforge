@@ -247,9 +247,9 @@ export const agentTuningSchema = z.object({
   effort: effortLevelForTuningSchema.optional(),
   thinking: thinkingForTuningSchema.optional(),
   rationale: z.string().optional().describe('Why this tuning was chosen'),
-  agentRuntime: z.string().optional().describe('Name of the agentRuntime entry to use for this role (overrides config-level role and default)'),
+  tier: z.enum(['planning', 'implementation', 'review', 'evaluation']).optional().describe('Override the tier this role belongs to (the tier carries harness/model/effort defaults)'),
   shards: z.array(shardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
-}).describe('Per-agent effort/thinking/runtime tuning');
+}).describe('Per-agent effort/thinking/tier tuning');
 
 const planAgentsSchema = z.object({
   builder: agentTuningSchema.optional(),

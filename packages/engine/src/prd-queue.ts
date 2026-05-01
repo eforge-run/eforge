@@ -551,8 +551,6 @@ export interface EnqueuePrdOptions {
   depends_on?: string[];
   /** If true, write to waiting/ subdirectory (for piggybacked PRDs awaiting upstream completion) */
   intoWaiting?: boolean;
-  /** Agent runtime profile name to use when executing this PRD (forwarded from playbook frontmatter) */
-  agentRuntime?: string;
   /** Commands to run after the build merges (forwarded from playbook frontmatter) */
   postMerge?: string[];
 }
@@ -590,7 +588,7 @@ function slugify(title: string): string {
  * - Optional `intoWaiting` flag to write to the waiting/ subdirectory
  */
 export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrdResult> {
-  const { body, title, queueDir, cwd, priority, depends_on, intoWaiting, agentRuntime, postMerge } = options;
+  const { body, title, queueDir, cwd, priority, depends_on, intoWaiting, postMerge } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
   const targetSubdir = intoWaiting ? 'waiting' : undefined;
@@ -639,9 +637,6 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   }
   if (depends_on !== undefined && depends_on.length > 0) {
     fmLines.push(`depends_on: [${depends_on.map((d) => `"${d}"`).join(', ')}]`);
-  }
-  if (agentRuntime !== undefined) {
-    fmLines.push(`agentRuntime: ${agentRuntime}`);
   }
   if (postMerge !== undefined && postMerge.length > 0) {
     fmLines.push(`postMerge:\n${postMerge.map((cmd) => `  - ${cmd}`).join('\n')}`);

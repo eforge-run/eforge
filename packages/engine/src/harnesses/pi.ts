@@ -281,21 +281,20 @@ export class PiHarness implements AgentHarness {
         agentId,
         agent,
         model: 'unknown',
-        agentRuntime: options.agentRuntimeName ?? 'pi',
         harness: 'pi',
-        fallbackFrom: options.fallbackFrom,
+        harnessSource: options.harnessSource ?? 'tier',
+        tier: options.tier ?? 'unknown',
+        tierSource: options.tierSource ?? 'tier',
         effort: options.effort,
+        effortSource: options.effortSource,
         thinking: options.thinking,
+        thinkingSource: options.thinkingSource,
         effortClamped: options.effortClamped,
         effortOriginal: options.effortOriginal,
-        effortSource: options.effortSource,
-        thinkingSource: options.thinkingSource,
         thinkingCoerced: options.thinkingCoerced,
         thinkingOriginal: options.thinkingOriginal,
-        tier: options.tier,
-        tierSource: options.tierSource,
       });
-      yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set agents.models.max (or the appropriate model class) in eforge/config.yaml.', timestamp: new Date().toISOString() };
+      yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set the model on the tier recipe in eforge/config.yaml.', timestamp: new Date().toISOString() };
       return;
     }
 
@@ -305,21 +304,20 @@ export class PiHarness implements AgentHarness {
         agentId,
         agent,
         model: options.model.id,
-        agentRuntime: options.agentRuntimeName ?? 'pi',
         harness: 'pi',
-        fallbackFrom: options.fallbackFrom,
+        harnessSource: options.harnessSource ?? 'tier',
+        tier: options.tier ?? 'unknown',
+        tierSource: options.tierSource ?? 'tier',
         effort: options.effort,
+        effortSource: options.effortSource,
         thinking: options.thinking,
+        thinkingSource: options.thinkingSource,
         effortClamped: options.effortClamped,
         effortOriginal: options.effortOriginal,
-        effortSource: options.effortSource,
-        thinkingSource: options.thinkingSource,
         thinkingCoerced: options.thinkingCoerced,
         thinkingOriginal: options.thinkingOriginal,
-        tier: options.tier,
-        tierSource: options.tierSource,
       });
-      yield { type: 'agent:stop', planId, agent, agentId, error: `No provider in model ref for Pi backend. Model refs must include "provider" (e.g. { provider: "openrouter", id: "${options.model.id}" }).`, timestamp: new Date().toISOString() };
+      yield { type: 'agent:stop', planId, agent, agentId, error: `No provider in model ref for Pi backend. Tier recipes with harness "pi" must set pi.provider.`, timestamp: new Date().toISOString() };
       return;
     }
 
@@ -330,19 +328,18 @@ export class PiHarness implements AgentHarness {
       agentId,
       agent,
       model: options.model.id,
-      agentRuntime: options.agentRuntimeName ?? 'pi',
       harness: 'pi',
-      fallbackFrom: options.fallbackFrom,
+      harnessSource: options.harnessSource ?? 'tier',
+      tier: options.tier ?? 'unknown',
+      tierSource: options.tierSource ?? 'tier',
       effort: options.effort,
+      effortSource: options.effortSource,
       thinking: options.thinking,
+      thinkingSource: options.thinkingSource,
       effortClamped: options.effortClamped,
       effortOriginal: options.effortOriginal,
-      effortSource: options.effortSource,
-      thinkingSource: options.thinkingSource,
       thinkingCoerced: options.thinkingCoerced,
       thinkingOriginal: options.thinkingOriginal,
-      tier: options.tier,
-      tierSource: options.tierSource,
     });
 
     if (options.thinkingCoerced) {

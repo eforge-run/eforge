@@ -4,18 +4,10 @@
  * Both `ClaudeSDKHarness` and `PiHarness` emit the same `EforgeEvent` union;
  * this module is the single source of truth for event construction patterns
  * that would otherwise drift between the two harnesses.
- *
- * - `buildAgentStartEvent` constructs the `agent:start` event with an
- *   option-bag API that keeps call sites greppable and trivially extended as
- *   new runtime-decision fields (effort/thinking/etc.) land on the event.
- * - `normalizeToolUseId` is the single point where provider-native tool-call
- *   identifiers (`block.id` for the Claude SDK, `toolCallId` for Pi) are
- *   mapped onto the unified `toolUseId` name used on the event stream.
  */
 
 import type { EforgeEvent, AgentRole } from '../events.js';
 import type { ThinkingConfig, EffortLevel } from '../harness.js';
-import type { ModelClass } from '../config.js';
 
 /** The concrete shape of an `agent:start` event on the eforge event stream. */
 export type AgentStartEvent = Extract<EforgeEvent, { type: 'agent:start' }>;
@@ -29,32 +21,27 @@ export interface BuildAgentStartEventOptions {
   agentId: string;
   agent: AgentRole;
   model: string;
-  /** The resolved agentRuntime config name (e.g. "opus", "pi-anthropic"). */
-  agentRuntime: string;
-  /** The harness kind for this runtime entry. */
+  /** The harness kind for this role. */
   harness: 'claude-sdk' | 'pi';
-  fallbackFrom?: ModelClass;
+  /** Always 'tier' — harness flows from the tier recipe. */
+  harnessSource: 'tier';
+  /** Tier this role belongs to. */
+  tier: string;
+  /** Provenance of the tier value. */
+  tierSource: 'tier' | 'role' | 'plan';
   effort?: EffortLevel;
+  effortSource?: 'tier' | 'role' | 'plan';
   thinking?: ThinkingConfig;
+  thinkingSource?: 'tier' | 'role' | 'plan';
   effortClamped?: boolean;
   effortOriginal?: EffortLevel;
-  effortSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
-  thinkingSource?: 'planner' | 'role-config' | 'tier-config' | 'global-config' | 'default';
   thinkingCoerced?: boolean;
   thinkingOriginal?: ThinkingConfig;
-  /** The resolved tier for this role. */
-  tier?: string;
-  /** Provenance of the resolved tier value. */
-  tierSource?: string;
 }
 
 /**
  * Build an `agent:start` event without emitting any keys with `undefined`
- * values. Optional fields are copied through only when explicitly set so
- * downstream consumers (monitor UI, tracing) can use `in`-checks and
- * JSON round-trips without spurious nullish fields polluting the payload.
- *
- * The `timestamp` is captured at call time.
+ * values.
  */
 export function buildAgentStartEvent(opts: BuildAgentStartEventOptions): AgentStartEvent {
   const event: AgentStartEvent = {
@@ -62,29 +49,27 @@ export function buildAgentStartEvent(opts: BuildAgentStartEventOptions): AgentSt
     agentId: opts.agentId,
     agent: opts.agent,
     model: opts.model,
-    agentRuntime: opts.agentRuntime,
     harness: opts.harness,
+    harnessSource: opts.harnessSource,
+    tier: opts.tier,
+    tierSource: opts.tierSource,
     timestamp: new Date().toISOString(),
   };
   if (opts.planId !== undefined) event.planId = opts.planId;
-  if (opts.fallbackFrom !== undefined) event.fallbackFrom = opts.fallbackFrom;
   if (opts.effort !== undefined) event.effort = opts.effort;
+  if (opts.effortSource !== undefined) event.effortSource = opts.effortSource;
   if (opts.thinking !== undefined) event.thinking = opts.thinking;
+  if (opts.thinkingSource !== undefined) event.thinkingSource = opts.thinkingSource;
   if (opts.effortClamped !== undefined) event.effortClamped = opts.effortClamped;
   if (opts.effortOriginal !== undefined) event.effortOriginal = opts.effortOriginal;
-  if (opts.effortSource !== undefined) event.effortSource = opts.effortSource;
-  if (opts.thinkingSource !== undefined) event.thinkingSource = opts.thinkingSource;
   if (opts.thinkingCoerced !== undefined) event.thinkingCoerced = opts.thinkingCoerced;
   if (opts.thinkingOriginal !== undefined) event.thinkingOriginal = opts.thinkingOriginal;
-  if (opts.tier !== undefined) event.tier = opts.tier;
-  if (opts.tierSource !== undefined) event.tierSource = opts.tierSource;
   return event;
 }
 
 /**
  * Provider-native payload shapes that carry a tool-call identifier under
- * different field names. The Claude SDK emits tool-use content blocks with
- * an `id` field; Pi's agent events carry `toolCallId`.
+ * different field names.
  */
 export interface ToolUseIdSource {
   /** Claude SDK tool_use block identifier. */
@@ -95,10 +80,7 @@ export interface ToolUseIdSource {
 
 /**
  * Normalize a provider-native tool-call identifier onto the unified
- * `toolUseId` value used on eforge's event stream. Prefers `id` over
- * `toolCallId` when both are present. Throws when neither is set so that
- * the failure mode (missing identifier) is loud and localized instead of
- * propagating `undefined` into tool_use / tool_result events.
+ * `toolUseId` value used on eforge's event stream.
  */
 export function normalizeToolUseId(raw: ToolUseIdSource): string {
   if (raw.id !== undefined) return raw.id;

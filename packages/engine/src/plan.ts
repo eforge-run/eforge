@@ -185,11 +185,12 @@ export function indexModulesToExpeditionModules(
  * Parse a plan file (.md) with YAML frontmatter into a PlanFile.
  * Format: ---\n<yaml>\n---\n<markdown body>
  *
- * When `agentRuntimes` is provided, validates that every `agents.<role>.agentRuntime`
- * reference names an entry declared in `agentRuntimes`. Throws if a dangling reference
- * is found, with the plan file path, role name, and referenced runtime name in the message.
+ * When `tiers` is provided, validates that every `agents.<role>.tier`
+ * reference names a tier declared in the config. Throws if a dangling
+ * reference is found, with the plan file path, role name, and referenced
+ * tier name in the message.
  */
-export async function parsePlanFile(mdPath: string, agentRuntimes?: Record<string, unknown>): Promise<PlanFile> {
+export async function parsePlanFile(mdPath: string, tiers?: Record<string, unknown>): Promise<PlanFile> {
   const absPath = resolve(mdPath);
   const raw = await readFile(absPath, 'utf-8');
 
@@ -221,15 +222,15 @@ export async function parsePlanFile(mdPath: string, agentRuntimes?: Record<strin
     }
   }
 
-  // Validate agentRuntime references when agentRuntimes map is provided.
-  if (agentRuntimes && agents) {
+  // Validate tier references when tiers map is provided.
+  if (tiers && agents) {
     for (const [roleName, roleConfig] of Object.entries(agents)) {
-      const agentRuntime = (roleConfig as { agentRuntime?: string }).agentRuntime;
-      if (agentRuntime !== undefined && !(agentRuntime in agentRuntimes)) {
-        const declared = Object.keys(agentRuntimes).join(', ') || '(none)';
+      const tier = (roleConfig as { tier?: string }).tier;
+      if (tier !== undefined && !(tier in tiers)) {
+        const declared = Object.keys(tiers).join(', ') || '(none)';
         throw new Error(
-          `Plan file ${absPath}: role "${roleName}" references agentRuntime "${agentRuntime}" ` +
-          `which is not declared in agentRuntimes. Declared: ${declared}.`,
+          `Plan file ${absPath}: role "${roleName}" references tier "${tier}" ` +
+          `which is not declared in agents.tiers. Declared: ${declared}.`,
         );
       }
     }
@@ -279,12 +280,12 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
         }
 
         // Parse optional agents block
-        let agents: Record<string, { effort?: string; thinking?: object; rationale?: string }> | undefined;
+        let agents: Record<string, { effort?: string; thinking?: boolean | object; rationale?: string; tier?: string }> | undefined;
         if (p.agents !== undefined) {
           const agentsValidator = z.record(z.string(), agentTuningSchema);
           const agentsResult = agentsValidator.safeParse(p.agents);
           if (agentsResult.success) {
-            agents = agentsResult.data as Record<string, { effort?: string; thinking?: object; rationale?: string }>;
+            agents = agentsResult.data as Record<string, { effort?: string; thinking?: boolean | object; rationale?: string; tier?: string }>;
           } else {
             orchWarnings.push(`[eforge] Plan '${id}': malformed 'agents' block in orchestration config will be ignored`);
           }

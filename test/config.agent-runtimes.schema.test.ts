@@ -4,48 +4,54 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   eforgeConfigSchema,
-  agentRuntimeEntrySchema,
+  tierConfigSchema,
   configYamlSchema,
   parseRawConfig,
   loadConfig,
   ConfigValidationError,
+  ConfigMigrationError,
 } from '@eforge-build/engine/config';
 
 // ---------------------------------------------------------------------------
-// agentRuntimeEntrySchema — cross-kind sub-block rejection
+// tierConfigSchema — self-contained recipe with cross-field validation
 // ---------------------------------------------------------------------------
 
-describe('agentRuntimeEntrySchema', () => {
-  it('accepts harness claude-sdk without sub-blocks', () => {
-    const result = agentRuntimeEntrySchema.safeParse({ harness: 'claude-sdk' });
+describe('tierConfigSchema', () => {
+  it('accepts a claude-sdk tier recipe', () => {
+    const result = tierConfigSchema.safeParse({
+      harness: 'claude-sdk',
+      model: 'claude-opus-4-7',
+      effort: 'high',
+    });
     expect(result.success).toBe(true);
   });
 
-  it('accepts harness pi with required pi.provider', () => {
-    const result = agentRuntimeEntrySchema.safeParse({ harness: 'pi', pi: { provider: 'openrouter' } });
+  it('accepts a pi tier recipe with required pi.provider', () => {
+    const result = tierConfigSchema.safeParse({
+      harness: 'pi',
+      pi: { provider: 'openrouter' },
+      model: 'qwen-coder',
+      effort: 'medium',
+    });
     expect(result.success).toBe(true);
   });
 
-  it('accepts harness claude-sdk with claudeSdk config', () => {
-    const result = agentRuntimeEntrySchema.safeParse({
+  it('accepts a claude-sdk tier with claudeSdk config', () => {
+    const result = tierConfigSchema.safeParse({
       harness: 'claude-sdk',
       claudeSdk: { disableSubagents: true },
+      model: 'claude-opus-4-7',
+      effort: 'high',
     });
     expect(result.success).toBe(true);
   });
 
-  it('accepts harness pi with pi config including required provider', () => {
-    const result = agentRuntimeEntrySchema.safeParse({
-      harness: 'pi',
-      pi: { provider: 'openrouter', apiKey: 'test-key', thinkingLevel: 'medium' },
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects harness pi with claudeSdk sub-block (cross-kind conflict)', () => {
-    const result = agentRuntimeEntrySchema.safeParse({
+  it('rejects pi tier with claudeSdk sub-block', () => {
+    const result = tierConfigSchema.safeParse({
       harness: 'pi',
       claudeSdk: { disableSubagents: true },
+      model: 'qwen-coder',
+      effort: 'medium',
     });
     expect(result.success).toBe(false);
     if (!result.success) {
@@ -54,138 +60,85 @@ describe('agentRuntimeEntrySchema', () => {
     }
   });
 
-  it('rejects harness claude-sdk with pi sub-block (cross-kind conflict)', () => {
-    const result = agentRuntimeEntrySchema.safeParse({
+  it('rejects claude-sdk tier with pi sub-block', () => {
+    const result = tierConfigSchema.safeParse({
       harness: 'claude-sdk',
-      pi: { apiKey: 'test' },
+      pi: { provider: 'foo' },
+      model: 'claude-opus-4-7',
+      effort: 'high',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects pi tier missing pi.provider', () => {
+    const result = tierConfigSchema.safeParse({
+      harness: 'pi',
+      model: 'qwen-coder',
+      effort: 'medium',
     });
     expect(result.success).toBe(false);
     if (!result.success) {
       const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/harness "claude-sdk".*cannot include "pi"/);
+      expect(messages).toMatch(/non-empty "pi.provider"/);
     }
+  });
+
+  it('rejects pi tier with empty pi.provider', () => {
+    const result = tierConfigSchema.safeParse({
+      harness: 'pi',
+      pi: { provider: '' },
+      model: 'qwen-coder',
+      effort: 'medium',
+    });
+    expect(result.success).toBe(false);
   });
 
   it('rejects unknown harness value', () => {
-    const result = agentRuntimeEntrySchema.safeParse({ harness: 'unknown-backend' });
+    const result = tierConfigSchema.safeParse({
+      harness: 'unknown',
+      model: 'foo',
+      effort: 'high',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects tier missing required model', () => {
+    const result = tierConfigSchema.safeParse({
+      harness: 'claude-sdk',
+      effort: 'high',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects tier missing required effort', () => {
+    const result = tierConfigSchema.safeParse({
+      harness: 'claude-sdk',
+      model: 'claude-opus-4-7',
+    });
     expect(result.success).toBe(false);
   });
 });
 
 // ---------------------------------------------------------------------------
-// eforgeConfigSchema — agentRuntimes cross-field refinements
+// eforgeConfigSchema — accepts agents.tiers
 // ---------------------------------------------------------------------------
 
-describe('eforgeConfigSchema agentRuntimes cross-field validation', () => {
-  const validBase = {
-    agents: { maxTurns: 30 },
-  };
-
-  it('accepts config with no agentRuntimes', () => {
-    const result = eforgeConfigSchema.safeParse(validBase);
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts config with agentRuntimes and defaultAgentRuntime', () => {
+describe('eforgeConfigSchema with agents.tiers', () => {
+  it('accepts config with valid tier recipes', () => {
     const result = eforgeConfigSchema.safeParse({
-      ...validBase,
-      agentRuntimes: {
-        opus: { harness: 'claude-sdk' },
-        mypi: { harness: 'pi', pi: { provider: 'openrouter' } },
-      },
-      defaultAgentRuntime: 'opus',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects config with agentRuntimes but no defaultAgentRuntime', () => {
-    const result = eforgeConfigSchema.safeParse({
-      ...validBase,
-      agentRuntimes: { opus: { harness: 'claude-sdk' } },
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/"defaultAgentRuntime" is required/);
-    }
-  });
-
-  it('rejects config where defaultAgentRuntime references a non-existent entry', () => {
-    const result = eforgeConfigSchema.safeParse({
-      ...validBase,
-      agentRuntimes: { opus: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'missing-runtime',
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/"missing-runtime"/);
-      expect(messages).toMatch(/not declared in "agentRuntimes"/);
-    }
-  });
-
-  it('rejects config where agents.roles.*.agentRuntime references a non-existent entry', () => {
-    const result = eforgeConfigSchema.safeParse({
-      ...validBase,
-      agentRuntimes: { opus: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'opus',
       agents: {
-        maxTurns: 30,
-        roles: {
-          builder: { agentRuntime: 'ghost' },
-        },
-      },
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/agents\.roles\.builder\.agentRuntime/);
-      expect(messages).toMatch(/"ghost"/);
-      expect(messages).toMatch(/not declared in "agentRuntimes"/);
-    }
-  });
-
-  it('accepts config where agents.roles.*.agentRuntime references a declared entry', () => {
-    const result = eforgeConfigSchema.safeParse({
-      ...validBase,
-      agentRuntimes: {
-        opus: { harness: 'claude-sdk' },
-        mypi: { harness: 'pi', pi: { provider: 'openrouter' } },
-      },
-      defaultAgentRuntime: 'opus',
-      agents: {
-        maxTurns: 30,
-        roles: {
-          builder: { agentRuntime: 'mypi' },
+        tiers: {
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+          implementation: { harness: 'pi', pi: { provider: 'openrouter' }, model: 'qwen-coder', effort: 'medium' },
         },
       },
     });
     expect(result.success).toBe(true);
   });
-
-  it('rejects config with pi harness + claudeSdk sub-block in agentRuntimes entry', () => {
-    const result = eforgeConfigSchema.safeParse({
-      ...validBase,
-      agentRuntimes: {
-        bad: { harness: 'pi', claudeSdk: { disableSubagents: false } },
-      },
-      defaultAgentRuntime: 'bad',
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/harness "pi".*cannot include "claudeSdk"/);
-    }
-  });
-
-  // Legacy backend scalar rejection is covered by packages/engine/test/config.legacy-rejection.test.ts
 });
 
 // ---------------------------------------------------------------------------
-// agents.tiers — keyed by AgentTier, NOT by modelClass.
-// Regression: prior schema accepted modelClass keys (max/balanced/fast),
-// but the runtime indexes config.agents.tiers[tier] where tier is one of
-// planning/implementation/review/evaluation. Schema and runtime now agree.
+// agents.tiers — keyed by AgentTier
 // ---------------------------------------------------------------------------
 
 describe('agents.tiers schema (AgentTier-keyed)', () => {
@@ -193,39 +146,34 @@ describe('agents.tiers schema (AgentTier-keyed)', () => {
     const config = parseRawConfig({
       agents: {
         tiers: {
-          planning: { effort: 'xhigh', modelClass: 'max' },
-          implementation: { effort: 'medium', modelClass: 'balanced' },
-          review: { effort: 'xhigh', modelClass: 'max' },
-          evaluation: { effort: 'high', modelClass: 'max' },
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'xhigh' },
+          implementation: { harness: 'claude-sdk', model: 'claude-sonnet-4-6', effort: 'medium' },
+          review: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+          evaluation: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
         },
       },
     }, 'profile');
     expect(config.agents?.tiers?.planning?.effort).toBe('xhigh');
-    expect(config.agents?.tiers?.implementation?.modelClass).toBe('balanced');
-    expect(config.agents?.tiers?.review?.effort).toBe('xhigh');
-    expect(config.agents?.tiers?.evaluation?.effort).toBe('high');
+    expect(config.agents?.tiers?.implementation?.model).toBe('claude-sonnet-4-6');
   });
 
-  it('rejects modelClass keys (max/balanced/fast) — those belong on agents.models, not agents.tiers', () => {
-    expect(() => parseRawConfig({
-      agents: { tiers: { fast: { agentRuntime: 'main' } } },
-    }, 'profile')).toThrow(/Unrecognized key.*fast/);
+  it('accepts arbitrary tier names (including former model-class names like fast)', () => {
+    // The schema now accepts arbitrary tier names — users can declare custom tiers.
+    // Former model-class names (max, balanced, fast) are valid arbitrary tier keys.
+    const config = parseRawConfig({
+      agents: { tiers: { fast: { harness: 'claude-sdk', model: 'x', effort: 'high' } } },
+    }, 'profile');
+    expect(config.agents?.tiers?.['fast']?.model).toBe('x');
   });
 });
 
 // ---------------------------------------------------------------------------
-// parseRawConfig — strict, no silent dropping of valid sibling fields
-// when one section fails validation.
-// Regression: the old fallback parser had a hardcoded section allowlist
-// missing agentRuntimes/defaultAgentRuntime, which silently disappeared
-// from a profile any time another section failed to validate.
+// parseRawConfig — strict, no silent dropping
 // ---------------------------------------------------------------------------
 
 describe('parseRawConfig strict fail-fast', () => {
-  it('throws ConfigValidationError when any field fails validation — never silently drops valid siblings', () => {
+  it('throws ConfigValidationError when any field fails validation', () => {
     expect(() => parseRawConfig({
-      agentRuntimes: { main: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'main',
       agents: { permissionMode: 'totally-bogus' },
     }, 'profile')).toThrow(ConfigValidationError);
   });
@@ -233,8 +181,6 @@ describe('parseRawConfig strict fail-fast', () => {
   it('error message names the offending path', () => {
     try {
       parseRawConfig({
-        agentRuntimes: { main: { harness: 'claude-sdk' } },
-        defaultAgentRuntime: 'main',
         agents: { permissionMode: 'totally-bogus' },
       }, 'profile');
       expect.fail('expected throw');
@@ -246,20 +192,46 @@ describe('parseRawConfig strict fail-fast', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Legacy field rejection — agentRuntimes/defaultAgentRuntime/agents.models gone
+// ---------------------------------------------------------------------------
+
+describe('parseRawConfig rejects legacy fields', () => {
+  it('rejects top-level agentRuntimes with migration pointer', () => {
+    expect(() => parseRawConfig({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+    })).toThrow(ConfigMigrationError);
+  });
+
+  it('rejects defaultAgentRuntime', () => {
+    expect(() => parseRawConfig({
+      defaultAgentRuntime: 'main',
+    })).toThrow(ConfigMigrationError);
+  });
+
+  it('rejects backend at top level', () => {
+    expect(() => parseRawConfig({
+      backend: 'claude-sdk',
+    })).toThrow(ConfigMigrationError);
+  });
+
+  it('rejects agents.models with migration pointer', () => {
+    expect(() => parseRawConfig({
+      agents: { models: { max: { id: 'x' } } },
+    }, 'profile')).toThrow(ConfigMigrationError);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // loadConfig — user-scope profile is picked up when project has config.yaml
-// but no project-level profiles directory. This is the regression scenario
-// the user hit: project config without agentRuntimes, profile under
-// ~/.config/eforge/profiles/, marker at ~/.config/eforge/.active-profile.
 // ---------------------------------------------------------------------------
 
 describe('loadConfig user-scope profile resolution', () => {
-  it('merges user-scope profile (with AgentTier-keyed tiers) into config when project has only build commands', async () => {
+  it('merges user-scope profile (with tier recipes) into config', async () => {
     const xdg = await mkdtemp(join(tmpdir(), 'eforge-xdg-'));
     const projectDir = await mkdtemp(join(tmpdir(), 'eforge-proj-'));
     const prevXdg = process.env.XDG_CONFIG_HOME;
     process.env.XDG_CONFIG_HOME = xdg;
     try {
-      // Project config has no agentRuntimes — depends entirely on the profile.
       await mkdir(join(projectDir, 'eforge'), { recursive: true });
       await writeFile(
         join(projectDir, 'eforge', 'config.yaml'),
@@ -267,20 +239,16 @@ describe('loadConfig user-scope profile resolution', () => {
         'utf-8',
       );
 
-      // User-scope profile lives under XDG_CONFIG_HOME/eforge/profiles/.
       await mkdir(join(xdg, 'eforge', 'profiles'), { recursive: true });
       await writeFile(
         join(xdg, 'eforge', 'profiles', 'p1.yaml'),
         [
-          'agentRuntimes:',
-          '  main:',
-          '    harness: claude-sdk',
-          'defaultAgentRuntime: main',
           'agents:',
           '  tiers:',
           '    planning:',
+          '      harness: claude-sdk',
+          '      model: claude-opus-4-7',
           '      effort: xhigh',
-          '      modelClass: max',
           '',
         ].join('\n'),
         'utf-8',
@@ -290,15 +258,38 @@ describe('loadConfig user-scope profile resolution', () => {
       const result = await loadConfig(projectDir);
       expect(result.profile.name).toBe('p1');
       expect(result.profile.scope).toBe('user');
-      expect(result.profile.config?.agentRuntimes?.main?.harness).toBe('claude-sdk');
-      expect(result.profile.config?.defaultAgentRuntime).toBe('main');
-      // The merged config inherits the profile's agentRuntimes.
-      expect(result.config.agentRuntimes?.main?.harness).toBe('claude-sdk');
+      expect(result.profile.config?.agents?.tiers?.planning?.harness).toBe('claude-sdk');
+      expect(result.profile.config?.agents?.tiers?.planning?.effort).toBe('xhigh');
+      expect(result.config.agents.tiers?.planning?.harness).toBe('claude-sdk');
     } finally {
       if (prevXdg === undefined) delete process.env.XDG_CONFIG_HOME;
       else process.env.XDG_CONFIG_HOME = prevXdg;
       await rm(xdg, { recursive: true });
       await rm(projectDir, { recursive: true });
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// configYamlSchema — recognized keys
+// ---------------------------------------------------------------------------
+
+describe('configYamlSchema recognized keys', () => {
+  it('accepts agents.tiers in config.yaml', () => {
+    const result = configYamlSchema.safeParse({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects legacy agentRuntimes at top level', () => {
+    const result = configYamlSchema.safeParse({
+      agentRuntimes: { main: { harness: 'claude-sdk' } },
+    });
+    expect(result.success).toBe(false);
   });
 });

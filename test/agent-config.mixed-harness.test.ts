@@ -3,84 +3,57 @@ import { resolveAgentConfig } from '@eforge-build/engine/pipeline';
 import { resolveConfig } from '@eforge-build/engine/config';
 
 // ---------------------------------------------------------------------------
-// Mixed Pi provider config: two named Pi runtimes with distinct pi.provider values
-// routed to different roles via agents.roles.<role>.agentRuntime.
+// Mixed-harness config: different tiers use different harnesses (and providers)
 // ---------------------------------------------------------------------------
 
-describe('resolveAgentConfig mixed pi-provider config', () => {
-  const mixedConfig = resolveConfig(
-    {
-      agentRuntimes: {
-        'pi-anthropic': {
-          harness: 'pi',
-          pi: { provider: 'anthropic' },
-        },
-        'pi-mlx': {
-          harness: 'pi',
-          pi: { provider: 'mlx-lm' },
-        },
-      },
-      defaultAgentRuntime: 'pi-anthropic',
-      agents: {
-        roles: {
-          planner: {
-            agentRuntime: 'pi-anthropic',
-          },
-          builder: {
-            agentRuntime: 'pi-mlx',
-          },
-        },
-        models: {
-          max: { id: 'claude-opus-4-7' },
-          balanced: { id: 'claude-sonnet-4-6' },
-        },
+describe('resolveAgentConfig mixed-harness tiers', () => {
+  const mixedConfig = resolveConfig({
+    agents: {
+      tiers: {
+        planning: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+        implementation: { harness: 'pi' as const, pi: { provider: 'mlx-lm' }, model: 'qwen-coder', effort: 'medium' as const },
+        review: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+        evaluation: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
       },
     },
-    {},
-  );
+  });
 
-  it('planner resolves to pi-anthropic with provider === "anthropic"', () => {
+  it('planner (planning tier) resolves to pi/anthropic', () => {
     const result = resolveAgentConfig('planner', mixedConfig);
-    expect(result.agentRuntimeName).toBe('pi-anthropic');
     expect(result.harness).toBe('pi');
-    expect(result.model?.provider).toBe('anthropic');
+    expect(result.model.provider).toBe('anthropic');
+    expect(result.model.id).toBe('claude-opus-4-7');
   });
 
-  it('builder resolves to pi-mlx with provider === "mlx-lm"', () => {
+  it('builder (implementation tier) resolves to pi/mlx-lm', () => {
     const result = resolveAgentConfig('builder', mixedConfig);
-    expect(result.agentRuntimeName).toBe('pi-mlx');
     expect(result.harness).toBe('pi');
-    expect(result.model?.provider).toBe('mlx-lm');
+    expect(result.model.provider).toBe('mlx-lm');
+    expect(result.model.id).toBe('qwen-coder');
   });
 
-  it('each role resolves to its runtime\'s declared provider via model.provider', () => {
-    const plannerResult = resolveAgentConfig('planner', mixedConfig);
-    const builderResult = resolveAgentConfig('builder', mixedConfig);
-
-    // provider comes from the runtime entry, not the model ref
-    expect(plannerResult.model?.provider).toBe('anthropic');
-    expect(builderResult.model?.provider).toBe('mlx-lm');
-
-    // model ids come from agents.models class defaults
-    // planner is planning tier → max class → claude-opus-4-7
-    expect(plannerResult.model?.id).toBe('claude-opus-4-7');
-    // builder is implementation tier → balanced class → claude-sonnet-4-6
-    expect(builderResult.model?.id).toBe('claude-sonnet-4-6');
-  });
-
-  it('reviewer defaults to pi-anthropic (defaultAgentRuntime) with provider === "anthropic"', () => {
+  it('reviewer (review tier) resolves to pi/anthropic', () => {
     const result = resolveAgentConfig('reviewer', mixedConfig);
-    expect(result.agentRuntimeName).toBe('pi-anthropic');
     expect(result.harness).toBe('pi');
-    expect(result.model?.provider).toBe('anthropic');
+    expect(result.model.provider).toBe('anthropic');
   });
 
-  it('agentRuntimeName and harness are present on every resolved config', () => {
-    const roles = ['planner', 'reviewer', 'evaluator'] as const;
-    for (const role of roles) {
-      const result = resolveAgentConfig(role, mixedConfig);
-      expect(result.agentRuntimeName).toBeDefined();
-      expect(result.harness).toBe('pi');
-    }
+  it('cross-harness mix: planning=claude-sdk, implementation=pi', () => {
+    const config = resolveConfig({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'pi' as const, pi: { provider: 'openrouter' }, model: 'qwen-coder', effort: 'medium' as const },
+          review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
+    });
+    const planner = resolveAgentConfig('planner', config);
+    const builder = resolveAgentConfig('builder', config);
+    expect(planner.harness).toBe('claude-sdk');
+    expect(planner.model.provider).toBeUndefined();
+    expect(builder.harness).toBe('pi');
+    expect(builder.model.provider).toBe('openrouter');
   });
 });

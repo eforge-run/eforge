@@ -1,10 +1,5 @@
 /**
- * Tests for agentRuntimes selection logic in EforgeEngine.create().
- *
- * Verifies three paths:
- * 1. config with agentRuntimes: { default: { harness: 'pi' } } -> PiHarness instantiated via dynamic import
- * 2. config with agentRuntimes: { default: { harness: 'claude-sdk' } } -> ClaudeSDKHarness
- * 3. explicit options.agentRuntimes wraps a bare AgentHarness in singletonRegistry
+ * Tests for tier-driven harness selection in EforgeEngine.create().
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -24,69 +19,60 @@ vi.mock('@eforge-build/engine/harnesses/pi', () => {
   class MockPiHarness {
     readonly _isPiHarness = true;
     constructor(public options: unknown) {}
-    async *run() {
-      // stub
-    }
+    async *run() {}
     effectiveCustomToolName(name: string) { return name; }
   }
   return { PiHarness: MockPiHarness };
 });
 
-// Mock MCP server and plugin loading to prevent filesystem access
-vi.mock('@eforge-build/engine/eforge', async (importOriginal) => {
-  const original = await importOriginal<typeof import('@eforge-build/engine/eforge')>();
-  return original;
-});
-
-import { loadConfig } from '@eforge-build/engine/config';
-import { DEFAULT_CONFIG } from '@eforge-build/engine/config';
+import { loadConfig, DEFAULT_CONFIG } from '@eforge-build/engine/config';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { StubHarness } from './stub-harness.js';
 
 const mockedLoadConfig = vi.mocked(loadConfig);
 
-function makeConfig(overrides: Partial<typeof DEFAULT_CONFIG> = {}): { config: typeof DEFAULT_CONFIG; warnings: string[] } {
-  return { config: { ...DEFAULT_CONFIG, ...overrides }, warnings: [] };
+function makeConfig(overrides: Partial<typeof DEFAULT_CONFIG> = {}): { config: typeof DEFAULT_CONFIG; warnings: string[]; profile: { name: null; source: 'none'; scope: null; config: null } } {
+  return {
+    config: { ...DEFAULT_CONFIG, ...overrides },
+    warnings: [],
+    profile: { name: null, source: 'none', scope: null, config: null },
+  };
 }
 
-describe('EforgeEngine.create() agentRuntimes selection', () => {
+describe('EforgeEngine.create() tier-driven harness selection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it('builds AgentRuntimeRegistry from config with harness "pi"', async () => {
+  it('builds AgentRuntimeRegistry from config with pi tiers', async () => {
     mockedLoadConfig.mockResolvedValue(makeConfig({
-      agentRuntimes: { default: { harness: 'pi' } },
-      defaultAgentRuntime: 'default',
+      agents: {
+        ...DEFAULT_CONFIG.agents,
+        tiers: {
+          planning: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+          implementation: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+          review: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+          evaluation: { harness: 'pi' as const, pi: { provider: 'anthropic' }, model: 'claude-opus-4-7', effort: 'high' as const },
+        },
+      },
     }));
 
     const engine = await EforgeEngine.create({ cwd: '/tmp/test' });
-
-    // Verify config was applied correctly
-    expect(engine.resolvedConfig.agentRuntimes?.['default']?.harness).toBe('pi');
+    expect(engine.resolvedConfig.agents.tiers?.planning?.harness).toBe('pi');
   });
 
-  it('builds AgentRuntimeRegistry from config with harness "claude-sdk"', async () => {
-    mockedLoadConfig.mockResolvedValue(makeConfig({
-      agentRuntimes: { default: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'default',
-    }));
-
+  it('builds AgentRuntimeRegistry from config with claude-sdk tiers', async () => {
+    mockedLoadConfig.mockResolvedValue(makeConfig());
     const engine = await EforgeEngine.create({ cwd: '/tmp/test' });
-
-    expect(engine.resolvedConfig.agentRuntimes?.['default']?.harness).toBe('claude-sdk');
+    expect(engine.resolvedConfig.agents.tiers?.planning?.harness).toBe('claude-sdk');
   });
 
   it('explicit agentRuntimes wraps bare AgentHarness in singletonRegistry', async () => {
-    mockedLoadConfig.mockResolvedValue(makeConfig({
-      agentRuntimes: { default: { harness: 'pi' } },
-      defaultAgentRuntime: 'default',
-    }));
+    mockedLoadConfig.mockResolvedValue(makeConfig());
     const explicitHarness = new StubHarness([]);
 
     const engine = await EforgeEngine.create({ cwd: '/tmp/test', agentRuntimes: explicitHarness });
 
-    // singletonRegistry wraps the harness and returns it for every role
     const registry = (engine as unknown as { agentRuntimes: AgentRuntimeRegistry }).agentRuntimes;
     expect(registry.forRole('builder')).toBe(explicitHarness);
   });

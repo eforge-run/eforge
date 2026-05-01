@@ -68,7 +68,7 @@ async function* runBuilderAttempt(
       parallelStages,
       verificationScope,
       ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
-      harness: ctx.agentRuntimes.forRole('builder'),
+      harness: ctx.agentRuntimes.forRole('builder', ctx.planFile),
     }), ctx)) {
       implTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') implSpan.error('Implementation failed');
@@ -103,7 +103,7 @@ async function* runEvaluatorAttempt(
       strictness,
       ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
       preImplementCommit: ctx.preImplementCommit,
-      harness: ctx.agentRuntimes.forRole('evaluator'),
+      harness: ctx.agentRuntimes.forRole('evaluator', ctx.planFile),
     })) {
       evalTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') evalSpan.error('Evaluation failed');
@@ -143,7 +143,7 @@ async function* reviewStageInner(
       strategy,
       perspectives,
       ...reviewerAgentConfig,
-      harness: ctx.agentRuntimes.forRole('reviewer'),
+      harness: ctx.agentRuntimes.forRole('reviewer', ctx.planFile),
     })) {
       reviewTracker.handleEvent(event);
       yield event;
@@ -197,7 +197,7 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...fixerConfig,
-      harness: ctx.agentRuntimes.forRole('review-fixer'),
+      harness: ctx.agentRuntimes.forRole('review-fixer', ctx.planFile),
     }), ctx)) {
       fixTracker.handleEvent(event);
       yield event;
@@ -225,7 +225,7 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-      harness: ctx.agentRuntimes.forRole('tester'),
+      harness: ctx.agentRuntimes.forRole('tester', ctx.planFile),
     }), ctx)) {
       tracker.handleEvent(event);
       yield event;
@@ -606,7 +606,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-      harness: ctx.agentRuntimes.forRole('doc-updater'),
+      harness: ctx.agentRuntimes.forRole('doc-updater', ctx.planFile),
     }), ctx)) {
       docTracker.handleEvent(event);
       yield event;
@@ -653,7 +653,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-      harness: ctx.agentRuntimes.forRole('test-writer'),
+      harness: ctx.agentRuntimes.forRole('test-writer', ctx.planFile),
     }), ctx)) {
       tracker.handleEvent(event);
       yield event;

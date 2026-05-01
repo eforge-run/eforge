@@ -1,30 +1,23 @@
 /**
  * Tier resolution tests for resolveAgentConfig.
  *
- * Verifies the six-tier resolution chain:
- *   1. Plan-file override
- *   2. User per-role override
- *   3. User per-tier (NEW)
- *   4. User global
- *   5. Built-in per-role defaults (exceptions only)
- *   6. Built-in per-tier defaults (NEW)
+ * Each tier (planning/implementation/review/evaluation) is a self-contained
+ * recipe (harness + model + effort + tuning). A role picks a tier, the tier
+ * carries everything else.
+ *
+ * Provenance is `tier|role|plan` for each tunable field.
  */
 import { describe, it, expect } from 'vitest';
 import { resolveAgentConfig } from '@eforge-build/engine/pipeline';
 import { resolveConfig, DEFAULT_CONFIG, agentTierSchema } from '@eforge-build/engine/config';
-import {
-  AGENT_ROLE_TIERS,
-  BUILTIN_TIER_DEFAULTS,
-} from '@eforge-build/engine/pipeline/agent-config';
+import { AGENT_ROLE_TIERS } from '@eforge-build/engine/pipeline/agent-config';
 import type { AgentRole } from '@eforge-build/engine/events';
 
-/**
- * Minimal agentRuntimes config so resolveAgentConfig can resolve a harness.
- * Include this in every resolveConfig call that doesn't already specify agentRuntimes.
- */
-const BASE_RUNTIMES = {
-  agentRuntimes: { 'claude-sdk': { harness: 'claude-sdk' as const } },
-  defaultAgentRuntime: 'claude-sdk',
+const FULL_TIERS = {
+  planning: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+  implementation: { harness: 'claude-sdk' as const, model: 'claude-sonnet-4-6', effort: 'medium' as const },
+  review: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
+  evaluation: { harness: 'claude-sdk' as const, model: 'claude-opus-4-7', effort: 'high' as const },
 } as const;
 
 // All 24 agent roles
@@ -37,479 +30,201 @@ const ALL_ROLES: AgentRole[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Test 1: tier-only config (no per-role override) → tier values applied
+// Tier recipe drives effort/model/harness for every role in that tier
 // ---------------------------------------------------------------------------
 
-describe('tier-only config (no per-role override)', () => {
-  const config = resolveConfig(
-    {
-      ...BASE_RUNTIMES,
-      agents: {
-        tiers: {
-          planning: { effort: 'xhigh' },
-          implementation: { effort: 'low' },
-        },
+describe('tier recipes drive role configuration', () => {
+  const config = resolveConfig({
+    agents: {
+      tiers: {
+        ...FULL_TIERS,
+        planning: { ...FULL_TIERS.planning, effort: 'xhigh' },
+        implementation: { ...FULL_TIERS.implementation, effort: 'low' },
       },
     },
-    {},
-  );
+  });
 
-  it('planning tier roles pick up xhigh effort from tier config', () => {
+  it('planning tier roles pick up xhigh effort from tier recipe', () => {
     const planner = resolveAgentConfig('planner', config);
     expect(planner.effort).toBe('xhigh');
-    expect(planner.effortSource).toBe('tier-config');
+    expect(planner.effortSource).toBe('tier');
+    expect(planner.tier).toBe('planning');
+    expect(planner.tierSource).toBe('tier');
   });
 
-  it('implementation tier roles pick up low effort from tier config (wins over builtin-role)', () => {
-    // user per-tier (level 3) beats builtin-role (level 5)
+  it('implementation tier roles pick up low effort from tier recipe', () => {
     const builder = resolveAgentConfig('builder', config);
     expect(builder.effort).toBe('low');
-    expect(builder.effortSource).toBe('tier-config');
+    expect(builder.effortSource).toBe('tier');
   });
 
-  it('unconfigured tier (review) uses builtin tier default', () => {
+  it('review tier roles pick up high effort from tier recipe', () => {
     const reviewer = resolveAgentConfig('reviewer', config);
     expect(reviewer.effort).toBe('high');
-    expect(reviewer.effortSource).toBe('default');
+    expect(reviewer.effortSource).toBe('tier');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Test 2: tier + role override → role override wins for that role only
+// Role override beats tier
 // ---------------------------------------------------------------------------
 
-describe('tier + role override (role wins for that role)', () => {
-  const config = resolveConfig(
-    {
-      ...BASE_RUNTIMES,
-      agents: {
-        tiers: {
-          planning: { effort: 'xhigh' },
-        },
-        roles: {
-          planner: { effort: 'low' },
-        },
+describe('role override beats tier (precedence: plan > role > tier)', () => {
+  const config = resolveConfig({
+    agents: {
+      tiers: { ...FULL_TIERS, review: { ...FULL_TIERS.review, effort: 'medium' } },
+      roles: {
+        reviewer: { effort: 'xhigh' },
       },
     },
-    {},
-  );
-
-  it('planner has role override, uses low (not xhigh from tier)', () => {
-    const planner = resolveAgentConfig('planner', config);
-    expect(planner.effort).toBe('low');
-    expect(planner.effortSource).toBe('role-config');
   });
 
-  it('module-planner (same planning tier, no role override) uses xhigh from tier', () => {
-    const modulePlanner = resolveAgentConfig('module-planner', config);
-    expect(modulePlanner.effort).toBe('xhigh');
-    expect(modulePlanner.effortSource).toBe('tier-config');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Test 3: role override beats tier (precedence verification)
-// ---------------------------------------------------------------------------
-
-describe('precedence: role-config > tier-config > global-config', () => {
-  const config = resolveConfig(
-    {
-      ...BASE_RUNTIMES,
-      agents: {
-        effort: 'low',                    // global (level 4)
-        tiers: {
-          review: { effort: 'medium' },   // tier (level 3)
-        },
-        roles: {
-          reviewer: { effort: 'xhigh' },  // role (level 2)
-        },
-      },
-    },
-    {},
-  );
-
-  it('reviewer uses role-config effort (xhigh), not tier or global', () => {
+  it('reviewer uses role override (xhigh), not tier (medium)', () => {
     const reviewer = resolveAgentConfig('reviewer', config);
     expect(reviewer.effort).toBe('xhigh');
-    expect(reviewer.effortSource).toBe('role-config');
+    expect(reviewer.effortSource).toBe('role');
   });
 
   it('architecture-reviewer (same review tier, no role override) uses tier effort (medium)', () => {
     const archReviewer = resolveAgentConfig('architecture-reviewer', config);
     expect(archReviewer.effort).toBe('medium');
-    expect(archReviewer.effortSource).toBe('tier-config');
-  });
-
-  it('evaluator (different tier, no role or tier override) uses global effort (low)', () => {
-    const evaluator = resolveAgentConfig('evaluator', config);
-    expect(evaluator.effort).toBe('low');
-    expect(evaluator.effortSource).toBe('global-config');
+    expect(archReviewer.effortSource).toBe('tier');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Test 4: tier beats global
+// Plan-file override beats role override beats tier
 // ---------------------------------------------------------------------------
 
-describe('tier beats global', () => {
-  const config = resolveConfig(
-    {
-      ...BASE_RUNTIMES,
-      agents: {
-        effort: 'low',                        // global (level 4)
-        tiers: {
-          evaluation: { effort: 'xhigh' },   // tier (level 3)
-        },
+describe('plan override beats role override beats tier', () => {
+  const config = resolveConfig({
+    agents: {
+      tiers: FULL_TIERS,
+      roles: {
+        builder: { effort: 'high' },
       },
     },
-    {},
-  );
-
-  it('evaluator picks up xhigh from tier, not low from global', () => {
-    const evaluator = resolveAgentConfig('evaluator', config);
-    expect(evaluator.effort).toBe('xhigh');
-    expect(evaluator.effortSource).toBe('tier-config');
   });
 
-  it('planner (unconfigured tier) falls back to global low', () => {
-    const planner = resolveAgentConfig('planner', config);
-    expect(planner.effort).toBe('low');
-    expect(planner.effortSource).toBe('global-config');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Test 5: built-in tier default applied when nothing else set
-// ---------------------------------------------------------------------------
-
-describe('built-in tier defaults applied with no user config', () => {
-  it('planner (planning tier) gets effort=high from builtin tier default', () => {
-    const planner = resolveAgentConfig('planner', DEFAULT_CONFIG);
-    expect(planner.effort).toBe('high');
-    expect(planner.effortSource).toBe('default');
-    expect(planner.tier).toBe('planning');
+  it('plan override wins for effort', () => {
+    const result = resolveAgentConfig('builder', config, {
+      agents: { builder: { effort: 'xhigh' } },
+    });
+    expect(result.effort).toBe('xhigh');
+    expect(result.effortSource).toBe('plan');
   });
 
-  it('builder (implementation tier) gets effort=high from per-role exception overriding tier default', () => {
-    // builtin-role (level 5) has effort=high; builtin-tier (level 6) has effort=medium
-    // When no user config is set, level 5 wins over level 6
-    const builder = resolveAgentConfig('builder', DEFAULT_CONFIG);
-    expect(builder.effort).toBe('high');
-    expect(builder.effortSource).toBe('default');
-    expect(builder.tier).toBe('implementation');
-  });
-
-  it('reviewer (review tier) gets effort=high from builtin tier default', () => {
-    const reviewer = resolveAgentConfig('reviewer', DEFAULT_CONFIG);
-    expect(reviewer.effort).toBe('high');
-    expect(reviewer.effortSource).toBe('default');
-    expect(reviewer.tier).toBe('review');
-  });
-
-  it('evaluator (evaluation tier) gets effort=high from builtin tier default', () => {
-    const evaluator = resolveAgentConfig('evaluator', DEFAULT_CONFIG);
-    expect(evaluator.effort).toBe('high');
-    expect(evaluator.effortSource).toBe('default');
-    expect(evaluator.tier).toBe('evaluation');
-  });
-
-  it('tester (implementation tier) gets effort=medium from builtin tier default', () => {
-    const tester = resolveAgentConfig('tester', DEFAULT_CONFIG);
-    expect(tester.effort).toBe('medium');
-    expect(tester.effortSource).toBe('default');
+  it('without plan override, role override wins', () => {
+    const result = resolveAgentConfig('builder', config);
+    expect(result.effort).toBe('high');
+    expect(result.effortSource).toBe('role');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Test 6: role moved to a different tier via agents.roles[role].tier
+// DEFAULT_CONFIG sweep across all 24 roles
 // ---------------------------------------------------------------------------
 
-describe('role tier reassignment via agents.roles[role].tier', () => {
-  const config = resolveConfig(
-    {
-      ...BASE_RUNTIMES,
-      agents: {
-        tiers: {
-          review: { effort: 'xhigh' },
-          implementation: { effort: 'low' },
-        },
-        roles: {
-          tester: { tier: 'review' as const },
-        },
-      },
-    },
-    {},
-  );
-
-  it('tester moved to review tier picks up review tier effort (xhigh)', () => {
-    const tester = resolveAgentConfig('tester', config);
-    expect(tester.effort).toBe('xhigh');
-    expect(tester.effortSource).toBe('tier-config');
-    expect(tester.tier).toBe('review');
-    expect(tester.tierSource).toBe('role-config');
-  });
-
-  it('builder stays in implementation tier', () => {
-    const builder = resolveAgentConfig('builder', config);
-    expect(builder.tier).toBe('implementation');
-    expect(builder.tierSource).toBe('role-default');
-    // tier-config (low) wins over builtin-role (high)
-    expect(builder.effort).toBe('low');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Test 7: backward-compat sweep (no user tiers config)
-// ---------------------------------------------------------------------------
-
-describe('backward-compat sweep (no user tiers, all 24 roles covered)', () => {
-  // Expected modelClass → model ID mapping via DEFAULT_CONFIG (claude-sdk harness)
-  const modelIdForClass: Record<string, string> = {
-    max: 'claude-opus-4-7',
-    balanced: 'claude-sonnet-4-6',
-    fast: 'claude-haiku-4-5',
+describe('DEFAULT_CONFIG default tier recipes apply to all roles', () => {
+  const expectedModelForTier: Record<string, string> = {
+    planning: 'claude-opus-4-7',
+    implementation: 'claude-sonnet-4-6',
+    review: 'claude-opus-4-7',
+    evaluation: 'claude-opus-4-7',
   };
 
-  // Expected effective model class for all 24 roles.
-  // Matches old AGENT_MODEL_CLASSES table exactly.
-  const expectedModelClass: Record<AgentRole, string> = {
-    planner: 'max',
-    'architecture-reviewer': 'max',
-    'architecture-evaluator': 'max',
-    'cohesion-reviewer': 'max',
-    'cohesion-evaluator': 'max',
-    'module-planner': 'max',
-    'plan-reviewer': 'max',
-    'plan-evaluator': 'max',
-    builder: 'balanced',
-    reviewer: 'max',
-    'review-fixer': 'balanced',
-    evaluator: 'max',
-    'validation-fixer': 'balanced',
-    'merge-conflict-resolver': 'max',
-    'doc-updater': 'max',
-    'test-writer': 'balanced',
-    tester: 'balanced',
-    formatter: 'max',
-    'staleness-assessor': 'balanced',
-    'prd-validator': 'balanced',
-    'dependency-detector': 'balanced',
-    'pipeline-composer': 'max',
-    'gap-closer': 'max',
-    'recovery-analyst': 'balanced',
-  };
-
-  // Expected maxTurns for all roles. Matches old AGENT_ROLE_DEFAULTS + global default (30).
-  const expectedMaxTurns: Record<AgentRole, number> = {
-    builder: 80,
-    tester: 40,
-    'module-planner': 20,
-    'doc-updater': 20,
-    'test-writer': 30,
-    'gap-closer': 20,
-    planner: 80,
-    reviewer: 30,
-    'review-fixer': 30,
-    evaluator: 30,
-    'plan-reviewer': 30,
-    'plan-evaluator': 30,
-    'architecture-reviewer': 30,
-    'architecture-evaluator': 30,
-    'cohesion-reviewer': 30,
-    'cohesion-evaluator': 30,
-    'validation-fixer': 30,
-    'merge-conflict-resolver': 30,
-    formatter: 30,
-    'staleness-assessor': 30,
-    'prd-validator': 30,
-    'dependency-detector': 30,
-    'pipeline-composer': 30,
-    'recovery-analyst': 30,
-  };
-
-  it('covers all 24 roles', () => {
-    expect(ALL_ROLES).toHaveLength(24);
-    expect(Object.keys(expectedModelClass)).toHaveLength(24);
-    expect(Object.keys(expectedMaxTurns)).toHaveLength(24);
-  });
-
-  it('every role resolves expected modelClass (matches old AGENT_MODEL_CLASSES)', () => {
+  it('every role resolves to a tier and gets that tier\'s model', () => {
     for (const role of ALL_ROLES) {
       const result = resolveAgentConfig(role, DEFAULT_CONFIG);
-      const expectedId = modelIdForClass[expectedModelClass[role]];
-      expect(result.model?.id, `${role} model`).toBe(expectedId);
+      const tier = AGENT_ROLE_TIERS[role];
+      expect(result.tier, `${role} tier`).toBe(tier);
+      expect(result.model.id, `${role} model.id`).toBe(expectedModelForTier[tier]);
     }
   });
 
-  it('every role resolves expected maxTurns', () => {
-    for (const role of ALL_ROLES) {
-      const result = resolveAgentConfig(role, DEFAULT_CONFIG);
-      expect(result.maxTurns, `${role} maxTurns`).toBe(expectedMaxTurns[role]);
-    }
-  });
-
-  it('every role resolves a defined effort from tier defaults', () => {
+  it('every role has effort defined', () => {
     for (const role of ALL_ROLES) {
       const result = resolveAgentConfig(role, DEFAULT_CONFIG);
       expect(result.effort, `${role} effort`).toBeDefined();
       expect(['low', 'medium', 'high', 'xhigh', 'max']).toContain(result.effort);
     }
   });
-});
 
-// ---------------------------------------------------------------------------
-// Test 8: tier and tierSource fields present on every ResolvedAgentConfig
-// ---------------------------------------------------------------------------
-
-describe('tier and tierSource always present on ResolvedAgentConfig', () => {
-  it('all 24 roles have non-undefined tier', () => {
+  it('all roles have non-undefined tier and tierSource', () => {
     for (const role of ALL_ROLES) {
       const result = resolveAgentConfig(role, DEFAULT_CONFIG);
       expect(result.tier, `${role} tier`).toBeDefined();
-      expect(['planning', 'implementation', 'review', 'evaluation']).toContain(result.tier);
+      expect(result.tierSource).toBe('tier');
     }
-  });
-
-  it('all 24 roles have non-undefined tierSource', () => {
-    for (const role of ALL_ROLES) {
-      const result = resolveAgentConfig(role, DEFAULT_CONFIG);
-      expect(result.tierSource, `${role} tierSource`).toBeDefined();
-      expect(['role-config', 'role-default']).toContain(result.tierSource);
-    }
-  });
-
-  it('all roles use role-default tierSource when no user tier override', () => {
-    for (const role of ALL_ROLES) {
-      const result = resolveAgentConfig(role, DEFAULT_CONFIG);
-      expect(result.tierSource, `${role} tierSource`).toBe('role-default');
-    }
-  });
-
-  it('role moved to different tier uses role-config tierSource', () => {
-    const config = resolveConfig(
-      {
-        ...BASE_RUNTIMES,
-        agents: {
-          roles: {
-            tester: { tier: 'review' as const },
-          },
-        },
-      },
-      {},
-    );
-    const tester = resolveAgentConfig('tester', config);
-    expect(tester.tier).toBe('review');
-    expect(tester.tierSource).toBe('role-config');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Additional: source PRD example config verification
+// Role tier reassignment via agents.roles[role].tier
 // ---------------------------------------------------------------------------
 
-describe('source PRD example config', () => {
-  // Config matching the PRD's example:
-  // planning: high effort, review: high, evaluation: low, implementation: medium
-  // builder.maxTurns: 80 (stays from per-role exception)
-  // tester.tier: review
-  const config = resolveConfig(
-    {
-      ...BASE_RUNTIMES,
-      agents: {
-        tiers: {
-          planning: { effort: 'high' },
-          review: { effort: 'high' },
-          evaluation: { effort: 'low' },
-          implementation: { effort: 'medium' },
-        },
-        roles: {
-          tester: { tier: 'review' as const },
-        },
+describe('role tier reassignment via agents.roles[role].tier', () => {
+  const config = resolveConfig({
+    agents: {
+      tiers: { ...FULL_TIERS, review: { ...FULL_TIERS.review, effort: 'xhigh' } },
+      roles: {
+        tester: { tier: 'review' as const },
       },
     },
-    {},
-  );
-
-  it('planner (planning tier): effort=high from tier-config, model=max', () => {
-    const planner = resolveAgentConfig('planner', config);
-    expect(planner.effort).toBe('high');
-    expect(planner.effortSource).toBe('tier-config');
-    expect(planner.model?.id).toBe('claude-opus-4-7');
   });
 
-  it('builder (implementation tier): effort=medium from tier-config (beats per-role high), modelClass=balanced, maxTurns=80', () => {
-    const builder = resolveAgentConfig('builder', config);
-    // user tier-config (level 3) beats builtin-role (level 5)
-    expect(builder.effort).toBe('medium');
-    expect(builder.effortSource).toBe('tier-config');
-    expect(builder.model?.id).toBe('claude-sonnet-4-6');  // balanced
-    expect(builder.maxTurns).toBe(80);  // per-role exception preserved
-  });
-
-  it('evaluator (evaluation tier): effort=low from tier-config, model=max', () => {
-    const evaluator = resolveAgentConfig('evaluator', config);
-    expect(evaluator.effort).toBe('low');
-    expect(evaluator.effortSource).toBe('tier-config');
-    expect(evaluator.model?.id).toBe('claude-opus-4-7');  // max
-  });
-
-  it('tester (moved to review tier): effort=high from tier-config, tierSource=role-config', () => {
+  it('tester moved to review tier picks up review tier effort (xhigh)', () => {
     const tester = resolveAgentConfig('tester', config);
-    expect(tester.effort).toBe('high');
-    expect(tester.effortSource).toBe('tier-config');
+    expect(tester.effort).toBe('xhigh');
+    expect(tester.effortSource).toBe('tier');
     expect(tester.tier).toBe('review');
-    expect(tester.tierSource).toBe('role-config');
+    expect(tester.tierSource).toBe('role');
+  });
+
+  it('builder stays in implementation tier', () => {
+    const builder = resolveAgentConfig('builder', config);
+    expect(builder.tier).toBe('implementation');
+    expect(builder.tierSource).toBe('tier');
   });
 });
 
 // ---------------------------------------------------------------------------
-// Verify AGENT_ROLE_TIERS covers all 24 roles
+// New role-to-tier mapping per the schema simplification
 // ---------------------------------------------------------------------------
 
-describe('AGENT_ROLE_TIERS covers all roles', () => {
-  it('has exactly 24 entries', () => {
-    expect(Object.keys(AGENT_ROLE_TIERS)).toHaveLength(24);
+describe('AGENT_ROLE_TIERS new mapping after schema simplification', () => {
+  it('merge-conflict-resolver is in planning tier', () => {
+    expect(AGENT_ROLE_TIERS['merge-conflict-resolver']).toBe('planning');
+  });
+  it('doc-updater is in planning tier', () => {
+    expect(AGENT_ROLE_TIERS['doc-updater']).toBe('planning');
+  });
+  it('gap-closer is in planning tier', () => {
+    expect(AGENT_ROLE_TIERS['gap-closer']).toBe('planning');
+  });
+  it('dependency-detector is in implementation tier', () => {
+    expect(AGENT_ROLE_TIERS['dependency-detector']).toBe('implementation');
+  });
+  it('prd-validator is in implementation tier', () => {
+    expect(AGENT_ROLE_TIERS['prd-validator']).toBe('implementation');
+  });
+  it('staleness-assessor is in implementation tier', () => {
+    expect(AGENT_ROLE_TIERS['staleness-assessor']).toBe('implementation');
   });
 
-  it('all entries map to valid tier values', () => {
+  it('all 24 roles are mapped', () => {
+    expect(Object.keys(AGENT_ROLE_TIERS)).toHaveLength(24);
     for (const role of ALL_ROLES) {
-      const tier = AGENT_ROLE_TIERS[role];
-      expect(['planning', 'implementation', 'review', 'evaluation'], `${role} tier`).toContain(tier);
+      expect(AGENT_ROLE_TIERS[role]).toBeDefined();
     }
   });
 });
 
 // ---------------------------------------------------------------------------
-// Verify BUILTIN_TIER_DEFAULTS
+// agentTierSchema validation
 // ---------------------------------------------------------------------------
 
-describe('BUILTIN_TIER_DEFAULTS values', () => {
-  it('planning: effort=high, modelClass=max', () => {
-    expect(BUILTIN_TIER_DEFAULTS.planning.effort).toBe('high');
-    expect(BUILTIN_TIER_DEFAULTS.planning.modelClass).toBe('max');
-  });
-
-  it('implementation: effort=medium, modelClass=balanced', () => {
-    expect(BUILTIN_TIER_DEFAULTS.implementation.effort).toBe('medium');
-    expect(BUILTIN_TIER_DEFAULTS.implementation.modelClass).toBe('balanced');
-  });
-
-  it('review: effort=high, modelClass=max', () => {
-    expect(BUILTIN_TIER_DEFAULTS.review.effort).toBe('high');
-    expect(BUILTIN_TIER_DEFAULTS.review.modelClass).toBe('max');
-  });
-
-  it('evaluation: effort=high, modelClass=max', () => {
-    expect(BUILTIN_TIER_DEFAULTS.evaluation.effort).toBe('high');
-    expect(BUILTIN_TIER_DEFAULTS.evaluation.modelClass).toBe('max');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// Verify agentTierSchema rejects unknown tier names
-// ---------------------------------------------------------------------------
-
-describe('agentTierSchema validates tier names', () => {
+describe('agentTierSchema', () => {
   it('accepts all four valid tier names', () => {
     for (const tier of ['planning', 'implementation', 'review', 'evaluation'] as const) {
       const result = agentTierSchema.safeParse(tier);

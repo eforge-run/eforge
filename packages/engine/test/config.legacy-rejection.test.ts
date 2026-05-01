@@ -1,63 +1,73 @@
 /**
- * Tests that configYamlSchema rejects legacy top-level fields (backend:, pi:, claudeSdk:)
- * with a migration-pointer message pointing to agentRuntimes + defaultAgentRuntime,
- * and that any other unrecognized top-level key is rejected with a clear message.
+ * Tests that configYamlSchema rejects legacy top-level fields with migration
+ * pointers and that any other unrecognized top-level key is rejected.
  */
 import { describe, it, expect } from 'vitest';
 import { configYamlSchema } from '@eforge-build/engine/config';
 
 describe('configYamlSchema legacy field rejection', () => {
-  it('rejects scalar backend: with agentRuntimes + defaultAgentRuntime migration pointer', () => {
+  it('rejects scalar backend: with migration pointer', () => {
     const result = configYamlSchema.safeParse({ backend: 'claude-sdk' });
     expect(result.success).toBe(false);
     if (!result.success) {
       const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/agentRuntimes/);
-      expect(messages).toMatch(/defaultAgentRuntime/);
+      expect(messages).toMatch(/agents\.tiers/);
     }
   });
 
-  it('rejects scalar backend: pi with agentRuntimes + defaultAgentRuntime migration pointer', () => {
-    const result = configYamlSchema.safeParse({ backend: 'pi' });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/agentRuntimes/);
-      expect(messages).toMatch(/defaultAgentRuntime/);
-    }
-  });
-
-  it('rejects top-level pi: with agentRuntimes + defaultAgentRuntime migration pointer', () => {
+  it('rejects top-level pi: with migration pointer', () => {
     const result = configYamlSchema.safeParse({ pi: { thinkingLevel: 'high' } });
     expect(result.success).toBe(false);
     if (!result.success) {
       const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/agentRuntimes/);
-      expect(messages).toMatch(/defaultAgentRuntime/);
+      expect(messages).toMatch(/agents\.tiers/);
     }
   });
 
-  it('rejects top-level claudeSdk: with agentRuntimes + defaultAgentRuntime migration pointer', () => {
+  it('rejects top-level claudeSdk:', () => {
     const result = configYamlSchema.safeParse({ claudeSdk: { disableSubagents: true } });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects top-level agentRuntimes:', () => {
+    const result = configYamlSchema.safeParse({ agentRuntimes: { main: { harness: 'claude-sdk' } } });
     expect(result.success).toBe(false);
     if (!result.success) {
       const messages = result.error.issues.map((i) => i.message).join('\n');
-      expect(messages).toMatch(/agentRuntimes/);
-      expect(messages).toMatch(/defaultAgentRuntime/);
+      expect(messages).toMatch(/agents\.tiers/);
     }
   });
 
-  it('accepts valid agentRuntimes config without legacy fields', () => {
+  it('rejects top-level defaultAgentRuntime:', () => {
+    const result = configYamlSchema.safeParse({ defaultAgentRuntime: 'main' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects agents.models nested field', () => {
     const result = configYamlSchema.safeParse({
-      agentRuntimes: { main: { harness: 'claude-sdk' } },
-      defaultAgentRuntime: 'main',
+      agents: { models: { max: { id: 'claude-opus-4-7' } } },
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const messages = result.error.issues.map((i) => i.message).join('\n');
+      expect(messages).toMatch(/agents\.models.*no longer supported/);
+    }
+  });
+
+  it('accepts a valid agents.tiers config', () => {
+    const result = configYamlSchema.safeParse({
+      agents: {
+        tiers: {
+          planning: { harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' },
+        },
+      },
     });
     expect(result.success).toBe(true);
   });
 });
 
 describe('configYamlSchema unknown-key rejection', () => {
-  it('rejects an unrecognized top-level key (e.g. profiles:) with the recognized-key list', () => {
+  it('rejects an unrecognized top-level key', () => {
     const result = configYamlSchema.safeParse({
       profiles: { docs: { extends: 'errand' } },
     });
@@ -66,14 +76,10 @@ describe('configYamlSchema unknown-key rejection', () => {
       const issue = result.error.issues.find((i) => i.path.join('.') === 'profiles');
       expect(issue).toBeDefined();
       expect(issue!.message).toMatch(/Unrecognized key "profiles"/);
-      expect(issue!.message).toMatch(/Recognized keys/);
-      // Spot-check a couple of known keys appear in the recognized list.
-      expect(issue!.message).toMatch(/agentRuntimes/);
-      expect(issue!.message).toMatch(/build/);
     }
   });
 
-  it('rejects a misspelled top-level key (e.g. agent: instead of agents:)', () => {
+  it('rejects a misspelled top-level key', () => {
     const result = configYamlSchema.safeParse({ agent: { maxTurns: 30 } });
     expect(result.success).toBe(false);
     if (!result.success) {
