@@ -1,20 +1,16 @@
 name: keep-public-documentation-synchronized-with-the-current-implementation
-description: Sync public-facing documentation (README, docs/) with the current
-  eforge implementation. Fix configuration schema drift in docs/config.md,
-  correct profile YAML examples in README, strip per-role model override
-  examples that the schema doesn't support, tighten roadmap, delete the shipped
-  gap-close PRD.
+description: Correct documentation drift in README.md, docs/config.md, and
+  docs/architecture.md so public docs match the current configuration schema,
+  pipeline behavior, and profile/playbook implementation.
 base_branch: main
 mode: excursion
 validate:
   - pnpm type-check
-  - pnpm build
-  - pnpm test
 plans:
-  - id: plan-01-docs-sync
-    name: Sync Public Documentation with Current Implementation
+  - id: plan-01-doc-drift-fixes
+    name: Correct doc drift in README and docs/
     depends_on: []
-    branch: keep-public-documentation-synchronized-with-the-current-implementation/docs-sync
+    branch: keep-public-documentation-synchronized-with-the-current-implementation/doc-drift-fixes
     build:
       - implement
       - review-cycle
@@ -24,19 +20,6 @@ plans:
         - docs
       maxRounds: 2
       evaluatorStrictness: standard
-    agents:
-      builder:
-        effort: high
-        rationale: Cross-doc consistency requires careful reading of the current schema
-          and CLI source. Several edits are subtle (thinking boolean vs object,
-          role overrides without model, removing a Profiles section that
-          documents a non-existent feature). Standard effort risks reintroducing
-          drift.
-      reviewer:
-        effort: high
-        rationale: Reviewer must verify each edit against the actual code (config.ts
-          schema, cli.ts flags, server.ts routes) rather than rubber-stamping
-          prose changes.
 pipeline:
   scope: excursion
   compile:
@@ -51,25 +34,29 @@ pipeline:
     strategy: single
     perspectives:
       - docs-accuracy
-      - consistency
     maxRounds: 2
     autoAcceptBelow: suggestion
     evaluatorStrictness: standard
-  rationale: This PRD is documentation-only work spanning README.md and every file
-    under docs/. It touches multiple files but is a single logical effort (audit
-    and reconcile docs against the code), so excursion is the right scope - a
-    single planner session can enumerate which doc files need updates and assign
-    them across plans. Expedition would be overkill because there are no
-    genuinely independent subsystems requiring delegated module planning. I
-    include plan-review-cycle to catch scope creep (the planner must avoid
-    rewriting docs wholesale and must use the codebase as source of truth). For
-    build stages, doc-author runs in parallel with implement to author any
-    new/missing doc sections, then doc-sync runs after implement to catch
-    references to changed symbols/paths/flags - this is exactly the recommended
-    pattern for user-facing changes. Finally review-cycle ensures the resulting
-    docs are accurate, lean, and consistent with current
-    CLI/daemon/config/profile/playbook/Pi/plugin behavior. Review strategy is
-    single with two perspectives focused on factual accuracy and cross-doc
-    consistency; standard strictness is appropriate since this is
-    correctness-critical but not security-sensitive, and 2 rounds is sufficient
-    for catching drift without over-iterating.
+  rationale: "This PRD is a documentation synchronization effort across README.md
+    and every file under docs/. It is well-scoped to a single planner session:
+    the planner can enumerate each doc file, audit it against the codebase, and
+    emit targeted edit plans with clear cross-file dependencies (e.g. config.md
+    depends on the actual config schema in packages/eforge). That makes
+    excursion the right scope - there are no 4+ genuinely independent subsystems
+    requiring delegated module planning, and the work is fundamentally a sweep
+    of correlated edits where a foundation/inventory step plus follow-on plans
+    is more natural than parallel modules. Compile uses planner +
+    plan-review-cycle because plan quality matters here: the reviewer should
+    catch cases where the planner proposed speculative content, marketing fluff,
+    or rewrites instead of targeted corrections (the PRD's out-of-scope section
+    explicitly forbids these). For build, doc-author runs in parallel with
+    implement to handle any net-new doc content the planner identifies, then
+    doc-sync runs afterward to catch any residual drift in surrounding docs from
+    the implementation diff (since some plans may touch code to verify
+    behavior). review-cycle with a single docs-accuracy perspective and standard
+    strictness fits documentation work: the risk profile is low (no
+    security/data implications), but accuracy against the codebase is the core
+    acceptance criterion, so an iterative review with up to 2 rounds gives the
+    reviewer room to catch lingering inaccuracies without over-engineering the
+    gate. autoAcceptBelow=suggestion keeps cosmetic nits from blocking merges
+    while ensuring warnings and errors are addressed."
