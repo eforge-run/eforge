@@ -1,0 +1,75 @@
+name: keep-public-documentation-synchronized-with-the-current-implementation
+description: Sync public-facing documentation (README, docs/) with the current
+  eforge implementation. Fix configuration schema drift in docs/config.md,
+  correct profile YAML examples in README, strip per-role model override
+  examples that the schema doesn't support, tighten roadmap, delete the shipped
+  gap-close PRD.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-docs-sync
+    name: Sync Public Documentation with Current Implementation
+    depends_on: []
+    branch: keep-public-documentation-synchronized-with-the-current-implementation/docs-sync
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Cross-doc consistency requires careful reading of the current schema
+          and CLI source. Several edits are subtle (thinking boolean vs object,
+          role overrides without model, removing a Profiles section that
+          documents a non-existent feature). Standard effort risks reintroducing
+          drift.
+      reviewer:
+        effort: high
+        rationale: Reviewer must verify each edit against the actual code (config.ts
+          schema, cli.ts flags, server.ts routes) rather than rubber-stamping
+          prose changes.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - docs-accuracy
+      - consistency
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: This PRD is documentation-only work spanning README.md and every file
+    under docs/. It touches multiple files but is a single logical effort (audit
+    and reconcile docs against the code), so excursion is the right scope - a
+    single planner session can enumerate which doc files need updates and assign
+    them across plans. Expedition would be overkill because there are no
+    genuinely independent subsystems requiring delegated module planning. I
+    include plan-review-cycle to catch scope creep (the planner must avoid
+    rewriting docs wholesale and must use the codebase as source of truth). For
+    build stages, doc-author runs in parallel with implement to author any
+    new/missing doc sections, then doc-sync runs after implement to catch
+    references to changed symbols/paths/flags - this is exactly the recommended
+    pattern for user-facing changes. Finally review-cycle ensures the resulting
+    docs are accurate, lean, and consistent with current
+    CLI/daemon/config/profile/playbook/Pi/plugin behavior. Review strategy is
+    single with two perspectives focused on factual accuracy and cross-doc
+    consistency; standard strictness is appropriate since this is
+    correctness-critical but not security-sensitive, and 2 rounds is sufficient
+    for catching drift without over-iterating.
