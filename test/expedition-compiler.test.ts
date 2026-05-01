@@ -218,7 +218,7 @@ modules:
     const pipeline: PipelineComposition = {
       scope: 'expedition',
       compile: ['planner', 'compile-expedition'],
-      defaultBuild: ['implement', ['review-cycle', 'doc-update']],
+      defaultBuild: ['implement', ['review-cycle', 'doc-author']],
       defaultReview: {
         strategy: 'auto',
         perspectives: ['code'],

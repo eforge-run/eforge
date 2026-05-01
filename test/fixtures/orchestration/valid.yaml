@@ -10,7 +10,8 @@ pipeline:
     - plan-review-cycle
   defaultBuild:
     - - implement
-      - doc-update
+      - doc-author
+    - doc-sync
     - review-cycle
   defaultReview:
     strategy: auto
@@ -25,7 +26,8 @@ plans:
     branch: feature/core
     build:
       - - implement
-        - doc-update
+        - doc-author
+      - doc-sync
       - review-cycle
     review:
       strategy: auto
@@ -40,7 +42,8 @@ plans:
       - core
     build:
       - - implement
-        - doc-update
+        - doc-author
+      - doc-sync
       - review-cycle
     review:
       strategy: auto

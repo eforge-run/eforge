@@ -103,7 +103,7 @@ describe('parseOrchestrationConfig', () => {
       name: 'Core Module',
       dependsOn: [],
       branch: 'feature/core',
-      build: [['implement', 'doc-update'], 'review-cycle'],
+      build: [['implement', 'doc-author'], 'doc-sync', 'review-cycle'],
       review: {
         strategy: 'auto',
         perspectives: ['code'],
@@ -289,7 +289,7 @@ describe('injectPipelineIntoOrchestrationYaml', () => {
     const yamlPath = join(dir, 'orchestration.yaml');
 
     // Plan A has planner-chosen build/review; plan B has neither (backfill path).
-    const planABuild = [['implement', 'doc-update'], 'review-cycle'];
+    const planABuild = [['implement', 'doc-author'], 'doc-sync', 'review-cycle'];
     const planAReview = { strategy: 'parallel' as const, perspectives: ['code', 'security'], maxRounds: 2, evaluatorStrictness: 'strict' as const };
 
     writeFileSync(yamlPath, stringifyYaml({

@@ -384,7 +384,7 @@ describe('planning:complete event: planConfigs field', () => {
     expect(complete.planConfigs).toHaveLength(1);
     const config = complete.planConfigs![0];
     expect(config.id).toBe('plan-01-widgets');
-    expect(config.build).toEqual(['implement', ['review', 'doc-update']]);
+    expect(config.build).toEqual(['implement', ['review', 'doc-author']]);
     expect(config.review).toEqual({
       strategy: 'single',
       perspectives: ['security'],

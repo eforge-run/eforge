@@ -215,8 +215,8 @@ describe('AGENT_ROLE_TIERS new mapping after schema simplification', () => {
     expect(AGENT_ROLE_TIERS['staleness-assessor']).toBe('implementation');
   });
 
-  it('all 24 roles are mapped', () => {
-    expect(Object.keys(AGENT_ROLE_TIERS)).toHaveLength(24);
+  it('all 25 roles are mapped', () => {
+    expect(Object.keys(AGENT_ROLE_TIERS)).toHaveLength(25);
     for (const role of ALL_ROLES) {
       expect(AGENT_ROLE_TIERS[role]).toBeDefined();
     }

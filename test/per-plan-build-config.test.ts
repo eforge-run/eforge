@@ -162,7 +162,7 @@ describe('parseBuildConfigBlock', () => {
     const text = `Some message text
 <build-config>
 {
-  "build": [["implement", "doc-update"], "review-cycle"],
+  "build": [["implement", "doc-author"], "doc-sync", "review-cycle"],
   "review": {
     "strategy": "parallel",
     "perspectives": ["code", "security"],
