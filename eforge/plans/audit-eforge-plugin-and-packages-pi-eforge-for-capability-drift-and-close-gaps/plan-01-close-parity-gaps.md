@@ -17,6 +17,72 @@ The audit surfaced four real gaps. All other rows of the parity matrix are eithe
 - `eforge://status`, `eforge://queue`, `eforge://config`, `eforge://status/{sessionId}` are plugin-only because MCP resources are a Claude Code protocol feature with no Pi equivalent.
 - The `init` skill diverges in harness selection (plugin offers both `claude-sdk` and `pi`; Pi offers only `pi`) — this is intentional and the parity script's normalizer already handles it via `parity-skip` markers.
 
+## Parity Matrix
+
+Every CLI command, MCP tool, MCP resource, and skill is listed below. Each row carries one of: `parity`, `pi-only-intentional`, `pi-only-gap`, or `plugin-only-gap`.
+
+### CLI Commands
+
+| eforge-plugin command | pi-eforge command | Disposition |
+|---|---|---|
+| `/build` | `eforge:build` | `parity` |
+| `/status` | `eforge:status` | `parity` |
+| `/config` | `eforge:config` | `parity` |
+| `/update` | `eforge:update` | `parity` |
+| `/restart` | `eforge:restart` | `parity` |
+| `/init` | `eforge:init` | `parity` |
+| `/profile` | `eforge:profile` | `parity` |
+| `/profile-new` | `eforge:profile:new` | `parity` |
+| `/plan` | `eforge:plan` | `parity` |
+| `/playbook` | `eforge:playbook` | `parity` |
+| `/recover` | `eforge:recover` | `parity` — Pi command added by this plan |
+
+### MCP Tools
+
+| Tool name | plugin | Pi | Disposition |
+|---|---|---|---|
+| `eforge_build` | ✓ | ✓ | `parity` |
+| `eforge_follow` | ✓ | ✓ | `parity` |
+| `eforge_auto_build` | ✓ | ✓ | `parity` |
+| `eforge_status` | ✓ | ✓ | `parity` |
+| `eforge_queue_list` | ✓ | ✓ | `parity` |
+| `eforge_config` | ✓ | ✓ | `parity` |
+| `eforge_profile` | ✓ | ✓ | `parity` |
+| `eforge_models` | ✓ | ✓ | `parity` |
+| `eforge_daemon` | ✓ | ✓ | `parity` |
+| `eforge_init` | ✓ | ✓ | `parity` |
+| `eforge_recover` | ✓ | ✓ | `parity` |
+| `eforge_read_recovery_sidecar` | ✓ | ✓ | `parity` |
+| `eforge_apply_recovery` | ✓ | ✓ | `parity` |
+| `eforge_playbook` | ✓ | ✓ | `parity` |
+| `eforge_enqueue` | removed | — | `plugin-only-gap` — dead code (zero callers, overlaps `eforge_build`); removed by this plan rather than mirrored |
+| `eforge_confirm_build` | — | ✓ | `pi-only-intentional` — interactive TUI overlay; MCP transport cannot render TUIs |
+
+### MCP Resources
+
+| Resource | plugin | Pi | Disposition |
+|---|---|---|---|
+| `eforge://status` | ✓ | — | `plugin-only-intentional` — MCP resources are a Claude Code protocol feature with no Pi equivalent |
+| `eforge://status/{sessionId}` | ✓ | — | `plugin-only-intentional` — same reason |
+| `eforge://queue` | ✓ | — | `plugin-only-intentional` — same reason |
+| `eforge://config` | ✓ | — | `plugin-only-intentional` — same reason |
+
+### Skills
+
+| eforge-plugin skill | pi-eforge skill | Disposition |
+|---|---|---|
+| `build` | `eforge-build` | `parity` |
+| `status` | `eforge-status` | `parity` |
+| `config` | `eforge-config` | `parity` |
+| `update` | `eforge-update` | `parity` |
+| `restart` | `eforge-restart` | `parity` |
+| `init` | `eforge-init` | `parity` — harness-selection prose diverges intentionally (plugin offers `claude-sdk` and `pi`; Pi offers only `pi`); covered by `parity-skip` markers |
+| `profile` | `eforge-profile` | `parity` |
+| `profile-new` | `eforge-profile-new` | `parity` |
+| `plan` | `eforge-plan` | `parity` |
+| `playbook` | `eforge-playbook` | `parity` — added to `check-skill-parity.mjs` by this plan |
+| `recover` | `eforge-recover` | `parity` — parity-skip markers added and script extended by this plan |
+
 ## Implementation
 
 ### Overview
