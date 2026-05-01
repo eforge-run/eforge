@@ -59,19 +59,17 @@ function RawYamlBlock({ config }: { config: unknown }) {
   );
 }
 
-interface AgentRuntimeEntry {
+interface TierRecipeEntry {
   harness?: string;
   pi?: { provider?: string };
-  claudeSdk?: unknown;
+  model?: string;
+  effort?: string;
 }
 
 interface ProfileConfigShape {
-  agentRuntimes?: Record<string, AgentRuntimeEntry>;
-  defaultAgentRuntime?: string;
   extends?: string;
   agents?: {
-    models?: Record<string, unknown>;
-    tiers?: Record<string, unknown>;
+    tiers?: Record<string, TierRecipeEntry>;
     roles?: Record<string, unknown>;
   };
 }
@@ -98,78 +96,45 @@ function ProfileSheetBody({ profile }: { profile: SessionProfile }) {
         )}
       </div>
 
-      {/* Agent Runtimes */}
-      {cfg.agentRuntimes && Object.keys(cfg.agentRuntimes).length > 0 && (
+      {/* Tier Recipes */}
+      {cfg.agents?.tiers && Object.keys(cfg.agents.tiers).length > 0 && (
         <section className="flex flex-col gap-2">
-          <h3 className="text-[10px] uppercase tracking-wider text-text-dim font-semibold">Agent Runtimes</h3>
-          <div className="flex flex-col gap-1.5">
-            {Object.entries(cfg.agentRuntimes).map(([name, entry]) => (
-              <div key={name} className="flex items-center gap-2 text-xs">
-                <span className="font-medium text-foreground">{name}</span>
-                {entry.harness && (
-                  <Badge variant="outline" className="text-[10px] px-1.5 py-0">{entry.harness}</Badge>
-                )}
-                {entry.pi?.provider && (
-                  <span className="text-text-dim text-[10px]">provider: {entry.pi.provider}</span>
-                )}
+          <h3 className="text-[10px] uppercase tracking-wider text-text-dim font-semibold">Tiers</h3>
+          <div className="flex flex-col gap-2">
+            {Object.entries(cfg.agents.tiers).map(([tier, entry]) => (
+              <div key={tier} className="flex flex-col gap-0.5">
+                <span className="font-medium text-foreground text-xs">{tier}</span>
+                <div className="flex items-center gap-2 text-[10px] text-text-dim pl-2">
+                  {entry.harness && (
+                    <Badge variant="outline" className="text-[10px] px-1.5 py-0">{entry.harness}</Badge>
+                  )}
+                  {entry.pi?.provider && (
+                    <span>provider: {entry.pi.provider}</span>
+                  )}
+                  {entry.model && (
+                    <span>{entry.model}</span>
+                  )}
+                  {entry.effort && (
+                    <span>effort: {entry.effort}</span>
+                  )}
+                </div>
               </div>
             ))}
           </div>
         </section>
       )}
 
-      {/* Default Runtime */}
-      {cfg.defaultAgentRuntime && (
-        <section className="flex flex-col gap-1">
-          <h3 className="text-[10px] uppercase tracking-wider text-text-dim font-semibold">Default Runtime</h3>
-          <span className="text-foreground">{cfg.defaultAgentRuntime}</span>
-        </section>
-      )}
-
-      {/* Agents overrides */}
-      {cfg.agents && (
+      {/* Role overrides */}
+      {cfg.agents?.roles && Object.keys(cfg.agents.roles).length > 0 && (
         <section className="flex flex-col gap-2">
-          <h3 className="text-[10px] uppercase tracking-wider text-text-dim font-semibold">Agents</h3>
-          <div className="flex flex-col gap-2">
-            {cfg.agents.models && Object.keys(cfg.agents.models).length > 0 && (
-              <div>
-                <span className="text-[10px] text-text-dim uppercase tracking-wide">Models</span>
-                <div className="mt-1 flex flex-col gap-1">
-                  {Object.entries(cfg.agents.models).map(([cls, ref]) => (
-                    <div key={cls} className="flex items-center gap-2">
-                      <span className="text-text-dim w-20">{cls}</span>
-                      <span className="text-foreground">{typeof ref === 'object' && ref !== null ? (ref as { id?: string }).id ?? JSON.stringify(ref) : String(ref)}</span>
-                    </div>
-                  ))}
-                </div>
+          <h3 className="text-[10px] uppercase tracking-wider text-text-dim font-semibold">Roles</h3>
+          <div className="flex flex-col gap-1">
+            {Object.entries(cfg.agents.roles).map(([role, overrides]) => (
+              <div key={role} className="flex items-start gap-2">
+                <span className="text-text-dim w-28 shrink-0">{role}</span>
+                <span className="text-foreground text-[11px] break-all">{JSON.stringify(overrides)}</span>
               </div>
-            )}
-            {cfg.agents.tiers && Object.keys(cfg.agents.tiers).length > 0 && (
-              <div>
-                <span className="text-[10px] text-text-dim uppercase tracking-wide">Tiers</span>
-                <div className="mt-1 flex flex-col gap-1">
-                  {Object.entries(cfg.agents.tiers).map(([tier, overrides]) => (
-                    <div key={tier} className="flex items-start gap-2">
-                      <span className="text-text-dim w-20 shrink-0">{tier}</span>
-                      <span className="text-foreground text-[11px] break-all">{JSON.stringify(overrides)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {cfg.agents.roles && Object.keys(cfg.agents.roles).length > 0 && (
-              <div>
-                <span className="text-[10px] text-text-dim uppercase tracking-wide">Roles</span>
-                <div className="mt-1 flex flex-col gap-1">
-                  {Object.entries(cfg.agents.roles).map(([role, overrides]) => (
-                    <div key={role} className="flex items-start gap-2">
-                      <span className="text-text-dim w-28 shrink-0">{role}</span>
-                      <span className="text-foreground text-[11px] break-all">{JSON.stringify(overrides)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            ))}
           </div>
         </section>
       )}

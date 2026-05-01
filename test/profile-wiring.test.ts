@@ -776,8 +776,9 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(raw).toMatch(/mix-and-match/i);
     expect(raw).toContain('Step 3a');
     expect(raw).toContain('Step 3b');
-    expect(raw).toContain('defaultAgentRuntime');
-    expect(raw).toContain('agents.tiers.<tier>.agentRuntime');
+    // Plan-02 replaced defaultAgentRuntime with tier-recipe vocabulary
+    expect(raw).not.toContain('defaultAgentRuntime');
+    expect(raw).toContain('agents.tiers');
   });
 
   it('plugin /eforge:init skill contains Step 1.5 (existing user-scope profiles)', () => {
@@ -798,7 +799,9 @@ describe('/eforge:init redesign (plan-02-consumers)', () => {
     expect(raw).toMatch(/mix-and-match/i);
     expect(raw).toContain('Step 3a');
     expect(raw).toContain('Step 3b');
-    expect(raw).toContain('defaultAgentRuntime');
+    // Plan-02 replaced defaultAgentRuntime with tier-recipe vocabulary
+    expect(raw).not.toContain('defaultAgentRuntime');
+    expect(raw).toContain('agents.tiers');
   });
 
   it('Pi eforge-init skill pins harness to pi (no claude-sdk choice)', () => {

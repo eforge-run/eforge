@@ -844,52 +844,35 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
                   </TooltipTrigger>
                   <TooltipContent side="top">
                     <div className="font-medium">{thread.agent}</div>
-                    {(thread.agentRuntime || thread.harness || thread.model) && (
+                    {(thread.harness || thread.model) && (
                       <div className="opacity-50 text-[10px]">
-                        {thread.agentRuntime
-                          ? `${thread.agent} → ${thread.agentRuntime}${thread.harness || thread.model ? ` (${[thread.harness, thread.model].filter(Boolean).join(', ')})` : ''}`
-                          : thread.model}
+                        {[thread.harness, thread.model].filter(Boolean).join(' · ')}
+                        {thread.harnessSource && (
+                          <span className={thread.harnessSource === 'plan' ? ' text-blue-400' : ''}> ({thread.harnessSource})</span>
+                        )}
                       </div>
                     )}
-                    <div className={thread.effortSource === 'planner' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
+                    <div className={thread.effortSource === 'plan' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
                       effort: {thread.effort
                         ? (thread.effortClamped && thread.effortOriginal
                           ? `${thread.effort} (clamped from ${thread.effortOriginal})`
                           : thread.effort)
                         : 'unset'}
                       {thread.effortSource && (
-                        <span>
-                          {' '}({thread.effortSource === 'planner'
-                            ? 'planner'
-                            : thread.effortSource === 'role-config' || thread.effortSource === 'global-config'
-                              ? 'config'
-                              : thread.effortSource === 'default'
-                                ? 'default'
-                                : thread.effortSource})
-                        </span>
+                        <span> ({thread.effortSource})</span>
                       )}
                     </div>
-                    <div className={thread.thinkingSource === 'planner' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
+                    <div className={thread.thinkingSource === 'plan' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
                       thinking: {thread.thinking ?? 'unset'}
                       {thread.thinkingSource && (
-                        <span>
-                          {' '}({thread.thinkingSource === 'planner'
-                            ? 'planner'
-                            : thread.thinkingSource === 'role-config' || thread.thinkingSource === 'global-config'
-                              ? 'config'
-                              : thread.thinkingSource === 'default'
-                                ? 'default'
-                                : thread.thinkingSource})
-                        </span>
+                        <span> ({thread.thinkingSource})</span>
                       )}
                     </div>
                     {thread.tier && (
-                      <div className={thread.tierSource === 'role-config' ? 'text-amber-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
+                      <div className={thread.tierSource === 'role' ? 'text-amber-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
                         tier: {thread.tier}
                         {thread.tierSource && (
-                          <span>
-                            {' '}({thread.tierSource === 'role-config' ? 'config' : 'default'})
-                          </span>
+                          <span> ({thread.tierSource})</span>
                         )}
                       </div>
                     )}

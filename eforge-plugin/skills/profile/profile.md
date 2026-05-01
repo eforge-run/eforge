@@ -23,7 +23,7 @@ Call the `mcp__eforge__eforge_profile` tool with `{ action: "show" }`.
 Parse the response (shape: `{ active, source, resolved: { harness, profile } }`) and report:
 
 - **Active profile**: `{active}` (or "(none - using team default)" when `active` is null)
-- **Source**: `{source}` (`local` when the active profile is picked via the `.eforge/.active-profile` marker, `project` when picked via the `eforge/.active-profile` marker, `team` when no marker is present and the resolution falls back to the `defaultAgentRuntime:` field in `eforge/config.yaml`, `missing` when the marker points at a profile file that does not exist (stale marker), `none` when no profile is configured at all)
+- **Source**: `{source}` (`local` when the active profile is picked via the `.eforge/.active-profile` marker, `project` when picked via the `eforge/.active-profile` marker, `missing` when the marker points at a profile file that does not exist (stale marker), `none` when no profile is configured at all)
 - **Resolved harness**: `{resolved.harness}` (e.g. `claude-sdk` or `pi`)
 
 Then call `mcp__eforge__eforge_profile` with `{ action: "list" }` to show the user what other profiles are available, rendering a table with the following columns:
@@ -59,14 +59,12 @@ The `scope` parameter is available on `list`, `use`, `create`, and `delete` acti
 
 ## Active Profile Precedence
 
-The active agent runtime profile is resolved using a 6-step precedence chain (highest to lowest):
+The active agent runtime profile is resolved using a 4-step precedence chain (highest to lowest):
 
 1. **Project-local marker** - `.eforge/.active-profile` file in the repo root (gitignored)
 2. **Project marker** - `eforge/.active-profile` file in the project
-3. **Project config** - `defaultAgentRuntime:` field in `eforge/config.yaml`
-4. **User marker** - `~/.config/eforge/.active-profile` file
-5. **User config** - `defaultAgentRuntime:` field in `~/.config/eforge/config.yaml`
-6. **None** - no profile configured
+3. **User marker** - `~/.config/eforge/.active-profile` file
+4. **None** - no profile configured
 
 When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 

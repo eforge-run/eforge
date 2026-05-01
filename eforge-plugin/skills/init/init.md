@@ -6,7 +6,7 @@ argument-hint: "[--force] [--migrate]"
 # /eforge:init
 
 <!-- parity-skip-start -->
-Initialize eforge in this project. Presents a two-track setup flow (Quick or Mix-and-match) to assemble a named agent runtime profile, then creates it under `eforge/profiles/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.) with `agentRuntimes:` and `defaultAgentRuntime:` as top-level keys.
+Initialize eforge in this project. Presents a two-track setup flow (Quick or Mix-and-match) to assemble a named agent runtime profile, then creates it under `eforge/profiles/` and activates it. Also writes `eforge/config.yaml` for team-wide settings (postMergeCommands, etc.).
 <!-- parity-skip-end -->
 
 ## Welcome
@@ -44,10 +44,10 @@ If both responses contain no profiles (both lists empty), skip this step entirel
 
 If any profiles exist, present them in a combined table:
 
-| Name | Scope | Harness | Max model |
-|------|-------|---------|-----------|
-| `<name>` | `local` | `<agentRuntimes[defaultAgentRuntime].harness>` | `<models.max.id>` |
-| `<name>` | `user`  | `<agentRuntimes[defaultAgentRuntime].harness>` | `<models.max.id>` |
+| Name | Scope | Harness | Planning model |
+|------|-------|---------|----------------|
+| `<name>` | `local` | `<agents.tiers.planning.harness>` | `<agents.tiers.planning.model.id>` |
+| `<name>` | `user`  | `<agents.tiers.planning.harness>` | `<agents.tiers.planning.model.id>` |
 
 Ask: "Would you like to use one of these existing profiles, or create a new project profile?"
 
@@ -75,7 +75,7 @@ Skip Steps 2–6. Proceed directly to the result message.
 
 ### Step 2: Setup mode
 
-Ask the user: "Quick setup (one harness, one model used for every tier) or mix-and-match (pick a different harness/provider/model per tier)?"
+Ask the user: "Quick setup (one harness and model for every tier) or mix-and-match (pick a different harness/provider/model/effort per tier)?"
 
 Do not suggest a default - both options should be presented equally.
 
@@ -89,115 +89,133 @@ When the user chooses Quick setup:
 
 2. Call `mcp__eforge__eforge_models` with `{ action: "list", harness: "claude-sdk" }` to get available models (sorted newest-first, already harness-filtered).
 3. From the returned list, derive tier defaults by scanning for the first non-deprecated entry whose `id` contains, case-insensitively:
-   - `opus` → default for `max` tier
-   - `sonnet` → default for `balanced` tier
-   - `haiku` → default for `fast` tier
-4. Present the three picks as a recommendation, e.g.:
-   > Claude Code ships three model families. Latest of each:
-   > - **max**: `claude-opus-4-7` (Opus — deepest reasoning)
-   > - **balanced**: `claude-sonnet-4-6` (Sonnet — strong default)
-   > - **fast**: `claude-haiku-4-5` (Haiku — cheapest, quickest)
+   - `opus` → default for `planning` and `review` and `evaluation` tiers
+   - `sonnet` → default for `implementation` tier
+4. Present the picks as a recommendation, e.g.:
+   > Claude Code ships multiple model families. Suggested per tier:
+   > - **planning**: `claude-opus-4-7` (deepest reasoning)
+   > - **implementation**: `claude-sonnet-4-6` (strong default)
+   > - **review**: `claude-opus-4-7`
+   > - **evaluation**: `claude-opus-4-7`
    >
    > Use these, or customize a tier?
-5. Accept one of: `confirm`, `customize <tier>`, `customize all`. For each tier the user wants to customize, show the top 10 from the already-fetched list (no extra `mcp__eforge__eforge_models` call) and let them pick a different id. The default at each per-tier prompt is the family-derived suggestion.
-6. Assemble the single-runtime profile (no `tiers` block):
+5. Accept one of: `confirm`, `customize <tier>`, `customize all`. For each tier the user wants to customize, show the top 10 from the already-fetched list (no extra `mcp__eforge__eforge_models` call) and let them pick a different id. Also ask for `effort` per customized tier (default `high` for planning/review/evaluation, `medium` for implementation).
+6. Assemble the profile (same harness for all tiers):
 
 ```yaml
 profile:
-  agentRuntimes:
-    main:
-      harness: claude-sdk
-  defaultAgentRuntime: main
-  models:
-    max:
-      id: <picked>
-    balanced:
-      id: <picked>
-    fast:
-      id: <picked>
+  agents:
+    tiers:
+      planning:
+        harness: claude-sdk
+        model:
+          id: <picked>
+        effort: high
+      implementation:
+        harness: claude-sdk
+        model:
+          id: <picked>
+        effort: medium
+      review:
+        harness: claude-sdk
+        model:
+          id: <picked>
+        effort: high
+      evaluation:
+        harness: claude-sdk
+        model:
+          id: <picked>
+        effort: high
 ```
 
 **If harness = `pi`:**
 
 2. **Provider**: Call `mcp__eforge__eforge_models` with `{ action: "providers", harness: "pi" }` to get available providers. Present the list and ask the user to pick one.
-3. **Max model**: Call `mcp__eforge__eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Show the top 10 and ask the user to pick.
-4. **Balanced model**: Prompt:
-   > Pick a separate **balanced**-tier model? (Recommended — most build steps run at the balanced tier, so a cheaper/smaller model here saves a lot. Press enter to reuse `<max-id>`.)
-   Show the same top-10 list with the user's max pick highlighted as the default. If the user accepts the default, set `balanced.id = max.id`.
-5. **Fast model**: No prompt. Set `fast.id = balanced.id`.
-6. Assemble the single-runtime profile (runtime named `main`, no `tiers` block):
+3. **Planning/review/evaluation model**: Call `mcp__eforge__eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Show the top 10 and ask the user to pick.
+4. **Implementation model**: Prompt:
+   > Pick a separate **implementation**-tier model? (Recommended — most build steps run at the implementation tier, so a cheaper/smaller model here saves a lot. Press enter to reuse `<planning-id>`.)
+   Show the same top-10 list with the user's planning pick highlighted as the default. If the user accepts the default, set `implementation.model.id = planning.model.id`.
+5. Assemble the single-provider profile (same provider for all tiers):
 
 ```yaml
 profile:
-  agentRuntimes:
-    main:
-      harness: pi
-      pi:
+  agents:
+    tiers:
+      planning:
+        harness: pi
         provider: <chosen>
-  defaultAgentRuntime: main
-  models:
-    max:
-      id: <picked>
-    balanced:
-      id: <picked-or-max>
-    fast:
-      id: <balanced>
+        model:
+          id: <picked>
+        effort: high
+      implementation:
+        harness: pi
+        provider: <chosen>
+        model:
+          id: <picked-or-planning>
+        effort: medium
+      review:
+        harness: pi
+        provider: <chosen>
+        model:
+          id: <picked>
+        effort: high
+      evaluation:
+        harness: pi
+        provider: <chosen>
+        model:
+          id: <picked>
+        effort: high
 ```
 
 ### Step 3b: Mix-and-match path
 
-When the user chooses Mix-and-match, walk tiers `max -> balanced -> fast`:
+When the user chooses Mix-and-match, walk tiers `planning -> implementation -> review -> evaluation`:
 
 For each tier:
-- **Harness**: Ask which harness to use. Default = previous tier's harness (max tier has no default).
+- **Harness**: Ask which harness to use. Default = previous tier's harness (planning tier has no default).
 - **Provider** (pi harness only): Ask which provider. Default = previous tier's provider when the same harness is used. Call `mcp__eforge__eforge_models` with `{ action: "providers", harness: "pi" }` for the list.
 - **Model**: Ask which model. Default = previous tier's model when harness+provider are unchanged. Call `mcp__eforge__eforge_models` with `{ action: "list", harness: "<chosen>", provider: "<chosen if pi>" }` and show the top 10 newest-first.
-
-After collecting all three tiers, deduplicate runtimes by `(harness, provider)` tuple:
-- A `claude-sdk` entry → runtime named `claude-sdk`.
-- A `pi` entry with provider `anthropic` → runtime named `pi-anthropic`. Multiple Pi providers get `pi-<provider>` names.
-
-Assign each tier to its runtime via `agents.tiers.<tier>.agentRuntime`. Set `defaultAgentRuntime` to the runtime backing the `max` tier.
+- **Effort**: Ask from `low | medium | high | xhigh | max`. Default: `high` for planning/review/evaluation, `medium` for implementation.
 
 Assembled profile shape:
 
 ```yaml
 profile:
-  agentRuntimes:
-    claude-sdk:
-      harness: claude-sdk
-    pi-anthropic:
-      harness: pi
-      pi:
+  agents:
+    tiers:
+      planning:
+        harness: claude-sdk
+        model:
+          id: claude-opus-4-7
+        effort: high
+      implementation:
+        harness: pi
         provider: anthropic
-  defaultAgentRuntime: claude-sdk     # runtime for max tier
-  models:
-    max:
-      id: claude-opus-4-7
-    balanced:
-      id: claude-opus-4-7
-    fast:
-      id: claude-haiku-4-5
-  tiers:
-    max:
-      agentRuntime: claude-sdk
-    balanced:
-      agentRuntime: claude-sdk
-    fast:
-      agentRuntime: pi-anthropic
+        model:
+          id: claude-sonnet-4-6
+        effort: medium
+      review:
+        harness: claude-sdk
+        model:
+          id: claude-opus-4-7
+        effort: high
+      evaluation:
+        harness: pi
+        provider: anthropic
+        model:
+          id: claude-opus-4-7
+        effort: high
 ```
 
 ### Step 4: Profile name
 
 Derive a candidate profile name from the assembled profile using these rules (mirrors the server-side `deriveProfileName` helper):
 
-- **Single runtime, same model id across all three tiers**: use the sanitized model ID. Sanitize by lowercasing, replacing `.` with `-`, stripping a leading `claude-` prefix, and collapsing repeated dashes. Example: `claude-opus-4-7` → `opus-4-7`.
-- **Single runtime, model varies across tiers**: use `<harness>` or `<harness>-<provider>` (e.g. `pi-anthropic`).
-- **Multiple runtimes**: use `mixed-<runtime-backing-max>` where the backing runtime is from `tiers.max.agentRuntime` (e.g. `mixed-claude-sdk`).
+- **Same harness+model across all four tiers**: use the sanitized model ID. Sanitize by lowercasing, replacing `.` with `-`, stripping a leading `claude-` prefix, and collapsing repeated dashes. Example: `claude-opus-4-7` → `opus-4-7`.
+- **Same harness, model varies across tiers**: use `<harness>` or `<harness>-<provider>` (e.g. `pi-anthropic`).
+- **Mixed harnesses**: use `mixed-<planning-tier-harness>` (e.g. `mixed-claude-sdk`).
 
 Show the candidate name to the user: "I'd name this profile `<candidate>`. Does that work, or would you like a different name?" Accept a one-word override (alphanumeric + dashes). If the user accepts, proceed with the candidate. Set `profile.name` to the final name before calling the tool.
-
-Note: the Claude SDK Quick path will typically land on the candidate name `claude-sdk` because each tier picks a different model family by default (single runtime, model varies across tiers).
 
 ### Step 5: Persist
 
@@ -207,17 +225,21 @@ Call `mcp__eforge__eforge_init` with:
 {
   "profile": {
     "name": "<finalName>",
-    "agentRuntimes": { ... },
-    "defaultAgentRuntime": "...",
-    "models": { ... },
-    "tiers": { ... }
+    "agents": {
+      "tiers": {
+        "planning":       { "harness": "...", "model": { "id": "..." }, "effort": "..." },
+        "implementation": { "harness": "...", "model": { "id": "..." }, "effort": "..." },
+        "review":         { "harness": "...", "model": { "id": "..." }, "effort": "..." },
+        "evaluation":     { "harness": "...", "model": { "id": "..." }, "effort": "..." }
+      }
+    }
   },
   "postMergeCommands": [...],
   "force": true
 }
 ```
 
-Include `force: true` if `$ARGUMENTS` contains `--force` or `force`. Include `tiers` only in the mix-and-match path. Omit `tiers` on the Quick path.
+Include `force: true` if `$ARGUMENTS` contains `--force` or `force`. Include `provider` on each tier entry only when the harness is `pi`; omit it for `claude-sdk`.
 
 ### Step 6: Migrate (`--migrate`)
 
@@ -225,7 +247,7 @@ If `$ARGUMENTS` contains `--migrate`, skip Steps 2-5 above. Instead call `mcp__e
 
 <!-- parity-skip-end -->
 
-The tool will create the profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` with `agentRuntimes:` and `defaultAgentRuntime:` as top-level keys alongside other team-wide settings.
+The tool will create the profile under `eforge/profiles/`, activate it via `eforge/.active-profile`, and write `eforge/config.yaml` alongside other team-wide settings.
 
 ### Step 7: Report
 
@@ -234,7 +256,7 @@ Once the tool completes successfully, inform the user:
 > eforge initialized with profile `<profileName>`. The profile lives at `eforge/profiles/<profileName>.yaml` and is now active. You can customize further with `/eforge:config --edit`, switch profiles with `/eforge:profile`, or create additional profiles with `/eforge:profile-new`. Use `/eforge:profile-new --scope user` to create a user-scope profile under `~/.config/eforge/profiles/` that applies across all your projects.
 
 <!-- parity-skip-start -->
-To mix multiple harnesses across agent roles (e.g. `claude-sdk` planners + `pi` builders), use `/eforge:profile-new` or edit `eforge/profiles/<profileName>.yaml` directly - `agentRuntimes` accepts multiple named entries.
+To use different harnesses across tiers (e.g. `claude-sdk` for planning/review + `pi` for implementation), use `/eforge:profile-new` or edit `eforge/profiles/<profileName>.yaml` directly - each tier entry independently specifies its own `harness` and, for pi, its `provider`.
 <!-- parity-skip-end -->
 ## Related Skills
 

@@ -1,190 +1,172 @@
 import { describe, it, expect } from 'vitest';
-import { buildProfileCreatePayload, runtimeName } from '../packages/pi-eforge/extensions/eforge/profile-payload';
+import { buildProfileCreatePayload } from '../packages/pi-eforge/extensions/eforge/profile-payload';
 
 // ---------------------------------------------------------------------------
-// runtimeName
-// ---------------------------------------------------------------------------
-
-describe('runtimeName', () => {
-  it('returns "claude-sdk" for claude-sdk harness regardless of provider', () => {
-    expect(runtimeName('claude-sdk')).toBe('claude-sdk');
-    expect(runtimeName('claude-sdk', undefined)).toBe('claude-sdk');
-  });
-
-  it('returns "pi-<provider>" for pi harness', () => {
-    expect(runtimeName('pi', 'anthropic')).toBe('pi-anthropic');
-    expect(runtimeName('pi', 'openrouter')).toBe('pi-openrouter');
-    expect(runtimeName('pi', 'zai')).toBe('pi-zai');
-  });
-});
-
-// ---------------------------------------------------------------------------
-// buildProfileCreatePayload
+// buildProfileCreatePayload — tier-recipe shape
 // ---------------------------------------------------------------------------
 
 describe('buildProfileCreatePayload', () => {
-  it('all three classes share one claude-sdk runtime', () => {
+  it('returns exactly name, scope, agents as top-level keys', () => {
     const payload = buildProfileCreatePayload({
       name: 'my-profile',
       scope: 'project',
-      max: { harness: 'claude-sdk', modelId: 'claude-opus-4-7' },
-      balanced: { harness: 'claude-sdk', modelId: 'claude-sonnet-4-6' },
-      fast: { harness: 'claude-sdk', modelId: 'claude-haiku-4-5' },
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'claude-opus-4-7',   effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'claude-sonnet-4-6', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+      },
     });
 
-    expect(Object.keys(payload.agentRuntimes)).toHaveLength(1);
-    expect(payload.agentRuntimes['claude-sdk']).toEqual({ harness: 'claude-sdk' });
-    expect(payload.defaultAgentRuntime).toBe('claude-sdk');
-    expect(payload.agents.models.max).toEqual({ id: 'claude-opus-4-7' });
-    expect(payload.agents.models.balanced).toEqual({ id: 'claude-sonnet-4-6' });
-    expect(payload.agents.models.fast).toEqual({ id: 'claude-haiku-4-5' });
-    // no tier override when all share the same runtime
-    expect(payload.agents.tiers).toBeUndefined();
+    expect(Object.keys(payload).sort()).toEqual(['agents', 'name', 'scope']);
   });
 
-  it('all three classes share one Pi runtime', () => {
-    const payload = buildProfileCreatePayload({
-      name: 'pi-profile',
-      scope: 'user',
-      max: { harness: 'pi', provider: 'anthropic', modelId: 'claude-opus-4-7' },
-      balanced: { harness: 'pi', provider: 'anthropic', modelId: 'claude-sonnet-4-6' },
-      fast: { harness: 'pi', provider: 'anthropic', modelId: 'claude-haiku-4-5' },
-    });
-
-    expect(Object.keys(payload.agentRuntimes)).toHaveLength(1);
-    expect(payload.agentRuntimes['pi-anthropic']).toEqual({ harness: 'pi', pi: { provider: 'anthropic' } });
-    expect(payload.defaultAgentRuntime).toBe('pi-anthropic');
-    expect(payload.agents.tiers).toBeUndefined();
-  });
-
-  it('balanced differs from max — emits implementation tier override', () => {
-    const payload = buildProfileCreatePayload({
-      name: 'mixed-profile',
-      scope: 'project',
-      max: { harness: 'claude-sdk', modelId: 'claude-opus-4-7' },
-      balanced: { harness: 'pi', provider: 'anthropic', modelId: 'claude-sonnet-4-6' },
-      fast: { harness: 'pi', provider: 'anthropic', modelId: 'claude-haiku-4-5' },
-    });
-
-    expect(Object.keys(payload.agentRuntimes)).toHaveLength(2);
-    expect(payload.agentRuntimes['claude-sdk']).toEqual({ harness: 'claude-sdk' });
-    expect(payload.agentRuntimes['pi-anthropic']).toEqual({ harness: 'pi', pi: { provider: 'anthropic' } });
-    expect(payload.defaultAgentRuntime).toBe('claude-sdk');
-    expect(payload.agents.tiers).toEqual({ implementation: { agentRuntime: 'pi-anthropic' } });
-  });
-
-  it('fast differs from balanced and max — no tier override for fast', () => {
-    const payload = buildProfileCreatePayload({
-      name: 'tri-profile',
-      scope: 'project',
-      max: { harness: 'claude-sdk', modelId: 'opus' },
-      balanced: { harness: 'pi', provider: 'anthropic', modelId: 'sonnet' },
-      fast: { harness: 'pi', provider: 'openrouter', modelId: 'haiku' },
-    });
-
-    expect(Object.keys(payload.agentRuntimes)).toHaveLength(3);
-    expect(payload.agentRuntimes['claude-sdk']).toBeDefined();
-    expect(payload.agentRuntimes['pi-anthropic']).toBeDefined();
-    expect(payload.agentRuntimes['pi-openrouter']).toBeDefined();
-    // implementation tier override for balanced (different from max)
-    expect(payload.agents.tiers).toEqual({ implementation: { agentRuntime: 'pi-anthropic' } });
-    // fast is in agentRuntimes but never gets a tier override
-    expect((payload.agents.tiers as Record<string, unknown>)?.fast).toBeUndefined();
-  });
-
-  it('all three classes on different runtimes — only implementation tier override', () => {
-    const payload = buildProfileCreatePayload({
-      name: 'all-different',
-      scope: 'project',
-      max: { harness: 'claude-sdk', modelId: 'model-a' },
-      balanced: { harness: 'pi', provider: 'anthropic', modelId: 'model-b' },
-      fast: { harness: 'pi', provider: 'zai', modelId: 'model-c' },
-    });
-
-    expect(Object.keys(payload.agentRuntimes)).toHaveLength(3);
-    // only implementation tier override — no max/balanced/fast tier keys
-    expect(payload.agents.tiers).toEqual({ implementation: { agentRuntime: 'pi-anthropic' } });
-    const tiersAny = payload.agents.tiers as Record<string, unknown>;
-    expect(tiersAny['max']).toBeUndefined();
-    expect(tiersAny['balanced']).toBeUndefined();
-    expect(tiersAny['fast']).toBeUndefined();
-  });
-
-  it('claude-sdk + pi mix — provider on agentRuntimes entry, not on model refs', () => {
-    const payload = buildProfileCreatePayload({
-      name: 'mixed',
-      scope: 'project',
-      max: { harness: 'pi', provider: 'anthropic', modelId: 'claude-opus-4-7' },
-      balanced: { harness: 'claude-sdk', modelId: 'claude-sonnet-4-6' },
-      fast: { harness: 'claude-sdk', modelId: 'claude-haiku-4-5' },
-    });
-
-    // Provider goes on agentRuntimes entry, not on model refs
-    expect(payload.agentRuntimes['pi-anthropic']?.pi?.provider).toBe('anthropic');
-    expect(payload.agentRuntimes['claude-sdk']).toEqual({ harness: 'claude-sdk' });
-    expect((payload.agents.models.max as Record<string, unknown>).provider).toBeUndefined();
-    expect((payload.agents.models.balanced as Record<string, unknown>).provider).toBeUndefined();
-    expect((payload.agents.models.fast as Record<string, unknown>).provider).toBeUndefined();
-    // max runtime is pi-anthropic, balanced is claude-sdk -> implementation tier override
-    expect(payload.agents.tiers).toEqual({ implementation: { agentRuntime: 'claude-sdk' } });
-    expect(payload.defaultAgentRuntime).toBe('pi-anthropic');
-  });
-
-  it('does not emit agents.effort or pi.thinkingLevel', () => {
+  it('agents contains only tiers — no agentRuntimes, no defaultAgentRuntime, no agents.models', () => {
     const payload = buildProfileCreatePayload({
       name: 'clean',
       scope: 'project',
-      max: { harness: 'claude-sdk', modelId: 'model-a' },
-      balanced: { harness: 'claude-sdk', modelId: 'model-b' },
-      fast: { harness: 'claude-sdk', modelId: 'model-c' },
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
     });
 
-    const payloadAny = payload as Record<string, unknown>;
-    // no top-level effort or pi
-    expect(payloadAny['effort']).toBeUndefined();
-    expect(payloadAny['pi']).toBeUndefined();
-    const agentsAny = payload.agents as Record<string, unknown>;
-    // no agents.effort or agents.thinkingLevel
-    expect(agentsAny['effort']).toBeUndefined();
-    expect(agentsAny['thinkingLevel']).toBeUndefined();
+    expect(Object.keys(payload.agents)).toEqual(['tiers']);
+    expect((payload as Record<string, unknown>)['agentRuntimes']).toBeUndefined();
+    expect((payload as Record<string, unknown>)['defaultAgentRuntime']).toBeUndefined();
+    expect((payload.agents as Record<string, unknown>)['models']).toBeUndefined();
+    expect((payload.agents as Record<string, unknown>)['agentRuntimes']).toBeUndefined();
+    expect((payload.agents as Record<string, unknown>)['defaultAgentRuntime']).toBeUndefined();
   });
 
-  it('de-duplicates runtimes when balanced and fast share a runtime different from max', () => {
+  it('emits all four built-in tiers', () => {
     const payload = buildProfileCreatePayload({
-      name: 'dedup',
-      scope: 'project',
-      max: { harness: 'claude-sdk', modelId: 'model-a' },
-      balanced: { harness: 'pi', provider: 'anthropic', modelId: 'model-b' },
-      fast: { harness: 'pi', provider: 'anthropic', modelId: 'model-c' },
+      name: 'four-tiers',
+      scope: 'user',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'claude-opus-4-7',   effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'claude-sonnet-4-6', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+      },
     });
 
-    // pi-anthropic appears once even though both balanced and fast use it
-    expect(Object.keys(payload.agentRuntimes)).toHaveLength(2);
-    expect(Object.keys(payload.agentRuntimes).sort()).toEqual(['claude-sdk', 'pi-anthropic']);
+    expect(Object.keys(payload.agents.tiers).sort()).toEqual(
+      ['evaluation', 'implementation', 'planning', 'review'],
+    );
   });
 
-  it('defaultAgentRuntime is always the max runtime name', () => {
+  it('each tier entry has harness, model, effort', () => {
     const payload = buildProfileCreatePayload({
-      name: 'default-check',
+      name: 'check-fields',
       scope: 'project',
-      max: { harness: 'pi', provider: 'openrouter', modelId: 'model-a' },
-      balanced: { harness: 'claude-sdk', modelId: 'model-b' },
-      fast: { harness: 'claude-sdk', modelId: 'model-c' },
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'claude-opus-4-7',   effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'claude-sonnet-4-6', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+      },
     });
 
-    expect(payload.defaultAgentRuntime).toBe('pi-openrouter');
+    expect(payload.agents.tiers.planning).toEqual({ harness: 'claude-sdk', model: 'claude-opus-4-7', effort: 'high' });
+    expect(payload.agents.tiers.implementation).toEqual({ harness: 'claude-sdk', model: 'claude-sonnet-4-6', effort: 'medium' });
+    expect(payload.agents.tiers.review).toEqual({ harness: 'claude-sdk', model: 'claude-haiku-4-5', effort: 'low' });
+    expect(payload.agents.tiers.evaluation).toEqual({ harness: 'claude-sdk', model: 'claude-haiku-4-5', effort: 'low' });
+  });
+
+  it('pi tier includes pi.provider', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'pi-profile',
+      scope: 'user',
+      tiers: {
+        planning:       { harness: 'pi', provider: 'anthropic', modelId: 'claude-opus-4-7',   effort: 'high' },
+        implementation: { harness: 'pi', provider: 'anthropic', modelId: 'claude-sonnet-4-6', effort: 'medium' },
+        review:         { harness: 'pi', provider: 'anthropic', modelId: 'claude-haiku-4-5',  effort: 'low' },
+        evaluation:     { harness: 'pi', provider: 'anthropic', modelId: 'claude-haiku-4-5',  effort: 'low' },
+      },
+    });
+
+    expect(payload.agents.tiers.planning).toEqual({
+      harness: 'pi',
+      pi: { provider: 'anthropic' },
+      model: 'claude-opus-4-7',
+      effort: 'high',
+    });
+    expect(payload.agents.tiers.implementation.pi?.provider).toBe('anthropic');
+  });
+
+  it('claude-sdk tier does not include pi field', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'sdk-only',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
+    });
+
+    expect((payload.agents.tiers.planning as Record<string, unknown>)['pi']).toBeUndefined();
+    expect((payload.agents.tiers.implementation as Record<string, unknown>)['pi']).toBeUndefined();
+  });
+
+  it('mixed harnesses across tiers are all preserved', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'mixed',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'claude-opus-4-7',   effort: 'high' },
+        implementation: { harness: 'pi', provider: 'anthropic', modelId: 'claude-sonnet-4-6', effort: 'medium' },
+        review:         { harness: 'pi', provider: 'openrouter', modelId: 'some-model',        effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+      },
+    });
+
+    expect(payload.agents.tiers.planning.harness).toBe('claude-sdk');
+    expect(payload.agents.tiers.implementation.harness).toBe('pi');
+    expect(payload.agents.tiers.implementation.pi?.provider).toBe('anthropic');
+    expect(payload.agents.tiers.review.harness).toBe('pi');
+    expect(payload.agents.tiers.review.pi?.provider).toBe('openrouter');
+    expect(payload.agents.tiers.evaluation.harness).toBe('claude-sdk');
   });
 
   it('name and scope are preserved in the payload', () => {
     const payload = buildProfileCreatePayload({
       name: 'my-profile',
       scope: 'user',
-      max: { harness: 'claude-sdk', modelId: 'model-a' },
-      balanced: { harness: 'claude-sdk', modelId: 'model-b' },
-      fast: { harness: 'claude-sdk', modelId: 'model-c' },
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
     });
 
     expect(payload.name).toBe('my-profile');
     expect(payload.scope).toBe('user');
+  });
+
+  it('does not emit effort/pi at top-level or agents level', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'clean',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
+    });
+
+    const payloadAny = payload as Record<string, unknown>;
+    expect(payloadAny['effort']).toBeUndefined();
+    expect(payloadAny['pi']).toBeUndefined();
+    expect(payloadAny['harness']).toBeUndefined();
+    const agentsAny = payload.agents as Record<string, unknown>;
+    expect(agentsAny['effort']).toBeUndefined();
+    expect(agentsAny['pi']).toBeUndefined();
   });
 });

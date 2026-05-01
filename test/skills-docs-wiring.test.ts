@@ -39,14 +39,15 @@ describe('eforge-plugin/skills/profile/profile.md - user-scope updates', () => {
     expect(raw).toContain('user (shadowed)');
   });
 
-  it('documents all 6 precedence steps', () => {
+  it('documents precedence steps (4-step chain after plan-02 removed defaultAgentRuntime)', () => {
     expect(raw).toContain('## Active Profile Precedence');
     expect(raw).toMatch(/1\.\s+\*\*Project-local marker\*\*/);
     expect(raw).toMatch(/2\.\s+\*\*Project marker\*\*/);
-    expect(raw).toMatch(/3\.\s+\*\*Project config\*\*/);
-    expect(raw).toMatch(/4\.\s+\*\*User marker\*\*/);
-    expect(raw).toMatch(/5\.\s+\*\*User config\*\*/);
-    expect(raw).toMatch(/6\.\s+\*\*None\*\*/);
+    expect(raw).toMatch(/3\.\s+\*\*User marker\*\*/);
+    expect(raw).toMatch(/4\.\s+\*\*None\*\*/);
+    // Plan-02 removed defaultAgentRuntime; "Project config" and "User config"
+    // steps are no longer present since they depended on that field
+    expect(raw).not.toContain('defaultAgentRuntime');
   });
 
   it('documents the scope parameter section', () => {
@@ -97,15 +98,17 @@ describe('eforge-plugin/skills/profile-new/profile-new.md - user-scope updates',
     expect(step0Content).toContain('~/.config/eforge/profiles/');
   });
 
-  it('passes scope to create action in Step 7', () => {
+  it('passes scope to create action', () => {
+    // Plan-02 renumbered steps; create action is now Step 4 (not Step 7)
     expect(raw).toMatch(/scope:\s*["']<local\|project\|user>["']/);
   });
 
-  it('passes scope to use action in Step 7', () => {
-    const step7Start = raw.indexOf('Step 7');
-    expect(step7Start).toBeGreaterThan(-1);
-    const step7Content = raw.slice(step7Start);
-    expect(step7Content).toContain('scope');
+  it('passes scope to use action when activating', () => {
+    // Plan-02 renumbered steps; activate offer is now Step 5 (not Step 7)
+    const step5Start = raw.indexOf('Step 5');
+    expect(step5Start).toBeGreaterThan(-1);
+    const step5Content = raw.slice(step5Start);
+    expect(step5Content).toContain('scope');
   });
 
   it('mentions user scope in the file path description', () => {
@@ -128,14 +131,15 @@ describe('packages/pi-eforge/skills/eforge-profile/SKILL.md - user-scope updates
     expect(raw).toContain('user (shadowed)');
   });
 
-  it('documents all 6 precedence steps', () => {
+  it('documents precedence steps (4-step chain after plan-02 removed defaultAgentRuntime)', () => {
     expect(raw).toContain('## Active Profile Precedence');
     expect(raw).toMatch(/1\.\s+\*\*Project-local marker\*\*/);
     expect(raw).toMatch(/2\.\s+\*\*Project marker\*\*/);
-    expect(raw).toMatch(/3\.\s+\*\*Project config\*\*/);
-    expect(raw).toMatch(/4\.\s+\*\*User marker\*\*/);
-    expect(raw).toMatch(/5\.\s+\*\*User config\*\*/);
-    expect(raw).toMatch(/6\.\s+\*\*None\*\*/);
+    expect(raw).toMatch(/3\.\s+\*\*User marker\*\*/);
+    expect(raw).toMatch(/4\.\s+\*\*None\*\*/);
+    // Plan-02 removed defaultAgentRuntime; "Project config" and "User config"
+    // steps are no longer present since they depended on that field
+    expect(raw).not.toContain('defaultAgentRuntime');
   });
 
   it('documents the scope parameter section', () => {
@@ -297,12 +301,13 @@ describe('plugin <-> Pi skill parity for user-scope updates', () => {
   const pluginInit = readRepoFile('eforge-plugin/skills/init/init.md');
   const piInit = readRepoFile('packages/pi-eforge/skills/eforge-init/SKILL.md');
 
-  it('both profile skills have the same 6-step precedence list', () => {
-    // Both should document all 6 steps
+  it('both profile skills have the same 4-step precedence list (plan-02 removed defaultAgentRuntime)', () => {
+    // Plan-02 removed defaultAgentRuntime, collapsing the 6-step chain to 4 steps
     for (const raw of [pluginBackend, piBackend]) {
       expect(raw).toMatch(/1\.\s+\*\*Project-local marker\*\*/);
       expect(raw).toMatch(/2\.\s+\*\*Project marker\*\*/);
-      expect(raw).toMatch(/6\.\s+\*\*None\*\*/);
+      expect(raw).toMatch(/4\.\s+\*\*None\*\*/);
+      expect(raw).not.toContain('defaultAgentRuntime');
     }
   });
 

@@ -46,10 +46,10 @@ export interface AgentThread {
   costUsd: number | null;
   numTurns: number | null;
   model: string;
-  /** The resolved agentRuntime config name (e.g. "opus"). */
-  agentRuntime?: string;
-  /** The harness kind for this runtime entry. */
+  /** The harness kind for this tier entry. */
   harness?: string;
+  /** Provenance source for harness — "tier", "role", or "plan". */
+  harnessSource?: string;
   effort?: string;
   thinking?: string;
   effortClamped?: boolean;
@@ -311,8 +311,8 @@ function processEvent(
       costUsd: null,
       numTurns: null,
       model: ('model' in event ? (event as { model?: string }).model : undefined) ?? 'unknown',
-      agentRuntime: 'agentRuntime' in event ? (event as { agentRuntime?: string }).agentRuntime : undefined,
       harness: 'harness' in event ? (event as { harness?: string }).harness : undefined,
+      harnessSource: 'harnessSource' in event ? (event as { harnessSource?: string }).harnessSource : undefined,
       effort: 'effort' in event ? (event as { effort?: string }).effort : undefined,
       thinking: 'thinking' in event ? formatThinking((event as { thinking?: unknown }).thinking) : undefined,
       effortClamped: 'effortClamped' in event ? (event as { effortClamped?: boolean }).effortClamped : undefined,
