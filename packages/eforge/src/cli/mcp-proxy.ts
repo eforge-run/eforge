@@ -890,11 +890,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     name: 'eforge_read_recovery_sidecar',
     description: 'Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent.',
     schema: {
-      setName: z.string().describe('The plan set name'),
       prdId: z.string().describe('The plan ID (prdId) whose recovery sidecar to read'),
     },
-    handler: async ({ setName, prdId }, { cwd: toolCwd }) => {
-      const { data } = await apiReadRecoverySidecar({ cwd: toolCwd, setName, prdId });
+    handler: async ({ prdId }, { cwd: toolCwd }) => {
+      const { data } = await apiReadRecoverySidecar({ cwd: toolCwd, prdId });
       return data;
     },
   });
@@ -906,11 +905,10 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     name: 'eforge_apply_recovery',
     description: 'Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon).',
     schema: {
-      setName: z.string().describe('The plan set name (e.g. the orchestration set that contained the failing plan)'),
       prdId: z.string().describe('The plan ID (prdId) whose recovery verdict to apply'),
     },
-    handler: async ({ setName, prdId }, { cwd: toolCwd }) => {
-      const { data } = await apiApplyRecovery({ cwd: toolCwd, body: { setName, prdId } });
+    handler: async ({ prdId }, { cwd: toolCwd }) => {
+      const { data } = await apiApplyRecovery({ cwd: toolCwd, body: { prdId } });
       return data;
     },
   });

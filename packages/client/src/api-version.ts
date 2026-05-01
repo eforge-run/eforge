@@ -14,7 +14,7 @@ import type { VersionResponse } from './routes.js';
  * the version. Removing a field, renaming a route, or changing a response's
  * required fields IS breaking and must bump the version.
  */
-export const DAEMON_API_VERSION = 13; // v13: seven new playbook routes (`/api/playbook/{list,show,save,enqueue,promote,demote,validate}`) for the playbook management surface introduced in plan-02.
+export const DAEMON_API_VERSION = 14; // v14: removed `setName` request param from `GET /api/recovery/sidecar` and `POST /api/recover/apply` (dead-weight parameter — paths are computed from `prdId` alone).
 
 /** Per-process cache: maps `${port}:${pid}` to the verified daemon version. */
 const verifiedDaemons = new Map<string, number>();

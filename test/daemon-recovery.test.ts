@@ -124,8 +124,8 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 13', () => {
-    expect(DAEMON_API_VERSION).toBe(13);
+  it('is 14', () => {
+    expect(DAEMON_API_VERSION).toBe(14);
   });
 });
 
@@ -211,7 +211,7 @@ describe('GET /api/recovery/sidecar', () => {
     await writeFile(join(failedDir, 'test-prd.recovery.md'), '# Recovery Analysis: test-prd\n\nPartial summary.');
     await writeFile(join(failedDir, 'test-prd.recovery.json'), JSON.stringify(v2Sidecar, null, 2));
 
-    const url = `http://localhost:${server.port}${API_ROUTES.readRecoverySidecar}?setName=test-set&prdId=test-prd`;
+    const url = `http://localhost:${server.port}${API_ROUTES.readRecoverySidecar}?prdId=test-prd`;
     const res = await fetch(url);
 
     expect(res.status).toBe(200);
@@ -222,13 +222,13 @@ describe('GET /api/recovery/sidecar', () => {
   });
 
   it('returns 404 when sidecar files do not exist', async () => {
-    const url = `http://localhost:${server.port}${API_ROUTES.readRecoverySidecar}?setName=nonexistent&prdId=plan-99`;
+    const url = `http://localhost:${server.port}${API_ROUTES.readRecoverySidecar}?prdId=plan-99`;
     const res = await fetch(url);
     expect(res.status).toBe(404);
   });
 
   it('returns 400 when query params are missing', async () => {
-    const url = `http://localhost:${server.port}${API_ROUTES.readRecoverySidecar}?setName=my-set`;
+    const url = `http://localhost:${server.port}${API_ROUTES.readRecoverySidecar}?`;
     const res = await fetch(url);
     expect(res.status).toBe(400);
   });

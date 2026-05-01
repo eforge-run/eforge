@@ -33,7 +33,6 @@ export interface RecoverResponse {
 
 /** Query params for GET /api/recovery/sidecar */
 export interface ReadSidecarRequest {
-  setName: string;
   prdId: string;
 }
 
@@ -76,7 +75,6 @@ export interface ReadSidecarResponse {
 
 /** POST /api/recover/apply */
 export interface ApplyRecoveryRequest {
-  setName: string;
   prdId: string;
 }
 

@@ -95,4 +95,36 @@ describe('QueueSection recovery-pending indicator', () => {
     // But the recovery-pending indicator is visible
     expect(isRecoveryPending).toBe(true);
   });
+
+  it('shows verdict chip when runs array is empty (no-runs reachability)', () => {
+    // Reachability proof: with zero runs (no activeSetName gating), a failed item
+    // whose sidecar was fetched by prdId alone still renders the verdict chip.
+    // Previously the !activeSetName guard would have prevented the fetch entirely.
+    const sidecarResponse: ReadSidecarResponse = {
+      markdown: '# Recovery Report',
+      json: {
+        schemaVersion: 2,
+        generatedAt: '2026-01-01T00:00:00Z',
+        summary: {
+          prdId: 'orphan-prd',
+          setName: 'old-set',
+          featureBranch: 'eforge/old-set',
+          baseBranch: 'main',
+          plans: [],
+          failingPlan: { planId: 'plan-01' },
+          landedCommits: [],
+          diffStat: '',
+          modelsUsed: [],
+          failedAt: '2026-01-01T00:00:00Z',
+        },
+        verdict: { verdict: 'retry', confidence: 'high', rationale: 'Transient failure', completedWork: [], remainingWork: [], risks: [] },
+      },
+    };
+    // Simulate: runs=[] so activeSetName was null, but sidecar was fetched by prdId
+    const { isRecoveryPending, sidecarVerdict } = computeRecoveryState('failed', sidecarResponse);
+    // The verdict chip renders
+    expect(isRecoveryPending).toBe(false);
+    expect(sidecarVerdict).not.toBeNull();
+    expect(sidecarVerdict?.verdict).toBe('retry');
+  });
 });

@@ -10,15 +10,15 @@ Inspect the recovery analysis for a failed PRD and act on the verdict — re-que
 
 ## Workflow
 
-Call `eforge_status` to discover failed PRDs, read the recovery sidecar to surface the verdict and rationale, confirm the action with the user, and call `eforge_apply_recovery` to execute. Never auto-apply — always confirm.
+Call `eforge_queue_list` to discover failed PRDs, read the recovery sidecar to surface the verdict and rationale, confirm the action with the user, and call `eforge_apply_recovery` to execute. Never auto-apply — always confirm.
 
 ## Steps
 
 ### Step 1: Identify the Failed PRD
 
-If the user supplied `<setName> <prdId>` arguments, use them directly and skip to Step 2.
+If the user supplied a `<prdId>` argument, use it directly and skip to Step 2.
 
-Otherwise, call `eforge_status` (no parameters) and look for PRDs with status `failed` in the response. Present the list to the user and ask which one to recover. If no failed PRDs are found, tell the user:
+Otherwise, call `eforge_queue_list` (no parameters) and filter the response for items where `status === 'failed'`. Present the list to the user and ask which one to recover. If no failed PRDs are found, tell the user:
 
 > No failed PRDs found. Use `/eforge:status` to check the current build state.
 
@@ -26,13 +26,13 @@ Otherwise, call `eforge_status` (no parameters) and look for PRDs with status `f
 
 ### Step 2: Read the Recovery Sidecar
 
-Call `eforge_read_recovery_sidecar` with `{ setName, prdId }`.
+Call `eforge_read_recovery_sidecar` with `{ prdId }`.
 
 - If the tool returns a 404 or the response contains a `recoveryError` field, offer to run the recovery analysis:
 
 > No recovery analysis found for `{prdId}`. Would you like me to run the analysis now? (yes / no)
 
-  If the user agrees, call `eforge_recover` with `{ setName, prdId }`, then loop back to Step 2.
+  If the user agrees, call `eforge_recover` with `{ setName, prdId }` — source `setName` from `summary.setName` in a prior sidecar if available, otherwise ask the user to supply it. Then loop back to Step 2.
 
   If the user declines, stop here.
 
@@ -80,7 +80,7 @@ Ask the user to confirm the verdict-specific action:
 
 ### Step 5: Apply the Recovery
 
-On confirmation, call `eforge_apply_recovery` with `{ setName, prdId }`.
+On confirmation, call `eforge_apply_recovery` with `{ prdId }`.
 
 Report the result:
 
@@ -103,6 +103,6 @@ Report the result:
 
 | Skill | Command | When to suggest |
 |-------|---------|----------------|
-| Status | `eforge_status` | Check which PRDs are failed before recovering |
+| Status | `eforge_queue_list` | Check which PRDs are failed before recovering |
 | Build | `eforge_build` | Enqueue new work after a successful recovery |
 | Plan | `eforge_plan` | Plan a replacement PRD before re-queuing |

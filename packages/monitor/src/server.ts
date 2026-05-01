@@ -984,29 +984,25 @@ export async function startServer(
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
       }
-      let body: { setName?: unknown; prdId?: unknown };
+      let body: { prdId?: unknown };
       try {
-        body = await parseJsonBody(req) as { setName?: unknown; prdId?: unknown };
+        body = await parseJsonBody(req) as { prdId?: unknown };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
-        return;
-      }
-      if (!body.setName || typeof body.setName !== 'string') {
-        sendJsonError(res, 400, 'Missing required field: setName');
         return;
       }
       if (!body.prdId || typeof body.prdId !== 'string') {
         sendJsonError(res, 400, 'Missing required field: prdId');
         return;
       }
-      if (!isValidPathSegment(body.setName) || !isValidPathSegment(body.prdId)) {
-        sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
+      if (!isValidPathSegment(body.prdId)) {
+        sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
         return;
       }
       try {
         const result = options.workerTracker.spawnWorker(
           'apply-recovery',
-          [body.setName, body.prdId],
+          [body.prdId],
         );
         sendJson(res, { sessionId: result.sessionId, pid: result.pid });
       } catch (err) {
@@ -1792,20 +1788,19 @@ export async function startServer(
       const failedPrdDir = resolve(cwd, prdQueueDir, 'failed');
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
       const params = new URLSearchParams(queryString);
-      const setName = params.get('setName');
       const prdId = params.get('prdId');
-      if (!setName || !prdId) {
-        sendJsonError(res, 400, 'Missing required query params: setName, prdId');
+      if (!prdId) {
+        sendJsonError(res, 400, 'Missing required query param: prdId');
         return;
       }
-      if (!isValidPathSegment(setName) || !isValidPathSegment(prdId)) {
-        sendJsonError(res, 400, 'Invalid setName or prdId: must not contain path separators or traversal sequences');
+      if (!isValidPathSegment(prdId)) {
+        sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
         return;
       }
       const mdPath = resolve(failedPrdDir, `${prdId}.recovery.md`);
       const jsonPath = resolve(failedPrdDir, `${prdId}.recovery.json`);
       if (!isWithinDir(mdPath, failedPrdDir) || !isWithinDir(jsonPath, failedPrdDir)) {
-        sendJsonError(res, 400, 'Invalid setName or prdId: resolved path escapes failed PRD directory');
+        sendJsonError(res, 400, 'Invalid prdId: resolved path escapes failed PRD directory');
         return;
       }
       let mdContent: string;

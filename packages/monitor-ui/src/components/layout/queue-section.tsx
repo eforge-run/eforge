@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as Collapsible from '@radix-ui/react-collapsible';
-import { ChevronRight, CornerDownRight, RefreshCw } from 'lucide-react';
-import type { QueueItem, RunInfo } from '@/lib/types';
+import { ChevronRight, CornerDownRight } from 'lucide-react';
+import type { QueueItem } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
-import { fetchRecoverySidecar, triggerRecover } from '@/lib/api';
+import { fetchRecoverySidecar } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { API_ROUTES } from '@eforge-build/client';
 import type { ReadSidecarResponse } from '@eforge-build/client';
-import { Button } from '@/components/ui/button';
 import {
   RecoveryVerdictChip,
   type RecoveryVerdictValue,
@@ -72,15 +71,12 @@ interface QueueSectionProps {
 export function QueueSection({ refreshTrigger }: QueueSectionProps) {
   const [open, setOpen] = useState(true);
   const { data: items, refetch } = useApi<QueueItem[]>(API_ROUTES.queue);
-  const { data: runs } = useApi<RunInfo[]>(API_ROUTES.runs);
-  // Tracks prdIds that have had triggerRecover called recently (debounce).
-  const [triggeringIds, setTriggeringIds] = useState<Set<string>>(new Set());
 
   // --- eforge:region plan-04-monitor-ui ---
   // Sidecar data per prdId: undefined = not yet fetched, null = fetched but
   // no sidecar found (recovery pending), ReadSidecarResponse = sidecar present.
   const [sidecarData, setSidecarData] = useState<Record<string, ReadSidecarResponse | null>>({});
-  // Tracks (setName/prdId) keys that have already been fetched to avoid
+  // Tracks prdId keys that have already been fetched to avoid
   // redundant requests on the 5s polling interval.
   const fetchedKeysRef = useRef<Set<string>>(new Set());
   // --- eforge:endregion plan-04-monitor-ui ---
@@ -101,45 +97,22 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
   }, [refreshTrigger, refetch]);
 
   // --- eforge:region plan-04-monitor-ui ---
-  // Derive the most recent run's planSet as the setName for sidecar lookups.
-  // Failed queue items don't carry setName in their payload; the daemon stores
-  // sidecars at eforge/plans/<setName>/<prdId>.recovery.json, so we need the
-  // planSet from the run that built the PRD. Using the most-recent run is
-  // the right heuristic for the typical single-active-planset scenario.
-  const activeSetName = useMemo(() => {
-    if (!runs || runs.length === 0) return null;
-    const sorted = [...runs].sort(
-      (a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime(),
-    );
-    return sorted[0]?.planSet ?? null;
-  }, [runs]);
-
-  // When setName changes (new run started), clear the fetch-dedup cache so
-  // failed items are re-evaluated with the new setName.
-  const prevSetNameRef = useRef<string | null>(null);
-  useEffect(() => {
-    if (prevSetNameRef.current !== activeSetName) {
-      fetchedKeysRef.current = new Set();
-      prevSetNameRef.current = activeSetName;
-    }
-  }, [activeSetName]);
-
   // Fetch sidecars for failed items that haven't been fetched yet.
   // Piggybacked on the queue polling cadence (items changes every 5s).
   useEffect(() => {
-    if (!activeSetName || !items) return;
+    if (!items) return;
     const failedItems = items.filter((i) => i.status === 'failed');
     if (failedItems.length === 0) return;
 
     let cancelled = false;
 
     failedItems.forEach((item) => {
-      const key = `${activeSetName}/${item.id}`;
+      const key = item.id;
       if (fetchedKeysRef.current.has(key)) return;
       // Do NOT pre-emptively add the key — only mark done when a sidecar is
       // actually retrieved, so null (404) results are retried on the next poll.
 
-      fetchRecoverySidecar(activeSetName, item.id).then((result) => {
+      fetchRecoverySidecar(item.id).then((result) => {
         if (cancelled) return;
         if (result) {
           // Sidecar found — mark as done so we don't re-fetch next poll.
@@ -152,7 +125,7 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
     return () => {
       cancelled = true;
     };
-  }, [items, activeSetName]);
+  }, [items]);
   // --- eforge:endregion plan-04-monitor-ui ---
 
   const pendingItems = useMemo(
@@ -248,34 +221,7 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
                   />
                 )}
                 {isRecoveryPending && (
-                  <>
-                    <span className="text-[10px] text-text-dim/60 italic">recovery pending</span>
-                    {activeSetName && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        className="h-4 w-4 p-0"
-                        disabled={triggeringIds.has(item.id)}
-                        title="Run recovery analysis"
-                        onClick={() => {
-                          if (!activeSetName) return;
-                          setTriggeringIds((prev) => new Set([...prev, item.id]));
-                          triggerRecover(activeSetName, item.id).finally(() => {
-                            setTimeout(() => {
-                              setTriggeringIds((prev) => {
-                                const next = new Set(prev);
-                                next.delete(item.id);
-                                return next;
-                              });
-                            }, 3000);
-                          });
-                        }}
-                      >
-                        <RefreshCw size={10} />
-                      </Button>
-                    )}
-                  </>
+                  <span className="text-[10px] text-text-dim/60 italic">recovery pending</span>
                 )}
                 {/* --- eforge:endregion plan-04-monitor-ui --- */}
                 {item.priority !== undefined && sidecarVerdict == null && (
@@ -292,7 +238,7 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
               {/* --- eforge:region plan-04-monitor-ui --- */}
               {sidecar != null && sidecarVerdict != null && (
                 <div className="pl-[calc(8px+0.5rem)] mt-0.5">
-                  <RecoverySidecarSheet sidecar={sidecar} prdId={item.id} setName={activeSetName ?? ''} />
+                  <RecoverySidecarSheet sidecar={sidecar} prdId={item.id} />
                 </div>
               )}
               {/* --- eforge:endregion plan-04-monitor-ui --- */}

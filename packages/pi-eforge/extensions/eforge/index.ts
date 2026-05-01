@@ -1459,15 +1459,12 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     description:
       "Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent.",
     parameters: Type.Object({
-      setName: Type.String({
-        description: "The plan set name",
-      }),
       prdId: Type.String({
         description: "The plan ID (prdId) whose recovery sidecar to read",
       }),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const queryParams = new URLSearchParams({ setName: params.setName, prdId: params.prdId });
+      const queryParams = new URLSearchParams({ prdId: params.prdId });
       const { data } = await daemonRequest(
         ctx.cwd,
         "GET",
@@ -1488,9 +1485,6 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     description:
       "Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon).",
     parameters: Type.Object({
-      setName: Type.String({
-        description: "The plan set name (e.g. the orchestration set that contained the failing plan)",
-      }),
       prdId: Type.String({
         description: "The plan ID (prdId) whose recovery verdict to apply",
       }),
@@ -1500,7 +1494,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         ctx.cwd,
         "POST",
         API_ROUTES.applyRecovery,
-        { setName: params.setName, prdId: params.prdId },
+        { prdId: params.prdId },
       );
       return jsonResult(data);
     },

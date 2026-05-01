@@ -154,7 +154,7 @@ describe('applyRecovery — retry', () => {
     await seedFailedPrd(dir, prdId, 'retry');
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
-    const { events, result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
+    const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Result shape
     expect(result.verdict).toBe('retry');
@@ -191,7 +191,7 @@ describe('applyRecovery — retry', () => {
     await seedFailedPrd(dir, prdId, 'retry');
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
-    await driveGenerator(engine.applyRecovery('test-set', prdId));
+    await driveGenerator(engine.applyRecovery(prdId));
 
     const body = await gitLogBody(dir);
     expect(body).toContain('Co-Authored-By: forged-by-eforge');
@@ -214,7 +214,7 @@ describe('applyRecovery — split', () => {
     });
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
-    const { events, result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
+    const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Result shape
     expect(result.verdict).toBe('split');
@@ -274,7 +274,7 @@ describe('applyRecovery — split', () => {
     });
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
-    const { result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Successor ID should come from the body heading, not the agent frontmatter
     expect(result.successorPrdId).toBe('real-title');
@@ -306,7 +306,7 @@ describe('applyRecovery — split', () => {
     });
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
-    const { result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
+    const { result } = await driveGenerator(engine.applyRecovery(prdId));
 
     expect(result.successorPrdId).toBe('rest-api-layer');
   });
@@ -326,7 +326,7 @@ describe('applyRecovery — abandon', () => {
     await seedFailedPrd(dir, prdId, 'abandon');
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
-    const { events, result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
+    const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Result shape
     expect(result.verdict).toBe('abandon');
@@ -372,7 +372,7 @@ describe('applyRecovery — manual', () => {
     const headBefore = await gitHeadSha(dir);
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
-    const { events, result } = await driveGenerator(engine.applyRecovery('test-set', prdId));
+    const { events, result } = await driveGenerator(engine.applyRecovery(prdId));
 
     // Result shape
     expect(result.verdict).toBe('manual');
@@ -420,7 +420,7 @@ describe('applyRecovery — error paths', () => {
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
 
     await expect(
-      driveGenerator(engine.applyRecovery('test-set', prdId)),
+      driveGenerator(engine.applyRecovery(prdId)),
     ).rejects.toThrow(/recover\(\)/);
   });
 
@@ -473,7 +473,7 @@ describe('applyRecovery — error paths', () => {
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
 
     await expect(
-      driveGenerator(engine.applyRecovery('test-set', prdId)),
+      driveGenerator(engine.applyRecovery(prdId)),
     ).rejects.toThrow(/suggestedSuccessorPrd/);
   });
 
@@ -483,7 +483,7 @@ describe('applyRecovery — error paths', () => {
     seedGitRepo(dir);
 
     const engine = await EforgeEngine.create({ cwd: dir, agentRuntimes: new StubHarness([]) });
-    const gen = engine.applyRecovery('test-set', prdId);
+    const gen = engine.applyRecovery(prdId);
     const events: EforgeEvent[] = [];
 
     // Drive generator manually so we can catch and inspect events before throw

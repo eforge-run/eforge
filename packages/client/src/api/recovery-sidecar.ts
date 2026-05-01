@@ -6,8 +6,8 @@ import { daemonRequest } from '../daemon-client.js';
 import { API_ROUTES } from '../routes.js';
 import type { ReadSidecarResponse } from '../routes.js';
 
-export function apiReadRecoverySidecar(opts: { cwd: string; setName: string; prdId: string }) {
-  const params = new URLSearchParams({ setName: opts.setName, prdId: opts.prdId });
+export function apiReadRecoverySidecar(opts: { cwd: string; prdId: string }) {
+  const params = new URLSearchParams({ prdId: opts.prdId });
   return daemonRequest<ReadSidecarResponse>(
     opts.cwd,
     'GET',

@@ -809,13 +809,12 @@ export function createProgram(abortController?: AbortController): Command {
 
   // --- eforge:region plan-01-backend-apply-recovery ---
   program
-    .command('apply-recovery <setName> <prdId>')
+    .command('apply-recovery <prdId>')
     .description('Apply the recovery verdict for a failed build plan (requeue, enqueue successor, or abandon)')
     .option('--cwd <cwd>', 'Working directory override')
     .option('--no-monitor', 'Disable web monitor')
     .action(
       async (
-        setName: string,
         prdId: string,
         options: {
           cwd?: string;
@@ -832,7 +831,7 @@ export function createProgram(abortController?: AbortController): Command {
           await withMonitor(options.monitor === false, async (monitor) => {
             const sessionId = randomUUID();
 
-            const applyEvents = engine.applyRecovery(setName, prdId);
+            const applyEvents = engine.applyRecovery(prdId);
 
             await consumeEvents(
               wrapEvents(runSession(applyEvents, sessionId), monitor, engine.resolvedConfig.hooks),

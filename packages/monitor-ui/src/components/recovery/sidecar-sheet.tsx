@@ -12,8 +12,6 @@ interface RecoverySidecarSheetProps {
   sidecar: ReadSidecarResponse;
   /** PRD ID shown as the sheet subtitle. */
   prdId: string;
-  /** Set name needed to call recovery mutation helpers. */
-  setName: string;
 }
 
 /**
@@ -23,7 +21,7 @@ interface RecoverySidecarSheetProps {
  * Uses the `plan-prose` CSS class (already defined in globals.css) for
  * consistent typography with the plan viewer.
  */
-export function RecoverySidecarSheet({ sidecar, prdId, setName }: RecoverySidecarSheetProps) {
+export function RecoverySidecarSheet({ sidecar, prdId }: RecoverySidecarSheetProps) {
   const [open, setOpen] = useState(false);
   const [html, setHtml] = useState('');
   const [isApplying, setIsApplying] = useState(false);
@@ -44,12 +42,13 @@ export function RecoverySidecarSheet({ sidecar, prdId, setName }: RecoverySideca
 
   type VerdictShape = { verdict: 'retry' | 'split' | 'abandon' | 'manual'; confidence: string };
   const verdict = (sidecar.json.verdict as unknown as VerdictShape).verdict;
+  const setName = sidecar.json.summary.setName;
 
   async function handleApply() {
     setIsApplying(true);
     setActionError(null);
     try {
-      const result = await applyRecovery(setName, prdId);
+      const result = await applyRecovery(prdId);
       if (result) {
         setOpen(false);
       } else {

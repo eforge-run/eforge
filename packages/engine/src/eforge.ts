@@ -2095,24 +2095,19 @@ export class EforgeEngine {
    * Throws on missing sidecar, validation failure, or missing suggestedSuccessorPrd for split.
    */
   async *applyRecovery(
-    setName: string,
     prdId: string,
     _options?: ApplyRecoveryOptions,
   ): AsyncGenerator<EforgeEvent, ApplyRecoveryResult> {
     const cwd = this.cwd;
 
-    // Validate path segments — reject values containing path separators or traversal
+    // Validate path segment — reject values containing path separators or traversal
     if (
-      !setName ||
       !prdId ||
-      setName.includes('/') ||
-      setName.includes('\\') ||
-      setName.includes('..') ||
       prdId.includes('/') ||
       prdId.includes('\\') ||
       prdId.includes('..')
     ) {
-      throw new Error('Invalid setName or prdId: must not contain path separators or traversal sequences');
+      throw new Error('Invalid prdId: must not contain path separators or traversal sequences');
     }
 
     const queueRelDir = this.config.prdQueue.dir;
@@ -2124,7 +2119,6 @@ export class EforgeEngine {
       timestamp: new Date().toISOString(),
       type: 'recovery:apply:start',
       prdId,
-      setName,
     };
     yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
 

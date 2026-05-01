@@ -121,14 +121,13 @@ export async function triggerRecover(
 }
 
 export async function applyRecovery(
-  setName: string,
   prdId: string,
 ): Promise<{ sessionId: string; pid: number } | null> {
   try {
     const res = await fetch(API_ROUTES.applyRecovery, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ setName, prdId }),
+      body: JSON.stringify({ prdId }),
     });
     if (!res.ok) return null;
     return res.json();
@@ -148,11 +147,10 @@ export async function applyRecovery(
  * `/api/...` strings.
  */
 export async function fetchRecoverySidecar(
-  setName: string,
   prdId: string,
 ): Promise<ReadSidecarResponse | null> {
   try {
-    const params = new URLSearchParams({ setName, prdId });
+    const params = new URLSearchParams({ prdId });
     const res = await fetch(`${API_ROUTES.readRecoverySidecar}?${params.toString()}`);
     if (res.status === 404) return null;
     if (!res.ok) return null;
