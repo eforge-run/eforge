@@ -26,7 +26,7 @@ The new schema collapses both layers into a single concept: **tier recipes**. A 
 | `claudeSdk:` (top-level) | `agents.tiers.<tier>.claudeSdk:` sub-block |
 | `agents.models:` | `agents.tiers.<tier>.model:` |
 | `agents.tiers[t].modelClass:` | `agents.tiers.<tier>.model:` directly |
-| `agents.roles[r].modelClass:` | `agents.roles[r].tier:` or `agents.roles[r].model:` |
+| `agents.roles[r].modelClass:` | `agents.roles[r].tier:` (assign to the tier that carries the desired model) |
 | `agents.roles[r].agentRuntime:` | `agents.roles[r].tier:` |
 
 ---
@@ -123,7 +123,7 @@ agents:
 
 **After:**
 
-Each named runtime becomes a tier recipe. Per-role `agentRuntime:` overrides become `agents.roles[role].tier:` reassignments (pointing the role to the tier that uses the desired provider). If a role needs a unique model on a different provider, assign it to a tier configured for that provider and optionally add a per-role `model:` override:
+Each named runtime becomes a tier recipe. Per-role `agentRuntime:` overrides become `agents.roles[role].tier:` reassignments (pointing the role to the tier that uses the desired provider). If a role needs to run on a different provider, assign it to the tier configured for that provider. To give the role a different model, set the target tier's `model:` field - all roles on that tier will share the configuration:
 
 ```yaml
 agents:
@@ -148,17 +148,16 @@ agents:
         provider: openrouter
     evaluation:
       harness: pi
-      model: anthropic/claude-opus-4-6
+      model: gemini-flash   # configure evaluation tier with the google model
       effort: high
       pi:
         provider: google    # route evaluation tier to google
   roles:
     staleness-assessor:
-      tier: evaluation      # reassign this role to the evaluation tier (google provider)
-      model: gemini-flash   # override the model for this role only
+      tier: evaluation      # reassign this role to the evaluation tier (google provider + gemini model)
 ```
 
-If you need a completely independent combination not representable by any of the four built-in tiers, use per-role `model:` and keep the tier for the harness/provider, or pick the closest tier and override what you need per-role.
+If no built-in tier represents the combination you want, configure one of the four tiers (the one used by the role) with the desired harness, provider, and model, accepting that any other roles on that tier will share the configuration.
 
 ---
 
@@ -188,7 +187,7 @@ agents:
 
 **After:**
 
-Each model class maps directly to a tier's `model:` field. Old per-role `modelClass` overrides become either `agents.roles[role].tier:` reassignments (when the lighter model already lives on a different tier) or per-role `model:` overrides (for any model not represented by a tier). Note that model refs are now plain strings, not objects:
+Each model class maps directly to a tier's `model:` field. Old per-role `modelClass` overrides become `agents.roles[role].tier:` reassignments - point the role at whichever tier carries the desired model (configuring that tier's `model:` if needed). If no existing tier uses the target model, configure the appropriate built-in tier with the desired model. Note that model refs are now plain strings, not objects:
 
 ```yaml
 agents:
@@ -197,19 +196,20 @@ agents:
       harness: claude-sdk
       model: claude-sonnet-4-6   # plain string, not { id: ... }
       effort: medium
+    evaluation:
+      harness: claude-sdk
+      model: claude-haiku-4-5   # assign haiku to the evaluation tier
+      effort: low
   roles:
     reviewer:
       tier: implementation       # was modelClass: balanced (sonnet); implementation tier already uses sonnet
     formatter:
-      model: claude-haiku-4-5    # was modelClass: fast (haiku); no tier uses haiku, so override per-role
+      tier: evaluation           # was modelClass: fast (haiku); route to evaluation tier configured with haiku
     staleness-assessor:
-      model: claude-haiku-4-5    # per-role model override, still in its default tier
+      tier: evaluation           # per-role tier reassignment; evaluation tier carries haiku
 ```
 
-**Choosing between `tier:` reassignment and per-role `model:` override:**
-
-- Use `tier:` reassignment when the role should inherit all settings from the target tier (harness, effort, provider, etc.), not just the model.
-- Use per-role `model:` when you only want a different model but keep the role in its natural tier (e.g. same harness, same effort, same provider).
+Per-role overrides tune `effort`, `thinking`, `maxTurns`, `allowedTools`, `disallowedTools`, `promptAppend`, and `shards`; to change the model for a role, edit the tier that role uses (or reassign the role to a different built-in tier). See [docs/config.md § "Per-Role Field Overrides"](config.md#per-role-field-overrides) for the canonical list.
 
 ---
 
