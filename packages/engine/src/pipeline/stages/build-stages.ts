@@ -619,8 +619,15 @@ registerBuildStage({
     if (err instanceof Error && err.name === 'AbortError') throw err;
     // Doc-author failure is non-fatal — don't propagate
   }
-  if (await hasUnstagedChanges(ctx.worktreePath)) {
-    await forgeCommit(ctx.worktreePath, composeCommitMessage(`docs(${ctx.planId}): author documentation`, ctx.modelTracker));
+  // Stage any working-tree changes left by the agent (new files included) and commit
+  try {
+    const { stdout: statusOut } = await exec('git', ['status', '--porcelain'], { cwd: ctx.worktreePath });
+    if (statusOut.trim().length > 0) {
+      await exec('git', ['add', '-A'], { cwd: ctx.worktreePath });
+      await forgeCommit(ctx.worktreePath, composeCommitMessage(`docs(${ctx.planId}): author documentation`, ctx.modelTracker));
+    }
+  } catch {
+    // Non-critical — don't fail the stage if the commit fails
   }
   yield* emitFilesChanged(ctx);
 });
@@ -667,8 +674,15 @@ registerBuildStage({
     if (err instanceof Error && err.name === 'AbortError') throw err;
     // Doc-syncer failure is non-fatal — don't propagate
   }
-  if (await hasUnstagedChanges(ctx.worktreePath)) {
-    await forgeCommit(ctx.worktreePath, composeCommitMessage(`docs(${ctx.planId}): sync documentation with implementation`, ctx.modelTracker));
+  // Stage any working-tree changes left by the agent (edited docs included) and commit
+  try {
+    const { stdout: statusOut } = await exec('git', ['status', '--porcelain'], { cwd: ctx.worktreePath });
+    if (statusOut.trim().length > 0) {
+      await exec('git', ['add', '-A'], { cwd: ctx.worktreePath });
+      await forgeCommit(ctx.worktreePath, composeCommitMessage(`docs(${ctx.planId}): sync documentation with implementation`, ctx.modelTracker));
+    }
+  } catch {
+    // Non-critical — don't fail the stage if the commit fails
   }
   yield* emitFilesChanged(ctx);
 });

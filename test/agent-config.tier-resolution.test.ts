@@ -122,7 +122,7 @@ describe('plan override beats role override beats tier', () => {
 });
 
 // ---------------------------------------------------------------------------
-// DEFAULT_CONFIG sweep across all 24 roles
+// DEFAULT_CONFIG sweep across all 25 roles
 // ---------------------------------------------------------------------------
 
 describe('DEFAULT_CONFIG default tier recipes apply to all roles', () => {

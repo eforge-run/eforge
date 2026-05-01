@@ -885,9 +885,9 @@ describe('stage descriptor metadata', () => {
     }
   });
 
-  it('all 10 build stage descriptors have non-empty description, whenToUse, and costHint', () => {
+  it('all 11 build stage descriptors have non-empty description, whenToUse, and costHint', () => {
     const descriptors = getBuildStageDescriptors();
-    expect(descriptors.length).toBe(10);
+    expect(descriptors.length).toBe(11);
     for (const d of descriptors) {
       expect(d.description.length).toBeGreaterThan(0);
       expect(d.whenToUse.length).toBeGreaterThan(0);
@@ -947,7 +947,7 @@ describe('formatStageRegistry', () => {
   it('contains all registered stage names', () => {
     const output = formatStageRegistry();
     const allNames = [...getCompileStageNames(), ...getBuildStageNames()];
-    expect(allNames.length).toBe(16);
+    expect(allNames.length).toBe(17);
     for (const name of allNames) {
       expect(output).toContain(name);
     }
