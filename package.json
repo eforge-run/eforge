@@ -29,7 +29,6 @@
   },
   "devDependencies": {
     "@eforge-build/client": "workspace:*",
-    "commander": "^14.0.3",
     "@eforge-build/engine": "workspace:*",
     "@eforge-build/monitor": "workspace:*",
     "@eforge-build/monitor-ui": "workspace:*",
@@ -37,9 +36,10 @@
     "@mariozechner/pi-ai": "^0.70.6",
     "@mariozechner/pi-coding-agent": "^0.70.6",
     "@types/node": "^25.6.0",
+    "commander": "^14.0.3",
     "typescript": "^5.9.3",
     "vitest": "^4.1.5",
     "yaml": "^2.8.3",
-    "zod": "^4.3.6"
+    "zod": "^4.4.1"
   }
 }

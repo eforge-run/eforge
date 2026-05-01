@@ -30,7 +30,7 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.122",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.126",
     "@eforge-build/client": "workspace:*",
     "@mariozechner/pi-agent-core": "^0.70.6",
     "@mariozechner/pi-ai": "^0.70.6",
@@ -41,7 +41,7 @@
     "langfuse": "^3.38.20",
     "ora": "^9.4.0",
     "yaml": "^2.8.3",
-    "zod": "^4.3.6"
+    "zod": "^4.4.1"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
