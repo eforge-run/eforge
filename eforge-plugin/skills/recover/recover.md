@@ -102,6 +102,6 @@ Report the result:
 
 | Skill | Command | When to suggest |
 |-------|---------|----------------|
-| Status | `/eforge:status` | Check which PRDs are failed before recovering |
+| Status | `mcp__eforge__eforge_queue_list` | Check which PRDs are failed before recovering |
 | Build | `/eforge:build` | Enqueue new work after a successful recovery |
 | Plan | `/eforge:plan` | Plan a replacement PRD before re-queuing |

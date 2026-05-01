@@ -132,16 +132,16 @@ scope: {user|project-team|project-local}
 
 **Body sections:**
 - `## Goal` — what the workflow achieves
-- `## Out of scope` — what this playbook should NOT do
+- `## Out of scope` — what this playbook should NOT do (prevents scope creep in the build)
 - `## Acceptance criteria` — specific, testable conditions for a successful run
 - `## Notes for the planner` — hints, constraints, or context for the build agent (optional but encouraged)
 
-Present the draft to the user for review.
+Present the draft to the user for review. If entries were pre-filled from an `/eforge:plan` session, note which sections came from the session.
 
 ### 3.4: Validate and save
 
 1. Call `eforge_playbook { action: "validate", raw: "<draft-markdown>" }` before saving.
-   - If `ok: false`, surface the errors **verbatim** and ask the user to fix them. Loop back to Step 3.3. Do NOT write the file.
+   - If `ok: false`, surface the errors **verbatim** and ask the user to fix them. Loop back to Step 3.3 with the errors highlighted. Do NOT write the file.
    - If `ok: true`, proceed.
 
 2. Call `eforge_playbook { action: "save", scope: "<scope>", playbook: { frontmatter: {...}, body: {...} } }`.
@@ -164,16 +164,20 @@ Call `eforge_playbook { action: "list" }`. Print a numbered list:
 ```
   1. docs-sync           [project-team]
   2. dependency-update   [user]
-  3. release-prep        [project-local]  <- shadows project-team version
+  3. release-prep        [project-local]  ← shadows project-team version
 ```
 
-Include `[source]` labels and shadow chain annotations. Ask the user to pick by number.
+- Include `[source]` labels.
+- Mark shadowed entries with `← shadows {tier} version`.
+- If no playbooks exist, tell the user and offer to Create one.
+
+Ask the user to pick by number. Never ask for a name.
 
 ### 4.2: Shadow notice
 
-If the selected playbook is shadowed, show:
+If the selected playbook is **shadowed by** a more-specific tier (e.g., the user picked a `project-team` entry that has a `project-local` shadow), show:
 
-> "This playbook is shadowed by a `project-local` version at `.eforge/playbooks/{name}.md`. The daemon always runs the shadow. Would you like to:
+> "⚠ This playbook is shadowed by a `project-local` version at `.eforge/playbooks/{name}.md`. The daemon always runs the shadow. Would you like to:
 > 1. Edit the **shadow** (project-local — what the daemon actually runs)
 > 2. Edit the **original** (project-team — shadowed, not active)
 > 3. Copy the original to project-local and edit (creates a new shadow)"
@@ -182,20 +186,20 @@ If the user picks option 3, call `POST /api/playbook/copy` with `{ name: "<name>
 
 ### 4.3: Load the playbook
 
-Call `eforge_playbook { action: "show", name: "<name>" }`.
+Call `eforge_playbook { action: "show", name: "<name>" }` (resolved to the tier the user chose).
 
 ### 4.4: Section-by-section walkthrough
 
-Work through each section in order: **Goal** → **Out of scope** → **Acceptance criteria** → **Notes for the planner**.
+Present each section with its current content and ask if the user wants to update it. Work through in order: **Goal** → **Out of scope** → **Acceptance criteria** → **Notes for the planner**.
 
 For each section:
-1. Show the current content: `**## {Section}** (current): {current content}`
+1. Show: `**## {Section}** (current): {current content}`
 2. Ask: "Does this look right, or would you like to update it?"
-3. Update the draft if the user provides new content; preserve current content otherwise.
+3. If the user provides new content, update the draft. If they say "fine" / "keep it" / "no change", preserve the current content.
 
 ### 4.5: Validate and save
 
-Same as Step 3.4. Validate before saving, surface errors verbatim, do NOT write on failure.
+Same as Step 3.4. Validate before saving, surface errors verbatim, do NOT write on failure. On success, report the path.
 
 ---
 
@@ -205,13 +209,15 @@ Enqueue a playbook, with an optional wait for an in-flight build to finish first
 
 ### 5.1: Pick a playbook
 
-Same numbered-list approach as Step 4.1. Pre-select from `$ARGUMENTS` if provided.
+Same numbered-list approach as Step 4.1. If a name was provided via `$ARGUMENTS`, pre-select it but still confirm.
 
 ### 5.2: Check for in-flight builds
 
-Call `eforge_queue_list {}` to get current queue items. Filter for `status: "running"` or `"pending"`. Build a numbered list indexed starting at 1.
+Call `eforge_queue_list {}` to get current queue items.
 
-- **If no active items**: enqueue immediately (skip to 5.3).
+Filter for items where `status` is `"running"` or `"pending"` (queued). Build a numbered list indexed starting at 1.
+
+- **If no active items**: skip to Step 5.3 and enqueue immediately.
 - **If active items exist**: list them by **title** with index numbers (never show queue ids):
 
 ```
@@ -220,23 +226,24 @@ There are active builds in the queue:
   2. [pending] Add dark mode support
 
 Would you like to:
-  a. Run now (no dependency)
+  a. Run now (enqueue immediately, no dependency)
   b. Wait for build 1 to finish, then run
   c. Wait for build 2 to finish, then run
 ```
 
 **Resolving selection:**
-- Internally map the user's pick (letter or number) to the corresponding item's internal queue id.
+- Internally map the user's pick (letter b/c or number 1/2) to the corresponding queue item's internal id.
 - The user never types or sees the queue id at any point.
 
 **Handling ambiguity:**
-- If the user provides a free-text name, find all items whose title contains the mention.
-- Exactly one match: proceed. Multiple matches: ask user to pick by number.
+- If the user provides a free-text name instead of a number (e.g. "wait for the docs build"), find all items whose title contains the mention.
+- If exactly one match: proceed.
+- If multiple matches: ask the user to pick by number from the numbered list above.
 
-**Confirm before enqueueing:**
+**Before enqueueing, confirm the mapping:**
 > "Got it — `{playbook-name}` will run after **{selected-build-title}** finishes."
 
-Await user confirmation. Only call the enqueue tool if confirmed.
+Await user confirmation (y/n or just Enter). Only proceed if confirmed.
 
 ### 5.3: Enqueue
 
@@ -245,49 +252,95 @@ Await user confirmation. Only call the enqueue tool if confirmed.
 
 The `afterQueueId` is the internal queue id resolved in Step 5.2 — never the title and never typed by the user.
 
-If enqueue returns 404 (upstream no longer active), tell the user it already finished and run the playbook immediately without `afterQueueId`.
+Report:
+> "Playbook `{name}` enqueued. {If afterQueueId: 'It will start after `{build-title}` completes.'}"
+
+If the enqueue fails because the upstream is no longer active (404 from daemon), tell the user:
+> "The build you selected has already finished. Running `{name}` now instead."
+Then call `eforge_playbook { action: "enqueue", name: "<name>" }` without `afterQueueId`.
 
 ---
 
 ## Branch: List (Step 6)
 
-Call `eforge_playbook { action: "list" }` and render a formatted read-only listing with source labels and full shadow chains. Group by scope tier. If no playbooks exist, offer to Create one.
+Call `eforge_playbook { action: "list" }` and render a formatted read-only listing.
+
+For each playbook, show:
+- Name
+- Description
+- Source tier `[user]` / `[project-team]` / `[project-local]`
+- Shadow chain (if any): `→ shadowed by project-local: .eforge/playbooks/{name}.md`
+
+Group by scope tier for readability. If no playbooks exist, tell the user and offer to Create one.
 
 ---
 
 ## Branch: Promote (Step 7)
 
-Filter playbooks for `source: "project-local"`. Present numbered list. Show shadow trade-off notice before confirming:
+Move a project-local playbook to project-team so the whole team benefits from it.
 
-> "Promoting `{name}` moves it from `.eforge/playbooks/` to `eforge/playbooks/` and commits it with the project. Note: you will no longer automatically receive team-side improvements to a playbook of the same name — your promoted version will shadow the team default."
+### 7.1: Pick a project-local playbook
 
-Call `eforge_playbook { action: "promote", name: "<name>" }` and report the destination path.
+Call `eforge_playbook { action: "list" }` and filter for `source: "project-local"` entries. Present as a numbered list. If none exist, tell the user.
+
+### 7.2: Shadow trade-off notice
+
+Before promoting, note the trade-off:
+
+> "Promoting `{name}` moves it from `.eforge/playbooks/` to `eforge/playbooks/` and commits it with the project. **Note:** once promoted, you will no longer automatically receive team-side improvements to a playbook of the same name — your promoted version will shadow the team default."
+
+Ask: "Proceed with promotion?"
+
+### 7.3: Promote
+
+Call `eforge_playbook { action: "promote", name: "<name>" }`.
+
+Report the destination path returned by the daemon.
 
 ---
 
 ## Branch: Demote (Step 8)
 
-Filter playbooks for `source: "project-team"`. Present numbered list. Show shadow trade-off notice before confirming:
+Move a project-team playbook back to project-local (personal shadow, not shared).
 
-> "Demoting `{name}` creates a project-local copy at `.eforge/playbooks/{name}.md` that will shadow the team version."
+### 8.1: Pick a project-team playbook
 
-Call `eforge_playbook { action: "demote", name: "<name>" }` and report the destination path.
+Call `eforge_playbook { action: "list" }` and filter for `source: "project-team"` entries. Present as a numbered list. If none exist, tell the user.
+
+### 8.2: Shadow trade-off notice
+
+> "Demoting `{name}` creates a project-local copy at `.eforge/playbooks/{name}.md` that will shadow the team version. The team version remains in `eforge/playbooks/` but the daemon will run your local copy instead."
+
+Ask: "Proceed with demotion?"
+
+### 8.3: Demote
+
+Call `eforge_playbook { action: "demote", name: "<name>" }`.
+
+Report the destination path returned by the daemon.
 
 ---
 
 ## Power-User Shortcuts
 
-Direct invocations jump into the relevant branch with the named item pre-selected and still confirm before acting:
+Direct invocations with a name argument jump into the relevant branch with that item pre-selected and still confirm before acting:
 
-- `/eforge:playbook run docs-sync` — Run branch with `docs-sync` pre-selected; still offers wait-for-build.
-- `/eforge:playbook edit dependency-update` — Edit branch with `dependency-update` pre-selected.
-- `/eforge:playbook promote release-prep` — Promote branch with `release-prep` pre-selected.
+- `/eforge:playbook run docs-sync` — Run branch, pre-selects `docs-sync`, still offers wait-for-build if applicable.
+- `/eforge:playbook edit dependency-update` — Edit branch, pre-selects `dependency-update`.
+- `/eforge:playbook promote release-prep` — Promote branch, pre-selects `release-prep`.
+- `/eforge:playbook create` — Create branch, asks for the workflow description.
 
 ---
 
 ## Validation Rules
 
-Every save path must pass `eforge_playbook { action: "validate", raw: "<markdown>" }` before writing. On failure: surface errors **verbatim**, do NOT write to disk.
+Every save path (Create and Edit) must pass `eforge_playbook { action: "validate", raw: "<markdown>" }` before the daemon writes anything to disk. On failure:
+
+1. Surface the daemon's error messages **verbatim** — do not paraphrase.
+2. Show the user exactly which section or field caused the error.
+3. Ask the user to fix the content.
+4. Re-validate before trying to save again.
+5. Never write to disk while `ok: false`.
 
 ---
 
@@ -296,10 +349,11 @@ Every save path must pass `eforge_playbook { action: "validate", raw: "<markdown
 | Condition | Action |
 |-----------|--------|
 | No playbooks exist | Tell the user and offer Create |
+| Playbook name not found | Surface daemon error, list available playbooks |
 | Validation failure | Show errors verbatim, do not save |
-| Queue list fails | Skip wait-for-build offer, enqueue immediately |
+| Queue list fails | Skip wait-for-build offer, enqueue immediately and note the queue check failed |
 | Tool connection failure | Daemon auto-starts; if it still fails, suggest `eforge daemon start` |
-| No eforge config | "No eforge config found. Run `/eforge:init` to initialize eforge in this project." |
+| No eforge config | Tell the user: "No eforge config found. Run `/eforge:init` to initialize eforge in this project." |
 
 ---
 

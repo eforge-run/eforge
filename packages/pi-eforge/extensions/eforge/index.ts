@@ -1704,6 +1704,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       description: "Check for eforge updates and guide through updating",
       skill: "eforge-update",
     },
+    {
+      name: "eforge:recover",
+      description: "Inspect and apply recovery for a failed PRD",
+      skill: "eforge-recover",
+    },
   ];
 
   for (const cmd of skillCommands) {

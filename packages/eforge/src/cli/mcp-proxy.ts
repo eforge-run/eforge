@@ -26,36 +26,7 @@ import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-f
 
 declare const EFORGE_VERSION: string;
 
-const ALLOWED_FLAGS = new Set([
-  '--queue',
-  '--watch',
-  '--auto',
-  '--verbose',
-  '--dry-run',
-  '--no-monitor',
-  '--no-plugins',
-  '--poll-interval',
-]);
 
-function sanitizeFlags(flags?: string[]): string[] | undefined {
-  if (!flags) return undefined;
-  const result: string[] = [];
-  let skipNext = false;
-  for (const flag of flags) {
-    if (skipNext) {
-      skipNext = false;
-      continue;
-    }
-    if (ALLOWED_FLAGS.has(flag)) {
-      result.push(flag);
-    } else if (!flag.startsWith('-')) {
-      result.push(flag);
-    } else {
-      skipNext = true;
-    }
-  }
-  return result;
-}
 
 // Re-export for any consumers that imported from here
 export { ensureDaemon, daemonRequest, daemonRequestIfRunning };
@@ -334,20 +305,6 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         issueCounts: { errors: summary.errorCount },
         eventCount: summary.eventCount,
       };
-    },
-  });
-
-  // Tool: eforge_enqueue
-  createDaemonTool(server, cwd, {
-    name: 'eforge_enqueue',
-    description: 'Normalize input and add it to the eforge PRD queue.',
-    schema: {
-      source: z.string().describe('PRD file path, inline prompt, or rough notes to enqueue'),
-      flags: z.array(z.string()).optional().describe('Optional CLI flags'),
-    },
-    handler: async ({ source, flags }, { cwd: toolCwd }) => {
-      const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, { source, flags: sanitizeFlags(flags) });
-      return { ...data, monitorUrl: `http://localhost:${port}` };
     },
   });
 
