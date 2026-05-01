@@ -101,11 +101,11 @@ describe('eforge-plugin/skills/profile-new/profile-new.md - user-scope updates',
     expect(raw).toMatch(/scope:\s*["']<local\|project\|user>["']/);
   });
 
-  it('passes scope to use action in Step 8', () => {
-    const step8Start = raw.indexOf('Step 8');
-    expect(step8Start).toBeGreaterThan(-1);
-    const step8Content = raw.slice(step8Start);
-    expect(step8Content).toContain('scope');
+  it('passes scope to use action in Step 7', () => {
+    const step7Start = raw.indexOf('Step 7');
+    expect(step7Start).toBeGreaterThan(-1);
+    const step7Content = raw.slice(step7Start);
+    expect(step7Content).toContain('scope');
   });
 
   it('mentions user scope in the file path description', () => {
@@ -337,16 +337,16 @@ describe('enum drift - piThinkingLevel and effortLevel values', () => {
   const pluginConfig = readRepoFile('eforge-plugin/skills/config/config.md');
   const docsConfig = readRepoFile('docs/config.md');
 
-  it('Pi backend-new skill contains xhigh for both thinkingLevel and effort', () => {
-    // thinkingLevel line should contain xhigh
-    expect(piBackendNew).toMatch(/thinkingLevel.*xhigh/i);
-    // effort line should contain xhigh
-    expect(piBackendNew).toMatch(/effort.*xhigh/i);
+  it('Pi config skill contains xhigh for thinkingLevel and effort (profile-new no longer has tuning step)', () => {
+    // profile-new skills no longer document thinkingLevel/effort (tuning step removed by plan-01);
+    // verify the config skill still has them
+    expect(piConfig).toMatch(/thinkingLevel.*xhigh/i);
+    expect(piConfig).toMatch(/effort.*xhigh/i);
   });
 
-  it('Plugin backend-new skill contains xhigh for both thinkingLevel and effort', () => {
-    expect(pluginBackendNew).toMatch(/thinkingLevel.*xhigh/i);
-    expect(pluginBackendNew).toMatch(/effort.*xhigh/i);
+  it('Plugin config skill contains xhigh for thinkingLevel and effort (profile-new no longer has tuning step)', () => {
+    expect(pluginConfig).toMatch(/thinkingLevel.*xhigh/i);
+    expect(pluginConfig).toMatch(/effort.*xhigh/i);
   });
 
   it('Pi config skill contains xhigh for both effort and thinkingLevel', () => {
@@ -364,10 +364,11 @@ describe('enum drift - piThinkingLevel and effortLevel values', () => {
     expect(docsConfig).toMatch(/thinkingLevel.*xhigh/i);
   });
 
-  it('Pi and plugin backend-new skills contain low as a thinkingLevel option', () => {
-    // Both should list 'low' in the thinkingLevel line
-    expect(piBackendNew).toMatch(/thinkingLevel.*`low`/);
-    expect(pluginBackendNew).toMatch(/thinkingLevel.*`low`/);
+  it('Pi and plugin config skills contain low as a thinkingLevel option (profile-new no longer has tuning step)', () => {
+    // profile-new skills no longer document thinkingLevel (tuning step removed by plan-01);
+    // verify the config skills still have 'low'
+    expect(piConfig).toMatch(/thinkingLevel.*low/);
+    expect(pluginConfig).toMatch(/thinkingLevel.*low/);
   });
 
   // --- Occurrence count assertions (catch partial fixes) ---
@@ -402,19 +403,23 @@ describe('enum drift - piThinkingLevel and effortLevel values', () => {
 
   // --- Complete enum sequence validation (backend-new skills) ---
 
-  it('Pi backend-new skill lists the full thinkingLevel enum: off | low | medium | high | xhigh', () => {
-    expect(piBackendNew).toMatch(/off.*low.*medium.*high.*xhigh/);
+  it('Pi config skill lists the full thinkingLevel enum: off | low | medium | high | xhigh', () => {
+    // profile-new skills no longer document these enums (tuning step removed by plan-01)
+    expect(piConfig).toMatch(/off.*low.*medium.*high.*xhigh/);
   });
 
-  it('Pi backend-new skill lists the full effort enum: low | medium | high | xhigh | max', () => {
-    expect(piBackendNew).toMatch(/low.*medium.*high.*xhigh.*max/);
+  it('Pi config skill lists the full effort enum: low | medium | high | xhigh | max', () => {
+    // profile-new skills no longer document these enums (tuning step removed by plan-01)
+    expect(piConfig).toMatch(/low.*medium.*high.*xhigh.*max/);
   });
 
-  it('Plugin backend-new skill lists the full thinkingLevel enum: off | low | medium | high | xhigh', () => {
-    expect(pluginBackendNew).toMatch(/off.*low.*medium.*high.*xhigh/);
+  it('Plugin config skill lists the full thinkingLevel enum: off | low | medium | high | xhigh', () => {
+    // profile-new skills no longer document these enums (tuning step removed by plan-01)
+    expect(pluginConfig).toMatch(/off.*low.*medium.*high.*xhigh/);
   });
 
-  it('Plugin backend-new skill lists the full effort enum: low | medium | high | xhigh | max', () => {
-    expect(pluginBackendNew).toMatch(/low.*medium.*high.*xhigh.*max/);
+  it('Plugin config skill lists the full effort enum: low | medium | high | xhigh | max', () => {
+    // profile-new skills no longer document these enums (tuning step removed by plan-01)
+    expect(pluginConfig).toMatch(/low.*medium.*high.*xhigh.*max/);
   });
 });
