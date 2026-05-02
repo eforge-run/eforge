@@ -1,0 +1,64 @@
+name: input-package-for-playbooks-and-session-planning
+description: Extract playbook and session-plan logic from @eforge-build/engine
+  into a new @eforge-build/input package, and extract scope/path resolution into
+  a new @eforge-build/scopes package, so engine remains the agentic build
+  pipeline and input-layer artifacts have a stable home reusable by daemon, CLI,
+  Pi, plugin, and future wrapper apps.
+created: 2026-05-02
+status: draft
+mode: expedition
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+architecture:
+  status: complete
+modules:
+  scopes-package:
+    description: Create @eforge-build/scopes workspace package with canonical scope
+      names, directory helpers, named-set resolution (extracted from engine
+      set-resolver), and new layered-singleton lookup primitive; tests cover
+      precedence, shadowing, and merge order.
+    depends_on: []
+    status: pending
+  input-package:
+    description: Create @eforge-build/input workspace package; move playbook
+      schema/parser/serializer/list/load/write/move/copy/validate and
+      playbook-to-build-source out of engine; add deterministic session-plan
+      logic (parse, serialize, dimension selection, readiness, legacy boolean
+      migration, session-plan-to-build-source) plus normalizeBuildSource
+      boundary helper; depends on @eforge-build/scopes for tier resolution.
+    depends_on:
+      - scopes-package
+    status: pending
+  engine-integration:
+    description: Refactor packages/engine/src/config.ts to use @eforge-build/scopes
+      for user/project-team/project-local discovery, layered config.yaml lookup,
+      and profile named-set resolution; delete packages/engine/src/playbook.ts
+      and set-resolver.ts; remove playbook exports from engine barrel; redirect
+      existing playbook/set-resolver tests to the new packages; engine must not
+      depend on @eforge-build/input.
+    depends_on:
+      - scopes-package
+      - input-package
+    status: pending
+  daemon-cli-wiring:
+    description: Update packages/monitor/src/server.ts playbook routes to use
+      @eforge-build/input; add session-plan source normalization to enqueue
+      paths via normalizeBuildSource; update CLI/Pi/plugin imports as needed;
+      preserve existing wire contracts and skill parity; bump eforge-plugin
+      version per project convention.
+    depends_on:
+      - input-package
+      - engine-integration
+    status: pending
+  docs-boundary:
+    description: "Update README.md, docs/architecture.md, docs/config.md,
+      docs/roadmap.md, and the new packages/scopes/README.md and
+      packages/input/README.md to harden the package and product boundary:
+      scopes = lookup, input = reusable build-input protocols, engine = agentic
+      build pipeline, wrapper apps own scheduling/workflow orchestration;
+      explicitly state engine must not depend on input."
+    depends_on:
+      - daemon-cli-wiring
+    status: pending
