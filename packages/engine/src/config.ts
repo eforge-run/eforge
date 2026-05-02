@@ -15,11 +15,11 @@ import type { AgentRole } from './events.js';
 import { shardScopeSchema } from './schemas.js';
 import type { ShardScope } from './schemas.js';
 import {
-  loadSetArtifact,
-  projectLocalSetDir,
-  projectTeamSetDir,
-  userSetDir,
-} from './set-resolver.js';
+  resolveNamedSet,
+  resolveLayeredSingletons,
+  getScopeDirectory,
+  userEforgeConfigDir,
+} from '@eforge-build/scopes';
 export type { ShardScope } from './schemas.js';
 
 // Re-export shared types from @eforge-build/client so engine-internal callers
@@ -819,7 +819,6 @@ async function readProjectConfigOrEmpty(configDir: string): Promise<PartialEforg
  * the start directory and no `eforge/config.yaml` is found.
  */
 export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; warnings: string[]; profile: { name: string | null; source: ActiveProfileSource; scope: 'local' | 'project' | 'user' | null; config: PartialEforgeConfig | null } }> {
-  const globalConfig = await loadUserConfig();
   const allWarnings: string[] = [];
 
   const startDir = cwd ?? process.cwd();
@@ -841,18 +840,12 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
     }
   }
 
-  let projectConfig: PartialEforgeConfig = {};
-  if (configPath) {
-    const raw = await readFile(configPath, 'utf-8');
-    const data = parseYaml(raw);
-    if (data && typeof data === 'object') {
-      projectConfig = parseRawConfig(data as Record<string, unknown>);
-    }
-  }
+  // Establish configDir and projectRoot early (needed for resolveLayeredSingletons)
+  const projectRoot = configPath ? dirname(dirname(configPath)) : startDir;
+  const configDir = configPath ? dirname(configPath) : projectRoot;
 
   // Auto-migrate eforge/backends/ -> eforge/profiles/ on first load after upgrade
   if (configPath) {
-    const configDir = dirname(configPath);
     try {
       await migrateBackendsToProfiles(configDir);
     } catch {
@@ -866,28 +859,26 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
     // best-effort: migration failure should not break config loading
   }
 
-  // Resolve and merge active profile, if present.
-  const projectRoot = configPath ? dirname(dirname(configPath)) : startDir;
-
-  // Load project-local config (.eforge/config.yaml)
+  // Load all config.yaml layers via resolveLayeredSingletons (user → project-team → project-local)
+  let globalConfig: PartialEforgeConfig = {};
+  let projectConfig: PartialEforgeConfig = {};
   let localConfig: PartialEforgeConfig = {};
-  try {
-    const localCfgPath = localConfigPath(projectRoot);
-    const localRaw = await readFile(localCfgPath, 'utf-8');
-    const localData = parseYaml(localRaw);
-    if (localData && typeof localData === 'object') {
-      localConfig = parseRawConfig(localData as Record<string, unknown>);
+  const configYamlLayers = await resolveLayeredSingletons('config.yaml', { cwd: projectRoot, configDir });
+  for (const { scope, path } of configYamlLayers) {
+    const raw = await readFile(path, 'utf-8');
+    const data = parseYaml(raw);
+    if (data && typeof data === 'object') {
+      const partial = parseRawConfig(data as Record<string, unknown>);
+      if (scope === 'user') globalConfig = partial;
+      else if (scope === 'project-team') projectConfig = partial;
+      else localConfig = partial;
     }
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') throw err;
-    // Missing .eforge/config.yaml is silent (ENOENT swallowed)
   }
 
   let profileConfig: PartialEforgeConfig | null = null;
   let resolvedProfileName: string | null = null;
   let resolvedProfileSource: ActiveProfileSource = 'none';
   let resolvedProfileScope: 'local' | 'project' | 'user' | null = null;
-  const configDir = configPath ? dirname(configPath) : projectRoot;
   {
     const { name, source, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig, projectRoot);
     allWarnings.push(...warnings);
@@ -932,8 +923,6 @@ const ACTIVE_PROFILE_MARKER = '.active-profile';
 /** Profile subdirectory inside the eforge config directory. */
 const PROFILES_SUBDIR = 'profiles';
 
-/** Set kind descriptor for profiles — used by the generic set-resolver. */
-const PROFILES_KIND = { dirSegment: PROFILES_SUBDIR, fileExtension: 'yaml' } as const;
 
 function profilePath(configDir: string, name: string): string {
   return resolve(configDir, PROFILES_SUBDIR, `${name}.yaml`);
@@ -947,11 +936,6 @@ function markerPath(configDir: string): string {
   return resolve(configDir, ACTIVE_PROFILE_MARKER);
 }
 
-/** Return the user eforge config directory (~/.config/eforge/). */
-function userEforgeConfigDir(): string {
-  const base = process.env.XDG_CONFIG_HOME || resolve(homedir(), '.config');
-  return resolve(base, 'eforge');
-}
 
 /** Return the user-scope profiles directory (~/.config/eforge/profiles/). */
 function userProfilesDir(): string {
@@ -972,26 +956,24 @@ function userMarkerPath(): string {
 // Project-local tier paths (.eforge/ inside project root — gitignored)
 // ---------------------------------------------------------------------------
 
-const LOCAL_CONFIG_SUBDIR = '.eforge';
+/** Return the project-local scope root directory (<cwd>/.eforge/). */
+function localScopeDir(cwd: string): string {
+  return getScopeDirectory('project-local', { cwd, configDir: '' });
+}
 
 /** Return the project-local profiles directory (<cwd>/.eforge/profiles/). */
 function localProfilesDir(cwd: string): string {
-  return resolve(cwd, LOCAL_CONFIG_SUBDIR, PROFILES_SUBDIR);
+  return resolve(localScopeDir(cwd), PROFILES_SUBDIR);
 }
 
 /** Return the path to a project-local profile file. */
 function localProfilePath(cwd: string, name: string): string {
-  return resolve(cwd, LOCAL_CONFIG_SUBDIR, PROFILES_SUBDIR, `${name}.yaml`);
+  return resolve(localScopeDir(cwd), PROFILES_SUBDIR, `${name}.yaml`);
 }
 
 /** Return the path to the project-local active-profile marker file. */
 function localMarkerPath(cwd: string): string {
-  return resolve(cwd, LOCAL_CONFIG_SUBDIR, ACTIVE_PROFILE_MARKER);
-}
-
-/** Return the path to the project-local config file. */
-function localConfigPath(cwd: string): string {
-  return resolve(cwd, LOCAL_CONFIG_SUBDIR, 'config.yaml');
+  return resolve(localScopeDir(cwd), ACTIVE_PROFILE_MARKER);
 }
 
 /** Check whether a profile file exists in local, project, or user scope. */
@@ -1248,12 +1230,13 @@ export async function loadProfile(
   cwd?: string,
 ): Promise<{ profile: PartialEforgeConfig; scope: 'local' | 'project' | 'user' } | null> {
   const effectiveCwd = cwd ?? dirname(configDir);
-  const artifact = await loadSetArtifact(PROFILES_KIND, name, { configDir, cwd: effectiveCwd });
+  const profiles = await resolveNamedSet('profiles', { cwd: effectiveCwd, configDir, extension: 'yaml' });
+  const artifact = profiles.get(name);
   if (!artifact) return null;
   const profile = await loadProfileFromPath(artifact.path);
   if (profile === null) return null;
-  const scope = artifact.source === 'project-local' ? 'local'
-    : artifact.source === 'project-team' ? 'project'
+  const scope = artifact.scope === 'project-local' ? 'local'
+    : artifact.scope === 'project-team' ? 'project'
     : 'user';
   return { profile, scope };
 }
@@ -1323,9 +1306,10 @@ export async function listProfiles(
   type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user'; shadowedBy?: 'local' | 'project' };
   const effectiveCwd = cwd ?? dirname(configDir);
 
-  const localEntries = await scanProfilesDir(projectLocalSetDir(PROFILES_KIND, effectiveCwd), 'local') as ProfileEntry[];
-  const projectEntries = await scanProfilesDir(projectTeamSetDir(PROFILES_KIND, configDir), 'project') as ProfileEntry[];
-  const userEntries = await scanProfilesDir(userSetDir(PROFILES_KIND), 'user') as ProfileEntry[];
+  const scopeOpts = { cwd: effectiveCwd, configDir };
+  const localEntries = await scanProfilesDir(resolve(getScopeDirectory('project-local', scopeOpts), PROFILES_SUBDIR), 'local') as ProfileEntry[];
+  const projectEntries = await scanProfilesDir(resolve(getScopeDirectory('project-team', scopeOpts), PROFILES_SUBDIR), 'project') as ProfileEntry[];
+  const userEntries = await scanProfilesDir(resolve(getScopeDirectory('user', scopeOpts), PROFILES_SUBDIR), 'user') as ProfileEntry[];
 
   const localNames = new Set(localEntries.map((e) => e.name));
   const projectNames = new Set(projectEntries.map((e) => e.name));

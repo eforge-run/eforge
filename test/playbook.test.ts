@@ -20,12 +20,8 @@ import {
   movePlaybook,
   PlaybookNotFoundError,
   type Playbook,
-} from '@eforge-build/engine/playbook';
-import {
-  userSetDir,
-  projectLocalSetDir,
-  projectTeamSetDir,
-} from '@eforge-build/engine/set-resolver';
+} from '@eforge-build/input';
+import { getScopeDirectory } from '@eforge-build/scopes';
 import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
@@ -467,7 +463,7 @@ describe('listPlaybooks', () => {
     const mismatchedPlaybook: Playbook = { ...validPlaybook(), name: 'mismatch', scope: 'user' };
     // Write it but force it into project-team dir manually
     const { configDir, cwd } = opts;
-    const projectDir = projectTeamSetDir({ dirSegment: 'playbooks', fileExtension: 'md' }, configDir);
+    const projectDir = resolve(getScopeDirectory('project-team', { cwd, configDir }), 'playbooks');
     await mkdir(projectDir, { recursive: true });
 
     // Use writePlaybook with project-team scope but frontmatter says user

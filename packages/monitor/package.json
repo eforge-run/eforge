@@ -40,6 +40,7 @@
   "dependencies": {
     "@eforge-build/client": "workspace:*",
     "@eforge-build/engine": "workspace:*",
+    "@eforge-build/input": "workspace:*",
     "yaml": "^2.8.4"
   },
   "devDependencies": {

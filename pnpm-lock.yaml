@@ -108,6 +108,9 @@ importers:
       '@eforge-build/client':
         specifier: workspace:*
         version: link:../client
+      '@eforge-build/scopes':
+        specifier: workspace:*
+        version: link:../scopes
       '@mariozechner/pi-agent-core':
         specifier: ^0.70.6
         version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
@@ -179,6 +182,9 @@ importers:
       '@eforge-build/engine':
         specifier: workspace:*
         version: link:../engine
+      '@eforge-build/input':
+        specifier: workspace:*
+        version: link:../input
       yaml:
         specifier: ^2.8.4
         version: 2.8.4

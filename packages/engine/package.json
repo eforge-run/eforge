@@ -32,6 +32,7 @@
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.126",
     "@eforge-build/client": "workspace:*",
+    "@eforge-build/scopes": "workspace:*",
     "@mariozechner/pi-agent-core": "^0.70.6",
     "@mariozechner/pi-ai": "^0.70.6",
     "@mariozechner/pi-coding-agent": "^0.70.6",

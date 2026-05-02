@@ -1311,7 +1311,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { listPlaybooks } = await import('@eforge-build/engine/playbook');
+        const { listPlaybooks } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         const result = await listPlaybooks({ configDir: configDir ?? cwd, cwd });
         for (const warning of result.warnings) {
@@ -1342,7 +1342,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { loadPlaybook } = await import('@eforge-build/engine/playbook');
+        const { loadPlaybook } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
@@ -1383,7 +1383,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { writePlaybook, playbookFrontmatterSchema } = await import('@eforge-build/engine/playbook');
+        const { writePlaybook, playbookFrontmatterSchema } = await import('@eforge-build/input');
         const fm = body.playbook.frontmatter;
         const bd = body.playbook.body;
         // Validate frontmatter
@@ -1443,7 +1443,7 @@ export async function startServer(
       const afterQueueId = typeof body.afterQueueId === 'string' ? body.afterQueueId : undefined;
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { loadPlaybook, playbookToSessionPlan } = await import('@eforge-build/engine/playbook');
+        const { loadPlaybook, playbookToSessionPlan } = await import('@eforge-build/input');
         // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
         const { enqueuePrd, inferTitle, validateDependsOnExists, commitEnqueuedPrd } = await import('@eforge-build/engine/prd-queue');
         // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
@@ -1516,7 +1516,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { movePlaybook } = await import('@eforge-build/engine/playbook');
+        const { movePlaybook } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
@@ -1557,7 +1557,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { movePlaybook } = await import('@eforge-build/engine/playbook');
+        const { movePlaybook } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
@@ -1589,7 +1589,7 @@ export async function startServer(
         return;
       }
       try {
-        const { validatePlaybook } = await import('@eforge-build/engine/playbook');
+        const { validatePlaybook } = await import('@eforge-build/input');
         const result = validatePlaybook(body.raw);
         if (result.ok) {
           sendJson(res, { ok: true });
@@ -1629,7 +1629,7 @@ export async function startServer(
       }
       try {
         const { getConfigDir } = await import('@eforge-build/engine/config');
-        const { copyPlaybookToScope } = await import('@eforge-build/engine/playbook');
+        const { copyPlaybookToScope } = await import('@eforge-build/input');
         const configDir = await getConfigDir(cwd);
         if (!configDir) {
           sendJsonError(res, 404, 'No eforge config directory found');
