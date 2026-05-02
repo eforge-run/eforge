@@ -247,6 +247,7 @@ export interface SessionPlanSetSectionRequest {
 /** Response for POST /api/session-plan/set-section */
 export interface SessionPlanSetSectionResponse {
   session: string;
+  readiness: SessionPlanReadinessDetail;
 }
 
 /** Request body for POST /api/session-plan/skip-dimension */
@@ -259,6 +260,7 @@ export interface SessionPlanSkipDimensionRequest {
 /** Response for POST /api/session-plan/skip-dimension */
 export interface SessionPlanSkipDimensionResponse {
   session: string;
+  readiness: SessionPlanReadinessDetail;
 }
 
 /** Request body for POST /api/session-plan/set-status */
@@ -266,7 +268,7 @@ export interface SessionPlanSetStatusRequest {
   session: string;
   status: SessionPlanStatusWire;
   /** Required when status is 'submitted'. */
-  eforgeSession?: string;
+  eforge_session?: string;
 }
 
 /** Response for POST /api/session-plan/set-status */
@@ -277,14 +279,17 @@ export interface SessionPlanSetStatusResponse {
 /** Request body for POST /api/session-plan/select-dimensions */
 export interface SessionPlanSelectDimensionsRequest {
   session: string;
-  planningType?: PlanningTypeWire;
-  planningDepth?: PlanningDepthWire;
+  planning_type?: PlanningTypeWire;
+  planning_depth?: PlanningDepthWire;
   overwrite?: boolean;
 }
 
 /** Response for POST /api/session-plan/select-dimensions */
 export interface SessionPlanSelectDimensionsResponse {
   session: string;
+  required_dimensions: string[];
+  optional_dimensions: string[];
+  readiness: SessionPlanReadinessDetail;
 }
 
 /** Response for GET /api/session-plan/readiness */
@@ -303,6 +308,8 @@ export interface SessionPlanMigrateLegacyRequest {
 /** Response for POST /api/session-plan/migrate-legacy */
 export interface SessionPlanMigrateLegacyResponse {
   session: string;
+  /** True when the plan was on the legacy schema and got migrated; false when the plan was already on the current schema. */
+  migrated: boolean;
 }
 
 export type ApiRoute = (typeof API_ROUTES)[keyof typeof API_ROUTES];

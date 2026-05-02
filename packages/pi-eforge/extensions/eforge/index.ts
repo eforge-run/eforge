@@ -1773,8 +1773,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       if (action === "select-dimensions") {
         if (!session) throw new Error('"session" is required when action is "select-dimensions"');
         const body: Record<string, unknown> = { session };
-        if (planning_type !== undefined) body.planningType = planning_type;
-        if (planning_depth !== undefined) body.planningDepth = planning_depth;
+        if (planning_type !== undefined) body.planning_type = planning_type;
+        if (planning_depth !== undefined) body.planning_depth = planning_depth;
         const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanSelectDimensions, body);
         return jsonResult(data);
       }
