@@ -849,6 +849,102 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
   // --- eforge:endregion plan-02-daemon-http-and-mcp-tool ---
 
+  // --- eforge:region plan-03-tools-and-skills ---
+
+  // Tool: eforge_session_plan
+  createDaemonTool(server, cwd, {
+    name: 'eforge_session_plan',
+    description: 'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape.',
+    schema: {
+      action: z.enum([
+        'list-active',
+        'show',
+        'create',
+        'set-section',
+        'skip-dimension',
+        'set-status',
+        'select-dimensions',
+        'readiness',
+        'migrate-legacy',
+      ]).describe('Operation to perform on session plans'),
+      session: z.string().optional().describe('Session ID (required for all actions except "list-active")'),
+      topic: z.string().optional().describe('Session topic (required for "create")'),
+      dimension: z.string().optional().describe('Dimension name in kebab-case (required for "set-section" and "skip-dimension")'),
+      content: z.string().optional().describe('Dimension content (required for "set-section")'),
+      reason: z.string().optional().describe('Reason for skipping (required for "skip-dimension")'),
+      status: z.enum(['planning', 'ready', 'abandoned', 'submitted']).optional().describe('New status (required for "set-status")'),
+      planning_type: z.enum(['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown']).optional().describe('Planning work type (optional for "create" and "select-dimensions")'),
+      planning_depth: z.enum(['quick', 'focused', 'deep']).optional().describe('Planning depth (optional for "create" and "select-dimensions")'),
+    },
+    handler: async ({ action, session, topic, dimension, content, reason, status, planning_type, planning_depth }, { cwd: toolCwd }) => {
+      if (action === 'list-active') {
+        const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.sessionPlanList);
+        return data;
+      }
+
+      if (action === 'show') {
+        if (!session) throw new Error('"session" is required when action is "show"');
+        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.sessionPlanShow}?session=${encodeURIComponent(session)}`);
+        return data;
+      }
+
+      if (action === 'create') {
+        if (!session) throw new Error('"session" is required when action is "create"');
+        if (!topic) throw new Error('"topic" is required when action is "create"');
+        const body: Record<string, unknown> = { session, topic };
+        if (planning_type !== undefined) body.planning_type = planning_type;
+        if (planning_depth !== undefined) body.planning_depth = planning_depth;
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanCreate, body);
+        return data;
+      }
+
+      if (action === 'set-section') {
+        if (!session) throw new Error('"session" is required when action is "set-section"');
+        if (!dimension) throw new Error('"dimension" is required when action is "set-section"');
+        if (content === undefined) throw new Error('"content" is required when action is "set-section"');
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanSetSection, { session, dimension, content });
+        return data;
+      }
+
+      if (action === 'skip-dimension') {
+        if (!session) throw new Error('"session" is required when action is "skip-dimension"');
+        if (!dimension) throw new Error('"dimension" is required when action is "skip-dimension"');
+        if (!reason) throw new Error('"reason" is required when action is "skip-dimension"');
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanSkipDimension, { session, dimension, reason });
+        return data;
+      }
+
+      if (action === 'set-status') {
+        if (!session) throw new Error('"session" is required when action is "set-status"');
+        if (!status) throw new Error('"status" is required when action is "set-status"');
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanSetStatus, { session, status });
+        return data;
+      }
+
+      if (action === 'select-dimensions') {
+        if (!session) throw new Error('"session" is required when action is "select-dimensions"');
+        const body: Record<string, unknown> = { session };
+        if (planning_type !== undefined) body.planningType = planning_type;
+        if (planning_depth !== undefined) body.planningDepth = planning_depth;
+        const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanSelectDimensions, body);
+        return data;
+      }
+
+      if (action === 'readiness') {
+        if (!session) throw new Error('"session" is required when action is "readiness"');
+        const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.sessionPlanReadiness}?session=${encodeURIComponent(session)}`);
+        return data;
+      }
+
+      // action === 'migrate-legacy'
+      if (!session) throw new Error('"session" is required when action is "migrate-legacy"');
+      const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanMigrateLegacy, { session });
+      return data;
+    },
+  });
+
+  // --- eforge:endregion plan-03-tools-and-skills ---
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
 

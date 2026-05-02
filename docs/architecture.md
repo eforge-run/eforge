@@ -96,6 +96,8 @@ flowchart TD
 - `monitor` MAY depend on `input`, `engine`, and `client`.
 - CLI, Pi extension, and plugin SHOULD use `client` for daemon-backed flows; direct `input` imports are allowed only for in-process normalization paths (e.g. the CLI's in-process `eforge build` path).
 
+Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool follow the same `client` → `monitor` → `input` chain as playbooks: `API_ROUTES.sessionPlan*` constants live in `@eforge-build/client`, the daemon routes implement the handlers in `packages/monitor/`, and the MCP proxy (Claude Code) and Pi extension each register an `eforge_session_plan` tool that dispatches all session-plan mutations through `daemonRequest` against those constants.
+
 **Why:** Keeping the engine input-agnostic means future wrapper apps can reuse `@eforge-build/input` protocols without pulling in engine internals.
 
 ### Engine

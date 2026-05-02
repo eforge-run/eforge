@@ -183,6 +183,16 @@ export interface SessionPlanListEntryWire {
   topic: string;
   status: SessionPlanStatusWire;
   path: string;
+  ready: boolean;
+  missingDimensions: string[];
+}
+
+/** Readiness detail returned by mutation routes and the readiness GET. */
+export interface SessionPlanReadinessDetail {
+  ready: boolean;
+  missingDimensions: string[];
+  coveredDimensions: string[];
+  skippedDimensions: string[];
 }
 
 /** Full session plan data as returned by the daemon. */
@@ -209,14 +219,15 @@ export interface SessionPlanListResponse {
 /** Response for GET /api/session-plan/show */
 export interface SessionPlanShowResponse {
   plan: SessionPlanDataWire;
+  readiness: SessionPlanReadinessDetail;
 }
 
 /** Request body for POST /api/session-plan/create */
 export interface SessionPlanCreateRequest {
   session: string;
   topic: string;
-  planningType?: PlanningTypeWire;
-  planningDepth?: PlanningDepthWire;
+  planning_type?: PlanningTypeWire;
+  planning_depth?: PlanningDepthWire;
   profile?: 'errand' | 'excursion' | 'expedition' | null;
 }
 

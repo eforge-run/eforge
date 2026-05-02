@@ -1663,6 +1663,190 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
   // --- eforge:endregion plan-02-daemon-http-and-mcp-tool ---
 
+  // --- eforge:region plan-03-tools-and-skills ---
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_session_plan
+  // ------------------------------------------------------------------
+  pi.registerTool({
+    name: "eforge_session_plan",
+    label: "eforge session-plan",
+    description:
+      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape.',
+    parameters: Type.Object({
+      action: StringEnum(
+        ["list-active", "show", "create", "set-section", "skip-dimension", "set-status", "select-dimensions", "readiness", "migrate-legacy"] as const,
+        { description: "Operation to perform on session plans" },
+      ),
+      session: Type.Optional(
+        Type.String({
+          description: 'Session ID (required for all actions except "list-active")',
+        }),
+      ),
+      topic: Type.Optional(
+        Type.String({
+          description: 'Session topic (required for "create")',
+        }),
+      ),
+      dimension: Type.Optional(
+        Type.String({
+          description: 'Dimension name in kebab-case (required for "set-section" and "skip-dimension")',
+        }),
+      ),
+      content: Type.Optional(
+        Type.String({
+          description: 'Dimension content (required for "set-section")',
+        }),
+      ),
+      reason: Type.Optional(
+        Type.String({
+          description: 'Reason for skipping (required for "skip-dimension")',
+        }),
+      ),
+      status: Type.Optional(
+        StringEnum(["planning", "ready", "abandoned", "submitted"] as const, {
+          description: 'New status (required for "set-status")',
+        }),
+      ),
+      planning_type: Type.Optional(
+        StringEnum(["bugfix", "feature", "refactor", "architecture", "docs", "maintenance", "unknown"] as const, {
+          description: 'Planning work type (optional for "create" and "select-dimensions")',
+        }),
+      ),
+      planning_depth: Type.Optional(
+        StringEnum(["quick", "focused", "deep"] as const, {
+          description: 'Planning depth (optional for "create" and "select-dimensions")',
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth } = params;
+
+      if (action === "list-active") {
+        const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.sessionPlanList);
+        return jsonResult(data);
+      }
+
+      if (action === "show") {
+        if (!session) throw new Error('"session" is required when action is "show"');
+        const { data } = await daemonRequest(
+          ctx.cwd,
+          "GET",
+          `${API_ROUTES.sessionPlanShow}?session=${encodeURIComponent(session)}`,
+        );
+        return jsonResult(data);
+      }
+
+      if (action === "create") {
+        if (!session) throw new Error('"session" is required when action is "create"');
+        if (!topic) throw new Error('"topic" is required when action is "create"');
+        const body: Record<string, unknown> = { session, topic };
+        if (planning_type !== undefined) body.planning_type = planning_type;
+        if (planning_depth !== undefined) body.planning_depth = planning_depth;
+        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanCreate, body);
+        return jsonResult(data);
+      }
+
+      if (action === "set-section") {
+        if (!session) throw new Error('"session" is required when action is "set-section"');
+        if (!dimension) throw new Error('"dimension" is required when action is "set-section"');
+        if (content === undefined) throw new Error('"content" is required when action is "set-section"');
+        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanSetSection, { session, dimension, content });
+        return jsonResult(data);
+      }
+
+      if (action === "skip-dimension") {
+        if (!session) throw new Error('"session" is required when action is "skip-dimension"');
+        if (!dimension) throw new Error('"dimension" is required when action is "skip-dimension"');
+        if (!reason) throw new Error('"reason" is required when action is "skip-dimension"');
+        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanSkipDimension, { session, dimension, reason });
+        return jsonResult(data);
+      }
+
+      if (action === "set-status") {
+        if (!session) throw new Error('"session" is required when action is "set-status"');
+        if (!status) throw new Error('"status" is required when action is "set-status"');
+        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanSetStatus, { session, status });
+        return jsonResult(data);
+      }
+
+      if (action === "select-dimensions") {
+        if (!session) throw new Error('"session" is required when action is "select-dimensions"');
+        const body: Record<string, unknown> = { session };
+        if (planning_type !== undefined) body.planningType = planning_type;
+        if (planning_depth !== undefined) body.planningDepth = planning_depth;
+        const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanSelectDimensions, body);
+        return jsonResult(data);
+      }
+
+      if (action === "readiness") {
+        if (!session) throw new Error('"session" is required when action is "readiness"');
+        const { data } = await daemonRequest(
+          ctx.cwd,
+          "GET",
+          `${API_ROUTES.sessionPlanReadiness}?session=${encodeURIComponent(session)}`,
+        );
+        return jsonResult(data);
+      }
+
+      // action === "migrate-legacy"
+      if (!session) throw new Error('"session" is required when action is "migrate-legacy"');
+      const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanMigrateLegacy, { session });
+      return jsonResult(data);
+    },
+
+    renderCall(args, theme) {
+      const action = typeof args.action === "string" ? args.action : "?";
+      const session = typeof args.session === "string" ? args.session : "";
+      const suffix = session ? ` ${session}` : "";
+      return new Text(
+        theme.fg("toolTitle", theme.bold(`eforge session-plan ${action}${suffix}`)),
+        0,
+        0,
+      );
+    },
+
+    renderResult(result, _options, theme) {
+      const text = result.content[0];
+      if (!text || text.type !== "text") {
+        return new Text(theme.fg("muted", "No data"), 0, 0);
+      }
+      try {
+        const data = JSON.parse(text.text) as Record<string, unknown>;
+        const lines: string[] = [];
+
+        if (Array.isArray((data as { plans?: unknown }).plans)) {
+          const plans = (data as { plans: Array<{ session: string; topic: string; status: string }> }).plans;
+          lines.push(theme.fg("accent", `${plans.length} session plan(s)`));
+          for (const p of plans) {
+            const statusColor = p.status === "ready" ? "success" : "warning";
+            lines.push(`  ${theme.fg("text", p.session)}  ${theme.fg(statusColor, p.status)}  ${theme.fg("muted", p.topic)}`);
+          }
+        } else if ((data as { ready?: unknown }).ready !== undefined && (data as { missingDimensions?: unknown }).missingDimensions !== undefined) {
+          const ready = (data as { ready: boolean }).ready;
+          const missing = (data as { missingDimensions: string[] }).missingDimensions;
+          if (ready) {
+            lines.push(theme.fg("success", "✓ Ready"));
+          } else {
+            lines.push(theme.fg("warning", "Not ready"));
+            for (const dim of missing) {
+              lines.push(`  ${theme.fg("warning", `missing: ${dim}`)}`);
+            }
+          }
+        } else if ((data as { session?: unknown }).session) {
+          lines.push(theme.fg("success", "✓ ") + theme.fg("text", String((data as { session: string }).session)));
+        } else {
+          lines.push(theme.fg("muted", text.text.slice(0, 200)));
+        }
+        return new Text(lines.join("\n"), 0, 0);
+      } catch {
+        return new Text(theme.fg("muted", text.text.slice(0, 200)), 0, 0);
+      }
+    },
+  });
+
+  // --- eforge:endregion plan-03-tools-and-skills ---
+
   // ------------------------------------------------------------------
   // Command aliases — map /eforge:* to /skill:eforge-*
   // Pi has no programmatic skill invocation API, so we delegate via
