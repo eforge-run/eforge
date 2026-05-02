@@ -22,13 +22,13 @@ importers:
         version: link:packages/monitor-ui
       '@mariozechner/pi-agent-core':
         specifier: ^0.70.6
-        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       '@mariozechner/pi-ai':
         specifier: ^0.70.6
-        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       '@mariozechner/pi-coding-agent':
         specifier: ^0.70.6
-        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
@@ -40,19 +40,19 @@ importers:
         version: 5.9.3
       vitest:
         specifier: ^4.1.5
-        version: 4.1.5(@types/node@25.6.0)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+        version: 4.1.5(@types/node@25.6.0)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4))
       yaml:
-        specifier: ^2.8.3
-        version: 2.8.3
+        specifier: ^2.8.4
+        version: 2.8.4
       zod:
-        specifier: ^4.4.1
-        version: 4.4.1
+        specifier: ^4.4.2
+        version: 4.4.2
 
   packages/client:
     devDependencies:
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.4)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -70,7 +70,7 @@ importers:
         version: link:../monitor
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
-        version: 1.29.0(zod@4.4.1)
+        version: 1.29.0(zod@4.4.2)
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
@@ -81,18 +81,18 @@ importers:
         specifier: ^9.4.0
         version: 9.4.0
       yaml:
-        specifier: ^2.8.3
-        version: 2.8.3
+        specifier: ^2.8.4
+        version: 2.8.4
       zod:
-        specifier: ^4.4.1
-        version: 4.4.1
+        specifier: ^4.4.2
+        version: 4.4.2
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.4)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -101,22 +101,22 @@ importers:
     dependencies:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.2.126
-        version: 0.2.126(zod@4.4.1)
+        version: 0.2.126(zod@4.4.2)
       '@eforge-build/client':
         specifier: workspace:*
         version: link:../client
       '@mariozechner/pi-agent-core':
         specifier: ^0.70.6
-        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       '@mariozechner/pi-ai':
         specifier: ^0.70.6
-        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       '@mariozechner/pi-coding-agent':
         specifier: ^0.70.6
-        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+        version: 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       '@modelcontextprotocol/sdk':
         specifier: ^1.29.0
-        version: 1.29.0(zod@4.4.1)
+        version: 1.29.0(zod@4.4.2)
       '@sinclair/typebox':
         specifier: ^0.34.49
         version: 0.34.49
@@ -130,18 +130,18 @@ importers:
         specifier: ^9.4.0
         version: 9.4.0
       yaml:
-        specifier: ^2.8.3
-        version: 2.8.3
+        specifier: ^2.8.4
+        version: 2.8.4
       zod:
-        specifier: ^4.4.1
-        version: 4.4.1
+        specifier: ^4.4.2
+        version: 4.4.2
     devDependencies:
       '@types/node':
         specifier: ^25.6.0
         version: 25.6.0
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.4)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -155,8 +155,8 @@ importers:
         specifier: workspace:*
         version: link:../engine
       yaml:
-        specifier: ^2.8.3
-        version: 2.8.3
+        specifier: ^2.8.4
+        version: 2.8.4
     devDependencies:
       '@eforge-build/monitor-ui':
         specifier: workspace:*
@@ -166,7 +166,7 @@ importers:
         version: 25.6.0
       tsup:
         specifier: ^8.5.1
-        version: 8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3)
+        version: 8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.4)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -240,8 +240,8 @@ importers:
         specifier: ^3.5.0
         version: 3.5.0
       yaml:
-        specifier: ^2.8.3
-        version: 2.8.3
+        specifier: ^2.8.4
+        version: 2.8.4
     devDependencies:
       '@tailwindcss/postcss':
         specifier: ^4.2.4
@@ -254,7 +254,7 @@ importers:
         version: 19.2.3(@types/react@19.2.14)
       '@vitejs/plugin-react':
         specifier: ^6.0.1
-        version: 6.0.1(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+        version: 6.0.1(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4))
       autoprefixer:
         specifier: ^10.5.0
         version: 10.5.0(postcss@8.5.13)
@@ -269,7 +269,7 @@ importers:
         version: 5.9.3
       vite:
         specifier: ^8.0.10
-        version: 8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3)
+        version: 8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4)
 
   packages/pi-eforge:
     dependencies:
@@ -281,19 +281,19 @@ importers:
         version: link:../engine
       '@mariozechner/pi-ai':
         specifier: '*'
-        version: 0.71.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+        version: 0.72.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       '@mariozechner/pi-coding-agent':
         specifier: '*'
-        version: 0.71.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+        version: 0.72.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       '@mariozechner/pi-tui':
         specifier: '*'
-        version: 0.71.1
+        version: 0.72.1
       '@sinclair/typebox':
         specifier: '*'
         version: 0.34.49
       yaml:
-        specifier: ^2.8.3
-        version: 2.8.3
+        specifier: ^2.8.4
+        version: 2.8.4
 
 packages:
 
@@ -814,8 +814,8 @@ packages:
     resolution: {integrity: sha512-PovJZJqhY4ajgTJRUcLzfWKnlQuJHxHW3T030CafR9LYeLmOHi/HGS8DbCdRgSJNbnoIG+kl67/7++9DKZ2+sg==}
     engines: {node: '>=20.0.0'}
 
-  '@mariozechner/pi-agent-core@0.71.1':
-    resolution: {integrity: sha512-LMXcKoPmjD06EHwnl7IGMkJs/l3Qdl9z1xKsQGqqyd60ZgdxaATtR40Yyzcku1ogu16NhCHrUg6PJ9XeRcT+qQ==}
+  '@mariozechner/pi-agent-core@0.72.1':
+    resolution: {integrity: sha512-Z5XH9mUDsBymh7Prtk5Eun4Cs+s9C3uzynug+oWAjzQESjjnCuy7KU6Ek8E9Eg+b9yroCwVw2ItLDxp2E3vYjA==}
     engines: {node: '>=20.0.0'}
 
   '@mariozechner/pi-ai@0.70.6':
@@ -823,8 +823,8 @@ packages:
     engines: {node: '>=20.0.0'}
     hasBin: true
 
-  '@mariozechner/pi-ai@0.71.1':
-    resolution: {integrity: sha512-xksl4Y20qnjGbF3/eo0rX+TXEiZkkgRCEO8n/q7tMeVKhQ41migVG+msF+xTJoC3HkrTWfak3Y2Z6UjTUbjeTg==}
+  '@mariozechner/pi-ai@0.72.1':
+    resolution: {integrity: sha512-mOq71Pjnu72xxzwrh52VIiNwt+/a+Wpa11k5segi01/zTZJt8eMDc5Q2z6GhczYMr5+6EpZ8T+BaeHqq0jk5ag==}
     engines: {node: '>=20.0.0'}
     hasBin: true
 
@@ -833,8 +833,8 @@ packages:
     engines: {node: '>=20.6.0'}
     hasBin: true
 
-  '@mariozechner/pi-coding-agent@0.71.1':
-    resolution: {integrity: sha512-pP7ymz+MmZrcN5aUldm1q1cVbG3u04yZR/XsHEfidku5W3PP1uxsA0A4g4NOhXnkK5EZ+Qg6H12BAbVvl7Qq2Q==}
+  '@mariozechner/pi-coding-agent@0.72.1':
+    resolution: {integrity: sha512-gKApiLfAYpvPnWThvwXrLjZIhsziSSUKBph7DHCy/1IomuIGN1MTxS/9ZtcuFqPy3/+VfEUOKegGlY6m+CRNlA==}
     engines: {node: '>=20.6.0'}
     hasBin: true
 
@@ -842,8 +842,8 @@ packages:
     resolution: {integrity: sha512-orBJEwMdpBC38AXfdVBKT5ZvqNTcKg6g3NdoF5a9aNQzDI/dOTu1UNYFYyEOTFRiTxSR1nw8eovbCcaSyekWfw==}
     engines: {node: '>=20.0.0'}
 
-  '@mariozechner/pi-tui@0.71.1':
-    resolution: {integrity: sha512-jNMN9EmGiH8EIKG62fceOTonoJ9k0cohTdjQCDrOk77vnxPVK+3be/+S1xk4hxviltwxlRH0d7mGQXs+CuEL8g==}
+  '@mariozechner/pi-tui@0.72.1':
+    resolution: {integrity: sha512-KjeqzMQp4vafomfkvI8HKv5/52PqRP5BmlowGC8WKyOaB+u0UkkTdfM5U1Ui3ty2gA7FOfglVRiyvcitiWwvMQ==}
     engines: {node: '>=20.0.0'}
 
   '@mistralai/mistralai@2.2.1':
@@ -1661,8 +1661,8 @@ packages:
     resolution: {integrity: sha512-1Su2vj9RYNDEv/V+2E+jXkkwGsgR7dc4sfHn9Z7ruzQHJIEni9zzw5CauvRXlFJfmgcqYP8fWa0dkh2Q2YaQyw==}
     engines: {node: '>=18.0.0'}
 
-  '@smithy/util-retry@4.3.6':
-    resolution: {integrity: sha512-p6/FO1n2KxMeQyna067i0uJ6TSbb165ZhnRtCpWh4Foxqbfc6oW+XITaL8QkFJj3KFnDe2URt4gOhgU06EP9ew==}
+  '@smithy/util-retry@4.3.8':
+    resolution: {integrity: sha512-LUIxbTBi+OpvXpg91poGA6BdyoleMDLnfXjVDqyi2RvZmTveY5loE/FgYUBCR5LU2BThW2SoZRh8dTIIy38IPw==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/util-stream@4.5.25':
@@ -2230,8 +2230,8 @@ packages:
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
-  electron-to-chromium@1.5.348:
-    resolution: {integrity: sha512-QC2X59nRlycQQMc4ZXjSVBX+tSgJfgRtcrYHbIZLgOV2dCvefoQGegLR7lLXKgpPpSuVmJU19LMzGrSa2C7k3Q==}
+  electron-to-chromium@1.5.349:
+    resolution: {integrity: sha512-QsWVGyRuY07Aqb234QytTfwd5d9AJlfNIQ5wIOl1L+PZDzI9d9+Fn0FRale/QYlFxt/bUnB0/nLd1jFPGxGK1A==}
 
   emoji-regex@8.0.0:
     resolution: {integrity: sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A==}
@@ -3483,8 +3483,8 @@ packages:
     resolution: {integrity: sha512-0pfFzegeDWJHJIAmTLRP2DwHjdF5s7jo9tuztdQxAhINCdvS+3nGINqPd00AphqJR/0LhANUS6/+7SCb98YOfA==}
     engines: {node: '>=10'}
 
-  yaml@2.8.3:
-    resolution: {integrity: sha512-AvbaCLOO2Otw/lW5bmh9d/WEdcDFdQp2Z2ZUH3pX9U2ihyUY0nvLv7J6TrWowklRGPYbB/IuIMfYgxaCPg5Bpg==}
+  yaml@2.8.4:
+    resolution: {integrity: sha512-ml/JPOj9fOQK8RNnWojA67GbZ0ApXAUlN2UQclwv2eVgTgn7O9gg9o7paZWKMp4g0H3nTLtS9LVzhkpOFIKzog==}
     engines: {node: '>= 14.6'}
     hasBin: true
 
@@ -3508,8 +3508,8 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@4.4.1:
-    resolution: {integrity: sha512-a6ENMBBGZBsnlSebQ/eKCguSBeGKSf4O7BPnqVPmYGtpBYI7VSqoVqw+QcB7kPRjbqPwhYTpFbVj/RqNz/CT0Q==}
+  zod@4.4.2:
+    resolution: {integrity: sha512-IynmDyxsEsb9RKzO3J9+4SxXnl2FTFSzNBaKKaMV6tsSk0rw9gYw9gs+JFCq/qk2LCZ78KDwyj+Z289TijSkUw==}
 
   zustand@4.5.7:
     resolution: {integrity: sha512-CHOUy7mu3lbD6o6LJLfllpjkzhHXSBlX8B9+qPddUsIfeF5S/UZ5q0kmCsnRqT1UHFQZchNFDDzMbQsuesHWlw==}
@@ -3557,11 +3557,11 @@ snapshots:
   '@anthropic-ai/claude-agent-sdk-win32-x64@0.2.126':
     optional: true
 
-  '@anthropic-ai/claude-agent-sdk@0.2.126(zod@4.4.1)':
+  '@anthropic-ai/claude-agent-sdk@0.2.126(zod@4.4.2)':
     dependencies:
-      '@anthropic-ai/sdk': 0.81.0(zod@4.4.1)
-      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.1)
-      zod: 4.4.1
+      '@anthropic-ai/sdk': 0.81.0(zod@4.4.2)
+      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.2)
+      zod: 4.4.2
     optionalDependencies:
       '@anthropic-ai/claude-agent-sdk-darwin-arm64': 0.2.126
       '@anthropic-ai/claude-agent-sdk-darwin-x64': 0.2.126
@@ -3575,23 +3575,23 @@ snapshots:
       - '@cfworker/json-schema'
       - supports-color
 
-  '@anthropic-ai/sdk@0.81.0(zod@4.4.1)':
+  '@anthropic-ai/sdk@0.81.0(zod@4.4.2)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 4.4.1
+      zod: 4.4.2
 
-  '@anthropic-ai/sdk@0.90.0(zod@4.4.1)':
+  '@anthropic-ai/sdk@0.90.0(zod@4.4.2)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 4.4.1
+      zod: 4.4.2
 
-  '@anthropic-ai/sdk@0.91.1(zod@4.4.1)':
+  '@anthropic-ai/sdk@0.91.1(zod@4.4.2)':
     dependencies:
       json-schema-to-ts: 3.1.1
     optionalDependencies:
-      zod: 4.4.1
+      zod: 4.4.2
 
   '@aws-crypto/crc32@5.2.0':
     dependencies:
@@ -3670,7 +3670,7 @@ snapshots:
       '@smithy/util-defaults-mode-node': 4.2.54
       '@smithy/util-endpoints': 3.4.2
       '@smithy/util-middleware': 4.2.14
-      '@smithy/util-retry': 4.3.6
+      '@smithy/util-retry': 4.3.8
       '@smithy/util-stream': 4.5.25
       '@smithy/util-utf8': 4.2.2
       tslib: 2.8.1
@@ -3690,7 +3690,7 @@ snapshots:
       '@smithy/types': 4.14.1
       '@smithy/util-base64': 4.3.2
       '@smithy/util-middleware': 4.2.14
-      '@smithy/util-retry': 4.3.6
+      '@smithy/util-retry': 4.3.8
       '@smithy/util-utf8': 4.2.2
       tslib: 2.8.1
 
@@ -3858,7 +3858,7 @@ snapshots:
       '@smithy/core': 3.23.17
       '@smithy/protocol-http': 5.3.14
       '@smithy/types': 4.14.1
-      '@smithy/util-retry': 4.3.6
+      '@smithy/util-retry': 4.3.8
       tslib: 2.8.1
 
   '@aws-sdk/middleware-websocket@3.972.16':
@@ -3914,7 +3914,7 @@ snapshots:
       '@smithy/util-defaults-mode-node': 4.2.54
       '@smithy/util-endpoints': 3.4.2
       '@smithy/util-middleware': 4.2.14
-      '@smithy/util-retry': 4.3.6
+      '@smithy/util-retry': 4.3.8
       '@smithy/util-utf8': 4.2.2
       tslib: 2.8.1
     transitivePeerDependencies:
@@ -4123,14 +4123,14 @@ snapshots:
 
   '@floating-ui/utils@0.2.11': {}
 
-  '@google/genai@1.51.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))':
+  '@google/genai@1.51.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))':
     dependencies:
       google-auth-library: 10.6.2
       p-retry: 4.6.2
       protobufjs: 7.5.6
       ws: 8.20.0
     optionalDependencies:
-      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.1)
+      '@modelcontextprotocol/sdk': 1.29.0(zod@4.4.2)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
@@ -4208,9 +4208,9 @@ snapshots:
       std-env: 3.10.0
       yoctocolors: 2.1.2
 
-  '@mariozechner/pi-agent-core@0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)':
+  '@mariozechner/pi-agent-core@0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)':
     dependencies:
-      '@mariozechner/pi-ai': 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+      '@mariozechner/pi-ai': 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       typebox: 1.1.37
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
@@ -4221,9 +4221,9 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-agent-core@0.71.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)':
+  '@mariozechner/pi-agent-core@0.72.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)':
     dependencies:
-      '@mariozechner/pi-ai': 0.71.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+      '@mariozechner/pi-ai': 0.72.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       typebox: 1.1.37
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
@@ -4234,19 +4234,19 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-ai@0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)':
+  '@mariozechner/pi-ai@0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)':
     dependencies:
-      '@anthropic-ai/sdk': 0.90.0(zod@4.4.1)
+      '@anthropic-ai/sdk': 0.90.0(zod@4.4.2)
       '@aws-sdk/client-bedrock-runtime': 3.1041.0
-      '@google/genai': 1.51.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))
+      '@google/genai': 1.51.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))
       '@mistralai/mistralai': 2.2.1
       chalk: 5.6.2
-      openai: 6.26.0(ws@8.20.0)(zod@4.4.1)
+      openai: 6.26.0(ws@8.20.0)(zod@4.4.2)
       partial-json: 0.1.7
       proxy-agent: 6.5.0
       typebox: 1.1.37
       undici: 7.25.0
-      zod-to-json-schema: 3.25.2(zod@4.4.1)
+      zod-to-json-schema: 3.25.2(zod@4.4.2)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - aws-crt
@@ -4256,19 +4256,19 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-ai@0.71.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)':
+  '@mariozechner/pi-ai@0.72.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)':
     dependencies:
-      '@anthropic-ai/sdk': 0.91.1(zod@4.4.1)
+      '@anthropic-ai/sdk': 0.91.1(zod@4.4.2)
       '@aws-sdk/client-bedrock-runtime': 3.1041.0
-      '@google/genai': 1.51.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))
+      '@google/genai': 1.51.0(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))
       '@mistralai/mistralai': 2.2.1
       chalk: 5.6.2
-      openai: 6.26.0(ws@8.20.0)(zod@4.4.1)
+      openai: 6.26.0(ws@8.20.0)(zod@4.4.2)
       partial-json: 0.1.7
       proxy-agent: 6.5.0
       typebox: 1.1.37
       undici: 7.25.0
-      zod-to-json-schema: 3.25.2(zod@4.4.1)
+      zod-to-json-schema: 3.25.2(zod@4.4.2)
     transitivePeerDependencies:
       - '@modelcontextprotocol/sdk'
       - aws-crt
@@ -4278,11 +4278,11 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-coding-agent@0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)':
+  '@mariozechner/pi-coding-agent@0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)':
     dependencies:
       '@mariozechner/jiti': 2.6.5
-      '@mariozechner/pi-agent-core': 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
-      '@mariozechner/pi-ai': 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
+      '@mariozechner/pi-agent-core': 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
+      '@mariozechner/pi-ai': 0.70.6(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
       '@mariozechner/pi-tui': 0.70.6
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
@@ -4300,7 +4300,7 @@ snapshots:
       typebox: 1.1.37
       undici: 7.25.0
       uuid: 14.0.0
-      yaml: 2.8.3
+      yaml: 2.8.4
     optionalDependencies:
       '@mariozechner/clipboard': 0.3.5
     transitivePeerDependencies:
@@ -4312,12 +4312,12 @@ snapshots:
       - ws
       - zod
 
-  '@mariozechner/pi-coding-agent@0.71.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)':
+  '@mariozechner/pi-coding-agent@0.72.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)':
     dependencies:
       '@mariozechner/jiti': 2.6.5
-      '@mariozechner/pi-agent-core': 0.71.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
-      '@mariozechner/pi-ai': 0.71.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.1))(ws@8.20.0)(zod@4.4.1)
-      '@mariozechner/pi-tui': 0.71.1
+      '@mariozechner/pi-agent-core': 0.72.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
+      '@mariozechner/pi-ai': 0.72.1(@modelcontextprotocol/sdk@1.29.0(zod@4.4.2))(ws@8.20.0)(zod@4.4.2)
+      '@mariozechner/pi-tui': 0.72.1
       '@silvia-odwyer/photon-node': 0.3.4
       chalk: 5.6.2
       cli-highlight: 2.1.11
@@ -4334,7 +4334,7 @@ snapshots:
       typebox: 1.1.37
       undici: 7.25.0
       uuid: 14.0.0
-      yaml: 2.8.3
+      yaml: 2.8.4
     optionalDependencies:
       '@mariozechner/clipboard': 0.3.5
     transitivePeerDependencies:
@@ -4356,7 +4356,7 @@ snapshots:
     optionalDependencies:
       koffi: 2.16.1
 
-  '@mariozechner/pi-tui@0.71.1':
+  '@mariozechner/pi-tui@0.72.1':
     dependencies:
       '@types/mime-types': 2.1.4
       chalk: 5.6.2
@@ -4369,13 +4369,13 @@ snapshots:
   '@mistralai/mistralai@2.2.1':
     dependencies:
       ws: 8.20.0
-      zod: 4.4.1
-      zod-to-json-schema: 3.25.2(zod@4.4.1)
+      zod: 4.4.2
+      zod-to-json-schema: 3.25.2(zod@4.4.2)
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
 
-  '@modelcontextprotocol/sdk@1.29.0(zod@4.4.1)':
+  '@modelcontextprotocol/sdk@1.29.0(zod@4.4.2)':
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.16)
       ajv: 8.20.0
@@ -4392,8 +4392,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.4.1
-      zod-to-json-schema: 3.25.2(zod@4.4.1)
+      zod: 4.4.2
+      zod-to-json-schema: 3.25.2(zod@4.4.2)
     transitivePeerDependencies:
       - supports-color
 
@@ -5031,7 +5031,7 @@ snapshots:
       '@smithy/smithy-client': 4.12.13
       '@smithy/types': 4.14.1
       '@smithy/util-middleware': 4.2.14
-      '@smithy/util-retry': 4.3.6
+      '@smithy/util-retry': 4.3.8
       '@smithy/uuid': 1.1.2
       tslib: 2.8.1
 
@@ -5182,7 +5182,7 @@ snapshots:
       '@smithy/types': 4.14.1
       tslib: 2.8.1
 
-  '@smithy/util-retry@4.3.6':
+  '@smithy/util-retry@4.3.8':
     dependencies:
       '@smithy/service-error-classification': 4.3.1
       '@smithy/types': 4.14.1
@@ -5374,10 +5374,10 @@ snapshots:
 
   '@ungap/structured-clone@1.3.0': {}
 
-  '@vitejs/plugin-react@6.0.1(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))':
+  '@vitejs/plugin-react@6.0.1(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4))':
     dependencies:
       '@rolldown/pluginutils': 1.0.0-rc.7
-      vite: 8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3)
+      vite: 8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4)
 
   '@vitest/expect@4.1.5':
     dependencies:
@@ -5388,13 +5388,13 @@ snapshots:
       chai: 6.2.2
       tinyrainbow: 3.1.0
 
-  '@vitest/mocker@4.1.5(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))':
+  '@vitest/mocker@4.1.5(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4))':
     dependencies:
       '@vitest/spy': 4.1.5
       estree-walker: 3.0.3
       magic-string: 0.30.21
     optionalDependencies:
-      vite: 8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3)
+      vite: 8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4)
 
   '@vitest/pretty-format@4.1.5':
     dependencies:
@@ -5526,7 +5526,7 @@ snapshots:
     dependencies:
       baseline-browser-mapping: 2.10.25
       caniuse-lite: 1.0.30001791
-      electron-to-chromium: 1.5.348
+      electron-to-chromium: 1.5.349
       node-releases: 2.0.38
       update-browserslist-db: 1.2.3(browserslist@4.28.2)
 
@@ -5722,7 +5722,7 @@ snapshots:
 
   ee-first@1.1.1: {}
 
-  electron-to-chromium@1.5.348: {}
+  electron-to-chromium@1.5.349: {}
 
   emoji-regex@8.0.0: {}
 
@@ -6318,10 +6318,10 @@ snapshots:
       regex: 6.1.0
       regex-recursion: 6.0.2
 
-  openai@6.26.0(ws@8.20.0)(zod@4.4.1):
+  openai@6.26.0(ws@8.20.0)(zod@4.4.2):
     optionalDependencies:
       ws: 8.20.0
-      zod: 4.4.1
+      zod: 4.4.2
 
   ora@9.4.0:
     dependencies:
@@ -6398,14 +6398,14 @@ snapshots:
       mlly: 1.8.2
       pathe: 2.0.3
 
-  postcss-load-config@6.0.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(yaml@2.8.3):
+  postcss-load-config@6.0.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(yaml@2.8.4):
     dependencies:
       lilconfig: 3.1.3
     optionalDependencies:
       jiti: 2.6.1
       postcss: 8.5.13
       tsx: 4.21.0
-      yaml: 2.8.3
+      yaml: 2.8.4
 
   postcss-value-parser@4.2.0: {}
 
@@ -6814,7 +6814,7 @@ snapshots:
 
   tslib@2.8.1: {}
 
-  tsup@8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.3):
+  tsup@8.5.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.8.4):
     dependencies:
       bundle-require: 5.1.0(esbuild@0.27.7)
       cac: 6.7.14
@@ -6825,7 +6825,7 @@ snapshots:
       fix-dts-default-cjs-exports: 1.0.1
       joycon: 3.1.1
       picocolors: 1.1.1
-      postcss-load-config: 6.0.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(yaml@2.8.3)
+      postcss-load-config: 6.0.1(jiti@2.6.1)(postcss@8.5.13)(tsx@4.21.0)(yaml@2.8.4)
       resolve-from: 5.0.0
       rollup: 4.60.2
       source-map: 0.7.6
@@ -6932,7 +6932,7 @@ snapshots:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
 
-  vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3):
+  vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4):
     dependencies:
       lightningcss: 1.32.0
       picomatch: 4.0.4
@@ -6945,12 +6945,12 @@ snapshots:
       fsevents: 2.3.3
       jiti: 2.6.1
       tsx: 4.21.0
-      yaml: 2.8.3
+      yaml: 2.8.4
 
-  vitest@4.1.5(@types/node@25.6.0)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3)):
+  vitest@4.1.5(@types/node@25.6.0)(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4)):
     dependencies:
       '@vitest/expect': 4.1.5
-      '@vitest/mocker': 4.1.5(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3))
+      '@vitest/mocker': 4.1.5(vite@8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4))
       '@vitest/pretty-format': 4.1.5
       '@vitest/runner': 4.1.5
       '@vitest/snapshot': 4.1.5
@@ -6967,7 +6967,7 @@ snapshots:
       tinyexec: 1.1.2
       tinyglobby: 0.2.16
       tinyrainbow: 3.1.0
-      vite: 8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.3)
+      vite: 8.0.10(@types/node@25.6.0)(esbuild@0.27.7)(jiti@2.6.1)(tsx@4.21.0)(yaml@2.8.4)
       why-is-node-running: 2.3.0
     optionalDependencies:
       '@types/node': 25.6.0
@@ -6997,7 +6997,7 @@ snapshots:
 
   y18n@5.0.8: {}
 
-  yaml@2.8.3: {}
+  yaml@2.8.4: {}
 
   yargs-parser@20.2.9: {}
 
@@ -7018,11 +7018,11 @@ snapshots:
 
   yoctocolors@2.1.2: {}
 
-  zod-to-json-schema@3.25.2(zod@4.4.1):
+  zod-to-json-schema@3.25.2(zod@4.4.2):
     dependencies:
-      zod: 4.4.1
+      zod: 4.4.2
 
-  zod@4.4.1: {}
+  zod@4.4.2: {}
 
   zustand@4.5.7(@types/react@19.2.14)(react@19.2.5):
     dependencies:

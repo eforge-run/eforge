@@ -28,8 +28,8 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
     "@mariozechner/pi-tui": "*",
     "@sinclair/typebox": "*"
   },
@@ -50,7 +50,7 @@
   "dependencies": {
     "@eforge-build/client": "workspace:*",
     "@eforge-build/engine": "workspace:*",
-    "yaml": "^2.8.3"
+    "yaml": "^2.8.4"
   },
   "author": "Schaake Solutions LLC",
   "license": "Apache-2.0"
