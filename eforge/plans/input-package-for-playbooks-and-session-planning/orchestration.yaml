@@ -1,0 +1,128 @@
+name: input-package-for-playbooks-and-session-planning
+description: Extract playbook and session-plan logic from @eforge-build/engine
+  into a new @eforge-build/input package, and extract scope/path resolution into
+  a new @eforge-build/scopes package, so engine remains the agentic build
+  pipeline and input-layer artifacts have a stable home reusable by daemon, CLI,
+  Pi, plugin, and future wrapper apps.
+created: 2026-05-02
+compiled: 2026-05-02
+mode: expedition
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-scopes-package
+    name: Create @eforge-build/scopes workspace package with canonical scope names,
+      directory helpers, named-set resolution (extracted from engine
+      set-resolver), and new layered-singleton lookup primitive; tests cover
+      precedence, shadowing, and merge order.
+    depends_on: []
+    branch: input-package-for-playbooks-and-session-planning/scopes-package
+    build: &a1
+      - - implement
+        - doc-author
+      - doc-sync
+      - review-cycle
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - architecture
+        - correctness
+        - api-contract
+      maxRounds: 2
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: standard
+  - id: plan-02-input-package
+    name: Create @eforge-build/input workspace package; move playbook
+      schema/parser/serializer/list/load/write/move/copy/validate and
+      playbook-to-build-source out of engine; add deterministic session-plan
+      logic (parse, serialize, dimension selection, readiness, legacy boolean
+      migration, session-plan-to-build-source) plus normalizeBuildSource
+      boundary helper; depends on @eforge-build/scopes for tier resolution.
+    depends_on:
+      - plan-01-scopes-package
+    branch: input-package-for-playbooks-and-session-planning/input-package
+    build: *a1
+    review: *a2
+  - id: plan-03-engine-integration
+    name: Refactor packages/engine/src/config.ts to use @eforge-build/scopes for
+      user/project-team/project-local discovery, layered config.yaml lookup, and
+      profile named-set resolution; delete packages/engine/src/playbook.ts and
+      set-resolver.ts; remove playbook exports from engine barrel; redirect
+      existing playbook/set-resolver tests to the new packages; engine must not
+      depend on @eforge-build/input.
+    depends_on:
+      - plan-01-scopes-package
+      - plan-02-input-package
+    branch: input-package-for-playbooks-and-session-planning/engine-integration
+    build: *a1
+    review: *a2
+  - id: plan-04-daemon-cli-wiring
+    name: Update packages/monitor/src/server.ts playbook routes to use
+      @eforge-build/input; add session-plan source normalization to enqueue
+      paths via normalizeBuildSource; update CLI/Pi/plugin imports as needed;
+      preserve existing wire contracts and skill parity; bump eforge-plugin
+      version per project convention.
+    depends_on:
+      - plan-02-input-package
+      - plan-03-engine-integration
+    branch: input-package-for-playbooks-and-session-planning/daemon-cli-wiring
+    build: *a1
+    review: *a2
+  - id: plan-05-docs-boundary
+    name: "Update README.md, docs/architecture.md, docs/config.md, docs/roadmap.md,
+      and the new packages/scopes/README.md and packages/input/README.md to
+      harden the package and product boundary: scopes = lookup, input = reusable
+      build-input protocols, engine = agentic build pipeline, wrapper apps own
+      scheduling/workflow orchestration; explicitly state engine must not depend
+      on input."
+    depends_on:
+      - plan-04-daemon-cli-wiring
+    branch: input-package-for-playbooks-and-session-planning/docs-boundary
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "Expedition scope is appropriate (and explicitly recommended by the
+    PRD) because this refactor has genuinely independent module boundaries that
+    each require dedicated codebase exploration: (1) the new
+    @eforge-build/scopes package with path/precedence primitives and layered
+    singleton lookup, (2) playbook migration into @eforge-build/input including
+    schema/parse/serialize/list/load/write/move/copy, (3) net-new session-plan
+    deterministic logic plus build-source normalization in @eforge-build/input,
+    (4) engine config/profile rewiring to consume @eforge-build/scopes without
+    depending on input, (5) monitor daemon playbook route rewiring and
+    source-path normalization, and (6) tests + documentation that must encode
+    the new boundary. The architecture document is load-bearing here because the
+    cardinal invariant - engine must depend on scopes but never on input, while
+    monitor may depend on both - is exactly the kind of cross-module contract
+    that benefits from architecture-review-cycle and cohesion-review-cycle gates
+    before module plans get compiled. The compile pipeline therefore runs the
+    full expedition sequence: planner produces the architecture doc and module
+    list, architecture-review-cycle validates the boundary contract,
+    module-planning plans each package/wiring module in dependency waves (scopes
+    first, then input + engine config in parallel, then monitor/CLI wiring, then
+    tests/docs), cohesion-review-cycle catches dependency-direction violations
+    and import-path drift across modules, and compile-expedition emits the
+    concrete plan files. The default build pipeline runs implement in parallel
+    with doc-author (the PRD explicitly calls out README, architecture.md,
+    config.md, roadmap.md, and per-package READMEs as scope-hardening, not just
+    import-path cleanup), then doc-sync to catch stale references to engine
+    playbook/set-resolver paths in remaining docs, then review-cycle for
+    iterative quality. Review uses parallel perspectives - architecture (to
+    enforce the engine-must-not-depend-on-input invariant and dependency
+    direction), correctness (config behavior drift, merge order, missing-file
+    behavior, session-plan readiness rules), and api-contract (public exports,
+    daemon route shapes, client helpers, plugin/Pi parity) - capped at 2 rounds
+    with standard strictness because this is structural refactoring with strong
+    test coverage rather than security/data-sensitive code."

@@ -5,7 +5,8 @@ description: Extract playbook and session-plan logic from @eforge-build/engine
   pipeline and input-layer artifacts have a stable home reusable by daemon, CLI,
   Pi, plugin, and future wrapper apps.
 created: 2026-05-02
-status: draft
+status: compiled
+compiled: "2026-05-02"
 mode: expedition
 validate:
   - pnpm type-check
