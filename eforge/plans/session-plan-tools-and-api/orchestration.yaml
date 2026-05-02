@@ -1,0 +1,105 @@
+name: session-plan-tools-and-api
+description: Add daemon HTTP routes, typed client helpers, MCP/Pi tools, and
+  skill updates so /eforge:plan and /eforge:build call shared
+  @eforge-build/input session-plan helpers instead of parsing/serializing
+  session-plan files via prompt-level YAML/Markdown surgery. Also extends the
+  input library with submitted lifecycle status, structured section/skip/status
+  helpers, and richer readiness details.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm build
+  - pnpm test
+plans:
+  - id: plan-01-input-and-client
+    name: Input session-plan helpers and client API surface
+    depends_on: []
+    branch: session-plan-tools-and-api/input-and-client
+    build:
+      - implement
+      - - test-cycle
+        - doc-sync
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-daemon-routes
+    name: Daemon session-plan HTTP routes and auto-submit on enqueue
+    depends_on:
+      - plan-01-input-and-client
+    branch: session-plan-tools-and-api/daemon-routes
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - api
+        - security
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-03-tools-and-skills
+    name: MCP/Pi session-plan tool, skill updates, plugin version bump
+    depends_on:
+      - plan-02-daemon-routes
+    branch: session-plan-tools-and-api/tools-and-skills
+    build:
+      - implement
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - api-design
+      - security
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "The PRD itself recommends Excursion: cross-package work that adds
+    daemon routes, client helpers, MCP/Pi tools, and updates skills/docs around
+    an existing input library. The boundaries are already established (engine
+    remains input-agnostic), so this is sequential-but-coordinated work where a
+    single planner can enumerate all plans and dependencies (input schema ->
+    daemon routes -> client -> MCP/Pi tool -> skills/docs). That is a classic
+    ordered excursion chain with a foundational layer (input schema/helpers)
+    consumed by parallel-ish surfaces, not 4+ independent subsystems requiring
+    delegated module planning. Compile uses planner plus plan-review-cycle
+    because the PRD calls out parity risks (Claude MCP vs Pi extension), path
+    traversal constraints, lifecycle status migration, and acceptance criteria
+    spanning multiple packages - a plan quality gate catches scope/cohesion
+    issues before build. Default build runs implement in parallel with
+    doc-author (the PRD explicitly lists README, docs/architecture.md,
+    docs/config.md, packages/input/README.md, and skill docs as net-new
+    authoring targets that don't depend on implementation details), then
+    doc-sync to reconcile any other docs against the diff, then review-cycle for
+    iterative quality. Review uses a single strategy with correctness,
+    api-design, and security perspectives: api-design because the PRD introduces
+    a new tool/route surface that must stay parity-aligned across MCP and Pi,
+    security because path traversal under .eforge/session-plans/ is called out
+    as a risk, and correctness for the lifecycle/schema migration. maxRounds of
+    2 with standard strictness fits a feature-scale change without over-gating."
