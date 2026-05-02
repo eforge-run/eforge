@@ -33,6 +33,10 @@
 - **Pi extension SSE event streaming** — Add SSE subscriber to Pi extension for live build progress via Pi `ExtensionAPI` channel.
 - **TypeScript project references** — Adopt `tsconfig.json` `references` across workspace members for automatic topological ordering.
 
+### Boundary guardrail
+
+Scheduling, triggers, approvals, notifications, and richer workflow orchestration belong in wrapper apps built on stable eforge APIs, not in the engine. The build engine consumes normalized PRD/build source and emits typed events; reusable input-artifact protocols (playbooks, session plans) live in `@eforge-build/input`; scope and path lookup lives in `@eforge-build/scopes`. Wrapper apps may compose these packages directly or call the daemon HTTP client (`@eforge-build/client`). New scheduling or workflow features proposed for the engine or daemon should be challenged against this guardrail - if it belongs in a wrapper app, keep it there.
+
 ---
 
 ## Marketing Site (eforge.build)

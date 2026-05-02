@@ -300,6 +300,8 @@ The user-scope active-profile marker lives at `~/.config/eforge/.active-profile`
 
 ### Active Profile Precedence
 
+Profile resolution uses `@eforge-build/scopes` named-set resolution. The precedence chain below is the user-visible expression of that resolution.
+
 The active agent runtime profile is resolved using a precedence chain (highest to lowest):
 
 1. **Project-local marker** - `.eforge/.active-profile` file in the repo root (gitignored)
@@ -339,11 +341,19 @@ Config merges from three levels (lowest to highest priority):
 2. **Project** - `eforge/config.yaml` found by walking up from cwd
 3. **Project-local** - `.eforge/config.yaml` in the repo root (gitignored; highest priority)
 
+Scope discovery and precedence are implemented in `@eforge-build/scopes`. Engine code calls `getScopeDirectory(scope)` for tier directory lookup, `resolveLayeredSingletons('config.yaml')` for the layered-singleton merge order, and `resolveNamedSet('profiles')` for active-profile resolution. Engine retains parsing, schema validation, `mergePartialConfigs()`, and active-profile semantics.
+
 Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`) shallow-merge per-field. Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
+
+### Lookup modes
+
+- **Layered singleton** - all existing scope files are returned in canonical merge order `user -> project-team -> project-local`. Used for `config.yaml`. The caller owns parsing and merge semantics.
+- **Named set** - directory entries are unique by name across tiers; same-name entries shadow lower-precedence tiers. Used for `profiles/` and `playbooks/`. The highest-precedence copy wins.
+- Project-local-only state (e.g. `.eforge/session-plans/*.md`) is not resolved through scope tiers; it is a project-local artifact and is read directly from the project-local scope by `@eforge-build/input`.
 
 Agent runtime profiles follow the same three-level pattern. Profile files can exist at project-local scope (`.eforge/profiles/` - gitignored), project scope (`eforge/profiles/`), or user scope (`~/.config/eforge/profiles/`). The active-profile marker can be set at any level: `.eforge/.active-profile` (project-local, highest precedence), `eforge/.active-profile` (project), or `~/.config/eforge/.active-profile` (user). When a profile name is resolved, the profile file is looked up local-first, then project, then user-fallback - so a local profile shadows project and user profiles with the same name.
 
-Playbooks follow the same three-tier pattern: `.eforge/playbooks/` (project-local, highest precedence), `eforge/playbooks/` (project scope), and `~/.config/eforge/playbooks/` (user scope). When the same playbook name exists at multiple tiers, the highest-precedence tier wins and lower-tier copies are reported as shadows. Each playbook carries a `scope` frontmatter field that must match the tier it was loaded from; a mismatch is surfaced as a warning in the listing. The `eforge playbook` command manages playbooks from the CLI: `list` shows all available playbooks with source labels and shadow chains; `new` scaffolds a new playbook file non-interactively (accepts `--scope`, `--name`, `--description`, `--from <file>`); `edit <name>` opens the resolved playbook in `$EDITOR` and validates the result before saving; `run <name> [--after <queue-id>]` enqueues the playbook (also available as `eforge play <name>`); `promote <name>` moves a playbook from `.eforge/playbooks/` to `eforge/playbooks/` and stages the new file; `demote <name>` moves it back to project-local scope.
+Playbooks are reusable input artifacts owned by `@eforge-build/input`, resolved across scopes by `@eforge-build/scopes`. The daemon compiles playbooks to ordinary build source via `playbookToBuildSource` before enqueue. Playbooks follow the same three-tier pattern: `.eforge/playbooks/` (project-local, highest precedence), `eforge/playbooks/` (project scope), and `~/.config/eforge/playbooks/` (user scope). When the same playbook name exists at multiple tiers, the highest-precedence tier wins and lower-tier copies are reported as shadows. Each playbook carries a `scope` frontmatter field that must match the tier it was loaded from; a mismatch is surfaced as a warning in the listing. The `eforge playbook` command manages playbooks from the CLI: `list` shows all available playbooks with source labels and shadow chains; `new` scaffolds a new playbook file non-interactively (accepts `--scope`, `--name`, `--description`, `--from <file>`); `edit <name>` opens the resolved playbook in `$EDITOR` and validates the result before saving; `run <name> [--after <queue-id>]` enqueues the playbook (also available as `eforge play <name>`); `promote <name>` moves a playbook from `.eforge/playbooks/` to `eforge/playbooks/` and stages the new file; `demote <name>` moves it back to project-local scope.
 
 ## Parallelism
 

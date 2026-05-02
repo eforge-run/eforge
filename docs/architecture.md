@@ -19,6 +19,16 @@ graph TD
         ResponseTypes["Response Types"]
     end
 
+    subgraph Input ["@eforge-build/input"]
+        InputArtifacts["Playbooks / Session Plans<br/>normalizeBuildSource"]
+    end
+
+    subgraph Scopes ["@eforge-build/scopes"]
+        ScopeDir["getScopeDirectory"]
+        LayeredSingleton["resolveLayeredSingletons"]
+        NamedSet["resolveNamedSet / listNamedSet"]
+    end
+
     subgraph Engine ["Engine - packages/engine/"]
         EforgeEngine["EforgeEngine"]
         Pipeline["Pipeline"]
@@ -37,18 +47,60 @@ graph TD
     PiPkg -->|"daemon client"| Client
     CLI -->|"iterates events"| EforgeEngine
     Monitor -->|"records events"| EforgeEngine
+    Monitor -->|"playbook routes + normalizeBuildSource"| Input
     Plugin -->|"MCP tools"| EforgeEngine
     PiPkg -->|"native Pi tools"| EforgeEngine
     EforgeEngine --> Pipeline
     EforgeEngine --> Orchestrator
+    EforgeEngine -->|"scope directory lookup"| Scopes
+    Input -->|"named-set resolution"| Scopes
     Pipeline --> Agents
     Agents -->|"AgentHarness interface"| Claude
     Agents -->|"AgentHarness interface"| Pi
 ```
 
+## Package Topology
+
+The workspace is organized into packages with explicit, one-way dependency edges. The most important constraint is that `@eforge-build/engine` MUST NOT depend on `@eforge-build/input`, and `@eforge-build/input` MUST NOT depend on `@eforge-build/engine`. This keeps the engine input-agnostic - it always receives normalized build source regardless of whether that source came from a playbook, session plan, wrapper app, CLI prompt, or PRD file.
+
+```mermaid
+flowchart TD
+    wrappers["Wrapper Apps"]
+    plugin["eforge-plugin\n(Claude Code)"]
+    pi["packages/pi-eforge\n(Pi)"]
+    cli["packages/eforge\n(CLI)"]
+    monitor["packages/monitor\n(Daemon)"]
+    client["@eforge-build/client"]
+    input["@eforge-build/input"]
+    engine["@eforge-build/engine"]
+    scopes["@eforge-build/scopes"]
+
+    wrappers --> client
+    wrappers --> input
+    plugin --> client
+    pi --> client
+    cli --> client
+    cli --> engine
+    cli --> input
+    monitor --> client
+    monitor --> engine
+    monitor --> input
+    engine --> scopes
+    input --> scopes
+```
+
+**Allowed dependency edges:**
+
+- `engine` MAY depend on `scopes`. MUST NOT depend on `input`.
+- `input` MAY depend on `scopes`. MUST NOT depend on `engine`.
+- `monitor` MAY depend on `input`, `engine`, and `client`.
+- CLI, Pi extension, and plugin SHOULD use `client` for daemon-backed flows; direct `input` imports are allowed only for in-process normalization paths (e.g. the CLI's in-process `eforge build` path).
+
+**Why:** Keeping the engine input-agnostic means future wrapper apps can reuse `@eforge-build/input` protocols without pulling in engine internals.
+
 ### Engine
 
-`packages/engine/` is the library core. The public API is the `EforgeEngine` class, which exposes methods for compiling, building, enqueueing, and queue processing - all returning `AsyncGenerator<EforgeEvent>`.
+`packages/engine/` is the library core. The public API is the `EforgeEngine` class, which exposes methods for compiling, building, enqueueing, and queue processing - all returning `AsyncGenerator<EforgeEvent>`. The engine consumes normalized PRD/build source. Reusable input-artifact protocols (playbooks, session plans) live in `@eforge-build/input`; the engine has no dependency on input.
 
 ### CLI
 
@@ -56,7 +108,7 @@ graph TD
 
 ### Monitor
 
-`packages/monitor/` provides the web dashboard. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves a React UI (`packages/monitor-ui/`) over SSE, runs as a detached process, and survives CLI exit.
+`packages/monitor/` provides the web dashboard. Events are recorded to SQLite via transparent middleware - this runs even with `--no-monitor`. The web server serves a React UI (`packages/monitor-ui/`) over SSE, runs as a detached process, and survives CLI exit. Playbook daemon routes import from `@eforge-build/input`; session-plan source paths are normalized via `normalizeBuildSource` from `@eforge-build/input` before reaching engine queue helpers.
 
 ### Plugin
 
