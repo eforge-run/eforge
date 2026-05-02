@@ -902,7 +902,42 @@ export async function startServer(
           sendJsonError(res, 400, 'Missing required field: source');
           return;
         }
-        const args = [body.source, ...(body.flags ?? [])];
+        // --- eforge:region plan-04-daemon-cli-wiring ---
+        // When source is a session-plan file (.eforge/session-plans/*.md), read
+        // and normalize it to ordinary build source before spawning the enqueue
+        // worker. Non-session-plan file paths and inline content pass through
+        // unchanged. Session-plan parse failures are surfaced as 400 errors.
+        let enqueueSource = body.source;
+        if (cwd) {
+          let resolvedSourcePath: string | undefined;
+          let rawSourceContent: string | undefined;
+          try {
+            resolvedSourcePath = resolve(cwd, body.source);
+            const sourceFileStat = await stat(resolvedSourcePath);
+            if (sourceFileStat.isFile()) {
+              rawSourceContent = await readFile(resolvedSourcePath, 'utf-8');
+            }
+          } catch {
+            // Source is inline content or the file is not accessible — no-op.
+          }
+          if (resolvedSourcePath !== undefined && rawSourceContent !== undefined) {
+            try {
+              const { normalizeBuildSource } = await import('@eforge-build/input');
+              const normalized = normalizeBuildSource({ sourcePath: resolvedSourcePath, content: rawSourceContent });
+              // normalized.content differs from rawSourceContent only for session
+              // plan files; regular PRD file content is returned unchanged.
+              if (normalized.content !== rawSourceContent) {
+                enqueueSource = normalized.content;
+              }
+            } catch (parseErr) {
+              // Session-plan parse failure — surface as a client error.
+              sendJsonError(res, 400, parseErr instanceof Error ? parseErr.message : 'Failed to parse source');
+              return;
+            }
+          }
+        }
+        const args = [enqueueSource, ...(body.flags ?? [])];
+        // --- eforge:endregion plan-04-daemon-cli-wiring ---
         const result = options.workerTracker.spawnWorker('enqueue', args);
         sendJson(res, {
           sessionId: result.sessionId,
