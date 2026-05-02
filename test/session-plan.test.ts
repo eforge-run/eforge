@@ -7,6 +7,7 @@
  *  - checkReadiness: substantive content vs. placeholder vs. skipped rules
  *  - migrateBooleanDimensions: legacy boolean shape → new required_dimensions shape
  *  - sessionPlanToBuildSource: PRD-style output formatting
+ *  - submitted status: parse, serialize round-trip, exclusion from listActiveSessionPlans
  */
 import { describe, it, expect } from 'vitest';
 import { writeFile, mkdir } from 'node:fs/promises';
@@ -146,6 +147,35 @@ planning_depth: focused
 `;
     expect(() => parseSessionPlan(raw)).toThrow();
   });
+
+  it('parses a session plan with status: submitted', () => {
+    const raw = makePlanRaw({ status: 'submitted' });
+    const plan = parseSessionPlan(raw);
+    expect(plan.status).toBe('submitted');
+  });
+
+  it('parses submitted plan with eforge_session frontmatter field', () => {
+    const raw = `---
+session: 2026-04-01-test-plan
+topic: "Test Plan"
+status: submitted
+planning_type: feature
+planning_depth: focused
+eforge_session: abc-123-session
+required_dimensions:
+  - scope
+optional_dimensions: []
+skipped_dimensions: []
+open_questions: []
+profile: null
+---
+
+# Test Plan
+`;
+    const plan = parseSessionPlan(raw);
+    expect(plan.status).toBe('submitted');
+    expect(plan.eforge_session).toBe('abc-123-session');
+  });
 });
 
 describe('serializeSessionPlan', () => {
@@ -161,6 +191,32 @@ describe('serializeSessionPlan', () => {
     expect(reparsed.planning_type).toBe(plan.planning_type);
     expect(reparsed.required_dimensions).toEqual(plan.required_dimensions);
     expect(reparsed.skipped_dimensions).toEqual(plan.skipped_dimensions);
+  });
+
+  it('round-trips a submitted plan preserving status and eforge_session', () => {
+    const raw = `---
+session: 2026-04-01-submitted-plan
+topic: "Submitted Plan"
+status: submitted
+planning_type: feature
+planning_depth: focused
+eforge_session: sess-xyz-789
+required_dimensions:
+  - scope
+optional_dimensions: []
+skipped_dimensions: []
+open_questions: []
+profile: null
+---
+
+# Submitted Plan
+`;
+    const plan = parseSessionPlan(raw);
+    const serialized = serializeSessionPlan(plan);
+    const reparsed = parseSessionPlan(serialized);
+
+    expect(reparsed.status).toBe('submitted');
+    expect(reparsed.eforge_session).toBe('sess-xyz-789');
   });
 
   it('serialized output contains frontmatter delimiters', () => {
@@ -575,5 +631,22 @@ describe('listActiveSessionPlans', () => {
     const entries = await listActiveSessionPlans({ cwd });
     expect(entries[0].session).toBe('aaa');
     expect(entries[1].session).toBe('bbb');
+  });
+
+  it('excludes submitted plans from active listing', async () => {
+    const cwd = makeTempDir();
+    const dir = resolve(cwd, '.eforge', 'session-plans');
+    await mkdir(dir, { recursive: true });
+
+    const planningRaw = makePlanRaw({ session: '2026-01-01-plan-a', topic: 'Plan A', status: 'planning' });
+    const submittedRaw = makePlanRaw({ session: '2026-01-02-plan-b', topic: 'Plan B', status: 'submitted' });
+
+    await writeFile(resolve(dir, '2026-01-01-plan-a.md'), planningRaw, 'utf-8');
+    await writeFile(resolve(dir, '2026-01-02-plan-b.md'), submittedRaw, 'utf-8');
+
+    const entries = await listActiveSessionPlans({ cwd });
+
+    expect(entries).toHaveLength(1);
+    expect(entries[0].session).toBe('2026-01-01-plan-a');
   });
 });

@@ -29,13 +29,13 @@ Determine the working source from one of three branches:
 
 **Branch C — No arguments**: If `$ARGUMENTS` is empty or not provided:
 
-1. **Check for active session plan** — Scan `.eforge/session-plans/` for files where YAML frontmatter `status` is `ready` or `planning`. If found:
-   - If one session plan exists, read it and present a summary: "I found a planning session: _{topic}_. Status: {status}."
-   - If multiple exist, list them by topic and date, most recent first, and ask which to use
-   - If the session status is `ready`, use the **session plan file path** as the source — skip directly to **Step 4**. **Do not read the file and rewrite, summarize, or convert it into a different format.** The eforge daemon handles PRD formatting; the session plan file is the source material it needs.
+1. **Check for active session plan** — Call `mcp__eforge__eforge_session_plan { action: 'list-active' }` to discover active plans. If found:
+   - If one plan exists, present a summary: "I found a planning session: _{topic}_. Status: {status}."
+   - If multiple exist, list them by topic, most recent first, and ask which to use
+   - If the session status is `ready`, use the **session plan file path** (`plan.path` from the response) as the source — skip directly to **Step 4**. **Do not read the file and rewrite, summarize, or convert it into a different format.** The eforge daemon handles PRD formatting; the session plan file is the source material it needs.
    - If the session status is `planning`, warn: "This session is still in planning — some dimensions are still missing." Then:
-     - **New-format sessions** (frontmatter has `required_dimensions`): read `required_dimensions`, `skipped_dimensions`, and the body section names from the file. Match section headers case-insensitively after converting kebab-case dimension names to space-separated words (e.g., `code-impact` matches `## Code Impact`). A section counts as covered only if it has at least one non-empty, non-placeholder line of content — not just a header, blank lines, or "TBD"/"N/A". List required dimensions that have neither body content nor a `skipped_dimensions` entry as **truly missing**. Separately list any intentionally skipped dimensions with their recorded reason. Recommend `/eforge:plan --resume` only if at least one required dimension is truly missing.
-     - **Legacy-format sessions** (frontmatter has `dimensions: { name: bool, ... }`): list every dimension whose value is `false` as missing (preserving current behavior) and suggest `/eforge:plan --resume` to continue.
+     - Call `mcp__eforge__eforge_session_plan { action: 'readiness', session }` to get the readiness report. Use `missingDimensions` to list what's truly missing and `skippedDimensions` to list what was intentionally skipped with reasons.
+     - Recommend `/eforge:plan --resume` only if at least one dimension appears in `missingDimensions`.
      - Ask the user whether to submit as-is or continue planning (suggest `/eforge:plan --resume`)
    - If the user confirms a `planning` session, use the **session plan file path** as the source and proceed to **Step 4**
 
@@ -132,7 +132,7 @@ The tool returns a JSON response with a `sessionId` and `autoBuild` status.
 
 After successful enqueue:
 
-1. If the source came from a session plan file (Branch C, step 1), update the session file's YAML frontmatter: set `status: submitted` and add `eforge_session: {sessionId}`.
+1. If the source came from a session plan file (Branch C, step 1), the daemon automatically updates the session file's status to `submitted` and records the session ID — no manual frontmatter edit is needed.
 
 2. Tell the user:
 

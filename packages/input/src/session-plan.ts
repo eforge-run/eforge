@@ -12,12 +12,22 @@
  *   listActiveSessionPlans    — list active session plans in project-local scope
  *   selectDimensions          — resolve required/optional/skipped dimension sets
  *   checkReadiness            — check if all required dimensions have content
+ *   getReadinessDetail        — check readiness with covered/skipped dimension lists
  *   migrateBooleanDimensions  — convert legacy boolean dimension shape to new format
  *   sessionPlanToBuildSource  — format a session plan as ordinary build source
  *   normalizeBuildSource      — detect session-plan paths and convert to build source
+ *   createSessionPlan         — create a fresh SessionPlan with canonical frontmatter
+ *   setSessionPlanSection     — append-or-replace a ## section in the plan body
+ *   skipDimension             — add or update an entry in skipped_dimensions
+ *   unskipDimension           — remove an entry from skipped_dimensions
+ *   setSessionPlanStatus      — update status and optional metadata fields
+ *   setSessionPlanDimensions  — apply planning_type/depth and write dimension lists
+ *   resolveSessionPlanPath    — resolve session id to absolute path within .eforge/session-plans/
+ *   loadSessionPlan           — read and parse a session plan by session id
+ *   writeSessionPlan          — serialize and atomically write a session plan to disk
  */
-import { readFile, readdir } from 'node:fs/promises';
-import { resolve, basename } from 'node:path';
+import { readFile, readdir, writeFile, mkdir, rename } from 'node:fs/promises';
+import { resolve, basename, dirname, sep } from 'node:path';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
@@ -25,7 +35,7 @@ import { z } from 'zod/v4';
 // Types
 // ---------------------------------------------------------------------------
 
-export type SessionPlanStatus = 'planning' | 'ready' | 'abandoned';
+export type SessionPlanStatus = 'planning' | 'ready' | 'abandoned' | 'submitted';
 export type PlanningType =
   | 'bugfix'
   | 'feature'
@@ -55,10 +65,11 @@ export const sessionPlanFrontmatterSchema = z.object({
   session: z.string(),
   topic: z.string(),
   created: z.string().optional(),
-  status: z.enum(['planning', 'ready', 'abandoned']),
+  status: z.enum(['planning', 'ready', 'abandoned', 'submitted']),
   planning_type: z.enum(['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown']),
   planning_depth: z.enum(['quick', 'focused', 'deep']),
   confidence: z.enum(['high', 'medium', 'low']).optional(),
+  eforge_session: z.string().optional(),
   required_dimensions: z.array(z.string()).default([]),
   optional_dimensions: z.array(z.string()).default([]),
   skipped_dimensions: z.array(skippedDimensionSchema).default([]),
@@ -168,6 +179,78 @@ function hasSubstantiveContent(content: string): boolean {
   return content.split('\n').some(
     (line) => line.trim() !== '' && !PLACEHOLDER_RE.test(line.trim()),
   );
+}
+
+/**
+ * Convert a dimension name (kebab-case) to a Title Case heading string
+ * (e.g. `'acceptance-criteria'` → `'Acceptance Criteria'`).
+ */
+function dimensionToTitle(name: string): string {
+  return name.split('-').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+/**
+ * Set or replace a `## {Title}` section in the plan body.
+ * Returns the updated body string.
+ *
+ * Heading detection uses `^##\s+(.+)$` to match the same shape as
+ * `parseSections` (any whitespace after `##`, not just a literal space).
+ * If a body contains multiple `## {Title}` headings — even when separated
+ * by other headings — the first occurrence is replaced in place and every
+ * later duplicate (and its content up to the next heading) is removed,
+ * leaving a single canonical section.
+ */
+function setBodySection(body: string, dimensionName: string, content: string): string {
+  const title = dimensionToTitle(dimensionName);
+  const sectionKeyLower = dimensionToSectionKey(dimensionName);
+
+  const lines = body.split('\n');
+
+  // Index every `## ...` heading so we can compute section ranges directly.
+  const headings: Array<{ idx: number; key: string }> = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(/^##\s+(.+)$/);
+    if (m) {
+      headings.push({ idx: i, key: m[1].trim().toLowerCase() });
+    }
+  }
+
+  // Collect every range [start, end) for sections whose heading matches.
+  const matchingRanges: Array<{ start: number; end: number }> = [];
+  for (let h = 0; h < headings.length; h++) {
+    if (headings[h].key === sectionKeyLower) {
+      const start = headings[h].idx;
+      const end = headings[h + 1]?.idx ?? lines.length;
+      matchingRanges.push({ start, end });
+    }
+  }
+
+  // New section lines: heading, blank, content, trailing blank
+  const newSectionLines = [`## ${title}`, '', ...content.trim().split('\n'), ''];
+
+  if (matchingRanges.length === 0) {
+    // Append new section at the end
+    const trimmed = body.trimEnd();
+    return trimmed + '\n\n' + newSectionLines.join('\n');
+  }
+
+  // Replace the first matching section in place; drop every later duplicate.
+  const insertAt = matchingRanges[0].start;
+  const drop = new Set<number>();
+  for (const r of matchingRanges) {
+    for (let i = r.start; i < r.end; i++) drop.add(i);
+  }
+
+  const out: string[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (i === insertAt) {
+      out.push(...newSectionLines);
+    }
+    if (!drop.has(i)) {
+      out.push(lines[i]);
+    }
+  }
+  return out.join('\n');
 }
 
 // ---------------------------------------------------------------------------
@@ -431,6 +514,346 @@ export function checkReadiness(plan: SessionPlan): {
     ready: missingDimensions.length === 0,
     missingDimensions,
   };
+}
+
+/**
+ * Returns a detailed readiness summary including covered and skipped dimensions.
+ *
+ * A dimension is **covered** when it has substantive body content.
+ * A dimension is **skipped** when it appears in `skipped_dimensions`.
+ * A dimension is **missing** when it is required but neither covered nor skipped.
+ *
+ * Optional dimensions are not included in any of the arrays.
+ */
+export function getReadinessDetail(plan: SessionPlan): {
+  ready: boolean;
+  missingDimensions: string[];
+  coveredDimensions: string[];
+  skippedDimensions: string[];
+} {
+  const skippedNames = new Set(plan.skipped_dimensions.map((s) => s.name));
+  const { required } = selectDimensions(plan);
+
+  const missingDimensions: string[] = [];
+  const coveredDimensions: string[] = [];
+
+  for (const dim of required) {
+    if (skippedNames.has(dim)) {
+      continue;
+    }
+    const sectionKey = dimensionToSectionKey(dim);
+    const content = plan.sections.get(sectionKey) ?? '';
+    if (hasSubstantiveContent(content)) {
+      coveredDimensions.push(dim);
+    } else {
+      missingDimensions.push(dim);
+    }
+  }
+
+  return {
+    ready: missingDimensions.length === 0,
+    missingDimensions,
+    coveredDimensions,
+    skippedDimensions: plan.skipped_dimensions.map((s) => s.name),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public API — mutation helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Options for creating a new session plan.
+ */
+export interface CreateSessionPlanOpts {
+  session: string;
+  topic: string;
+  planningType?: PlanningType;
+  planningDepth?: PlanningDepth;
+  profile?: PlanningProfile;
+}
+
+/**
+ * Create a fresh `SessionPlan` with canonical frontmatter for a new session.
+ * The plan starts in `planning` status with an empty body.
+ */
+export function createSessionPlan(opts: CreateSessionPlanOpts): SessionPlan {
+  const planningType = opts.planningType ?? 'unknown';
+  const planningDepth = opts.planningDepth ?? 'focused';
+  const body = `\n# ${opts.topic}\n`;
+
+  return {
+    session: opts.session,
+    topic: opts.topic,
+    status: 'planning',
+    planning_type: planningType,
+    planning_depth: planningDepth,
+    eforge_session: undefined,
+    required_dimensions: [],
+    optional_dimensions: [],
+    skipped_dimensions: [],
+    open_questions: [],
+    profile: opts.profile ?? null,
+    body,
+    sections: parseSections(body),
+  };
+}
+
+/**
+ * Append or replace a `## {Dimension Title}` section in the plan body.
+ * Returns a new `SessionPlan` — does not mutate the original.
+ *
+ * The heading is derived from `dimensionName` by converting kebab-case to Title
+ * Case (e.g. `'acceptance-criteria'` → `## Acceptance Criteria`). If a matching
+ * section already exists in the body (case-insensitive heading match), it is
+ * replaced in-place; otherwise a new section is appended.
+ */
+export function setSessionPlanSection(plan: SessionPlan, dimensionName: string, content: string): SessionPlan {
+  const newBody = setBodySection(plan.body, dimensionName, content);
+  return {
+    ...plan,
+    body: newBody,
+    sections: parseSections(newBody),
+  };
+}
+
+/**
+ * Add or update an entry in `skipped_dimensions` for the given dimension name.
+ * Returns a new `SessionPlan` — does not mutate the original.
+ */
+export function skipDimension(plan: SessionPlan, name: string, reason: string): SessionPlan {
+  const filtered = plan.skipped_dimensions.filter((s) => s.name !== name);
+  return {
+    ...plan,
+    skipped_dimensions: [...filtered, { name, reason }],
+  };
+}
+
+/**
+ * Remove an entry from `skipped_dimensions` by dimension name.
+ * Returns a new `SessionPlan` — does not mutate the original.
+ * No-op if the dimension was not skipped.
+ */
+export function unskipDimension(plan: SessionPlan, name: string): SessionPlan {
+  return {
+    ...plan,
+    skipped_dimensions: plan.skipped_dimensions.filter((s) => s.name !== name),
+  };
+}
+
+/**
+ * Optional metadata for `setSessionPlanStatus`.
+ * When status is `'submitted'`, `eforge_session` is required.
+ */
+export interface SetSessionPlanStatusMetadata {
+  eforge_session?: string;
+}
+
+/**
+ * Update the `status` field of a session plan, and optionally set additional
+ * frontmatter fields via `metadata`.
+ *
+ * When `status` is `'submitted'`, `metadata.eforge_session` is required and
+ * will be written to the frontmatter. Omitting it throws.
+ *
+ * Returns a new `SessionPlan` — does not mutate the original.
+ */
+export function setSessionPlanStatus(
+  plan: SessionPlan,
+  status: SessionPlanStatus,
+  metadata?: SetSessionPlanStatusMetadata,
+): SessionPlan {
+  if (status === 'submitted') {
+    if (!metadata?.eforge_session) {
+      throw new Error('eforge_session is required in metadata when setting status to "submitted"');
+    }
+    return {
+      ...plan,
+      status,
+      eforge_session: metadata.eforge_session,
+    };
+  }
+  return {
+    ...plan,
+    status,
+  };
+}
+
+/**
+ * Options for `setSessionPlanDimensions`.
+ */
+export interface SetSessionPlanDimensionsOpts {
+  planningType?: PlanningType;
+  planningDepth?: PlanningDepth;
+  /** When `true`, overwrite any existing explicit dimension lists. Default: `false`. */
+  overwrite?: boolean;
+}
+
+/**
+ * Apply `planning_type`, `planning_depth`, and derived dimension lists to a plan.
+ *
+ * If the plan already has explicit `required_dimensions` (non-empty) and
+ * `overwrite` is not set, only `planning_type` and `planning_depth` are
+ * updated — the dimension lists are left as-is.
+ *
+ * Returns a new `SessionPlan` — does not mutate the original.
+ */
+export function setSessionPlanDimensions(plan: SessionPlan, opts: SetSessionPlanDimensionsOpts): SessionPlan {
+  const planningType = opts.planningType ?? plan.planning_type;
+  const planningDepth = opts.planningDepth ?? plan.planning_depth;
+
+  if (!opts.overwrite && plan.required_dimensions.length > 0) {
+    return {
+      ...plan,
+      planning_type: planningType,
+      planning_depth: planningDepth,
+    };
+  }
+
+  const dims = getDimensionsForType(planningType, planningDepth);
+  return {
+    ...plan,
+    planning_type: planningType,
+    planning_depth: planningDepth,
+    required_dimensions: dims.required,
+    optional_dimensions: dims.optional,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Public API — path resolution and I/O
+// ---------------------------------------------------------------------------
+
+/**
+ * Options for `resolveSessionPlanPath`.
+ */
+export interface ResolveSessionPlanPathOpts {
+  /** Project root directory. */
+  cwd: string;
+  /** Session identifier (e.g. `'2026-04-03-add-dark-mode'`). Must not contain path separators. */
+  session: string;
+}
+
+/**
+ * Resolve a session identifier to its absolute file path within
+ * `<cwd>/.eforge/session-plans/<session>.md`.
+ *
+ * Throws if the resolved path would escape the `.eforge/session-plans/`
+ * directory (path traversal guard).
+ */
+export function resolveSessionPlanPath(opts: ResolveSessionPlanPathOpts): string {
+  // Session ids are flat filenames within .eforge/session-plans/; reject
+  // empty values, path separators, and traversal segments up-front so that
+  // clients cannot create nested files (which `listActiveSessionPlans`
+  // would silently miss) or sneak a non-canonical resolution past the
+  // prefix guard below.
+  if (
+    opts.session.length === 0 ||
+    opts.session.includes('/') ||
+    opts.session.includes('\\') ||
+    opts.session === '.' ||
+    opts.session === '..'
+  ) {
+    throw new Error(
+      `Invalid session identifier "${opts.session}": must be a flat filename without path separators`,
+    );
+  }
+
+  const sessionPlansDir = resolve(opts.cwd, '.eforge', 'session-plans');
+  const filePath = resolve(sessionPlansDir, `${opts.session}.md`);
+
+  // Guard against path traversal: the resolved path must start with the
+  // session-plans directory (use sep-terminated prefix to avoid false matches).
+  const guardPrefix = sessionPlansDir.endsWith(sep)
+    ? sessionPlansDir
+    : sessionPlansDir + sep;
+
+  if (!filePath.startsWith(guardPrefix)) {
+    throw new Error(
+      `Session identifier "${opts.session}" would escape .eforge/session-plans/`,
+    );
+  }
+
+  return filePath;
+}
+
+/**
+ * Options for `loadSessionPlan`.
+ */
+export interface LoadSessionPlanOpts {
+  /** Project root directory. */
+  cwd: string;
+  /** Session identifier. */
+  session: string;
+}
+
+/**
+ * Read and parse a session plan by session identifier.
+ * Path is resolved via `resolveSessionPlanPath` (path-traversal safe).
+ *
+ * Throws if the file does not exist or fails to parse.
+ */
+export async function loadSessionPlan(opts: LoadSessionPlanOpts): Promise<SessionPlan> {
+  const filePath = resolveSessionPlanPath(opts);
+  const raw = await readFile(filePath, 'utf-8');
+  return parseSessionPlan(raw);
+}
+
+/**
+ * Options for `writeSessionPlan`.
+ */
+export interface WriteSessionPlanOpts {
+  /** Project root directory. Used for path resolution and the path-traversal guard. */
+  cwd: string;
+  /**
+   * Session identifier. If omitted, `plan.session` is used.
+   * Mutually exclusive with `path`.
+   */
+  session?: string;
+  /**
+   * Absolute path to write to. Must be within `<cwd>/.eforge/session-plans/`.
+   * Mutually exclusive with `session`.
+   */
+  path?: string;
+  /** The session plan to serialize and write. */
+  plan: SessionPlan;
+}
+
+/**
+ * Serialize a `SessionPlan` and write it atomically to disk.
+ *
+ * The target path is constrained to `<cwd>/.eforge/session-plans/`.
+ * Passing a `path` or `session` that would escape this directory throws.
+ *
+ * Uses a temporary-file-then-rename strategy for atomic writes.
+ */
+export async function writeSessionPlan(opts: WriteSessionPlanOpts): Promise<void> {
+  const sessionPlansDir = resolve(opts.cwd, '.eforge', 'session-plans');
+  const guardPrefix = sessionPlansDir.endsWith(sep)
+    ? sessionPlansDir
+    : sessionPlansDir + sep;
+
+  let filePath: string;
+  if (opts.path !== undefined) {
+    const resolvedPath = resolve(opts.path);
+    if (!resolvedPath.startsWith(guardPrefix)) {
+      throw new Error(
+        `writeSessionPlan: path "${opts.path}" would escape .eforge/session-plans/`,
+      );
+    }
+    filePath = resolvedPath;
+  } else {
+    const session = opts.session ?? opts.plan.session;
+    filePath = resolveSessionPlanPath({ cwd: opts.cwd, session });
+  }
+
+  const content = serializeSessionPlan(opts.plan);
+  await mkdir(dirname(filePath), { recursive: true });
+
+  // Atomic write: write to a temp file then rename
+  const tmpPath = filePath + '.tmp';
+  await writeFile(tmpPath, content, 'utf-8');
+  await rename(tmpPath, filePath);
 }
 
 // ---------------------------------------------------------------------------

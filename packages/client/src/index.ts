@@ -89,6 +89,42 @@ export type {
   PlaybookValidateResponse,
 } from './api/playbook.js';
 
+export {
+  apiSessionPlanList,
+  apiSessionPlanShow,
+  apiSessionPlanCreate,
+  apiSessionPlanSetSection,
+  apiSessionPlanSkipDimension,
+  apiSessionPlanSetStatus,
+  apiSessionPlanSelectDimensions,
+  apiSessionPlanReadiness,
+  apiSessionPlanMigrateLegacy,
+} from './api/session-plan.js';
+
+export type {
+  SessionPlanStatusWire,
+  PlanningTypeWire,
+  PlanningDepthWire,
+  SkippedDimensionWire,
+  SessionPlanListEntryWire,
+  SessionPlanDataWire,
+  SessionPlanListResponse,
+  SessionPlanShowResponse,
+  SessionPlanCreateRequest,
+  SessionPlanCreateResponse,
+  SessionPlanSetSectionRequest,
+  SessionPlanSetSectionResponse,
+  SessionPlanSkipDimensionRequest,
+  SessionPlanSkipDimensionResponse,
+  SessionPlanSetStatusRequest,
+  SessionPlanSetStatusResponse,
+  SessionPlanSelectDimensionsRequest,
+  SessionPlanSelectDimensionsResponse,
+  SessionPlanReadinessResponse,
+  SessionPlanMigrateLegacyRequest,
+  SessionPlanMigrateLegacyResponse,
+} from './api/session-plan.js';
+
 export type { ApplyRecoveryRequest, ApplyRecoveryResponse } from './routes.js';
 
 export {

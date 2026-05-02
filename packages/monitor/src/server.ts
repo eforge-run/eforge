@@ -939,6 +939,37 @@ export async function startServer(
         const args = [enqueueSource, ...(body.flags ?? [])];
         // --- eforge:endregion plan-04-daemon-cli-wiring ---
         const result = options.workerTracker.spawnWorker('enqueue', args);
+        // --- eforge:region plan-02-daemon-routes ---
+        // After successful spawn, if source is a session-plan file under THIS
+        // project's .eforge/session-plans/ directory, mark it submitted.
+        // Failures must not fail the enqueue — log and continue.
+        if (cwd) {
+          const sessionPlansDir = resolve(cwd, '.eforge', 'session-plans');
+          const absSource = resolve(cwd, body.source);
+          // Constrain to our cwd's session-plans dir so an absolute path to a
+          // session-plan file in a *different* project (which would happen to
+          // share a basename with one of ours) cannot trigger us to mutate
+          // the wrong file.
+          if (isWithinDir(absSource, sessionPlansDir) && absSource.endsWith('.md')) {
+            const sessionId = basename(absSource, '.md');
+            // Defense-in-depth: only operate on session ids that match the
+            // canonical YYYY-MM-DD-{slug} shape. resolveSessionPlanPath will
+            // reject obvious traversal attempts, but this guard rejects any
+            // unexpected character set (control chars, unicode, etc.) before
+            // we ever touch the filesystem.
+            if (/^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/.test(sessionId)) {
+              try {
+                const { loadSessionPlan, setSessionPlanStatus, writeSessionPlan } = await import('@eforge-build/input');
+                const plan = await loadSessionPlan({ cwd, session: sessionId });
+                const updated = setSessionPlanStatus(plan, 'submitted', { eforge_session: result.sessionId });
+                await writeSessionPlan({ cwd, plan: updated });
+              } catch (autoSubmitErr) {
+                process.stderr.write(`[eforge] Failed to auto-submit session plan: ${autoSubmitErr instanceof Error ? autoSubmitErr.message : String(autoSubmitErr)}\n`);
+              }
+            }
+          }
+        }
+        // --- eforge:endregion plan-02-daemon-routes ---
         sendJson(res, {
           sessionId: result.sessionId,
           pid: result.pid,
@@ -1688,6 +1719,425 @@ export async function startServer(
       return;
     }
     // --- eforge:endregion plan-02-daemon-http-and-mcp-tool ---
+
+    // --- eforge:region plan-02-daemon-routes ---
+    // Session plan ids follow the YYYY-MM-DD-{slug} shape. Validate to prevent
+    // path traversal attempts via the `session` parameter.
+    const SESSION_PLAN_ID_RE = /^\d{4}-\d{2}-\d{2}-[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+    if (req.method === 'GET' && (url === API_ROUTES.sessionPlanList || url.startsWith(`${API_ROUTES.sessionPlanList}?`))) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      try {
+        const { listActiveSessionPlans, loadSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
+        const entries = await listActiveSessionPlans({ cwd });
+        const plans = await Promise.all(
+          entries.map(async (entry) => {
+            try {
+              const plan = await loadSessionPlan({ cwd, session: entry.session });
+              const readiness = getReadinessDetail(plan);
+              return {
+                session: entry.session,
+                topic: entry.topic,
+                status: entry.status,
+                path: entry.path,
+                ready: readiness.ready,
+                missingDimensions: readiness.missingDimensions,
+              };
+            } catch {
+              return {
+                session: entry.session,
+                topic: entry.topic,
+                status: entry.status,
+                path: entry.path,
+                ready: false,
+                missingDimensions: [],
+              };
+            }
+          }),
+        );
+        sendJson(res, { plans });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to list session plans');
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && (url === API_ROUTES.sessionPlanShow || url.startsWith(`${API_ROUTES.sessionPlanShow}?`))) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+      const qParams = new URLSearchParams(queryString);
+      const session = qParams.get('session');
+      if (!session) {
+        sendJsonError(res, 400, 'Missing required query param: session');
+        return;
+      }
+      if (!SESSION_PLAN_ID_RE.test(session)) {
+        sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
+        return;
+      }
+      try {
+        const { loadSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
+        const plan = await loadSessionPlan({ cwd, session });
+        const readiness = getReadinessDetail(plan);
+        const { body, sections: _sections, ...frontmatter } = plan as typeof plan & { sections: unknown };
+        sendJson(res, { plan: { ...frontmatter, body }, readiness });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to load session plan';
+        if (/not found/i.test(msg) || /enoent/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 400, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.sessionPlanCreate) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { session?: unknown; topic?: unknown; planning_type?: unknown; planning_depth?: unknown; profile?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.session || typeof body.session !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: session (string)');
+        return;
+      }
+      if (!SESSION_PLAN_ID_RE.test(body.session)) {
+        sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
+        return;
+      }
+      if (!body.topic || typeof body.topic !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: topic (string)');
+        return;
+      }
+      // Validate enum fields up-front: createSessionPlan does not validate
+      // them, so an invalid value would otherwise be persisted to disk in a
+      // file that subsequently fails to parse via parseSessionPlan.
+      const VALID_PLANNING_TYPES = ['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown'] as const;
+      const VALID_PLANNING_DEPTHS = ['quick', 'focused', 'deep'] as const;
+      const VALID_PROFILES = ['errand', 'excursion', 'expedition'] as const;
+      if (body.planning_type !== undefined && (typeof body.planning_type !== 'string' || !VALID_PLANNING_TYPES.includes(body.planning_type as typeof VALID_PLANNING_TYPES[number]))) {
+        sendJsonError(res, 400, `Invalid planning_type (must be one of: ${VALID_PLANNING_TYPES.join(', ')})`);
+        return;
+      }
+      if (body.planning_depth !== undefined && (typeof body.planning_depth !== 'string' || !VALID_PLANNING_DEPTHS.includes(body.planning_depth as typeof VALID_PLANNING_DEPTHS[number]))) {
+        sendJsonError(res, 400, `Invalid planning_depth (must be one of: ${VALID_PLANNING_DEPTHS.join(', ')})`);
+        return;
+      }
+      if (body.profile !== undefined && body.profile !== null && (typeof body.profile !== 'string' || !VALID_PROFILES.includes(body.profile as typeof VALID_PROFILES[number]))) {
+        sendJsonError(res, 400, `Invalid profile (must be null or one of: ${VALID_PROFILES.join(', ')})`);
+        return;
+      }
+      try {
+        const { createSessionPlan, writeSessionPlan, resolveSessionPlanPath } = await import('@eforge-build/input');
+        const plan = createSessionPlan({
+          session: body.session,
+          topic: body.topic,
+          planningType: body.planning_type as typeof VALID_PLANNING_TYPES[number] | undefined,
+          planningDepth: body.planning_depth as typeof VALID_PLANNING_DEPTHS[number] | undefined,
+          profile: body.profile as typeof VALID_PROFILES[number] | null | undefined,
+        });
+        await writeSessionPlan({ cwd, plan });
+        const path = resolveSessionPlanPath({ cwd, session: body.session });
+        sendJson(res, { session: body.session, path });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to create session plan');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.sessionPlanSetSection) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { session?: unknown; dimension?: unknown; content?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.session || typeof body.session !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: session (string)');
+        return;
+      }
+      if (!SESSION_PLAN_ID_RE.test(body.session)) {
+        sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
+        return;
+      }
+      if (!body.dimension || typeof body.dimension !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: dimension (string)');
+        return;
+      }
+      if (typeof body.content !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: content (string)');
+        return;
+      }
+      try {
+        const { loadSessionPlan, setSessionPlanSection, writeSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
+        const plan = await loadSessionPlan({ cwd, session: body.session });
+        const updated = setSessionPlanSection(plan, body.dimension, body.content);
+        await writeSessionPlan({ cwd, plan: updated });
+        const readiness = getReadinessDetail(updated);
+        sendJson(res, { session: body.session, readiness });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to set session plan section';
+        if (/not found/i.test(msg) || /enoent/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else if (/invalid/i.test(msg)) {
+          sendJsonError(res, 400, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.sessionPlanSkipDimension) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { session?: unknown; dimension?: unknown; reason?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.session || typeof body.session !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: session (string)');
+        return;
+      }
+      if (!SESSION_PLAN_ID_RE.test(body.session)) {
+        sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
+        return;
+      }
+      if (!body.dimension || typeof body.dimension !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: dimension (string)');
+        return;
+      }
+      if (!body.reason || typeof body.reason !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: reason (string)');
+        return;
+      }
+      try {
+        const { loadSessionPlan, skipDimension, writeSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
+        const plan = await loadSessionPlan({ cwd, session: body.session });
+        const updated = skipDimension(plan, body.dimension, body.reason);
+        await writeSessionPlan({ cwd, plan: updated });
+        const readiness = getReadinessDetail(updated);
+        sendJson(res, { session: body.session, readiness });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to skip session plan dimension';
+        if (/not found/i.test(msg) || /enoent/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.sessionPlanSetStatus) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { session?: unknown; status?: unknown; eforge_session?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.session || typeof body.session !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: session (string)');
+        return;
+      }
+      if (!SESSION_PLAN_ID_RE.test(body.session)) {
+        sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
+        return;
+      }
+      if (!body.status || typeof body.status !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: status (string)');
+        return;
+      }
+      const validStatuses = ['planning', 'ready', 'abandoned', 'submitted'] as const;
+      if (!validStatuses.includes(body.status as typeof validStatuses[number])) {
+        sendJsonError(res, 400, 'Invalid status (must be "planning", "ready", "abandoned", or "submitted")');
+        return;
+      }
+      if (body.status === 'submitted' && (!body.eforge_session || typeof body.eforge_session !== 'string')) {
+        sendJsonError(res, 400, 'eforge_session is required when status is "submitted"');
+        return;
+      }
+      try {
+        const { loadSessionPlan, setSessionPlanStatus, writeSessionPlan } = await import('@eforge-build/input');
+        const plan = await loadSessionPlan({ cwd, session: body.session });
+        const updated = setSessionPlanStatus(
+          plan,
+          body.status as 'planning' | 'ready' | 'abandoned' | 'submitted',
+          body.eforge_session ? { eforge_session: body.eforge_session as string } : undefined,
+        );
+        await writeSessionPlan({ cwd, plan: updated });
+        sendJson(res, { session: body.session });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to set session plan status';
+        if (/not found/i.test(msg) || /enoent/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else if (/required/i.test(msg)) {
+          sendJsonError(res, 400, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.sessionPlanSelectDimensions) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { session?: unknown; planning_type?: unknown; planning_depth?: unknown; overwrite?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.session || typeof body.session !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: session (string)');
+        return;
+      }
+      if (!SESSION_PLAN_ID_RE.test(body.session)) {
+        sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
+        return;
+      }
+      // Validate enum fields up-front to keep invalid values out of disk.
+      const SD_VALID_PLANNING_TYPES = ['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown'] as const;
+      const SD_VALID_PLANNING_DEPTHS = ['quick', 'focused', 'deep'] as const;
+      if (body.planning_type !== undefined && (typeof body.planning_type !== 'string' || !SD_VALID_PLANNING_TYPES.includes(body.planning_type as typeof SD_VALID_PLANNING_TYPES[number]))) {
+        sendJsonError(res, 400, `Invalid planning_type (must be one of: ${SD_VALID_PLANNING_TYPES.join(', ')})`);
+        return;
+      }
+      if (body.planning_depth !== undefined && (typeof body.planning_depth !== 'string' || !SD_VALID_PLANNING_DEPTHS.includes(body.planning_depth as typeof SD_VALID_PLANNING_DEPTHS[number]))) {
+        sendJsonError(res, 400, `Invalid planning_depth (must be one of: ${SD_VALID_PLANNING_DEPTHS.join(', ')})`);
+        return;
+      }
+      try {
+        const { loadSessionPlan, setSessionPlanDimensions, writeSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
+        const plan = await loadSessionPlan({ cwd, session: body.session });
+        const updated = setSessionPlanDimensions(plan, {
+          planningType: body.planning_type as typeof SD_VALID_PLANNING_TYPES[number] | undefined,
+          planningDepth: body.planning_depth as typeof SD_VALID_PLANNING_DEPTHS[number] | undefined,
+          overwrite: typeof body.overwrite === 'boolean' ? body.overwrite : undefined,
+        });
+        await writeSessionPlan({ cwd, plan: updated });
+        const readiness = getReadinessDetail(updated);
+        sendJson(res, {
+          session: body.session,
+          required_dimensions: updated.required_dimensions,
+          optional_dimensions: updated.optional_dimensions,
+          readiness,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to select session plan dimensions';
+        if (/not found/i.test(msg) || /enoent/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && (url === API_ROUTES.sessionPlanReadiness || url.startsWith(`${API_ROUTES.sessionPlanReadiness}?`))) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+      const qParams = new URLSearchParams(queryString);
+      const session = qParams.get('session');
+      if (!session) {
+        sendJsonError(res, 400, 'Missing required query param: session');
+        return;
+      }
+      if (!SESSION_PLAN_ID_RE.test(session)) {
+        sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
+        return;
+      }
+      try {
+        const { loadSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
+        const plan = await loadSessionPlan({ cwd, session });
+        const readiness = getReadinessDetail(plan);
+        sendJson(res, readiness);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to get session plan readiness';
+        if (/not found/i.test(msg) || /enoent/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 400, msg);
+        }
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.sessionPlanMigrateLegacy) {
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: { session?: unknown };
+      try {
+        body = await parseJsonBody(req) as typeof body;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.session || typeof body.session !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: session (string)');
+        return;
+      }
+      if (!SESSION_PLAN_ID_RE.test(body.session)) {
+        sendJsonError(res, 400, 'Invalid session id (must match YYYY-MM-DD-slug)');
+        return;
+      }
+      try {
+        const { loadSessionPlan, migrateBooleanDimensions, writeSessionPlan } = await import('@eforge-build/input');
+        const plan = await loadSessionPlan({ cwd, session: body.session });
+        const migrated = migrateBooleanDimensions(plan);
+        const wasMigrated = migrated !== plan;
+        if (wasMigrated) {
+          await writeSessionPlan({ cwd, plan: migrated });
+        }
+        sendJson(res, { session: body.session, migrated: wasMigrated });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to migrate session plan';
+        if (/not found/i.test(msg) || /enoent/i.test(msg)) {
+          sendJsonError(res, 404, msg);
+        } else {
+          sendJsonError(res, 500, msg);
+        }
+      }
+      return;
+    }
+    // --- eforge:endregion plan-02-daemon-routes ---
 
     if (req.method === 'GET' && url.startsWith(API_ROUTES.modelProviders)) {
       const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';

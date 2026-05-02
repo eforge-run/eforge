@@ -36,12 +36,54 @@ Playbooks are Markdown files with YAML frontmatter encoding a reusable build int
 
 Session plans are Markdown files in `.eforge/session-plans/` that accumulate decisions during a structured `/eforge:plan` conversation. They are project-local only and compile to ordinary build source.
 
+#### Lifecycle
+
+A session plan moves through the following `status` values:
+
+| Status | Meaning |
+|--------|---------|
+| `planning` | Actively being built up during a planning conversation |
+| `ready` | All required dimensions are filled; can be enqueued |
+| `submitted` | Enqueued to the daemon build queue; `eforge_session` is set in frontmatter |
+| `abandoned` | Discarded; excluded from active listings |
+
+`listActiveSessionPlans` returns only `planning` and `ready` plans. `submitted` and `abandoned` plans are excluded.
+
+#### Parse / serialize
+
 - `parseSessionPlan(content)` - parse a session plan Markdown file
 - `serializeSessionPlan(plan)` - serialize a session plan to Markdown
-- `listActiveSessionPlans(opts)` - list all active (non-archived) session plans in the project-local scope
-- `selectDimensions(plan, choices)` - record planning dimension selections on a session plan
-- `checkReadiness(plan)` - check whether a session plan has enough information to compile
+
+#### List / load / write
+
+- `listActiveSessionPlans(opts)` - list all active (`planning` or `ready`) session plans in the project-local scope
+- `loadSessionPlan(opts)` - read and parse a session plan by session identifier (path-traversal safe)
+- `writeSessionPlan(opts)` - serialize and atomically write a session plan to disk; constrained to `<cwd>/.eforge/session-plans/`
+
+#### Path resolution
+
+- `resolveSessionPlanPath(opts)` - resolve a session identifier to `<cwd>/.eforge/session-plans/<session>.md`; throws on path traversal attempts
+
+#### Dimension helpers
+
+- `selectDimensions(plan)` - resolve required/optional/skipped dimension sets for a plan
+- `checkReadiness(plan)` - check whether all required dimensions have substantive content; returns `{ ready, missingDimensions }`
+- `getReadinessDetail(plan)` - like `checkReadiness` but also returns `coveredDimensions` and `skippedDimensions` arrays
 - `migrateBooleanDimensions(plan)` - migrate legacy boolean dimension format to the current schema
+
+#### Mutation helpers
+
+All mutation helpers return a new `SessionPlan` value; they do not write to disk. Use `writeSessionPlan` after composing mutations.
+
+- `createSessionPlan(opts)` - create a fresh `SessionPlan` with canonical frontmatter in `planning` status
+- `setSessionPlanSection(plan, dimensionName, content)` - append or replace a `## {Dimension Title}` section in the plan body; heading is derived from the kebab-case dimension name (e.g. `'acceptance-criteria'` → `## Acceptance Criteria`)
+- `skipDimension(plan, name, reason)` - add or update an entry in `skipped_dimensions`
+- `unskipDimension(plan, name)` - remove an entry from `skipped_dimensions`
+- `setSessionPlanStatus(plan, status, metadata?)` - update `status`; when status is `'submitted'`, `metadata.eforge_session` is required
+- `setSessionPlanDimensions(plan, opts)` - apply `planning_type`/`planning_depth` and write `required_dimensions`/`optional_dimensions` using the canonical dimension map; no-op on existing explicit lists unless `overwrite: true`
+
+#### Build source compilation
+
 - `sessionPlanToBuildSource(plan)` - compile a session plan to ordinary build source for the engine queue
 
 ### Boundary normalization

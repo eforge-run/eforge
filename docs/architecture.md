@@ -96,6 +96,8 @@ flowchart TD
 - `monitor` MAY depend on `input`, `engine`, and `client`.
 - CLI, Pi extension, and plugin SHOULD use `client` for daemon-backed flows; direct `input` imports are allowed only for in-process normalization paths (e.g. the CLI's in-process `eforge build` path).
 
+Session-plan routes (`/api/session-plan/*`) and the `eforge_session_plan` tool follow the same `client` → `monitor` → `input` chain as playbooks: `API_ROUTES.sessionPlan*` constants live in `@eforge-build/client`, the daemon routes implement the handlers in `packages/monitor/`, and the MCP proxy (Claude Code) and Pi extension each register an `eforge_session_plan` tool that dispatches all session-plan mutations through `daemonRequest` against those constants.
+
 **Why:** Keeping the engine input-agnostic means future wrapper apps can reuse `@eforge-build/input` protocols without pulling in engine internals.
 
 ### Engine
@@ -112,11 +114,11 @@ flowchart TD
 
 ### Plugin
 
-`eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for init, build, queue, status, config, playbook, and daemon operations. The `/eforge:init` skill drives project onboarding interactively (harness, provider, model selection via a Quick or Mix-and-match flow), then calls `eforge_init` as a pure persister - the tool accepts a fully-assembled `profile` object and writes config to disk. The tool does not elicit input itself.
+`eforge-plugin/` is the Claude Code integration. It exposes MCP tools that communicate with the daemon via `mcp__eforge__eforge_*` tool calls for init, build, queue, status, config, playbook, session-plan, and daemon operations. The `/eforge:init` skill drives project onboarding interactively (harness, provider, model selection via a Quick or Mix-and-match flow), then calls `eforge_init` as a pure persister - the tool accepts a fully-assembled `profile` object and writes config to disk. The tool does not elicit input itself.
 
 ### Pi Package
 
-`packages/pi-eforge/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, playbook, and daemon management. Native Pi overlay commands handle agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive TUI overlays, while skill-based slash commands (`/eforge:build`, `/eforge:init`, `/eforge:plan`, `/eforge:playbook`, `/eforge:recover`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity. The Claude Code MCP proxy and the Pi extension both use `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. Routes are centralised there too: `API_ROUTES` plus a typed helper per route (`apiEnqueue`, `apiCancel`, `apiHealth`, ...) live under `packages/client/src/api/`, and the daemon (`packages/monitor/src/server.ts`), CLI, MCP proxy, Pi extension, and monitor-ui all dispatch off the same constants so a route rename surfaces as a type error.
+`packages/pi-eforge/` is the native Pi extension. It exposes native Pi tools that communicate with the daemon via HTTP API for init, build, queue, status, config, playbook, session-plan, and daemon management. Native Pi overlay commands handle agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive TUI overlays, while skill-based slash commands (`/eforge:build`, `/eforge:init`, `/eforge:plan`, `/eforge:playbook`, `/eforge:recover`, `/eforge:restart`, `/eforge:status`, `/eforge:update`) provide the same operational surface as the Claude Code plugin, keeping both consumers in parity. The Claude Code MCP proxy and the Pi extension both use `@eforge-build/client` (`packages/client/`) for the daemon HTTP client and response types - a zero-dep TypeScript package that is the canonical source for the daemon wire protocol. Routes are centralised there too: `API_ROUTES` plus a typed helper per route (`apiEnqueue`, `apiCancel`, `apiHealth`, ...) live under `packages/client/src/api/`, and the daemon (`packages/monitor/src/server.ts`), CLI, MCP proxy, Pi extension, and monitor-ui all dispatch off the same constants so a route rename surfaces as a type error.
 
 ## Event System
 

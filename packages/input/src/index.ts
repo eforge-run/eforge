@@ -86,7 +86,21 @@ export {
   // Dimension helpers
   selectDimensions,
   checkReadiness,
+  getReadinessDetail,
   migrateBooleanDimensions,
+
+  // Mutation helpers
+  createSessionPlan,
+  setSessionPlanSection,
+  skipDimension,
+  unskipDimension,
+  setSessionPlanStatus,
+  setSessionPlanDimensions,
+
+  // Path resolution and I/O
+  resolveSessionPlanPath,
+  loadSessionPlan,
+  writeSessionPlan,
 
   // Build source compilation
   sessionPlanToBuildSource,
@@ -105,6 +119,12 @@ export type {
   SessionPlan,
   SessionPlanListEntry,
   ListActiveSessionPlansOpts,
+  CreateSessionPlanOpts,
+  SetSessionPlanStatusMetadata,
+  SetSessionPlanDimensionsOpts,
+  ResolveSessionPlanPathOpts,
+  LoadSessionPlanOpts,
+  WriteSessionPlanOpts,
   NormalizeBuildSourceInput,
   NormalizeBuildSourceResult,
 } from './session-plan.js';

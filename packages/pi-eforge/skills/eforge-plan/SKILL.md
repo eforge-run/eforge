@@ -17,38 +17,18 @@ Start or resume a structured planning conversation. The output is a session plan
 ### Step 1: Session Setup
 
 **Resume path** — If `--resume` is passed or the user says "resume" / "continue planning":
-1. Scan `.eforge/session-plans/` for files where `status` in frontmatter is `planning` or `ready`
-2. If one found, read it and present a summary of where things stand: topic, planning type, depth, what dimensions have content, key decisions so far, any open questions
-3. If multiple found, list them and ask which to resume
-4. If none found, tell the user and offer to start a new session
-5. If the session file uses the legacy boolean `dimensions: { ... }` shape, handle it per **Legacy Session Files** below
+1. Call `eforge_session_plan { action: 'list-active' }` to discover active sessions.
+2. If one found, call `{ action: 'show', session }` and present a summary of where things stand: topic, planning type, depth, what dimensions have content, key decisions so far, any open questions.
+3. If multiple found, list them and ask which to resume; then call `{ action: 'show', session }` for the chosen one.
+4. If none found, tell the user and offer to start a new session.
+5. If the session has the legacy boolean `dimensions` shape (detected when `plan.required_dimensions` is empty in the `show` response and the plan body references old-format frontmatter), call `{ action: 'migrate-legacy', session }` to convert it, then call `{ action: 'show', session }` again to reload.
 6. Continue from whatever dimension needs work
    - If `required_dimensions` is empty (e.g., the session was abandoned before classification), restart from Step 3 to classify type/depth and populate the playbook.
 
 **New session path**:
 1. If no topic provided, ask: "What change are you planning?"
 2. Generate a session ID: `{YYYY-MM-DD}-{slug}` where slug is a short kebab-case derived from the topic (e.g., `2026-04-03-add-dark-mode`)
-3. Create `.eforge/session-plans/{session-id}.md` with initial frontmatter:
-
-```markdown
----
-session: {session-id}
-topic: "{topic}"
-created: {ISO timestamp}
-status: planning
-planning_type: unknown
-planning_depth: focused
-confidence: low
-required_dimensions: []
-optional_dimensions: []
-skipped_dimensions: []
-open_questions: []
-profile: null
----
-
-# {Topic}
-```
-
+3. Call `eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}' }` to create the session file.
 4. Proceed to Step 2
 
 ### Step 2: Gather Context
@@ -90,7 +70,7 @@ Before exploring dimensions, classify the planned change to select the right con
 
 Tell the user: "This looks like a **{type}** / **{depth}** change — I'll shape the conversation accordingly. Override either if that's off."
 
-Update frontmatter: set `planning_type`, `planning_depth`, and `confidence` (high / medium / low — how certain you are of the classification).
+Note the classification confidence (high / medium / low — how certain you are of the classification) for context when calling the tool in Step 4.
 
 ### Step 4: Consult Playbook
 
@@ -110,23 +90,15 @@ Use the work-type playbook to populate `required_dimensions` and `optional_dimen
 
 **unknown** — Required: `scope`, `code-impact`, `architecture-impact`, `design-decisions`, `documentation-impact`, `risks`, `acceptance-criteria`. Optional: (none). This is the legacy six-dimension checklist plus acceptance criteria; use it when classification is not confident enough to narrow down.
 
-Write the dimension lists to frontmatter and tell the user which dimensions will be explored.
+Call `eforge_session_plan { action: 'select-dimensions', session, planning_type, planning_depth }` to record the type, depth, and populate the dimension lists. Tell the user which dimensions will be explored.
 
 ### Step 5: Explore Dimensions
 
 Work through `required_dimensions` in order, then any `optional_dimensions` for `deep` depth sessions. For each dimension:
 
 1. Ask the relevant questions (see dimension guide below)
-2. Write a `## {Dimension Title}` section to the session file
-3. Coverage is recorded by the body section itself — if the dimension has a `## {Dimension Title}` section with content (at least one non-empty, non-placeholder line — not just the header, blank lines, or "TBD"/"N/A"), it counts as covered. If the user explicitly skips it, add an entry to `skipped_dimensions` with `name` and `reason` instead:
-
-```yaml
-skipped_dimensions:
-  - name: documentation-impact
-    reason: no user-facing docs affected
-```
-
-If the user says a dimension is not applicable, record it in `skipped_dimensions` with their stated reason — it will not block readiness.
+2. Call `eforge_session_plan { action: 'set-section', session, dimension: '{dimension-name}', content: '{content}' }` to record the dimension content.
+3. If the user explicitly skips a dimension, call `{ action: 'skip-dimension', session, dimension: '{dimension-name}', reason: '{reason}' }` instead. The tool records the skip — it will not block readiness.
 
 **Dimension guide:**
 
@@ -164,11 +136,11 @@ Write the recommendation and rationale to `## Profile Signal` in the session fil
 
 ### Step 7: Readiness
 
-A plan is ready when every entry in `required_dimensions` either has body content in the session file or appears in `skipped_dimensions` with a reason. Body content means at least one non-empty, non-placeholder line under the section header — not just the header, blank lines, or "TBD"/"N/A". Optional dimensions never block readiness.
+When all required dimensions appear complete, call `eforge_session_plan { action: 'readiness', session }` to verify. The tool checks all required dimensions and returns a readiness report with `ready`, `missingDimensions`, `coveredDimensions`, and `skippedDimensions`. Optional dimensions never block readiness.
 
-When the plan is ready:
+When `readiness.ready` is true:
 
-1. Update session file status to `ready` in frontmatter
+1. Call `eforge_session_plan { action: 'set-status', session, status: 'ready' }` to mark the session complete.
 2. Present a summary:
 
 ```
@@ -192,20 +164,16 @@ If any required dimension was briefly addressed and the change is non-trivial, f
 
 If a resumed session file uses the old boolean `dimensions: { scope: false, ... }` shape instead of `required_dimensions` / `optional_dimensions` / `skipped_dimensions`:
 
-- **On resume**: treat the session as `unknown` type with all six legacy dimensions (`scope`, `code-impact`, `architecture-impact`, `design-decisions`, `documentation-impact`, `risks`) plus `acceptance-criteria` as required. Any dimension that is `true` in the old map counts as already covered; any that is `false` is treated as a missing required dimension (preserving current build-skill behavior).
-- **On next save**: migrate the frontmatter to the new shape — convert covered dimensions to body-content entries and uncovered ones to entries in `required_dimensions`.
+- **On resume**: call `eforge_session_plan { action: 'migrate-legacy', session }` — the tool converts covered dimensions to body entries, uncovered ones to `required_dimensions` entries, and rewrites frontmatter to the new shape. Then reload via `{ action: 'show', session }` to continue with the migrated data.
 
 ## Session File Updates
 
-Update the session file at these milestones:
-- After context gathering (Step 2)
-- After classifying type and depth (Step 3)
-- After populating dimension lists (Step 4)
-- As each dimension is explored (Step 5)
-- After profile signal (Step 6)
-- When status changes (planning → ready)
+Update the session file using `eforge_session_plan` tool calls at these milestones:
+- After populating dimension lists (Step 4): `{ action: 'select-dimensions', ... }`
+- As each dimension is explored (Step 5): `{ action: 'set-section', ... }` or `{ action: 'skip-dimension', ... }`
+- When status changes (planning → ready, Step 7): `{ action: 'set-status', ... }`
 
-Use the Edit tool for incremental updates — don't rewrite the entire file each time.
+For free-form sections — Context (Step 2) and Profile Signal (Step 6) — use the Edit tool for incremental writes to the session file. Do not rewrite the entire file.
 
 ## Conversation Style
 
@@ -221,7 +189,7 @@ This skill supports long, iterative conversations. Key behaviors:
 
 | Condition | Action |
 |-----------|--------|
-| `.eforge/session-plans/` doesn't exist | Create it |
+| `.eforge/session-plans/` doesn't exist | The `eforge_session_plan` tool creates it automatically on first use |
 | CLAUDE.md not found | Proceed without it, note limited context |
 | No roadmap found | Skip roadmap alignment check |
 | Session file gets corrupted | Offer to start a new session |
