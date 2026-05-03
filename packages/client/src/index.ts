@@ -169,6 +169,37 @@ export { eventToProgress } from './event-to-progress.js';
 export type { FollowCounters, ProgressUpdate } from './event-to-progress.js';
 
 export type {
+  EforgeEvent,
+  AgentRole,
+  AgentResultData,
+  EforgeResult,
+  ClarificationQuestion,
+  ReviewIssue,
+  PlanFile,
+  OrchestrationConfig,
+  PlanState,
+  EforgeState,
+  ExpeditionModule,
+  PrdValidationGap,
+  TestIssue,
+  BuildFailureSummary,
+  LandedCommit,
+  PlanSummaryEntry,
+  FailingPlanEntry,
+  ReconciliationReport,
+  EforgeStatus,
+  QueueEvent,
+  StalenessVerdict,
+  RecoveryVerdict,
+  ReviewPerspective,
+  AgentTerminalSubtype,
+  ShardScope,
+  PipelineComposition,
+} from './events.js';
+
+export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent } from './events.js';
+
+export type {
   HealthResponse,
   AutoBuildState,
   ProjectContext,

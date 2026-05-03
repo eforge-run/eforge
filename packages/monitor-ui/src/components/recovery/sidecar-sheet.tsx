@@ -4,7 +4,7 @@ import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { Button } from '@/components/ui/button';
 import { SheetContent } from '@/components/ui/sheet';
-import type { ReadSidecarResponse } from '@eforge-build/client';
+import type { ReadSidecarResponse } from '@eforge-build/client/browser';
 import { applyRecovery, triggerRecover } from '@/lib/api';
 
 interface RecoverySidecarSheetProps {
@@ -40,8 +40,7 @@ export function RecoverySidecarSheet({ sidecar, prdId }: RecoverySidecarSheetPro
     if (open) setActionError(null);
   }, [open]);
 
-  type VerdictShape = { verdict: 'retry' | 'split' | 'abandon' | 'manual'; confidence: string };
-  const verdict = (sidecar.json.verdict as unknown as VerdictShape).verdict;
+  const verdict = sidecar.json.verdict.verdict;
   const setName = sidecar.json.summary.setName;
 
   async function handleApply() {

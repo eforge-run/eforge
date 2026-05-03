@@ -13,8 +13,7 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"],
-      "@eforge-build/engine/*": ["../engine/src/*"]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["src/**/*"],

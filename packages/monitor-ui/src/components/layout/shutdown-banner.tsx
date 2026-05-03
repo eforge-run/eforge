@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { API_ROUTES } from '@eforge-build/client';
+import { API_ROUTES } from '@eforge-build/client/browser';
 
 interface ShutdownBannerProps {
   countdown: number;

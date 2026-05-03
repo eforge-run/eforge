@@ -1,4 +1,4 @@
-// Re-export key types from engine events
+// Re-export key types from @eforge-build/client wire events
 export type {
   EforgeEvent,
   AgentRole,
@@ -11,11 +11,11 @@ export type {
   PlanState,
   EforgeState,
   ExpeditionModule,
-} from '@eforge-build/engine/events';
+} from '@eforge-build/client/browser';
 
 // Shared types owned by @eforge-build/client; re-export so every existing
 // `@/lib/types` importer continues to resolve the same names.
-import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
+import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client/browser';
 export type { BuildStageSpec, ReviewProfileConfig };
 
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';

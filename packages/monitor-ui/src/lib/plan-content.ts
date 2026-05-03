@@ -1,3 +1,5 @@
+import { parse as parseYaml } from 'yaml';
+
 /**
  * Split plan file content into frontmatter (YAML between --- delimiters) and markdown body.
  */
@@ -24,9 +26,8 @@ export function splitPlanContent(raw: string): { frontmatter: string | null; bod
 }
 
 /**
- * Parse simple YAML frontmatter fields from raw YAML text.
- * Handles flat key-value pairs and simple arrays (with `- item` syntax).
- * No external YAML library needed.
+ * Parse YAML frontmatter fields using the yaml library.
+ * Handles all YAML structures including nested objects and arrays.
  */
 export function parseFrontmatterFields(yaml: string): {
   id: string;
@@ -35,34 +36,36 @@ export function parseFrontmatterFields(yaml: string): {
   branch: string;
   migrations: Array<{ timestamp: string; description: string }>;
 } {
-  const lines = yaml.split('\n');
-  let id = '';
-  let name = '';
-  let branch = '';
-  const dependsOn: string[] = [];
-  const migrations: Array<{ timestamp: string; description: string }> = [];
-
-  let currentKey = '';
-
-  for (const line of lines) {
-    // Key-value pair
-    const kvMatch = line.match(/^(\w[\w_]*):\s*(.+)?$/);
-    if (kvMatch) {
-      currentKey = kvMatch[1];
-      const value = kvMatch[2]?.trim() || '';
-
-      if (currentKey === 'id') id = value;
-      else if (currentKey === 'name') name = value;
-      else if (currentKey === 'branch') branch = value;
-      continue;
+  let parsed: Record<string, unknown> = {};
+  try {
+    const result = parseYaml(yaml);
+    if (result && typeof result === 'object' && !Array.isArray(result)) {
+      parsed = result as Record<string, unknown>;
     }
-
-    // Array item
-    const itemMatch = line.match(/^\s+-\s+(.+)$/);
-    if (itemMatch && currentKey === 'depends_on') {
-      dependsOn.push(itemMatch[1].trim());
-    }
+  } catch {
+    // Malformed YAML — return empty defaults
   }
+
+  const id = typeof parsed['id'] === 'string' ? parsed['id'] : '';
+  const name = typeof parsed['name'] === 'string' ? parsed['name'] : '';
+  const branch = typeof parsed['branch'] === 'string' ? parsed['branch'] : '';
+
+  // depends_on is the canonical YAML key; dependsOn is the camelCase variant
+  const rawDependsOn = parsed['depends_on'] ?? parsed['dependsOn'];
+  const dependsOn: string[] = Array.isArray(rawDependsOn)
+    ? rawDependsOn.filter((v): v is string => typeof v === 'string')
+    : [];
+
+  const rawMigrations = parsed['migrations'];
+  const migrations: Array<{ timestamp: string; description: string }> = Array.isArray(rawMigrations)
+    ? rawMigrations.filter(
+        (m): m is { timestamp: string; description: string } =>
+          m !== null &&
+          typeof m === 'object' &&
+          typeof (m as Record<string, unknown>)['timestamp'] === 'string' &&
+          typeof (m as Record<string, unknown>)['description'] === 'string',
+      )
+    : [];
 
   return { id, name, dependsOn, branch, migrations };
 }

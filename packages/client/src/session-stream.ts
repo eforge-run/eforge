@@ -33,7 +33,6 @@
  * `SessionSummary` construction, and settlement logic.
  */
 
-import http from 'node:http';
 import { readLockfile } from './lockfile.js';
 
 /** Initial reconnect delay, doubled on each failure up to `MAX_RECONNECT_MS`. */
@@ -214,7 +213,8 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       return;
     }
 
-    let request: http.ClientRequest | null = null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let request: any | null = null;
     let browserReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let reconnectDelay = INITIAL_RECONNECT_MS;
@@ -468,81 +468,87 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
         return;
       }
 
-      // Node path (uses node:http — requires absolute baseUrl)
+      // Node path (lazy-loads node:http to avoid bundler errors in browser contexts)
       const url = `${baseUrl}/api/events/${encodeURIComponent(sessionId)}`;
-      const headers: http.OutgoingHttpHeaders = { accept: 'text/event-stream' };
+      const headers: Record<string, string> = { accept: 'text/event-stream' };
       if (lastEventId !== undefined) {
         headers['last-event-id'] = lastEventId;
       }
 
-      const req = http.get(url, { headers }, (res) => {
-        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
-          res.resume();
-          // 404/410 are terminal: the session does not exist or was dropped.
-          if (res.statusCode === 404 || res.statusCode === 410) {
-            settleReject(new Error(
-              `subscribeToSession: daemon returned ${res.statusCode} for session ${sessionId}`,
-            ));
+      void import('node:http').then((http) => {
+        if (settled) return;
+
+        const req = http.default.get(url, { headers }, (res: any) => {
+          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+            res.resume();
+            // 404/410 are terminal: the session does not exist or was dropped.
+            if (res.statusCode === 404 || res.statusCode === 410) {
+              settleReject(new Error(
+                `subscribeToSession: daemon returned ${res.statusCode} for session ${sessionId}`,
+              ));
+              return;
+            }
+            scheduleReconnect();
             return;
           }
-          scheduleReconnect();
-          return;
-        }
 
-        // Note: backoff and reconnect counter are intentionally NOT reset on
-        // 2xx open. They are reset inside `handleEvent()` only after at least
-        // one valid event has been parsed - see the JSDoc on this function.
+          // Note: backoff and reconnect counter are intentionally NOT reset on
+          // 2xx open. They are reset inside `handleEvent()` only after at least
+          // one valid event has been parsed - see the JSDoc on this function.
 
-        let buffer = '';
-        res.setEncoding('utf8');
-        res.on('data', (chunk: string) => {
-          buffer += chunk;
-          // SSE event boundaries may be either LF (`\n\n`) or CRLF (`\r\n\r\n`)
-          // per the spec, and `parseSseChunk` documents CRLF support. Find the
-          // last boundary using a regex that matches either form so the
-          // streaming path stays consistent with the parser.
-          const boundaryRegex = /\r?\n\r?\n/g;
-          let lastBoundaryEnd = -1;
-          let match: RegExpExecArray | null;
-          while ((match = boundaryRegex.exec(buffer)) !== null) {
-            lastBoundaryEnd = match.index + match[0].length;
-          }
-          if (lastBoundaryEnd === -1) return;
-          const complete = buffer.slice(0, lastBoundaryEnd);
-          buffer = buffer.slice(lastBoundaryEnd);
-
-          const blocks = parseSseChunk(complete);
-          for (const block of blocks) {
-            if (block.id !== undefined) lastEventId = block.id;
-            if (block.event !== undefined && block.data !== undefined) {
-              // Named SSE event (has an `event:` field) — route to onNamedEvent
-              try {
-                opts.onNamedEvent?.(block.event, block.data);
-              } catch {
-                // Callback exceptions must not disrupt the stream
-              }
-            } else if (block.data !== undefined) {
-              handleEvent(block.data, lastEventId);
+          let buffer = '';
+          res.setEncoding('utf8');
+          res.on('data', (chunk: string) => {
+            buffer += chunk;
+            // SSE event boundaries may be either LF (`\n\n`) or CRLF (`\r\n\r\n`)
+            // per the spec, and `parseSseChunk` documents CRLF support. Find the
+            // last boundary using a regex that matches either form so the
+            // streaming path stays consistent with the parser.
+            const boundaryRegex = /\r?\n\r?\n/g;
+            let lastBoundaryEnd = -1;
+            let match: RegExpExecArray | null;
+            while ((match = boundaryRegex.exec(buffer)) !== null) {
+              lastBoundaryEnd = match.index + match[0].length;
             }
-            if (settled) return;
-          }
-        });
-        res.on('end', () => {
-          request = null;
-          if (!settled) scheduleReconnect();
-        });
-        res.on('error', () => {
-          request = null;
-          if (!settled) scheduleReconnect();
-        });
-      });
+            if (lastBoundaryEnd === -1) return;
+            const complete = buffer.slice(0, lastBoundaryEnd);
+            buffer = buffer.slice(lastBoundaryEnd);
 
-      req.on('error', () => {
-        request = null;
+            const blocks = parseSseChunk(complete);
+            for (const block of blocks) {
+              if (block.id !== undefined) lastEventId = block.id;
+              if (block.event !== undefined && block.data !== undefined) {
+                // Named SSE event (has an `event:` field) — route to onNamedEvent
+                try {
+                  opts.onNamedEvent?.(block.event, block.data);
+                } catch {
+                  // Callback exceptions must not disrupt the stream
+                }
+              } else if (block.data !== undefined) {
+                handleEvent(block.data, lastEventId);
+              }
+              if (settled) return;
+            }
+          });
+          res.on('end', () => {
+            request = null;
+            if (!settled) scheduleReconnect();
+          });
+          res.on('error', () => {
+            request = null;
+            if (!settled) scheduleReconnect();
+          });
+        });
+
+        req.on('error', () => {
+          request = null;
+          if (!settled) scheduleReconnect();
+        });
+
+        request = req;
+      }).catch(() => {
         if (!settled) scheduleReconnect();
       });
-
-      request = req;
     }
 
     connect();

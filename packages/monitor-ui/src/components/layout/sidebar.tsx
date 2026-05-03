@@ -3,7 +3,7 @@ import { CheckCircle2, XCircle, Loader2, CircleStop, X } from 'lucide-react';
 import type { RunInfo, SessionMetadata } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
 import { cancelSession } from '@/lib/api';
-import { API_ROUTES } from '@eforge-build/client';
+import { API_ROUTES } from '@eforge-build/client/browser';
 import { groupRunsBySessions, partitionEnqueueSessions, type SessionGroup } from '@/lib/session-utils';
 import { formatRelativeTime, formatRunDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';

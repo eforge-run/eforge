@@ -1,5 +1,5 @@
 import type { RunInfo, QueueItem } from './types';
-import { API_ROUTES, buildPath, type ReadSidecarResponse } from '@eforge-build/client';
+import { API_ROUTES, buildPath, type ReadSidecarResponse } from '@eforge-build/client/browser';
 
 export async function fetchRuns(): Promise<RunInfo[]> {
   const res = await fetch(API_ROUTES.runs);

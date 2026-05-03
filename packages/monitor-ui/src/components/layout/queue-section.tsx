@@ -5,8 +5,8 @@ import type { QueueItem } from '@/lib/types';
 import { useApi } from '@/hooks/use-api';
 import { fetchRecoverySidecar } from '@/lib/api';
 import { cn } from '@/lib/utils';
-import { API_ROUTES } from '@eforge-build/client';
-import type { ReadSidecarResponse } from '@eforge-build/client';
+import { API_ROUTES } from '@eforge-build/client/browser';
+import type { ReadSidecarResponse } from '@eforge-build/client/browser';
 import {
   RecoveryVerdictChip,
   type RecoveryVerdictValue,
@@ -178,12 +178,9 @@ export function QueueSection({ refreshTrigger }: QueueSectionProps) {
         {sorted.map((item) => {
           // --- eforge:region plan-04-monitor-ui ---
           const sidecar = item.status === 'failed' ? sidecarData[item.id] : undefined;
-          // RecoveryVerdictSidecar has [key: string]: unknown which causes index-signature
-          // widening on named property access. Cast through unknown to recover the typed shape.
-          type VerdictShape = { verdict: RecoveryVerdictValue; confidence: RecoveryConfidenceValue };
           const sidecarVerdict =
             sidecar != null
-              ? (sidecar.json.verdict as unknown as VerdictShape)
+              ? sidecar.json.verdict
               : null;
           // undefined = not yet fetched; null = fetched but no sidecar (recovery pending)
           // Both cases result in sidecarVerdict == null → show the "recovery pending" indicator.

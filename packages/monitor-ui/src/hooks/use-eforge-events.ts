@@ -1,7 +1,7 @@
 import { useReducer, useEffect, useRef, useState, useCallback } from 'react';
 import { eforgeReducer, initialRunState, type RunState } from '@/lib/reducer';
 import type { ConnectionStatus, EforgeEvent } from '@/lib/types';
-import { API_ROUTES, buildPath, subscribeToSession } from '@eforge-build/client';
+import { API_ROUTES, buildPath, subscribeToSession } from '@eforge-build/client/browser';
 
 interface UseEforgeEventsResult {
   runState: RunState;

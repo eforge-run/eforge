@@ -101,4 +101,27 @@ branch: main`;
     const result = parseFrontmatterFields(yaml);
     expect(result.dependsOn).toEqual([]);
   });
+
+  it('parses migrations block', () => {
+    const yaml = `id: plan-02-db
+name: DB migrations
+branch: feature/db
+migrations:
+  - timestamp: "20260101120000"
+    description: create users table
+  - timestamp: "20260101130000"
+    description: add index on email`;
+
+    const result = parseFrontmatterFields(yaml);
+    expect(result.migrations).toHaveLength(2);
+    expect(result.migrations[0]).toEqual({ timestamp: '20260101120000', description: 'create users table' });
+    expect(result.migrations[1]).toEqual({ timestamp: '20260101130000', description: 'add index on email' });
+  });
+
+  it('returns empty migrations for malformed YAML', () => {
+    const yaml = 'this: is: not: valid: yaml: [[[';
+    const result = parseFrontmatterFields(yaml);
+    expect(result.migrations).toEqual([]);
+    expect(result.id).toBe('');
+  });
 });

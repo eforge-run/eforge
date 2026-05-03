@@ -2,7 +2,7 @@ import { useApi } from '@/hooks/use-api';
 import { PlanCard } from './plan-card';
 import type { PipelineStage, PlanData } from '@/lib/types';
 import type { ModuleStatus } from '@/lib/reducer';
-import { API_ROUTES, buildPath } from '@eforge-build/client';
+import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
 
 interface PlanCardsProps {
   sessionId: string | null;

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { fetchAutoBuild, setAutoBuild, type AutoBuildState } from '@/lib/api';
-import { subscribeToSession } from '@eforge-build/client';
+import { subscribeToSession } from '@eforge-build/client/browser';
 
 export function useAutoBuild(sessionId?: string | null): {
   state: AutoBuildState | null;

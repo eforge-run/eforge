@@ -9,7 +9,7 @@ import { useApi } from '@/hooks/use-api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { PlanData } from '@/lib/types';
-import { API_ROUTES, buildPath } from '@eforge-build/client';
+import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
 
 interface PlanPreviewPanelProps {
   sessionId: string | null;

@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { RecoveryVerdictValue, RecoveryConfidenceValue } from '@/components/recovery/verdict-chip';
-import type { ReadSidecarResponse } from '@eforge-build/client';
+import type { ReadSidecarResponse } from '@eforge-build/client/browser';
 
 // Pure logic tests validating QueueSection's recovery-pending rendering branch.
 //
@@ -16,18 +15,17 @@ import type { ReadSidecarResponse } from '@eforge-build/client';
 // branch is extracted as a pure function to validate the predicate.
 
 type SidecarData = ReadSidecarResponse | null | undefined;
-type VerdictShape = { verdict: RecoveryVerdictValue; confidence: RecoveryConfidenceValue };
 
 // Mirror of QueueSection's sidecarVerdict + isRecoveryPending computation —
 // extracted as a pure function for testability.
 function computeRecoveryState(
   itemStatus: string,
   sidecarEntry: SidecarData,
-): { sidecarVerdict: VerdictShape | null; isRecoveryPending: boolean } {
+): { sidecarVerdict: ReadSidecarResponse['json']['verdict'] | null; isRecoveryPending: boolean } {
   const sidecar = itemStatus === 'failed' ? sidecarEntry : undefined;
   const sidecarVerdict =
     sidecar != null
-      ? (sidecar.json.verdict as unknown as VerdictShape)
+      ? sidecar.json.verdict
       : null;
   const isRecoveryPending = itemStatus === 'failed' && sidecarVerdict == null;
   return { sidecarVerdict, isRecoveryPending };

@@ -64,7 +64,6 @@ export interface RecoveryVerdictSidecar {
     risks: string[];
     suggestedSuccessorPrd?: string;
   };
-  [key: string]: unknown;
 }
 
 /** Response for GET /api/recovery/sidecar */
