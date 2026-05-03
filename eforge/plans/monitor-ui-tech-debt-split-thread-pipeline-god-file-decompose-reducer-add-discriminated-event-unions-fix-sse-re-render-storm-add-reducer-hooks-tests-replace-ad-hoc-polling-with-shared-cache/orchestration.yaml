@@ -1,0 +1,122 @@
+name: monitor-ui-tech-debt-split-thread-pipeline-god-file-decompose-reducer-add-discriminated-event-unions-fix-sse-re-render-storm-add-reducer-hooks-tests-replace-ad-hoc-polling-with-shared-cache
+description: Decompose monitor-UI reducer.ts into typed per-group handlers with
+  selective state allocation, split thread-pipeline.tsx god-file into focused
+  modules, apply targeted React.memo to ThreadPipeline/PlanRow/EventCard, and
+  back the refactor with reducer/handler tests plus a regression-fixture safety
+  net. Public types, EforgeEvent shapes, and pixel rendering are unchanged.
+  Polling/shared-cache work is explicitly OUT OF SCOPE per the source PRD
+  (deferred to PRD B).
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build:ui
+plans:
+  - id: plan-01-reducer-decomposition
+    name: Reducer decomposition with typed handlers, selective allocation, and
+      regression-fixture tests
+    depends_on: []
+    branch: monitor-ui-tech-debt/reducer-decomposition
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: Load-bearing invariants in agent-thread matching, live-usage
+          delta-vs-final replacement, expedition early-orchestration synthesis,
+          and stage-advancement quirks must be preserved exactly. Decomposition
+          into ~7 handler files plus a compile-time exhaustiveness check plus a
+          regression fixture is high-coordination work.
+      reviewer:
+        effort: high
+        rationale: Behavior-preserving refactor — reviewer must verify each invariant
+          survives the split, not just that the new code compiles.
+      tester:
+        effort: high
+        rationale: Test suite is the safety net for a load-bearing refactor; tester must
+          ensure every invariant listed in the acceptance criteria has explicit
+          assertions.
+  - id: plan-02-pipeline-split-and-memo
+    name: Split thread-pipeline god-file, apply React.memo, add pipeline-helper tests
+    depends_on:
+      - plan-01-reducer-decomposition
+    branch: monitor-ui-tech-debt/pipeline-split-and-memo
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Pixel-equivalent split of the most pixel-dense view in the app, plus
+          React.memo on three hot components — moderate-to-high coordination but
+          the slice boundaries are pre-declared in the plan.
+      reviewer:
+        effort: high
+        rationale: Reviewer must verify pixel-equivalence (via attached before/after
+          screenshots), confirm no inline object/array literals defeat
+          memoization, and check that PlanRow's prop shape (notably
+          eventsByAgent) supports default shallow comparison.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - correctness
+      - maintainability
+      - performance
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "The PRD itself recommends excursion and the signals match: single
+    package (packages/monitor-ui/), one coherent PR, no cross-subsystem
+    coordination, ~10 new source files plus ~10 new test files but all within
+    one module. There are no genuinely independent subsystems being planned in
+    parallel, and the reducer split is the keystone the pipeline split and tests
+    depend on, so a single planner session can enumerate everything. Compile
+    uses planner + plan-review-cycle because the PRD encodes load-bearing
+    invariants (live-usage delta-vs-final, agent-thread reverse-walk matching,
+    stage-advancement quirks) and a careless plan could miss them; an extra
+    review pass on the plan is cheap insurance. Build uses [implement,
+    doc-author] in parallel because the PRD explicitly creates new files with
+    documented contracts (handler-types.ts, registry layout, pipeline split) and
+    doc-author has no predecessors, then doc-sync sequentially because the file
+    decomposition will leave stale references in any existing docs that point
+    into reducer.ts/thread-pipeline.tsx. review-cycle is required given high
+    pixel/behavioral regression risk (R1, R2, R3) and the explicit acceptance
+    criterion that the refactor be behavior- and pixel-preserving. test-cycle is
+    included because the PRD mandates a substantial test suite (regression
+    fixture, per-handler tests, pure-helper tests) that must execute and pass,
+    and the test-cycle quality gate matches the PRD's framing of tests as the
+    safety net for behavior preservation. Parallel review perspectives
+    (correctness for the load-bearing invariants, maintainability for the
+    decomposition quality, performance for the React.memo/selective-allocation
+    goal) target the three axes the PRD explicitly cares about, with maxRounds 2
+    to allow one fix cycle without overspending on a UI-only refactor. Standard
+    strictness fits a behavior-preserving refactor that has clear contracts but
+    no security/data risk."
