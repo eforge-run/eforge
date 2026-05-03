@@ -176,7 +176,7 @@ export async function* runParallelReview(
       let fullText = '';
 
       for await (const event of harness.run(
-        { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options) },
+        { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
         'reviewer',
         planId,
       )) {

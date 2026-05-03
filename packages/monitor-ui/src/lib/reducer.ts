@@ -58,6 +58,7 @@ export interface AgentThread {
   thinkingSource?: string;
   tier?: string;
   tierSource?: string;
+  perspective?: string;
 }
 
 export interface RunState {
@@ -328,6 +329,7 @@ function processEvent(
       thinkingSource: 'thinkingSource' in event ? (event as { thinkingSource?: string }).thinkingSource : undefined,
       tier: 'tier' in event ? (event as { tier?: string }).tier : undefined,
       tierSource: 'tierSource' in event ? (event as { tierSource?: string }).tierSource : undefined,
+      perspective: 'perspective' in event ? (event as { perspective?: string }).perspective : undefined,
     });
   }
 

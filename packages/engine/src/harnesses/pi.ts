@@ -282,9 +282,9 @@ export class PiHarness implements AgentHarness {
         agent,
         model: 'unknown',
         harness: 'pi',
-        harnessSource: options.harnessSource ?? 'tier',
-        tier: options.tier ?? 'unknown',
-        tierSource: options.tierSource ?? 'tier',
+        harnessSource: 'tier',
+        tier: options.tier!,
+        tierSource: options.tierSource!,
         effort: options.effort,
         effortSource: options.effortSource,
         thinking: options.thinking,
@@ -293,6 +293,7 @@ export class PiHarness implements AgentHarness {
         effortOriginal: options.effortOriginal,
         thinkingCoerced: options.thinkingCoerced,
         thinkingOriginal: options.thinkingOriginal,
+        perspective: options.perspective,
       });
       yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set the model on the tier recipe in eforge/config.yaml.', timestamp: new Date().toISOString() };
       return;
@@ -305,9 +306,9 @@ export class PiHarness implements AgentHarness {
         agent,
         model: options.model.id,
         harness: 'pi',
-        harnessSource: options.harnessSource ?? 'tier',
-        tier: options.tier ?? 'unknown',
-        tierSource: options.tierSource ?? 'tier',
+        harnessSource: 'tier',
+        tier: options.tier!,
+        tierSource: options.tierSource!,
         effort: options.effort,
         effortSource: options.effortSource,
         thinking: options.thinking,
@@ -316,6 +317,7 @@ export class PiHarness implements AgentHarness {
         effortOriginal: options.effortOriginal,
         thinkingCoerced: options.thinkingCoerced,
         thinkingOriginal: options.thinkingOriginal,
+        perspective: options.perspective,
       });
       yield { type: 'agent:stop', planId, agent, agentId, error: `No provider in model ref for Pi backend. Tier recipes with harness "pi" must set pi.provider.`, timestamp: new Date().toISOString() };
       return;
@@ -329,9 +331,9 @@ export class PiHarness implements AgentHarness {
       agent,
       model: options.model.id,
       harness: 'pi',
-      harnessSource: options.harnessSource ?? 'tier',
-      tier: options.tier ?? 'unknown',
-      tierSource: options.tierSource ?? 'tier',
+      harnessSource: 'tier',
+      tier: options.tier!,
+      tierSource: options.tierSource!,
       effort: options.effort,
       effortSource: options.effortSource,
       thinking: options.thinking,
@@ -340,6 +342,7 @@ export class PiHarness implements AgentHarness {
       effortOriginal: options.effortOriginal,
       thinkingCoerced: options.thinkingCoerced,
       thinkingOriginal: options.thinkingOriginal,
+      perspective: options.perspective,
     });
 
     if (options.thinkingCoerced) {

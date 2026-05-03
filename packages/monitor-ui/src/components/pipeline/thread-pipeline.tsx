@@ -878,6 +878,11 @@ function PlanRow({ planId, threads, sessionStart, totalSpan, endTime, issues, di
                         )}
                       </div>
                     )}
+                    {thread.perspective && (
+                      <div className="opacity-50 text-[10px]">
+                        perspective: {thread.perspective}
+                      </div>
+                    )}
                     <div className="opacity-70">{duration}</div>
                     {thread.totalTokens != null && (
                       <div className="opacity-70">

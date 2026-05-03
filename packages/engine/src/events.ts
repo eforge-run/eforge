@@ -240,7 +240,7 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'expedition:compile:complete'; plans: PlanFile[] }
 
   // Agent lifecycle (emitted by backend for every agent invocation)
-  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; model: string; harness: 'claude-sdk' | 'pi'; harnessSource: 'tier'; tier: string; tierSource: 'tier' | 'role' | 'plan'; effort?: string; effortSource?: 'tier' | 'role' | 'plan'; thinking?: object; thinkingSource?: 'tier' | 'role' | 'plan'; effortClamped?: boolean; effortOriginal?: string; thinkingCoerced?: boolean; thinkingOriginal?: object }
+  | { type: 'agent:start'; planId?: string; agentId: string; agent: AgentRole; model: string; harness: 'claude-sdk' | 'pi'; harnessSource: 'tier'; tier: string; tierSource: 'tier' | 'role' | 'plan'; effort?: string; effortSource?: 'tier' | 'role' | 'plan'; thinking?: object; thinkingSource?: 'tier' | 'role' | 'plan'; effortClamped?: boolean; effortOriginal?: string; thinkingCoerced?: boolean; thinkingOriginal?: object; perspective?: string }
   | { type: 'agent:warning'; planId?: string; agentId: string; agent: AgentRole; code: string; message: string }
   | { type: 'agent:stop'; planId?: string; agentId: string; agent: AgentRole; error?: string }
   /**

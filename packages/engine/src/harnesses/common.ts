@@ -37,6 +37,8 @@ export interface BuildAgentStartEventOptions {
   effortOriginal?: EffortLevel;
   thinkingCoerced?: boolean;
   thinkingOriginal?: ThinkingConfig;
+  /** The perspective this agent is reviewing from. Set only for parallel reviewer agents. */
+  perspective?: string;
 }
 
 /**
@@ -64,6 +66,7 @@ export function buildAgentStartEvent(opts: BuildAgentStartEventOptions): AgentSt
   if (opts.effortOriginal !== undefined) event.effortOriginal = opts.effortOriginal;
   if (opts.thinkingCoerced !== undefined) event.thinkingCoerced = opts.thinkingCoerced;
   if (opts.thinkingOriginal !== undefined) event.thinkingOriginal = opts.thinkingOriginal;
+  if (opts.perspective !== undefined) event.perspective = opts.perspective;
   return event;
 }
 

@@ -34,11 +34,7 @@ export interface SdkPassthroughConfig {
 }
 
 /** Keys that are part of resolved agent config but should NOT be forwarded to the backend SDK. */
-const NON_SDK_KEYS = new Set([
-  'promptAppend', 'effortClamped', 'effortOriginal', 'effortSource',
-  'thinkingSource', 'thinkingCoerced', 'thinkingOriginal',
-  'tier', 'tierSource', 'harness', 'harnessSource',
-]);
+const NON_SDK_KEYS = new Set(['promptAppend']);
 
 /**
  * Strip `undefined` values from an SdkPassthroughConfig so the SDK
@@ -132,6 +128,8 @@ export interface AgentRunOptions {
   harness?: 'claude-sdk' | 'pi';
   /** Provenance of the resolved harness value. */
   harnessSource?: 'tier';
+  /** The perspective this agent is reviewing from (e.g. 'code', 'security'). Set only for parallel reviewer agents. */
+  perspective?: string;
 }
 
 /**

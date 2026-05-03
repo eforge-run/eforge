@@ -115,9 +115,9 @@ export class ClaudeSDKHarness implements AgentHarness {
       agent,
       model: options.model?.id ?? 'default',
       harness: 'claude-sdk',
-      harnessSource: options.harnessSource ?? 'tier',
-      tier: options.tier ?? 'unknown',
-      tierSource: options.tierSource ?? 'tier',
+      harnessSource: 'tier',
+      tier: options.tier!,
+      tierSource: options.tierSource!,
       effort: options.effort,
       effortSource: options.effortSource,
       thinking: options.thinking,
@@ -126,6 +126,7 @@ export class ClaudeSDKHarness implements AgentHarness {
       effortOriginal: options.effortOriginal,
       thinkingCoerced: options.thinkingCoerced,
       thinkingOriginal: options.thinkingOriginal,
+      perspective: options.perspective,
     });
 
     if (options.thinkingCoerced) {
