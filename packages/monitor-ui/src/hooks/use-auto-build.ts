@@ -44,14 +44,15 @@ export function useAutoBuild(sessionId?: string | null): {
   const toggle = useCallback(() => {
     if (!state || toggling) return;
     const optimisticState: AutoBuildState = { ...state, enabled: !state.enabled };
+    void mutate(API_ROUTES.autoBuildGet, optimisticState, { revalidate: false });
     setToggling(true);
     setAutoBuild(!state.enabled)
-      .then((result) => {
-        if (result) {
-          void mutate(API_ROUTES.autoBuildGet, result, { revalidate: false });
-        }
+      .then(() => {
+        // SWR polling / SSE event will reconcile the actual server value
       })
-      .catch(() => {})
+      .catch(() => {
+        void mutate(API_ROUTES.autoBuildGet);
+      })
       .finally(() => setToggling(false));
   }, [state, toggling]);
 
