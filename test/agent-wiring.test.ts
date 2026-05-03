@@ -1602,4 +1602,35 @@ describe('runParallelReview verify perspective', () => {
       expect(backend.prompts).toHaveLength(6);
     });
   });
+
+  it('forwards perspective to harness.run options for each parallel agent call', async () => {
+    // Verifies the data-flow fix: perspective must appear in the AgentRunOptions
+    // passed to harness.run so the real harness can stamp it on agent:start.
+    const backend = new StubHarness([
+      { text: '<review-issues></review-issues>' }, // code
+      { text: '<review-issues></review-issues>' }, // security
+    ]);
+
+    await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan',
+        baseBranch: 'main',
+        planId: 'plan-perspective-forwarding',
+        cwd: '/tmp',
+        strategy: 'parallel',
+        perspectives: ['code', 'security'],
+      }),
+    );
+
+    // Each harness.run call must carry the corresponding perspective
+    expect(backend.calls).toHaveLength(2);
+    const perspectives = backend.calls.map((c) => c.perspective);
+    expect(perspectives).toContain('code');
+    expect(perspectives).toContain('security');
+    // Every parallel call has a perspective set; none are undefined
+    for (const p of perspectives) {
+      expect(p).toBeDefined();
+    }
+  });
 });

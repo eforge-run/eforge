@@ -42,6 +42,7 @@ describe('buildAgentStartEvent', () => {
       'thinkingSource',
       'thinkingCoerced',
       'thinkingOriginal',
+      'perspective',
     ];
     for (const key of optionalKeys) {
       expect(key in event, `optional key ${key} should not be present`).toBe(false);
@@ -66,6 +67,7 @@ describe('buildAgentStartEvent', () => {
       thinkingSource: 'role',
       thinkingCoerced: true,
       thinkingOriginal: { type: 'enabled' },
+      perspective: 'security',
     });
 
     expect(event).toMatchObject({
@@ -86,6 +88,7 @@ describe('buildAgentStartEvent', () => {
       thinkingSource: 'role',
       thinkingCoerced: true,
       thinkingOriginal: { type: 'enabled' },
+      perspective: 'security',
     });
   });
 
@@ -109,6 +112,7 @@ describe('buildAgentStartEvent', () => {
       thinkingCoerced: undefined,
       thinkingOriginal: undefined,
       planId: undefined,
+      perspective: undefined,
     });
 
     for (const [key, value] of Object.entries(event as Record<string, unknown>)) {
@@ -117,6 +121,7 @@ describe('buildAgentStartEvent', () => {
     expect('planId' in event).toBe(false);
     expect('effort' in event).toBe(false);
     expect('thinking' in event).toBe(false);
+    expect('perspective' in event).toBe(false);
   });
 });
 
