@@ -1,0 +1,87 @@
+name: monitor-ui-tech-debt-prd-b-replace-ad-hoc-polling-and-per-component-fetch-state-with-a-shared-cache-layer
+description: Replace monitor-UI's ad-hoc polling and per-component fetch state
+  with a shared SWR-based cache layer that handles request dedup, polling
+  cadence, focus/reconnect revalidation, and SSE-driven invalidation. Eliminates
+  the coercive `refreshTrigger` prop chain, deletes the per-component `useApi`
+  hook, removes read-only fetch helpers from `lib/api.ts`, standardizes polling
+  cadences via `refreshInterval`, wires SSE events to `mutate(key)`
+  invalidation, and bounds the previously-unbounded completed-session in-memory
+  cache to 20 entries.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-monitor-ui-swr-migration
+    name: Adopt SWR cache layer in monitor-UI; delete useApi and refreshTrigger chain
+    depends_on: []
+    branch: monitor-ui-tech-debt-prd-b-replace-ad-hoc-polling-and-per-component-fetch-state-with-a-shared-cache-layer/swr-migration
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+        - integration
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: ~16 file changeset with one architectural shift (coercive
+          refreshTrigger → SSE-driven mutate) and behavioral correctness
+          requirements (LRU bound, 404→null fetcher contract, optimistic update
+          for autoBuild). The mechanical replacements (useApi → useSWR) are
+          easy, but the SSE invalidation wiring and the per-failed-item
+          RecoveryRow extraction are subtle enough to warrant high effort over
+          the default.
+      reviewer:
+        effort: high
+        rationale: Reviewer must verify (a) every banned setInterval is gone except the
+          three explicitly-allowed ones; (b) every SSE event listed in
+          Acceptance Criteria fires the matching mutate(key); (c) refreshTrigger
+          prop and sidebarRefresh state are fully removed; (d) LRU bound is
+          genuinely 20-entry; (e) no literal /api/ strings introduced. These are
+          checklist items easy to miss without thorough review.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+    - test-write
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - maintainability
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "The PRD itself recommends 'excursion' and the work is bounded to a
+    single package (packages/monitor-ui/) with ~12 files modified, 5 added, 1
+    deleted, and one new dependency. There is real architectural change
+    (coercive refreshTrigger -> SSE-driven mutate() invalidation, SWR adoption,
+    LRU bound) but it is not multi-subsystem work, so expedition is unwarranted;
+    it is also too large for an errand. Compile uses planner + plan-review-cycle
+    because plan quality matters here: the migration must coordinate
+    SSE-event-to-cache-key invalidation mappings, polling-cadence
+    standardization, and a clean removal of the refreshTrigger chain without
+    regressing behavior - a plan-review gate catches scope/quality issues before
+    build. defaultBuild runs implement, then review-cycle (the PRD calls out
+    user-visible failure modes: stale UI, missed updates, request hammering -
+    quality-critical), then test-write to add the explicitly-required new unit
+    tests (swr-fetcher 404/200/500 behavior, LRU eviction, SWRConfigProvider
+    smoke test). doc-author/doc-sync are omitted because the PRD has no
+    documentation deliverables and explicitly states 'no visual design changes'
+    and 'HTTP API contracts unchanged'. Review uses single strategy with
+    correctness + maintainability perspectives (no security/data-handling
+    concerns - UI-only refactor), maxRounds 2 to catch the SSE-invalidation
+    wiring and LRU correctness without over-iterating, and standard strictness
+    matching the user-visible-but-not-safety-critical risk profile."
