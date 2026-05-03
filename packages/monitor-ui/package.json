@@ -12,7 +12,9 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@dagrejs/dagre": "^3.0.0",

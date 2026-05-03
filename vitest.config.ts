@@ -12,6 +12,7 @@ export default defineConfig({
       'packages/engine/test/**/*.test.ts',
       // --- eforge:region plan-04-monitor-ui ---
       'packages/monitor-ui/src/**/*.test.tsx',
+      'packages/monitor-ui/src/**/*.test.ts',
       // --- eforge:endregion plan-04-monitor-ui ---
     ],
     server: {

@@ -1,0 +1,407 @@
+[
+  {
+    "event": {
+      "type": "session:start",
+      "sessionId": "sess-001",
+      "timestamp": "2024-01-15T10:00:00.000Z"
+    },
+    "eventId": "ev-001"
+  },
+  {
+    "event": {
+      "type": "session:profile",
+      "sessionId": "sess-001",
+      "profileName": "default",
+      "source": "project",
+      "scope": "project",
+      "config": null,
+      "timestamp": "2024-01-15T10:00:01.000Z"
+    },
+    "eventId": "ev-002"
+  },
+  {
+    "event": {
+      "type": "phase:start",
+      "sessionId": "sess-001",
+      "runId": "run-001",
+      "planSet": "my-feature-set",
+      "command": "build",
+      "timestamp": "2024-01-15T10:00:02.000Z"
+    },
+    "eventId": "ev-003"
+  },
+  {
+    "event": {
+      "type": "planning:start",
+      "sessionId": "sess-001",
+      "source": "orchestration.yaml",
+      "timestamp": "2024-01-15T10:00:03.000Z"
+    },
+    "eventId": "ev-004"
+  },
+  {
+    "event": {
+      "type": "planning:complete",
+      "sessionId": "sess-001",
+      "plans": [
+        {
+          "id": "plan-01",
+          "name": "Plan One",
+          "dependsOn": [],
+          "branch": "feature/plan-01",
+          "body": "Implement feature A",
+          "filePath": ".eforge/plans/plan-01.md"
+        },
+        {
+          "id": "plan-02",
+          "name": "Plan Two",
+          "dependsOn": ["plan-01"],
+          "branch": "feature/plan-02",
+          "body": "Implement feature B",
+          "filePath": ".eforge/plans/plan-02.md"
+        }
+      ],
+      "timestamp": "2024-01-15T10:01:00.000Z"
+    },
+    "eventId": "ev-005"
+  },
+  {
+    "event": {
+      "type": "plan:build:start",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "timestamp": "2024-01-15T10:01:05.000Z"
+    },
+    "eventId": "ev-006"
+  },
+  {
+    "event": {
+      "type": "plan:build:implement:start",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "timestamp": "2024-01-15T10:01:06.000Z"
+    },
+    "eventId": "ev-007"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "agentId": "agent-001",
+      "agent": "builder",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "thinking": { "type": "enabled", "budgetTokens": 10000 },
+      "thinkingSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-01-15T10:01:10.000Z"
+    },
+    "eventId": "ev-008"
+  },
+  {
+    "event": {
+      "type": "agent:usage",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "agentId": "agent-001",
+      "agent": "builder",
+      "usage": { "input": 1000, "output": 500, "total": 1500, "cacheRead": 200, "cacheCreation": 0 },
+      "costUsd": 0.005,
+      "numTurns": 1,
+      "final": false,
+      "timestamp": "2024-01-15T10:02:00.000Z"
+    },
+    "eventId": "ev-009"
+  },
+  {
+    "event": {
+      "type": "agent:usage",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "agentId": "agent-001",
+      "agent": "builder",
+      "usage": { "input": 2000, "output": 1000, "total": 3000, "cacheRead": 400, "cacheCreation": 100 },
+      "costUsd": 0.01,
+      "numTurns": 2,
+      "final": true,
+      "timestamp": "2024-01-15T10:03:00.000Z"
+    },
+    "eventId": "ev-010"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "agent": "builder",
+      "result": {
+        "durationMs": 120000,
+        "durationApiMs": 110000,
+        "numTurns": 2,
+        "totalCostUsd": 0.01,
+        "usage": { "input": 2000, "output": 1000, "total": 3000, "cacheRead": 400, "cacheCreation": 100 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-01-15T10:03:01.000Z"
+    },
+    "eventId": "ev-011"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "agentId": "agent-001",
+      "agent": "builder",
+      "timestamp": "2024-01-15T10:03:05.000Z"
+    },
+    "eventId": "ev-012"
+  },
+  {
+    "event": {
+      "type": "plan:build:implement:complete",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "timestamp": "2024-01-15T10:03:10.000Z"
+    },
+    "eventId": "ev-013"
+  },
+  {
+    "event": {
+      "type": "plan:build:files_changed",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "files": ["src/features/a.ts", "src/features/b.ts", "test/a.test.ts"],
+      "timestamp": "2024-01-15T10:03:11.000Z"
+    },
+    "eventId": "ev-014"
+  },
+  {
+    "event": {
+      "type": "plan:build:review:start",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "timestamp": "2024-01-15T10:03:15.000Z"
+    },
+    "eventId": "ev-015"
+  },
+  {
+    "event": {
+      "type": "plan:build:review:complete",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "issues": [
+        {
+          "severity": "warning",
+          "category": "style",
+          "file": "src/features/a.ts",
+          "description": "Missing JSDoc on exported function"
+        }
+      ],
+      "timestamp": "2024-01-15T10:04:00.000Z"
+    },
+    "eventId": "ev-016"
+  },
+  {
+    "event": {
+      "type": "plan:build:evaluate:start",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "timestamp": "2024-01-15T10:04:05.000Z"
+    },
+    "eventId": "ev-017"
+  },
+  {
+    "event": {
+      "type": "plan:build:complete",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "timestamp": "2024-01-15T10:05:00.000Z"
+    },
+    "eventId": "ev-018"
+  },
+  {
+    "event": {
+      "type": "plan:merge:complete",
+      "sessionId": "sess-001",
+      "planId": "plan-01",
+      "commitSha": "abc123def456",
+      "timestamp": "2024-01-15T10:05:30.000Z"
+    },
+    "eventId": "ev-019"
+  },
+  {
+    "event": {
+      "type": "plan:build:start",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "timestamp": "2024-01-15T10:06:00.000Z"
+    },
+    "eventId": "ev-020"
+  },
+  {
+    "event": {
+      "type": "plan:build:implement:start",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "timestamp": "2024-01-15T10:06:01.000Z"
+    },
+    "eventId": "ev-021"
+  },
+  {
+    "event": {
+      "type": "agent:start",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "agentId": "agent-002",
+      "agent": "builder",
+      "model": "claude-sonnet-4-5",
+      "harness": "claude-sdk",
+      "harnessSource": "tier",
+      "tier": "heavy",
+      "tierSource": "role",
+      "effort": "high",
+      "effortSource": "role",
+      "effortClamped": false,
+      "effortOriginal": "high",
+      "timestamp": "2024-01-15T10:06:10.000Z"
+    },
+    "eventId": "ev-022"
+  },
+  {
+    "event": {
+      "type": "agent:usage",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "agentId": "agent-002",
+      "agent": "builder",
+      "usage": { "input": 3000, "output": 1500, "total": 4500, "cacheRead": 600, "cacheCreation": 200 },
+      "costUsd": 0.015,
+      "numTurns": 3,
+      "final": true,
+      "timestamp": "2024-01-15T10:08:00.000Z"
+    },
+    "eventId": "ev-023"
+  },
+  {
+    "event": {
+      "type": "agent:result",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "agent": "builder",
+      "result": {
+        "durationMs": 90000,
+        "durationApiMs": 85000,
+        "numTurns": 3,
+        "totalCostUsd": 0.015,
+        "usage": { "input": 3000, "output": 1500, "total": 4500, "cacheRead": 600, "cacheCreation": 200 },
+        "modelUsage": {}
+      },
+      "timestamp": "2024-01-15T10:08:01.000Z"
+    },
+    "eventId": "ev-024"
+  },
+  {
+    "event": {
+      "type": "agent:stop",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "agentId": "agent-002",
+      "agent": "builder",
+      "timestamp": "2024-01-15T10:08:05.000Z"
+    },
+    "eventId": "ev-025"
+  },
+  {
+    "event": {
+      "type": "plan:build:implement:complete",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "timestamp": "2024-01-15T10:08:10.000Z"
+    },
+    "eventId": "ev-026"
+  },
+  {
+    "event": {
+      "type": "plan:build:files_changed",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "files": ["src/features/b-extension.ts"],
+      "timestamp": "2024-01-15T10:08:11.000Z"
+    },
+    "eventId": "ev-027"
+  },
+  {
+    "event": {
+      "type": "plan:build:review:start",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "timestamp": "2024-01-15T10:08:15.000Z"
+    },
+    "eventId": "ev-028"
+  },
+  {
+    "event": {
+      "type": "plan:build:review:complete",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "issues": [],
+      "timestamp": "2024-01-15T10:09:00.000Z"
+    },
+    "eventId": "ev-029"
+  },
+  {
+    "event": {
+      "type": "plan:build:evaluate:start",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "timestamp": "2024-01-15T10:09:05.000Z"
+    },
+    "eventId": "ev-030"
+  },
+  {
+    "event": {
+      "type": "plan:build:complete",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "timestamp": "2024-01-15T10:10:00.000Z"
+    },
+    "eventId": "ev-031"
+  },
+  {
+    "event": {
+      "type": "plan:merge:complete",
+      "sessionId": "sess-001",
+      "planId": "plan-02",
+      "commitSha": "789fedcba012",
+      "timestamp": "2024-01-15T10:10:30.000Z"
+    },
+    "eventId": "ev-032"
+  },
+  {
+    "event": {
+      "type": "phase:end",
+      "sessionId": "sess-001",
+      "runId": "run-001",
+      "result": { "status": "completed", "summary": "All plans merged" },
+      "timestamp": "2024-01-15T10:11:00.000Z"
+    },
+    "eventId": "ev-033"
+  },
+  {
+    "event": {
+      "type": "session:end",
+      "sessionId": "sess-001",
+      "result": { "status": "completed", "summary": "Build succeeded: 2 plans merged" },
+      "timestamp": "2024-01-15T10:11:05.000Z"
+    },
+    "eventId": "ev-034"
+  }
+]

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { memo, useState } from 'react';
 import type { EforgeEvent } from '@/lib/types';
 import { formatDuration, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -243,7 +243,7 @@ function getEventPlanId(event: EforgeEvent): string | undefined {
   return undefined;
 }
 
-export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
+function EventCardImpl({ event, startTime, showVerbose }: EventCardProps) {
   const [isExpanded, setIsExpanded] = useState(false);
   const { openPreview, openContentPreview } = usePlanPreview();
   const typeInfo = classifyEvent(event.type, event);
@@ -348,3 +348,5 @@ export function EventCard({ event, startTime, showVerbose }: EventCardProps) {
     </div>
   );
 }
+
+export const EventCard = memo(EventCardImpl);

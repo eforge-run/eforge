@@ -186,7 +186,10 @@ function AppContent() {
   }, [runState.events.length]);
 
   // Use early orchestration (from expedition:architecture:complete) until server-fetched data arrives
-  const effectiveOrchestration = orchestration ?? runState.earlyOrchestration;
+  const effectiveOrchestration = useMemo(
+    () => orchestration ?? runState.earlyOrchestration,
+    [orchestration, runState.earlyOrchestration],
+  );
   const hasOrchestration = effectiveOrchestration !== null && effectiveOrchestration.plans.length > 0;
   const hasDependencyEdges = effectiveOrchestration !== null && effectiveOrchestration.plans.some((p: { dependsOn?: string[] }) => p.dependsOn && p.dependsOn.length > 0);
   const graphEnabled = hasOrchestration && hasDependencyEdges;
