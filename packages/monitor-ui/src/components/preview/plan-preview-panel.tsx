@@ -1,15 +1,16 @@
 import { useEffect } from 'react';
+import useSWR from 'swr';
 import { usePlanPreview } from './plan-preview-context';
 import { PlanMetadata } from './plan-metadata';
 import { PlanBodyHighlight } from './plan-body-highlight';
 import { BuildConfigSection } from '@/components/plans/build-config';
 import { StatusBadge, ModuleStatusBadge } from '@/components/plans/plan-card';
 import { splitPlanContent, parseFrontmatterFields } from '@/lib/plan-content';
-import { useApi } from '@/hooks/use-api';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { PlanData } from '@/lib/types';
 import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
+import { fetcher } from '@/lib/swr-fetcher';
 
 interface PlanPreviewPanelProps {
   sessionId: string | null;
@@ -18,8 +19,9 @@ interface PlanPreviewPanelProps {
 export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
   const { selectedPlanId, contentPreview, closePreview, planStatuses, fileChanges, moduleStatuses } = usePlanPreview();
   const isOpen = selectedPlanId !== null || contentPreview !== null;
-  const { data: plans, loading, error } = useApi<PlanData[]>(
+  const { data: plans, isLoading: loading, error } = useSWR<PlanData[]>(
     selectedPlanId && sessionId ? buildPath(API_ROUTES.plans, { runId: sessionId }) : null,
+    fetcher,
   );
 
   // Find selected plan
@@ -132,7 +134,7 @@ export function PlanPreviewPanel({ sessionId }: PlanPreviewPanelProps) {
 
           {!contentPreview && error && (
             <div className="text-red text-xs py-4 text-center">
-              Failed to load plans: {error.message}
+              Failed to load plans: {(error as Error).message}
             </div>
           )}
 

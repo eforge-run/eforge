@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { usePanelRef, useDefaultLayout } from 'react-resizable-panels';
+import useSWR from 'swr';
 
 import { AppLayout } from '@/components/layout/app-layout';
 import { Header } from '@/components/layout/header';
@@ -19,16 +20,14 @@ import { useEforgeEvents } from '@/hooks/use-eforge-events';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useAutoBuild } from '@/hooks/use-auto-build';
 import { getSummaryStats } from '@/lib/reducer';
-import { fetchLatestSessionId, fetchOrchestration, fetchProjectContext } from '@/lib/api';
+import { fetcher } from '@/lib/swr-fetcher';
+import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
 import type { OrchestrationConfig, PipelineStage, EforgeEvent } from '@/lib/types';
 import type { ProjectContext } from '@/components/layout/header';
 
 function AppContent() {
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
-  const [sidebarRefresh, setSidebarRefresh] = useState(0);
   const [lowerTab, setLowerTab] = useState<LowerTab>('log');
-  const [orchestration, setOrchestration] = useState<OrchestrationConfig | null>(null);
-  const [mergedPlanIds, setMergedPlanIds] = useState<Set<string>>(new Set());
   const [showVerbose, setShowVerbose] = useState(false);
   const [consoleCollapsed, setConsoleCollapsed] = useState(false);
   const consolePanelRef = usePanelRef();
@@ -38,16 +37,54 @@ function AppContent() {
   const { runState, connectionStatus, shutdownCountdown } = useEforgeEvents(currentSessionId);
   const { containerRef, autoScroll, enableAutoScroll } = useAutoScroll([runState.events.length]);
   const { state: autoBuildState, toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild(currentSessionId);
-  const [projectContext, setProjectContext] = useState<ProjectContext | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const { setRuntimeData } = usePlanPreview();
 
-  // Fetch project context once on mount
+  // Fetch latest run (10 s polling) — drives the auto-switch logic below
+  const { data: latestRunData } = useSWR<{ sessionId?: string; runId?: string }>(
+    API_ROUTES.latestRun,
+    fetcher,
+    { refreshInterval: 10000 },
+  );
+
+  // Fetch project context once (no refresh interval — static per daemon session)
+  const { data: projectContextData } = useSWR<ProjectContext>(
+    API_ROUTES.projectContext,
+    fetcher,
+  );
+  const projectContext = projectContextData ?? null;
+
+  // Fetch orchestration data when session changes (focus-revalidation only — no polling)
+  const { data: orchestrationData } = useSWR<OrchestrationConfig>(
+    currentSessionId ? buildPath(API_ROUTES.orchestration, { runId: currentSessionId }) : null,
+    fetcher,
+  );
+  const orchestration = orchestrationData ?? null;
+
+  // Auto-switch to the latest session when latestRunData changes
   useEffect(() => {
-    fetchProjectContext()
-      .then(setProjectContext)
-      .catch(() => {});
-  }, []);
+    if (!latestRunData) return;
+    const latestId = (latestRunData as { sessionId?: string; runId?: string }).sessionId
+      ?? (latestRunData as { sessionId?: string; runId?: string }).runId
+      ?? null;
+    if (!latestId) return;
+
+    if (!currentSessionId) {
+      // Initial selection on mount
+      knownLatestRef.current = latestId;
+      setCurrentSessionId(latestId);
+      return;
+    }
+
+    if (latestId !== knownLatestRef.current) {
+      knownLatestRef.current = latestId;
+      // Auto-switch only when the user hasn't explicitly selected a session
+      // AND the current session isn't actively running
+      if (!userSelectedRef.current && !isCurrentRunningRef.current) {
+        setCurrentSessionId(latestId);
+      }
+    }
+  }, [latestRunData, currentSessionId]);
 
   // Sync runtime data into PlanPreviewContext
   useEffect(() => {
@@ -89,7 +126,6 @@ function AppContent() {
   const handleSelectSession = useCallback((sessionId: string) => {
     userSelectedRef.current = sessionId;
     setCurrentSessionId(sessionId);
-    setSidebarRefresh((c) => c + 1);
   }, []);
 
   // Track whether the current session is actively running (for auto-switch suppression).
@@ -105,72 +141,8 @@ function AppContent() {
     }
   }, [runState.isComplete, currentSessionId]);
 
-  // Poll for new sessions — only auto-switch when no user selection is active
-  useEffect(() => {
-    // Auto-select latest session on mount
-    fetchLatestSessionId().then((id) => {
-      if (id) {
-        knownLatestRef.current = id;
-        if (!currentSessionId) {
-          setCurrentSessionId(id);
-        }
-      }
-    }).catch(() => {});
-
-    const interval = setInterval(async () => {
-      try {
-        const latestId = await fetchLatestSessionId();
-        // Refresh sidebar on every poll cycle so DB state changes (enqueue completion,
-        // phase transitions, status updates) are reflected without a browser refresh.
-        setSidebarRefresh((c) => c + 1);
-        if (latestId && latestId !== knownLatestRef.current) {
-          knownLatestRef.current = latestId;
-          // Auto-switch only when the user hasn't explicitly selected a session
-          // AND the current session isn't actively running (prevents enqueue/format
-          // runs from stealing focus from an in-progress build).
-          if (!userSelectedRef.current && !isCurrentRunningRef.current) {
-            setCurrentSessionId(latestId);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }, 2000);
-
-    return () => clearInterval(interval);
-  }, []); // Run once on mount — no dependency on currentSessionId
-
-  // Refresh sidebar when phase:start or phase:end events arrive
-  useEffect(() => {
-    const lastEvent = runState.events[runState.events.length - 1];
-    if (lastEvent) {
-      const type = lastEvent.event.type;
-      if (type === 'phase:start' || type === 'phase:end') {
-        setSidebarRefresh((c) => c + 1);
-      }
-    }
-  }, [runState.events.length]);
-
-  // Refresh sidebar when session completes — immune to React 18 batching
-  // since isComplete is a stable derived boolean, not dependent on event ordering
-  useEffect(() => {
-    if (runState.isComplete) {
-      setSidebarRefresh((c) => c + 1);
-    }
-  }, [runState.isComplete]);
-
-  // Fetch orchestration data when session changes
-  useEffect(() => {
-    if (!currentSessionId) {
-      setOrchestration(null);
-      return;
-    }
-    fetchOrchestration(currentSessionId)
-      .then((data) => setOrchestration(data as OrchestrationConfig))
-      .catch(() => setOrchestration(null));
-  }, [currentSessionId, hasPlans]);
-
   // Track merged plan IDs from events
+  const [mergedPlanIds, setMergedPlanIds] = useState<Set<string>>(new Set());
   useEffect(() => {
     const merged = new Set<string>();
     for (const { event } of runState.events) {
@@ -320,7 +292,6 @@ function AppContent() {
         <Sidebar
           currentSessionId={currentSessionId}
           onSelectSession={handleSelectSession}
-          refreshTrigger={sidebarRefresh}
           daemonActive={autoBuildState !== null}
         />
       }

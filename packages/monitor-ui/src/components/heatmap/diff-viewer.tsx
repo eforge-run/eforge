@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchFileDiff } from '@/lib/api';
+import { fetcher } from '@/lib/swr-fetcher';
+import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
 import { getHighlighter } from '@/lib/shiki';
 import { Button } from '@/components/ui/button';
 
@@ -9,6 +10,13 @@ interface DiffEntry {
   tooLarge?: boolean;
   binary?: boolean;
   error?: string;
+}
+
+interface DiffResult {
+  diff: string | null;
+  commitSha: string;
+  tooLarge?: boolean;
+  binary?: boolean;
 }
 
 interface DiffViewerProps {
@@ -54,8 +62,13 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, onClose }: Di
         if (planId) {
           // Single plan+file diff
           try {
-            const result = await fetchFileDiff(sessionId, planId, filePath);
-            fetchedEntries = [{ planId, ...result }];
+            const url = `${buildPath(API_ROUTES.diff, { sessionId, planId })}?file=${encodeURIComponent(filePath)}`;
+            const result = await fetcher(url) as DiffResult | null;
+            if (result === null) {
+              fetchedEntries = [{ planId, diff: null, error: 'Commit not found' }];
+            } else {
+              fetchedEntries = [{ planId, ...result }];
+            }
           } catch {
             fetchedEntries = [{ planId, diff: null, error: 'Commit not found' }];
           }
@@ -65,8 +78,13 @@ export function DiffViewer({ sessionId, planId, filePath, planIds, onClose }: Di
           fetchedEntries = [];
           for (const pid of relevantPlanIds) {
             try {
-              const result = await fetchFileDiff(sessionId, pid, filePath);
-              fetchedEntries.push({ planId: pid, ...result });
+              const url = `${buildPath(API_ROUTES.diff, { sessionId, planId: pid })}?file=${encodeURIComponent(filePath)}`;
+              const result = await fetcher(url) as DiffResult | null;
+              if (result === null) {
+                fetchedEntries.push({ planId: pid, diff: null, error: 'Commit not found' });
+              } else {
+                fetchedEntries.push({ planId: pid, ...result });
+              }
             } catch {
               fetchedEntries.push({ planId: pid, diff: null, error: 'Commit not found' });
             }

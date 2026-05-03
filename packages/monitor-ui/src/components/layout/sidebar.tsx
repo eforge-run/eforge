@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
+import useSWR from 'swr';
 import { CheckCircle2, XCircle, Loader2, CircleStop, X } from 'lucide-react';
 import type { RunInfo, SessionMetadata } from '@/lib/types';
-import { useApi } from '@/hooks/use-api';
 import { cancelSession } from '@/lib/api';
 import { API_ROUTES } from '@eforge-build/client/browser';
+import { fetcher } from '@/lib/swr-fetcher';
 import { groupRunsBySessions, partitionEnqueueSessions, type SessionGroup } from '@/lib/session-utils';
 import { formatRelativeTime, formatRunDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -27,7 +28,6 @@ import { EnqueueSection } from './enqueue-section';
 interface SidebarProps {
   currentSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
-  refreshTrigger: number;
   daemonActive: boolean;
 }
 
@@ -153,19 +153,11 @@ function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
 
 const PAGE_SIZE = 25;
 
-export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, daemonActive }: SidebarProps) {
-  const { data: runs, refetch } = useApi<RunInfo[]>(API_ROUTES.runs);
-  const { data: metadataMap, refetch: refetchMetadata } = useApi<Record<string, SessionMetadata>>(API_ROUTES.sessionMetadata);
+export function Sidebar({ currentSessionId, onSelectSession, daemonActive }: SidebarProps) {
+  const { data: runs } = useSWR<RunInfo[]>(API_ROUTES.runs, fetcher, { refreshInterval: 10000 });
+  const { data: metadataMap } = useSWR<Record<string, SessionMetadata>>(API_ROUTES.sessionMetadata, fetcher, { refreshInterval: 10000 });
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
-
-  // Refetch when trigger changes
-  useEffect(() => {
-    if (refreshTrigger > 0) {
-      refetch();
-      refetchMetadata();
-    }
-  }, [refreshTrigger, refetch, refetchMetadata]);
 
   const allGroups = useMemo(() => groupRunsBySessions(runs ?? []), [runs]);
   const { enqueue: enqueueGroups, sessions: sessionGroups } = useMemo(
@@ -211,7 +203,7 @@ export function Sidebar({ currentSessionId, onSelectSession, refreshTrigger, dae
         currentSessionId={currentSessionId}
         onSelectSession={onSelectSession}
       />
-      <QueueSection refreshTrigger={refreshTrigger} />
+      <QueueSection />
       <div className="relative mb-2">
         <Input
           type="text"

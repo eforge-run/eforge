@@ -1,23 +1,24 @@
-import { useApi } from '@/hooks/use-api';
+import useSWR from 'swr';
 import { PlanCard } from './plan-card';
 import type { PipelineStage, PlanData } from '@/lib/types';
 import type { ModuleStatus } from '@/lib/reducer';
 import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
+import { fetcher } from '@/lib/swr-fetcher';
 
 interface PlanCardsProps {
   sessionId: string | null;
   planStatuses: Record<string, PipelineStage>;
   fileChanges: Map<string, string[]>;
   moduleStatuses?: Record<string, ModuleStatus>;
-  refetchTrigger?: number;
 }
 
-export function PlanCards({ sessionId, planStatuses, fileChanges, moduleStatuses, refetchTrigger }: PlanCardsProps) {
-  const { data: plans, loading, error } = useApi<PlanData[]>(
-    sessionId ? `${buildPath(API_ROUTES.plans, { runId: sessionId })}${refetchTrigger ? `?t=${refetchTrigger}` : ''}` : null,
+export function PlanCards({ sessionId, planStatuses, fileChanges, moduleStatuses }: PlanCardsProps) {
+  const { data: plans, isLoading, error } = useSWR<PlanData[]>(
+    sessionId ? buildPath(API_ROUTES.plans, { runId: sessionId }) : null,
+    fetcher,
   );
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-text-dim text-xs py-8 justify-center">
         <div className="w-4 h-4 border-2 border-text-dim border-t-transparent rounded-full animate-spin" />
@@ -29,7 +30,7 @@ export function PlanCards({ sessionId, planStatuses, fileChanges, moduleStatuses
   if (error) {
     return (
       <div className="text-red text-xs py-4 text-center">
-        Failed to load plans: {error.message}
+        Failed to load plans: {(error as Error).message}
       </div>
     );
   }

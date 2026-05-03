@@ -1,7 +1,9 @@
 import { useReducer, useEffect, useRef, useState, useCallback } from 'react';
+import { mutate } from 'swr';
 import { eforgeReducer, initialRunState, type RunState } from '@/lib/reducer';
 import type { ConnectionStatus, EforgeEvent } from '@/lib/types';
 import { API_ROUTES, buildPath, subscribeToSession } from '@eforge-build/client/browser';
+import { BoundedMap } from '@/lib/lru';
 
 interface UseEforgeEventsResult {
   runState: RunState;
@@ -14,11 +16,36 @@ interface RunStateResponse {
   events: Array<{ id: number; data: string }>;
 }
 
+/** Invalidate SWR cache keys based on incoming SSE events. */
+function invalidateOnEvent(event: EforgeEvent): void {
+  switch (event.type) {
+    case 'phase:start':
+    case 'phase:end':
+      void mutate(API_ROUTES.runs);
+      void mutate(API_ROUTES.sessionMetadata);
+      break;
+    case 'session:end':
+      void mutate(API_ROUTES.runs);
+      void mutate(API_ROUTES.latestRun);
+      break;
+    case 'enqueue:complete':
+    case 'plan:build:complete':
+      void mutate(API_ROUTES.queue);
+      break;
+    case 'plan:build:failed':
+      void mutate(API_ROUTES.queue);
+      void mutate(['sidecar', event.planId]);
+      break;
+    default:
+      break;
+  }
+}
+
 export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult {
   const [runState, dispatch] = useReducer(eforgeReducer, initialRunState);
   const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('disconnected');
   const [shutdownCountdown, setShutdownCountdown] = useState<number | null>(null);
-  const cacheRef = useRef<Map<string, RunState>>(new Map());
+  const cacheRef = useRef<BoundedMap<string, RunState>>(new BoundedMap<string, RunState>(20));
   const countdownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Countdown tick handler — decrements every second until 0
@@ -107,6 +134,7 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
             if (parseInt(meta.eventId, 10) <= lastBatchEventId) return;
           }
           dispatch({ type: 'ADD_EVENT', event, eventId: meta.eventId ?? '' });
+          invalidateOnEvent(event);
         },
         onNamedEvent: (name, payload) => {
           if (name === 'monitor:shutdown-pending') {
