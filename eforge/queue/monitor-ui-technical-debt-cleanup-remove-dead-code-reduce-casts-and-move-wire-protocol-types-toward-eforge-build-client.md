@@ -1,7 +1,6 @@
 ---
 title: Monitor UI technical debt cleanup: remove dead code, reduce casts, and move wire protocol types toward @eforge-build/client
 created: 2026-05-03
-depends_on: ["monitor-ui-tech-debt-split-thread-pipeline-god-file-decompose-reducer-add-discriminated-event-unions-fix-sse-re-render-storm-add-reducer-hooks-tests-replace-ad-hoc-polling-with-shared-cache"]
 ---
 
 # Monitor UI technical debt cleanup: remove dead code, reduce casts, and move wire protocol types toward @eforge-build/client
@@ -13,32 +12,30 @@ The monitor UI has accumulated technical debt that violates project conventions 
 - `packages/monitor-ui/src/lib/types.ts` re-exports `EforgeEvent` and related event types from `@eforge-build/engine/events`, creating a browser/UI dependency on engine internals.
 - `packages/monitor-ui/package.json` and `tsconfig.json` include `@eforge-build/engine` dependencies/path aliases because of those event type imports.
 - `pnpm --filter @eforge-build/monitor-ui build` passes, but Vite warns that importing the broad `@eforge-build/client` entrypoint externalizes Node modules (`fs`, `path`, `crypto`, `http`, `child_process`) for browser compatibility. A browser-safe client subpath would help.
-- `rg` shows many casts in `src/lib/reducer.ts`, `src/components/timeline/event-card.tsx`, `src/components/pipeline/thread-pipeline.tsx`, `src/components/layout/queue-section.tsx`, and graph node/edge adapters.
+- `rg` shows casts in `src/lib/reducer/` handler files, `src/components/timeline/event-card.tsx`, `src/components/pipeline/thread-pipeline.tsx`, `src/components/layout/queue-section.tsx`, and graph node/edge adapters.
 - Several exported API helpers in `src/lib/api.ts` appear unused: `fetchRuns`, `fetchLatestRunId`, `fetchQueue`, `fetchPlanDiffs`.
-- `thread-pipeline.tsx` has an unwired `compileStages` prop/path.
 - `src/lib/plan-content.ts` manually parses YAML and returns `migrations` but never populates it, despite the UI displaying migrations.
-- Large high-churn files (`app.tsx`, `reducer.ts`, `thread-pipeline.tsx`, `event-card.tsx`) concentrate data derivation, rendering, and protocol interpretation.
 
 Project conventions from `AGENTS.md` say monitor UI should use shadcn/ui components, daemon/client HTTP route contract should flow through `@eforge-build/client`, and route literals should not be inlined. The roadmap specifically calls out "Typed SSE events in client package" and broader client/shared registry work, which aligns with moving monitor UI off direct `@eforge-build/engine/events` imports.
 
 Validation baseline already checked:
 - `pnpm --filter @eforge-build/monitor-ui type-check` passes.
-- Targeted monitor UI tests pass: 10 files / 134 tests.
+- Targeted monitor UI tests pass.
 - `pnpm --filter @eforge-build/monitor-ui build` passes with bundle warnings noted above.
+
+Note: The reducer decomposition into `packages/monitor-ui/src/lib/reducer/` (handler files) and the `thread-pipeline.tsx` refactor into multiple pipeline component files have already been completed. This PRD operates on that already-refactored codebase.
 
 ## Goal
 
-Move monitor UI wire-protocol type ownership to `@eforge-build/client`, drop the direct engine dependency from monitor UI, and clean up confirmed dead code, localized casts, and YAML frontmatter parsing - without touching the reducer/pipeline behavioral refactors owned by session `2026-05-03-monitor-ui-tech-debt-top-5`.
+Move monitor UI wire-protocol type ownership to `@eforge-build/client`, drop the direct engine dependency from monitor UI, and clean up confirmed dead code, localized casts, and YAML frontmatter parsing.
 
 ## Approach
 
-Refactor-focused monitor UI package-boundary and dead-code cleanup, explicitly deconflicted from session `2026-05-03-monitor-ui-tech-debt-top-5`.
+Refactor-focused monitor UI package-boundary and dead-code cleanup.
 
-**Deconflict note:** This plan is intentionally narrowed to avoid conflict with active session `2026-05-03-monitor-ui-tech-debt-top-5`, which owns reducer decomposition, `thread-pipeline.tsx` splitting, render-storm fixes, and related reducer/pipeline tests. Recommended sequencing: run this plan first as the package-boundary/dead-code cleanup. Then run `2026-05-03-monitor-ui-tech-debt-top-5` against the updated client-owned event type surface.
+**Profile signal:** Recommended profile **errand**. Rationale: this is a bounded package-boundary/dead-code cleanup. It touches multiple packages (`client`, `engine`, `monitor-ui`) but is mostly mechanical type/export/import work plus small localized cleanup.
 
-**Profile signal:** Recommended profile **errand**. Rationale: after deconflicting, this is a bounded package-boundary/dead-code cleanup. It may touch multiple packages (`client`, `engine`, `monitor-ui`) but should be mostly mechanical type/export/import work plus small localized cleanup. The larger reducer/pipeline refactor remains in `2026-05-03-monitor-ui-tech-debt-top-5`.
-
-**Code impact** (primary packages/files affected after deconflicting):
+**Code impact** (primary packages/files affected):
 
 Client package:
 - `packages/client/src/events.ts` (preferred) or `packages/client/src/types.ts`: add pure TypeScript wire event types used by SSE/run-state consumers. These types must be browser-safe: no Node-only imports and no imports from `@eforge-build/engine`.
@@ -49,16 +46,15 @@ Client package:
 Engine package:
 - Keep engine as event producer; do not change runtime event payload shapes.
 - If shared type ownership is moved, update `packages/engine/src/events.ts` carefully so existing engine exports keep working for engine-internal callers.
-- Avoid the reducer/pipeline behavioral refactors owned by the other session.
 
 Monitor UI:
 - `packages/monitor-ui/src/lib/types.ts`: switch event-related exports (`EforgeEvent`, `AgentRole`, `AgentResultData`, `EforgeResult`, `ClarificationQuestion`, `ReviewIssue`, `PlanFile`, `OrchestrationConfig`, `PlanState`, `EforgeState`, `ExpeditionModule`) from engine-owned imports to client-owned wire types where feasible. Keep UI-only types local.
 - `packages/monitor-ui/package.json`: remove `@eforge-build/engine` when no longer needed.
 - `packages/monitor-ui/tsconfig.json`: remove `@eforge-build/engine/*` path alias when no longer needed.
 - `packages/monitor-ui/src/lib/api.ts`: remove unused exports and align local response shapes with existing shared client response types where simple.
-- `packages/monitor-ui/src/lib/plan-content.ts`: replace hand-written YAML frontmatter parsing with `yaml` parsing and populate migrations correctly.
+- `packages/monitor-ui/src/lib/plan-content.ts`: replace hand-written YAML frontmatter parsing with `yaml` parsing (the `yaml` package is already in monitor-ui's package.json) and populate migrations correctly.
 - `packages/monitor-ui/src/components/layout/queue-section.tsx` and `packages/monitor-ui/src/components/recovery/sidecar-sheet.tsx`: replace recovery sidecar verdict casts with shared client types or small local validators.
-- Avoid substantive edits to `packages/monitor-ui/src/lib/reducer.ts`, `packages/monitor-ui/src/components/pipeline/thread-pipeline.tsx`, and pipeline helper structure except import-path adjustments required by the client type move.
+- Adjust import paths in `packages/monitor-ui/src/lib/reducer/` handler files and the refactored pipeline components (e.g., `plan-row.tsx`, `stage-overview.tsx`, `activity-overlay.tsx`) as required by the client type move - but avoid behavioral changes to those files.
 
 Tests/guards:
 - Update `test/monitor-plan-preview.test.ts` for YAML/migration parsing.
@@ -71,26 +67,20 @@ Tests/guards:
 **In scope:**
 - Move monitor UI wire-protocol type ownership toward `@eforge-build/client`: add/export browser-safe event wire types from the client package and switch monitor UI imports away from `@eforge-build/engine/events`.
 - Remove `@eforge-build/engine` as a direct monitor UI dependency/path alias once event types are available from client.
-- Remove dead/unused monitor UI code that does not conflict with the other session, especially unused API helpers in `packages/monitor-ui/src/lib/api.ts` (`fetchRuns`, `fetchLatestRunId`, `fetchQueue`, `fetchPlanDiffs`) if confirmed unused.
-- Replace small, localized casts outside the reducer/pipeline refactor path, especially recovery sidecar verdict casts and API/local response types where shared client types already exist or can be added cleanly.
+- Remove dead/unused monitor UI code, especially unused API helpers in `packages/monitor-ui/src/lib/api.ts` (`fetchRuns`, `fetchLatestRunId`, `fetchQueue`, `fetchPlanDiffs`) if confirmed unused.
+- Replace small, localized casts outside the reducer/pipeline behavior, especially recovery sidecar verdict casts and API/local response types where shared client types already exist or can be added cleanly.
+- Import-path adjustments in `reducer/` handler files and refactored pipeline component files as required by the type ownership move.
 - Improve plan frontmatter parsing in `packages/monitor-ui/src/lib/plan-content.ts` using the existing `yaml` dependency so displayed metadata such as migrations is correct.
 - Add lightweight guard/tests that prevent monitor UI from regressing to engine-owned event type imports.
 
-**Out of scope / owned by `2026-05-03-monitor-ui-tech-debt-top-5`:**
-- Reducer decomposition, handler maps, selective allocation, reducer performance fixes, or broad reducer cast cleanup.
-- Splitting `thread-pipeline.tsx`, centralizing event grouping there, memoization/render-storm fixes, and pipeline helper extraction.
-- Adding reducer handler test suites or pipeline helper tests beyond what is needed for this package-boundary cleanup.
-- Replacing ad-hoc polling with shared cache/SWR/React-Query.
-
-**Still out of scope:**
+**Out of scope:**
+- Behavioral changes to the reducer handler files or pipeline components beyond import-path adjustments.
 - Queue reordering/priority editing UI.
 - New monitor screens such as playbook/session-plan/profile management.
 - Large styling/layout redesign.
 - Changing daemon event payload shapes unless strictly required to type existing wire events.
 
 ## Acceptance Criteria
-
-Acceptance criteria after deconflicting:
 
 1. **Wire protocol type ownership**
    - Monitor UI no longer imports event wire types from `@eforge-build/engine/events`.
@@ -105,14 +95,13 @@ Acceptance criteria after deconflicting:
 
 3. **Dead code cleanup**
    - Confirmed-unused monitor UI API helpers (`fetchRuns`, `fetchLatestRunId`, `fetchQueue`, `fetchPlanDiffs`) are removed, or any retained helper has an active caller/test and a clear purpose.
-   - No changes are made to reducer decomposition or pipeline splitting; those remain owned by `2026-05-03-monitor-ui-tech-debt-top-5`.
 
 4. **Localized cast/type cleanup**
    - Recovery sidecar verdict casts in queue/recovery components are replaced by shared client types or small validators.
-   - Remaining `as unknown as ...` casts in reducer/pipeline are left for the other session unless import-path migration requires mechanical type adjustments.
+   - Remaining `as unknown as ...` casts in reducer handler files and pipeline components are left unchanged unless the import-path migration mechanically requires type adjustments.
 
 5. **Frontmatter correctness**
-   - `parseFrontmatterFields` uses real YAML parsing or equivalent robust parsing.
+   - `parseFrontmatterFields` uses real YAML parsing (the `yaml` library already in package.json) or equivalent robust parsing.
    - Migrations in plan frontmatter are populated correctly when present.
    - Existing plan preview/frontmatter tests cover dependencies, branch, and migrations.
 
