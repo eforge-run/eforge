@@ -1,18 +1,4 @@
-import type { RunInfo, QueueItem } from './types';
 import { API_ROUTES, buildPath, type ReadSidecarResponse } from '@eforge-build/client/browser';
-
-export async function fetchRuns(): Promise<RunInfo[]> {
-  const res = await fetch(API_ROUTES.runs);
-  if (!res.ok) throw new Error(`Failed to fetch runs: ${res.status}`);
-  return res.json();
-}
-
-export async function fetchLatestRunId(): Promise<string | null> {
-  const res = await fetch(API_ROUTES.latestRun);
-  if (!res.ok) throw new Error(`Failed to fetch latest run: ${res.status}`);
-  const data = await res.json();
-  return data.runId ?? null;
-}
 
 export async function fetchLatestSessionId(): Promise<string | null> {
   const res = await fetch(API_ROUTES.latestRun);
@@ -33,12 +19,6 @@ export async function fetchPlans(runId: string): Promise<unknown[]> {
   return res.json();
 }
 
-export async function fetchQueue(): Promise<QueueItem[]> {
-  const res = await fetch(API_ROUTES.queue);
-  if (!res.ok) throw new Error(`Failed to fetch queue: ${res.status}`);
-  return res.json();
-}
-
 export async function fetchFileDiff(
   sessionId: string,
   planId: string,
@@ -46,15 +26,6 @@ export async function fetchFileDiff(
 ): Promise<{ diff: string | null; commitSha: string; tooLarge?: boolean; binary?: boolean }> {
   const res = await fetch(`${buildPath(API_ROUTES.diff, { sessionId, planId })}?file=${encodeURIComponent(filePath)}`);
   if (!res.ok) throw new Error(`Failed to fetch diff: ${res.status}`);
-  return res.json();
-}
-
-export async function fetchPlanDiffs(
-  sessionId: string,
-  planId: string,
-): Promise<{ files: Array<{ path: string; diff: string | null; tooLarge?: boolean; binary?: boolean }>; commitSha: string }> {
-  const res = await fetch(buildPath(API_ROUTES.diff, { sessionId, planId }));
-  if (!res.ok) throw new Error(`Failed to fetch plan diffs: ${res.status}`);
   return res.json();
 }
 
