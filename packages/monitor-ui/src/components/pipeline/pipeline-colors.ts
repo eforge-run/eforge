@@ -85,6 +85,8 @@ export function getTierColor(name: string) {
   return TIER_COLORS[name] ?? DEFAULT_TIER;
 }
 
+export const VALIDATION_BAR_COLOR = { bg: 'bg-zinc-500/30', border: 'border-zinc-500/50' };
+
 export const STAGE_STATUS_STYLES: Record<StageStatus, string> = {
   pending: 'bg-bg-tertiary text-text-dim/80',
   active: 'bg-primary/20 text-primary',
