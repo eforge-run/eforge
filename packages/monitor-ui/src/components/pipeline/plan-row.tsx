@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber } from '@/lib/format';
 import type { AgentThread, StoredEvent } from '@/lib/reducer';
-import type { AgentRole, PipelineStage, ReviewIssue, BuildStageSpec } from '@/lib/types';
+import type { AgentRole, PipelineStage, ReviewIssue, BuildStageSpec, ValidationCommandSpan } from '@/lib/types';
 import {
   EMPTY_EVENTS,
   EMPTY_SET,
@@ -13,6 +13,7 @@ import {
   planPillClassFor,
   abbreviatePlanId,
   getAgentColor,
+  VALIDATION_BAR_COLOR,
 } from './pipeline-colors';
 import { AGENT_TO_STAGE, REVIEW_AGENTS, resolveBuildStage } from './agent-stage-map';
 import { ActivityOverlay } from './activity-overlay';
@@ -38,6 +39,7 @@ interface PlanRowProps {
   compileStages?: string[];
   compileActiveStages?: Set<string>;
   compileCompletedStages?: Set<string>;
+  validationCommands?: ValidationCommandSpan[];
 }
 
 export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -72,7 +74,7 @@ export function DepthBars({ depth }: { depth: number }) {
   );
 }
 
-function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages }: PlanRowProps) {
+function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -185,6 +187,45 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
             <BuildStageProgress buildStages={buildStages} currentStage={currentStage} hoveredStage={hoveredStage} onStageHover={onStageHover} threads={threads} />
           )}
         <div className="flex-1 bg-bg-tertiary rounded-sm overflow-x-clip flex flex-col gap-px py-px min-h-4">
+          {validationCommands && validationCommands.length > 0 && [...validationCommands].sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()).map((span, idx) => {
+            const spanStart = new Date(span.startedAt).getTime();
+            const spanEnd = span.endedAt
+              ? new Date(span.endedAt).getTime()
+              : (endTime ?? Date.now());
+            const leftPercent = Math.max(0, ((spanStart - sessionStart) / totalSpan) * 100);
+            const widthPercent = Math.max(0, Math.min(((spanEnd - spanStart) / totalSpan) * 100, 100 - leftPercent));
+            const isRunning = span.endedAt === null;
+            const durationMs = spanEnd - spanStart;
+            const durationStr = isRunning ? 'running...' : `${(durationMs / 1000).toFixed(1)}s`;
+            const statusGlyph = span.status === 'passed' ? '✓' : span.status === 'failed' ? '✗' : span.status === 'timeout' ? '⧖' : '';
+            const exitInfo = span.exitCode !== null ? ` (exit ${span.exitCode})` : '';
+
+            return (
+              <div key={`validation-${idx}`} className="relative h-4">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <div
+                      className={`absolute inset-y-0 rounded-sm border transition-all duration-150 ${VALIDATION_BAR_COLOR.bg} ${VALIDATION_BAR_COLOR.border} flex items-center overflow-hidden cursor-default`}
+                      style={{
+                        left: `${leftPercent}%`,
+                        width: `max(2px, ${widthPercent}%)`,
+                        animation: isRunning ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
+                      }}
+                    >
+                      <span className="text-[9px] truncate px-1 leading-4 text-foreground/70 relative z-10">
+                        {statusGlyph ? `${statusGlyph} ` : ''}{span.command}
+                      </span>
+                    </div>
+                  </TooltipTrigger>
+                  <TooltipContent side="top">
+                    <div className="font-medium">{span.command}</div>
+                    <div className="opacity-70">{durationStr}</div>
+                    {!isRunning && <div className="opacity-70">status: {span.status}{exitInfo}</div>}
+                  </TooltipContent>
+                </Tooltip>
+              </div>
+            );
+          })}
           {sortedThreads.map((thread) => {
             const threadStart = new Date(thread.startedAt).getTime();
             const threadEnd = thread.endedAt

@@ -71,3 +71,13 @@ export interface SessionMetadata {
   planCount: number | null;
   baseProfile: string | null;
 }
+
+export type ValidationCommandStatus = 'running' | 'passed' | 'failed' | 'timeout';
+
+export interface ValidationCommandSpan {
+  command: string;
+  startedAt: string;
+  endedAt: string | null;
+  status: ValidationCommandStatus;
+  exitCode: number | null;
+}

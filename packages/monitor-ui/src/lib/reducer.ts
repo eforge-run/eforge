@@ -28,7 +28,7 @@
  * (`fileChanges: new Map()`, etc.). Use when the session changes to `null` or
  * when the hook is cleaning up.
  */
-import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, SessionProfile, ReviewIssue } from './types';
+import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, SessionProfile, ReviewIssue, ValidationCommandSpan } from './types';
 import type { PipelineStage } from './types';
 import { formatDuration } from './format';
 import { handlerRegistry } from './reducer/index';
@@ -93,6 +93,7 @@ export interface RunState {
   enqueueStatus: 'running' | 'complete' | 'failed' | null;
   enqueueTitle: string | null;
   enqueueSource: string | null;
+  validationCommands: ValidationCommandSpan[];
 }
 
 export const initialRunState: RunState = {
@@ -119,6 +120,7 @@ export const initialRunState: RunState = {
   enqueueStatus: null,
   enqueueTitle: null,
   enqueueSource: null,
+  validationCommands: [],
 };
 
 export type RunAction =
@@ -129,7 +131,7 @@ export type RunAction =
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [] };
 
     case 'BATCH_LOAD': {
       // Replay all events through the handler registry, accumulating state.

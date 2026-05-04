@@ -53,6 +53,13 @@ import {
   handleEnqueueCommitFailed,
 } from './handle-enqueue';
 import { handleConfigWarning, handlePlanningWarning } from './handle-misc';
+import {
+  handleValidationStart,
+  handleValidationCommandStart,
+  handleValidationCommandComplete,
+  handleValidationCommandTimeout,
+  handleValidationComplete,
+} from './handle-validation';
 
 // ---------------------------------------------------------------------------
 // Handler registry
@@ -120,6 +127,13 @@ export const handlerRegistry = {
   'enqueue:complete': handleEnqueueComplete,
   'enqueue:failed': handleEnqueueFailed,
   'enqueue:commit-failed': handleEnqueueCommitFailed,
+
+  // Validation lifecycle
+  'validation:start': handleValidationStart,
+  'validation:command:start': handleValidationCommandStart,
+  'validation:command:complete': handleValidationCommandComplete,
+  'validation:command:timeout': handleValidationCommandTimeout,
+  'validation:complete': handleValidationComplete,
 };
 
 // ---------------------------------------------------------------------------
@@ -187,11 +201,6 @@ export const IGNORED_EVENT_TYPES = [
   'agent:tool_use',
   'agent:tool_result',
   'agent:retry',
-  'validation:start',
-  'validation:command:start',
-  'validation:command:complete',
-  'validation:command:timeout',
-  'validation:complete',
   'validation:fix:start',
   'validation:fix:complete',
   'prd_validation:start',

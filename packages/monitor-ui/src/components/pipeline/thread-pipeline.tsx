@@ -1,7 +1,7 @@
 import { memo, useMemo, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { AgentThread, StoredEvent } from '@/lib/reducer';
-import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec } from '@/lib/types';
+import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/types';
 import { EMPTY_THREADS } from './pipeline-colors';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
 import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
@@ -18,9 +18,10 @@ interface ThreadPipelineProps {
   orchestration?: OrchestrationConfig | null;
   prdSource?: { label: string; content: string } | null;
   planArtifacts?: Array<{ id: string; name: string; body: string }>;
+  validationCommands?: ValidationCommandSpan[];
 }
 
-function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts }: ThreadPipelineProps) {
+function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const entries = Object.entries(planStatuses);
 
@@ -139,8 +140,6 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     return map;
   }, [events]);
 
-  if (!hasThreadContent) return null;
-
   return (
     <TooltipProvider delayDuration={0}>
       <div>
@@ -149,7 +148,9 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
           Pipeline
         </h3>
 
-        {hasThreadContent && (
+        {!hasThreadContent ? (
+          <div className="text-[11px] text-text-dim italic">Waiting for agent activity...</div>
+        ) : (
           <div className="flex flex-col gap-1.5">
             {hasGlobalThreads && (
               <PlanRow
@@ -166,6 +167,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 prdSource={prdSource}
                 compileActiveStages={activeStages}
                 compileCompletedStages={completedStages}
+                validationCommands={validationCommands}
               />
             )}
             {entries.map(([planId]) => (
