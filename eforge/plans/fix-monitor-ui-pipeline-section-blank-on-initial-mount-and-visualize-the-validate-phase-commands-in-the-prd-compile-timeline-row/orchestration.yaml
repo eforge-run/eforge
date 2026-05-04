@@ -1,0 +1,70 @@
+name: fix-monitor-ui-pipeline-section-blank-on-initial-mount-and-visualize-the-validate-phase-commands-in-the-prd-compile-timeline-row
+description: "Two confined monitor-UI fixes: (1) make the Pipeline scaffold
+  render immediately on mount with a placeholder instead of silently returning
+  null when no agent threads exist yet; (2) visualize the post-merge validate()
+  phase by promoting the five validation:* events out of IGNORED_EVENT_TYPES
+  into a new flat validationCommands state slice and rendering them as bars on
+  the existing PRD/Compile timeline row using the shared sessionStart/totalSpan
+  time axis. Frontend-only — no engine, daemon, client, or plugin changes."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-monitor-ui-pipeline-and-validation-bars
+    name: "Monitor UI: pipeline render-gate fix and validation-command timeline bars"
+    depends_on: []
+    branch: fix-monitor-ui-pipeline-section-blank-on-initial-mount-and-visualize-the-validate-phase-commands-in-the-prd-compile-timeline-row/monitor-ui-pipeline-and-validation-bars
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - ui-consistency
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "Excursion is the right scope: the work is confined to a single
+    subsystem (`packages/monitor-ui/`), touches ~7 files with low merge-conflict
+    surface, and a single planner session can fully enumerate the changes
+    (render-gate fix + new reducer slice + bar rendering + handler test). The
+    PRD itself recommends Excursion and explicitly rejects Errand (too many
+    files + new state slice) and Expedition (single subsystem, no cross-cutting
+    interface change). Compile stages: `planner` to decompose into plans, then
+    `plan-review-cycle` to gate plan quality given that the PRD spans two
+    related-but-distinct fixes (render gate + validation visualization) sharing
+    files - a quality gate ensures the splits are coherent and acceptance
+    criteria are carried completely. Default build: `implement` runs in parallel
+    with `doc-author` (no predecessor; the PRD mentions visual changes worth
+    documenting if any user-facing docs reference monitor UI behavior), then
+    `doc-sync` to update any stale references to the now-visualized validate
+    phase, then `review-cycle` for iterative review-fix-evaluate. Review config:
+    `single` strategy with `correctness` (reducer/handler logic, BATCH_LOAD
+    replay, exhaustiveness check) and `ui-consistency` (bar palette parity with
+    agent threads, pulse animation reuse, shadcn/ui adherence) perspectives
+    covers the two risk axes; `maxRounds: 2` is sufficient for a contained UI
+    change; `standard` strictness matches feature-level risk (no security/data
+    concerns, but the reducer slice and ignored-events list trim must be precise
+    to avoid silent event drops). `autoAcceptBelow: suggestion` keeps cosmetic
+    nits from blocking merge."
