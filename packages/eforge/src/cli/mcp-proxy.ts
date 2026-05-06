@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetLatestRunFromRuns } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetLatestRunFromRuns } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   RunInfo,
@@ -20,6 +20,7 @@ import type {
   ConfigValidateResponse,
   DaemonStreamEvent,
   SessionSummary,
+  SessionStreamSnapshot,
   FollowCounters,
   VersionResponse,
 } from '@eforge-build/client';
@@ -266,19 +267,48 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       let summary: SessionSummary | null = null;
       let followError: Error | null = null;
       const startedAt = Date.now();
+      const events: DaemonStreamEvent[] = [];
 
       try {
-        summary = await subscribeToSession<DaemonStreamEvent>(sessionId, {
-          cwd: toolCwd,
-          signal,
-          onEvent: (event) => {
-            const update = eventToProgress(event, counters);
-            if (!update) return;
-            counters = update.counters;
-            // Fire-and-forget; emitProgress swallows its own errors.
-            void emitProgress(update.message);
-          },
-        });
+        // Resolve base URL from lockfile — consistent with the pre-plan-02 subscriber
+        // behavior which did the same resolution internally.
+        const lock = readLockfile(toolCwd);
+        if (!lock) throw new Error('Daemon not running — lockfile not found');
+        const monitorUrl = `http://127.0.0.1:${lock.port}`;
+        const url = `${monitorUrl}${buildPath(API_ROUTES.events, { id: sessionId })}`;
+
+        for await (const frame of subscribeWithSnapshot<SessionStreamSnapshot, DaemonStreamEvent>(
+          url,
+          { signal },
+        )) {
+          if (frame.kind === 'snapshot') {
+            const snapshot = frame.snapshot;
+            // Re-seed events from snapshot (handles initial connect and reconnect).
+            events.length = 0;
+            for (const ev of snapshot.events) {
+              try {
+                events.push(JSON.parse(ev.data) as DaemonStreamEvent);
+              } catch { /* skip unparseable */ }
+            }
+            // If terminal, aggregate from snapshot events and stop.
+            if (snapshot.status === 'completed' || snapshot.status === 'failed') {
+              summary = aggregateSessionSummary(sessionId, events, monitorUrl);
+              break;
+            }
+          } else if (frame.kind === 'event') {
+            events.push(frame.event);
+            const update = eventToProgress(frame.event, counters);
+            if (update) {
+              counters = update.counters;
+              // Fire-and-forget; emitProgress swallows its own errors.
+              void emitProgress(update.message);
+            }
+            if (frame.event.type === 'session:end') {
+              summary = aggregateSessionSummary(sessionId, events, monitorUrl);
+              break;
+            }
+          }
+        }
       } catch (err) {
         followError = err instanceof Error ? err : new Error(String(err));
       } finally {

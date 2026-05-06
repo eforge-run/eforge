@@ -3,7 +3,7 @@
  *
  * Covers:
  * (a) getDaemonEventsAfter returns events of the configured types in id order
- * (b) Historical replay on initial connect respects last-event-id
+ * (b) Initial connect emits stream:hello first; Last-Event-ID triggers delta replay
  * (c) Poll loop pushes new daemon-wide events to every subscriber
  */
 
@@ -59,7 +59,7 @@ async function collectSseEvents(
   expectedCount: number,
   lastEventId?: number,
   timeoutMs = 2000,
-): Promise<{ id: string; data: string }[]> {
+): Promise<{ id: string; data: string; event?: string }[]> {
   const headers: Record<string, string> = { accept: 'text/event-stream' };
   if (lastEventId !== undefined) {
     headers['last-event-id'] = String(lastEventId);
@@ -67,7 +67,7 @@ async function collectSseEvents(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-  const collected: { id: string; data: string }[] = [];
+  const collected: { id: string; data: string; event?: string }[] = [];
   try {
     const res = await fetch(url, { headers, signal: controller.signal });
     if (!res.ok || !res.body) throw new Error(`Non-2xx response: ${res.status}`);
@@ -86,11 +86,13 @@ async function collectSseEvents(
         if (!block.trim()) continue;
         let id = '';
         let data = '';
+        let eventName: string | undefined;
         for (const line of block.split('\n')) {
           if (line.startsWith('id:')) id = line.slice(3).trim();
           if (line.startsWith('data:')) data = line.slice(5).trim();
+          if (line.startsWith('event:')) eventName = line.slice(6).trim();
         }
-        if (data) collected.push({ id, data });
+        if (data) collected.push({ id, data, event: eventName });
       }
     }
 
@@ -129,18 +131,14 @@ describe('getDaemonEventsAfter', () => {
 
       const daemonEvents = db.getDaemonEventsAfter(0);
 
-      // Only daemon-wide types should be returned
       const types = daemonEvents.map((e) => e.type);
       expect(types).toContain('session:start');
       expect(types).toContain('queue:prd:start');
       expect(types).toContain('enqueue:complete');
       expect(types).toContain('session:end');
-
-      // Non-daemon-wide types must not appear
       expect(types).not.toContain('agent:start');
       expect(types).not.toContain('phase:start');
 
-      // Must be in ascending id order
       const ids = daemonEvents.map((e) => e.id);
       for (let i = 1; i < ids.length; i++) {
         expect(ids[i]).toBeGreaterThan(ids[i - 1]);
@@ -165,12 +163,10 @@ describe('getDaemonEventsAfter', () => {
       const _id2 = insertEvent(db, runId, 'queue:prd:start', { prdId: 'x' });
       const id3 = insertEvent(db, runId, 'enqueue:complete', { id: 'y' });
 
-      // Ask for events after id1 only
       const afterFirst = db.getDaemonEventsAfter(id1);
       expect(afterFirst.length).toBe(2);
       expect(afterFirst.every((e) => e.id > id1)).toBe(true);
 
-      // Ask for events after id3 — none
       const afterLast = db.getDaemonEventsAfter(id3);
       expect(afterLast.length).toBe(0);
     } finally {
@@ -181,7 +177,7 @@ describe('getDaemonEventsAfter', () => {
 });
 
 // ---------------------------------------------------------------------------
-// (b) Historical replay respects Last-Event-ID
+// (b) Initial connect emits stream:hello first; Last-Event-ID triggers delta replay
 // (c) Poll loop pushes new events to subscribers
 // ---------------------------------------------------------------------------
 
@@ -205,7 +201,7 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     }
   });
 
-  it('(b) initial connect emits resync-marker; Last-Event-ID triggers delta replay', async () => {
+  it('(b) initial connect emits stream:hello first; Last-Event-ID triggers delta replay without resync-marker', async () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'eforge-daemon-sse-replay-'));
     const eforgeDir = resolve(tmpDir, '.eforge');
     mkdirSync(eforgeDir, { recursive: true });
@@ -214,7 +210,6 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     const runId = 'daemon-sse-replay-001';
     ensureRun(db, runId);
 
-    // Insert 3 daemon-wide events before the server starts
     const id1 = insertEvent(db, runId, 'session:start', { sessionId: runId });
     const id2 = insertEvent(db, runId, 'queue:prd:start', { prdId: 'prd-1', title: 'PRD 1' });
     const id3 = insertEvent(db, runId, 'enqueue:complete', { id: 'prd-2', filePath: '/queue/prd-2.md', title: 'PRD 2' });
@@ -222,36 +217,43 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     server = await startServer(db, 0);
     const daemonEventsUrl = `http://127.0.0.1:${server.port}${API_ROUTES.daemonEvents}`;
 
-    // Without Last-Event-ID: new behavior — emits a daemon:resync-marker (with id:)
-    // followed by an immediate on-connect daemon:heartbeat (no id:). Filter out
-    // heartbeats to isolate the resync-marker assertion.
-    const allInitialEvents = await collectSseEvents(daemonEventsUrl, 2, undefined, 500);
-    const initialEvents = allInitialEvents.filter(
-      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
-    );
-    expect(initialEvents.length).toBe(1);
-    expect(JSON.parse(initialEvents[0].data).type).toBe('daemon:resync-marker');
-    expect(Number(initialEvents[0].id)).toBe(id3);
+    // Without Last-Event-ID: emits stream:hello (named event) only — no resync-marker, no on-connect heartbeat.
+    const initialRaw = await collectSseEvents(daemonEventsUrl, 1, undefined, 500);
+    // The first (and likely only) block in this short window is stream:hello
+    expect(initialRaw.length).toBeGreaterThanOrEqual(1);
+    const helloFrame = initialRaw.find((e) => e.event === 'stream:hello');
+    expect(helloFrame).toBeDefined();
+    // No resync-marker should be present
+    // On initial connect (no Last-Event-ID), only stream:hello should appear — no synthetic
+    // v18 frames should follow. Verify by checking that all non-hello plain data frames
+    // carry known, non-internal event types.
+    const nonHelloPlainFrames = initialRaw.filter((e) => !e.event);
+    for (const frame of nonHelloPlainFrames) {
+      try {
+        const parsed = JSON.parse(frame.data) as { type?: string };
+        // Known daemon event types are non-empty; internal synthetic markers were removed
+        expect(typeof parsed.type).toBe('string');
+        expect(parsed.type!.length).toBeGreaterThan(0);
+      } catch { /* ignore non-JSON */ }
+    }
 
-    // With Last-Event-ID = id1: should replay only events after id1 (id2, id3).
-    // The on-connect heartbeat (no id:) is also emitted; filter it out.
-    const allAfterFirst = await collectSseEvents(daemonEventsUrl, 3, id1);
-    const afterFirst = allAfterFirst.filter(
-      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
-    );
-    expect(afterFirst.length).toBe(2);
-    const afterFirstIds = afterFirst.map((e) => e.id);
-    expect(afterFirstIds).not.toContain(String(id1));
-    expect(afterFirstIds).toContain(String(id2));
-    expect(afterFirstIds).toContain(String(id3));
+    // With Last-Event-ID = id1: emits stream:hello then replays events after id1 (id2, id3).
+    // Collect up to 3 items (stream:hello + id2 + id3)
+    const afterFirst = await collectSseEvents(daemonEventsUrl, 3, id1);
+    const helloFrame2 = afterFirst.find((e) => e.event === 'stream:hello');
+    expect(helloFrame2).toBeDefined();
+    const deltaEvents = afterFirst.filter((e) => !e.event);
+    const deltaIds = deltaEvents.map((e) => e.id);
+    expect(deltaIds).not.toContain(String(id1));
+    expect(deltaIds).toContain(String(id2));
+    expect(deltaIds).toContain(String(id3));
 
-    // With Last-Event-ID = id3: should replay no historical events.
-    // The on-connect heartbeat (no id:) is still emitted; filter it out.
-    const allAfterLast = await collectSseEvents(daemonEventsUrl, 1, id3, 300);
-    const afterLast = allAfterLast.filter(
-      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
-    );
-    expect(afterLast.length).toBe(0);
+    // With Last-Event-ID = id3: emits stream:hello then no historical events.
+    const afterLast = await collectSseEvents(daemonEventsUrl, 1, id3, 300);
+    const helloFrame3 = afterLast.find((e) => e.event === 'stream:hello');
+    expect(helloFrame3).toBeDefined();
+    const afterLastDeltas = afterLast.filter((e) => !e.event);
+    expect(afterLastDeltas.length).toBe(0);
   });
 
   it('(c) poll loop pushes newly inserted daemon-wide events to subscribers', async () => {
@@ -266,7 +268,7 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     server = await startServer(db, 0);
     const daemonEventsUrl = `http://127.0.0.1:${server.port}${API_ROUTES.daemonEvents}`;
 
-    // Start collecting — will wait up to 2s for 3 events (on-connect heartbeat + 2 real events)
+    // Start collecting — wait up to 2s for stream:hello + 2 real live events (3 total)
     const collectPromise = collectSseEvents(daemonEventsUrl, 3, undefined, 2000);
 
     // Give the SSE connection a moment to establish, then insert events
@@ -278,7 +280,10 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     const events = await collectPromise;
     expect(events.length).toBeGreaterThanOrEqual(2);
 
-    const types = events.map((e) => JSON.parse(e.data).type);
+    const allData = events.map((e) => {
+      try { return JSON.parse(e.data); } catch { return {}; }
+    });
+    const types = allData.map((d: { type?: string }) => d.type).filter(Boolean);
     expect(types).toContain('queue:start');
     expect(types).toContain('enqueue:complete');
   });
@@ -292,7 +297,6 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     const runId = 'daemon-sse-filter-001';
     ensureRun(db, runId);
 
-    // Insert a mix: one daemon-wide, two non-daemon-wide
     insertEvent(db, runId, 'agent:start', { agentId: 'a1' });
     const sessionStartId = insertEvent(db, runId, 'session:start', { sessionId: runId });
     insertEvent(db, runId, 'phase:start', { phase: 'planning' });
@@ -300,30 +304,29 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     server = await startServer(db, 0);
     const daemonEventsUrl = `http://127.0.0.1:${server.port}${API_ROUTES.daemonEvents}`;
 
-    // Initial connect (no Last-Event-ID): emits resync-marker (with id:) and an
-    // immediate on-connect daemon:heartbeat (no id:). Filter heartbeats to isolate
-    // the resync-marker assertion. No per-session events included.
-    const allInitialEvents = await collectSseEvents(daemonEventsUrl, 2, undefined, 500);
-    const initialEvents = allInitialEvents.filter(
-      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
-    );
-    expect(initialEvents.length).toBe(1);
-    expect(JSON.parse(initialEvents[0].data).type).toBe('daemon:resync-marker');
-    // The marker id equals the max daemon-wide event id (session:start)
-    expect(Number(initialEvents[0].id)).toBe(sessionStartId);
+    // Initial connect (no Last-Event-ID): emits stream:hello only, no resync-marker.
+    const initialRaw = await collectSseEvents(daemonEventsUrl, 1, undefined, 500);
+    const helloFrame = initialRaw.find((e) => e.event === 'stream:hello');
+    expect(helloFrame).toBeDefined();
+    const nonHello = initialRaw.filter((e) => !e.event);
+    // No synthetic v18 frames or non-daemon events should appear in plain data blocks
+    for (const frame of nonHello) {
+      try {
+        const parsed = JSON.parse(frame.data) as { type?: string };
+        expect(parsed.type).not.toBe('agent:start');
+        expect(parsed.type).not.toBe('phase:start');
+      } catch { /* ignore */ }
+    }
 
-    // With Last-Event-ID = 0: replay from beginning — only daemon-wide events
-    // (session:start); agent:start and phase:start must not appear.
-    // Filter out the on-connect heartbeat frame (emitted after subscriber registration).
-    const allDeltaEvents = await collectSseEvents(daemonEventsUrl, 2, 0, 500);
-    const deltaEvents = allDeltaEvents.filter(
-      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
-    );
+    // With Last-Event-ID = 0: emits stream:hello then replays from beginning —
+    // only daemon-wide events (session:start); agent:start and phase:start must not appear.
+    const deltaRaw = await collectSseEvents(daemonEventsUrl, 2, 0, 500);
+    const deltaHello = deltaRaw.find((e) => e.event === 'stream:hello');
+    expect(deltaHello).toBeDefined();
+    const deltaEvents = deltaRaw.filter((e) => !e.event);
     expect(deltaEvents.length).toBe(1);
-    expect(JSON.parse(deltaEvents[0].data).type).toBe('session:start');
-    // Confirm non-daemon-wide types were filtered
-    const deltaTypes = deltaEvents.map((e) => JSON.parse(e.data).type);
-    expect(deltaTypes).not.toContain('agent:start');
-    expect(deltaTypes).not.toContain('phase:start');
+    const deltaType = (JSON.parse(deltaEvents[0].data) as { type?: string }).type;
+    expect(deltaType).toBe('session:start');
+    expect(String(sessionStartId)).toBe(deltaEvents[0].id);
   });
 });

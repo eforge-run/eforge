@@ -18,7 +18,7 @@ import { describe, it, expect } from 'vitest';
 import { handleAgentStart } from '@/lib/reducer/handle-agent';
 import { initialRunState, eforgeReducer } from '@/lib/reducer';
 import { initialDaemonState } from '@/lib/daemon-reducer';
-import { IGNORED_EVENT_TYPES } from '@/lib/reducer/index';
+import { IGNORED_EVENT_TYPES, handlerRegistry } from '@/lib/reducer/index';
 import { daemonHandlerRegistry } from '@/lib/daemon-reducer/index';
 import { eventRegistry } from '@eforge-build/client/browser';
 import type { AgentThread } from '@/lib/reducer';
@@ -66,7 +66,7 @@ describe('AC #8 — thinkingCoerced / thinkingOriginal survive into AgentThread'
 
     expect(thread).toBeDefined();
     expect(thread?.thinkingCoerced).toBe(true);
-    expect(thread?.thinkingOriginal).toEqual({ type: 'enabled', budget_tokens: 32000 });
+    expect(thread?.thinkingOriginal).toEqual({ type: 'enabled', budgetTokens: 32000 });
   });
 
   it('handleAgentStart captures thinkingCoerced:false when budget was not reduced', () => {
@@ -134,7 +134,7 @@ describe('AC #8 — thinkingCoerced / thinkingOriginal survive into AgentThread'
     const thread = state.agentThreads.find((t: AgentThread) => t.agentId === 'agent-coerced');
     expect(thread).toBeDefined();
     expect(thread?.thinkingCoerced).toBe(true);
-    expect(thread?.thinkingOriginal).toEqual({ type: 'enabled', budget_tokens: 64000 });
+    expect(thread?.thinkingOriginal).toEqual({ type: 'enabled', budgetTokens: 64000 });
   });
 
   it('thinkingOriginal is identical between ADD_EVENT and BATCH_LOAD paths', () => {
@@ -172,14 +172,14 @@ describe('AC #8 — thinkingCoerced / thinkingOriginal survive into AgentThread'
     );
 
     expect(addThread?.thinkingCoerced).toBe(true);
-    expect(addThread?.thinkingOriginal).toEqual({ type: 'enabled', budget_tokens: 16000 });
+    expect(addThread?.thinkingOriginal).toEqual({ type: 'enabled', budgetTokens: 16000 });
     expect(batchThread?.thinkingCoerced).toBe(addThread?.thinkingCoerced);
     expect(batchThread?.thinkingOriginal).toEqual(addThread?.thinkingOriginal);
   });
 });
 
 // ---------------------------------------------------------------------------
-// AC #5 — IGNORED_EVENT_TYPES covers the 5 new lifecycle event variants
+// AC #5 — handlerRegistry handles the 5 new lifecycle event variants
 // ---------------------------------------------------------------------------
 
 const NEW_LIFECYCLE_TYPES = [
@@ -193,7 +193,10 @@ const NEW_LIFECYCLE_TYPES = [
 describe('AC #5 — IGNORED_EVENT_TYPES covers new lifecycle event variants', () => {
   for (const eventType of NEW_LIFECYCLE_TYPES) {
     it(`IGNORED_EVENT_TYPES includes '${eventType}'`, () => {
-      expect(IGNORED_EVENT_TYPES as readonly string[]).toContain(eventType);
+      // These types are actively handled (in handlerRegistry), not ignored.
+      // The exhaustiveness check passes because they appear in handlerRegistry.
+      expect(handlerRegistry as Record<string, unknown>).toHaveProperty(eventType);
+      expect(IGNORED_EVENT_TYPES as readonly string[]).not.toContain(eventType);
     });
   }
 

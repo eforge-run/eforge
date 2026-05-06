@@ -157,7 +157,7 @@ describe('Pi eforge_follow tool', () => {
       setTimeout(() => res.end(), 10);
     });
 
-    // Write a lockfile so `subscribeToSession({ cwd })` resolves to our server.
+    // Write a lockfile so the session subscriber resolves to our server via cwd.
     writeLockfile(cwd, {
       pid: process.pid,
       port: sse.port,

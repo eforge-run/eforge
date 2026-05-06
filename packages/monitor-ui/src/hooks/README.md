@@ -17,17 +17,18 @@ This constraint (PRD requirement) prevents unbounded connection growth and keeps
 
 Subscribe to a single session's live event stream. Use for per-session dashboards, pipeline views, and timelines.
 
-- Performs an initial HTTP GET to `/api/run-state/:id` to batch-load all stored events.
-- Then calls `subscribeToSession` for live SSE updates.
+- Uses `subscribeWithSnapshot` from `@eforge-build/client/browser` to connect to the per-session SSE stream.
+- The first frame on every (re)connect is a `stream:hello` snapshot carrying all session events and current status.
+- For terminal sessions (completed/failed), the server closes the connection after the snapshot frame; no live subscription is established.
 - Returns `{ runState, connectionStatus, shutdownCountdown }`.
 
 ### `useDaemonEvents()`
 
 Subscribe to the daemon-wide SSE stream. Owns the runs list, queue, session metadata, auto-build, activity ring-buffer, and latest heartbeat slices for the whole app. Intended to be called **once** in `AppContent` and passed as props to sub-components.
 
-- Performs parallel snapshot fetches (`/api/runs`, `/api/queue`, `/api/session-metadata`, `/api/auto-build`) on mount via a local `seedSnapshot()` function.
-- Then calls `subscribeToDaemonEvents` for live SSE updates.
-- On every SSE reconnect, `seedSnapshot()` is invoked again so REST snapshot state (runs, queue, session metadata, auto-build) is re-fetched and re-seeded into the reducer. This makes the UI heal automatically across daemon restarts without a manual browser refresh.
+- Uses `subscribeWithSnapshot` from `@eforge-build/client/browser` to connect to `/api/daemon-events`.
+- The first frame on every (re)connect is a `stream:hello` snapshot carrying `runs`, `queue`, `sessionMetadata`, `autoBuild`, `recentActivity`, and `liveness` fields. All are fed into a single `BATCH_SEED` dispatch, so no separate REST snapshot fetches are needed.
+- The `liveness` field is dispatched as a synthetic `daemon:heartbeat` payload so the liveness pill renders green immediately on (re)connect.
 - Returns `{ daemonState, connectionStatus, setDaemonAutoBuild }`.
 
 ### `useAutoBuild(autoBuildState, onUpdate)`
@@ -47,8 +48,6 @@ All live event-driven UI updates flow through `useEforgeEvents` or `useDaemonEve
 
 ## Transport details
 
-Both SSE hooks use `subscribeToSession` / `subscribeToDaemonEvents` from `@eforge-build/client/browser` with `baseUrl: ''` (same-origin relative URL). The underlying helper handles reconnect with exponential backoff, `Last-Event-ID` replay, and abort via `AbortSignal`.
+Both SSE hooks use `subscribeWithSnapshot` from `@eforge-build/client/browser`. The generator handles reconnect with exponential backoff, `Last-Event-ID` capture (from the `cursor` field in the `stream:hello` frame), and abort via `AbortSignal`.
 
-`subscribeToDaemonEvents` accepts an optional `onReconnect` callback (part of `SubscribeOptions`) that fires once after each successful reconnect — only when `reconnectCount > 0`, not on the initial open. `useDaemonEvents` passes `onReconnect: () => seedSnapshot()` to re-seed REST snapshot state on every reconnect.
-
-The daemon SSE handler (`GET /api/daemon-events`) no longer replays the full historical event log on initial connect (no `Last-Event-ID` header). Instead it emits a single `daemon:resync-marker` SSE block whose `id:` field advances the client's `lastEventId` to the current tail, so subsequent reconnects arrive with a valid `Last-Event-ID` cutoff and receive only missed deltas. The `daemon:resync-marker` event type is unknown to the reducer and is silently ignored. When `Last-Event-ID` is present, the server still replays all events past that cutoff (unchanged behavior).
+On every (re)connect, the server emits a `stream:hello` named SSE event carrying a full snapshot. The client intercepts it and surfaces it as a `{ kind: 'snapshot' }` frame — no `Last-Event-ID` replay needed on initial connect since the snapshot contains all required state. When `Last-Event-ID` is present (reconnect), the server emits `stream:hello` first and then replays all events past that cutoff.

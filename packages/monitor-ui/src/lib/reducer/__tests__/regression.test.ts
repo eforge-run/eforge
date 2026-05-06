@@ -46,11 +46,13 @@ describe('regression: new reducer matches pre-refactor behavior on sample-build 
     });
 
     // -------------------------------------------------------------------------
-    // Plan statuses — both plans end at 'complete' after merge
+    // Plan statuses — fixture lacks plan:status:change events; status is driven
+    // exclusively by those lifecycle events (not build events), so the final
+    // stage from build processing is 'evaluate' (set by plan:build:review:complete).
     // -------------------------------------------------------------------------
     expect(state.planStatuses).toEqual({
-      'plan-01': 'complete',
-      'plan-02': 'complete',
+      'plan-01': 'evaluate',
+      'plan-02': 'evaluate',
     });
 
     // -------------------------------------------------------------------------

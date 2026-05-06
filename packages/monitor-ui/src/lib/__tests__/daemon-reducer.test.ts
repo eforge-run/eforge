@@ -8,6 +8,7 @@ import {
   selectRuns,
   selectDaemonActivity,
   selectHeartbeatStaleness,
+  ACTIVITY_BUFFER_CAP,
   type DaemonState,
   type HeartbeatPayload,
 } from '../daemon-reducer';
@@ -94,6 +95,125 @@ describe('daemonReducer', () => {
         },
       );
       expect(seeded.connectionStatus).toBe('connected');
+    });
+
+    it('appends recentActivity entries to daemonActivity', () => {
+      const activity = [
+        {
+          id: '1',
+          event: makeEvent('session:start', { sessionId: 'sess-a' }) as unknown as EforgeEvent,
+        },
+      ];
+
+      const state = daemonReducer(initialDaemonState, {
+        type: 'BATCH_SEED',
+        runs: [],
+        queue: [],
+        sessionMetadata: {},
+        autoBuild: null,
+        recentActivity: activity,
+      });
+
+      expect(state.daemonActivity).toHaveLength(1);
+      expect(state.daemonActivity[0].id).toBe('1');
+    });
+
+    it('dedupes recentActivity by id — dispatching BATCH_SEED twice with overlapping ids leaves each id exactly once', () => {
+      const event1 = makeEvent('session:start', { sessionId: 'sess-a' }) as unknown as EforgeEvent;
+      const event2 = makeEvent('session:end', { sessionId: 'sess-a', result: { status: 'completed', summary: '' } }) as unknown as EforgeEvent;
+
+      const activity1 = [{ id: '1', event: event1 }];
+      const activity2 = [{ id: '1', event: event1 }, { id: '2', event: event2 }];
+
+      const s1 = daemonReducer(initialDaemonState, {
+        type: 'BATCH_SEED',
+        runs: [],
+        queue: [],
+        sessionMetadata: {},
+        autoBuild: null,
+        recentActivity: activity1,
+      });
+      expect(s1.daemonActivity).toHaveLength(1);
+
+      const s2 = daemonReducer(s1, {
+        type: 'BATCH_SEED',
+        runs: [],
+        queue: [],
+        sessionMetadata: {},
+        autoBuild: null,
+        recentActivity: activity2,
+      });
+      // id '1' is already present — only '2' is new
+      expect(s2.daemonActivity).toHaveLength(2);
+      const ids = s2.daemonActivity.map((a) => a.id);
+      expect(ids).toEqual(['1', '2']); // newest at end
+    });
+
+    it('dedupes recentActivity, caps at ACTIVITY_BUFFER_CAP', () => {
+      // Fill the buffer to near-cap with existing entries
+      let state = initialDaemonState;
+      for (let i = 0; i < ACTIVITY_BUFFER_CAP - 1; i++) {
+        const ev = makeEvent('daemon:lifecycle:starting', { pid: i, port: 8080, version: '1.0.0', mode: 'dev' }) as unknown as EforgeEvent;
+        state = daemonReducer(state, { type: 'ADD_EVENT', event: ev, eventId: String(i) });
+      }
+      expect(state.daemonActivity).toHaveLength(ACTIVITY_BUFFER_CAP - 1);
+
+      // BATCH_SEED with 3 new entries: total = 502, should be capped at 500
+      const newActivity = [
+        { id: 'new-a', event: makeEvent('session:start', {}) as unknown as EforgeEvent },
+        { id: 'new-b', event: makeEvent('session:start', {}) as unknown as EforgeEvent },
+        { id: 'new-c', event: makeEvent('session:start', {}) as unknown as EforgeEvent },
+      ];
+      const capped = daemonReducer(state, {
+        type: 'BATCH_SEED',
+        runs: [],
+        queue: [],
+        sessionMetadata: {},
+        autoBuild: null,
+        recentActivity: newActivity,
+      });
+      expect(capped.daemonActivity).toHaveLength(ACTIVITY_BUFFER_CAP);
+      // Newest entries are at the end
+      const lastThree = capped.daemonActivity.slice(-3).map((a) => a.id);
+      expect(lastThree).toEqual(['new-a', 'new-b', 'new-c']);
+    });
+
+    it('sets latestHeartbeat from snapshot liveness field', () => {
+      const latestHeartbeat = {
+        at: 1_000_000,
+        payload: makeHeartbeatPayload({ uptime: 42_000, queueDepth: 3, runningBuilds: 1 }),
+      };
+
+      const state = daemonReducer(initialDaemonState, {
+        type: 'BATCH_SEED',
+        runs: [],
+        queue: [],
+        sessionMetadata: {},
+        autoBuild: null,
+        latestHeartbeat,
+      });
+
+      expect(state.latestHeartbeat).toEqual(latestHeartbeat);
+    });
+
+    it('does not overwrite latestHeartbeat when latestHeartbeat is undefined in action', () => {
+      const existing = {
+        at: 999_999,
+        payload: makeHeartbeatPayload(),
+      };
+      const startState = { ...initialDaemonState, latestHeartbeat: existing };
+
+      // BATCH_SEED without latestHeartbeat field → should not clear existing
+      const state = daemonReducer(startState, {
+        type: 'BATCH_SEED',
+        runs: [],
+        queue: [],
+        sessionMetadata: {},
+        autoBuild: null,
+        // latestHeartbeat omitted intentionally
+      });
+
+      expect(state.latestHeartbeat).toEqual(existing);
     });
   });
 

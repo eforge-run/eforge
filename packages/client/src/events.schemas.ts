@@ -1057,3 +1057,116 @@ export function isAlwaysYieldedAgentEvent(event: EforgeEvent): boolean {
     event.type === 'agent:tool_result'
   );
 }
+
+// ---------------------------------------------------------------------------
+// SSE stream snapshot envelope schemas (stream:hello primitive)
+// ---------------------------------------------------------------------------
+
+/**
+ * Shape of the `liveness` field inside `DaemonStreamSnapshot`.
+ * Matches the JSON object that `buildHeartbeatPayload()` in server.ts produces.
+ */
+const DaemonStreamLivenessSchema = z.object({
+  type: z.literal('daemon:heartbeat'),
+  timestamp: z.string(),
+  uptime: z.number(),
+  queueDepth: z.number(),
+  runningBuilds: z.number(),
+  autoBuild: z.object({
+    enabled: z.boolean(),
+    paused: z.boolean(),
+  }),
+  subscribers: z.number(),
+});
+
+/** Shape of a single item in `DaemonStreamSnapshot.recentActivity`. */
+const DaemonRecentActivityItemSchema = z.object({
+  id: z.number(),
+  event: EforgeEventSchema,
+});
+
+/** Shape of a run record as returned by `GET /api/runs`. */
+const DaemonRunRecordSchema = z.object({
+  id: z.string(),
+  sessionId: z.string().optional(),
+  planSet: z.string(),
+  command: z.string(),
+  status: z.string(),
+  startedAt: z.string(),
+  completedAt: z.string().optional(),
+  cwd: z.string(),
+  pid: z.number().optional(),
+});
+
+/** Shape of a single queue item as returned by `GET /api/queue`. */
+const DaemonQueueItemSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  status: z.string(),
+  priority: z.number().optional(),
+  created: z.string().optional(),
+  dependsOn: z.array(z.string()).optional(),
+  recoveryVerdict: z
+    .object({
+      verdict: z.enum(['retry', 'split', 'abandon', 'manual']),
+      confidence: z.enum(['low', 'medium', 'high']),
+    })
+    .optional(),
+});
+
+/** Shape of a per-session metadata entry as returned by `GET /api/session-metadata`. */
+const DaemonSessionMetadataItemSchema = z.object({
+  planCount: z.number().nullable(),
+  baseProfile: z.string().nullable(),
+});
+
+/** Shape of the auto-build response as returned by `GET /api/auto-build`. */
+const DaemonAutoBuildSchema = z.object({
+  enabled: z.boolean(),
+  watcher: z.object({
+    running: z.boolean(),
+    pid: z.number().nullable(),
+    sessionId: z.string().nullable(),
+  }),
+});
+
+/**
+ * Snapshot payload embedded in the `stream:hello` frame for the
+ * `/api/daemon-events` SSE stream.
+ *
+ * `cursor` is the max daemon-wide event id at connect time; used as the
+ * authoritative `Last-Event-ID` for reconnects.
+ *
+ * All other fields match the response shapes of existing REST endpoints
+ * byte-for-byte so plan-02 consumers can feed them into existing reducers.
+ */
+export const DaemonStreamSnapshotSchema = z.object({
+  cursor: z.number(),
+  liveness: DaemonStreamLivenessSchema,
+  recentActivity: z.array(DaemonRecentActivityItemSchema),
+  runs: z.array(DaemonRunRecordSchema),
+  queue: z.array(DaemonQueueItemSchema),
+  sessionMetadata: z.record(z.string(), DaemonSessionMetadataItemSchema),
+  autoBuild: DaemonAutoBuildSchema,
+});
+
+/**
+ * Snapshot payload embedded in the `stream:hello` frame for the
+ * `/api/events/:sessionId` SSE stream.
+ *
+ * `cursor` is the max event id for the session at connect time.
+ * `status` and `events` match the `RunState` shape from `GET /api/runs/:id/state`.
+ */
+export const SessionStreamSnapshotSchema = z.object({
+  cursor: z.number(),
+  status: z.enum(['pending', 'running', 'completed', 'failed']),
+  events: z.array(
+    z.object({
+      id: z.number(),
+      data: z.string(),
+    }),
+  ),
+});
+
+export type DaemonStreamSnapshot = z.infer<typeof DaemonStreamSnapshotSchema>;
+export type SessionStreamSnapshot = z.infer<typeof SessionStreamSnapshotSchema>;

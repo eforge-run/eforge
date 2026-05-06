@@ -36,16 +36,16 @@ describe('handle-plan-build — stage advancement rules', () => {
   // ---------------------------------------------------------------------------
   // Stage advancements
   // ---------------------------------------------------------------------------
-  it('plan:build:start → implements stage', () => {
+  it('plan:build:start → no-op (status now driven by plan:status:change)', () => {
     const event = makeEvent('plan:build:start', { planId: PLAN_ID });
     const delta = handlePlanBuildStart(event, initialRunState);
-    expect(delta?.planStatuses?.[PLAN_ID]).toBe('implement');
+    expect(delta).toBeUndefined();
   });
 
-  it('plan:build:implement:start → implement stage', () => {
+  it('plan:build:implement:start → no-op (status now driven by plan:status:change)', () => {
     const event = makeEvent('plan:build:implement:start', { planId: PLAN_ID });
     const delta = handlePlanBuildImplementStart(event, initialRunState);
-    expect(delta?.planStatuses?.[PLAN_ID]).toBe('implement');
+    expect(delta).toBeUndefined();
   });
 
   it('plan:build:doc-author:start → does NOT advance stage (parallel with implement)', () => {
@@ -122,16 +122,16 @@ describe('handle-plan-build — stage advancement rules', () => {
     expect(delta?.planStatuses?.[PLAN_ID]).toBe('evaluate');
   });
 
-  it('plan:build:complete → complete stage', () => {
+  it('plan:build:complete → no-op (status now driven by plan:status:change)', () => {
     const event = makeEvent('plan:build:complete', { planId: PLAN_ID });
     const delta = handlePlanBuildComplete(event, initialRunState);
-    expect(delta?.planStatuses?.[PLAN_ID]).toBe('complete');
+    expect(delta).toBeUndefined();
   });
 
-  it('plan:build:failed → failed stage', () => {
+  it('plan:build:failed → no-op (status now driven by plan:status:change)', () => {
     const event = makeEvent('plan:build:failed', { planId: PLAN_ID, error: 'compilation error' });
     const delta = handlePlanBuildFailed(event, initialRunState);
-    expect(delta?.planStatuses?.[PLAN_ID]).toBe('failed');
+    expect(delta).toBeUndefined();
   });
 
   // ---------------------------------------------------------------------------
@@ -247,26 +247,25 @@ describe('handle-plan-build — stage advancement rules', () => {
   // ---------------------------------------------------------------------------
   // plan:merge:complete
   // ---------------------------------------------------------------------------
-  it('plan:merge:complete → complete stage + mergeCommits captured', () => {
+  it('plan:merge:complete → captures mergeCommits when commitSha present (status driven by plan:status:change)', () => {
     const event = makeEvent('plan:merge:complete', { planId: PLAN_ID, commitSha: 'abc123' });
     const delta = handlePlanMergeComplete(event, initialRunState);
-    expect(delta?.planStatuses?.[PLAN_ID]).toBe('complete');
+    expect(delta?.planStatuses).toBeUndefined();
     expect(delta?.mergeCommits?.[PLAN_ID]).toBe('abc123');
   });
 
-  it('plan:merge:complete → complete stage without mergeCommits when commitSha absent', () => {
+  it('plan:merge:complete → returns undefined when commitSha absent', () => {
     const event = makeEvent('plan:merge:complete', { planId: PLAN_ID });
     const delta = handlePlanMergeComplete(event, initialRunState);
-    expect(delta?.planStatuses?.[PLAN_ID]).toBe('complete');
-    expect(delta?.mergeCommits).toBeUndefined();
+    expect(delta).toBeUndefined();
   });
 
-  it('plan:merge:complete preserves other plan statuses', () => {
+  it('plan:merge:complete with commitSha does not touch planStatuses', () => {
     const OTHER = 'plan-02';
     const state = { ...initialRunState, planStatuses: { [OTHER]: 'implement' as const } };
     const event = makeEvent('plan:merge:complete', { planId: PLAN_ID, commitSha: 'sha1' });
     const delta = handlePlanMergeComplete(event, state);
-    expect(delta?.planStatuses?.[OTHER]).toBe('implement');
-    expect(delta?.planStatuses?.[PLAN_ID]).toBe('complete');
+    expect(delta?.planStatuses).toBeUndefined();
+    expect(delta?.mergeCommits?.[PLAN_ID]).toBe('sha1');
   });
 });

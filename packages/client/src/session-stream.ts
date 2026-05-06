@@ -1,45 +1,32 @@
 /**
- * SSE stream subscribers for the eforge daemon.
+ * SSE stream subscription primitives for the eforge daemon.
  *
- * `subscribeToSession()` connects to `GET /api/events/{sessionId}`, invokes
- * `onEvent` per event (including the terminal `session:end`), and resolves with
- * a `SessionSummary` once `session:end` arrives.
+ * The sole public entry point is `subscribeWithSnapshot` — an async generator
+ * that wraps any eforge SSE endpoint. It yields:
  *
- * `subscribeToDaemonEvents()` connects to `GET /api/daemon-events`, invokes
- * `onEvent` per daemon-wide event (queue, enqueue, session lifecycle), and
- * rejects when the abort signal fires or reconnects are exhausted.
+ *   - `{ kind: 'snapshot' }` — the `stream:hello` payload on every (re)connect.
+ *   - `{ kind: 'event' }` — a regular JSON event from the SSE `data:` field.
+ *   - `{ kind: 'named' }` — other named SSE events (e.g. `monitor:shutdown-pending`).
  *
- * Both functions share `subscribeToStream` — the same reconnect/Last-Event-ID/
- * abort/SSE-parsing core. Only the URL and event-handling semantics differ.
+ * `stream:hello` is intercepted and surfaced as `snapshot` frames; it never
+ * appears as a `named` frame.
  *
- * Reconnect/backoff: initial 1s delay, doubling to a 30s cap, hard retry cap
- * so unrecoverable failures surface instead of looping forever. `Last-Event-ID`
- * is sent on reconnect so the daemon's historical replay does not redeliver
- * events we have already processed.
- *
- * This module is intentionally zero-dep (Node core + `./lockfile.js` + `./routes.js`)
- * to preserve the `@eforge-build/client` contract of "no engine deps".
- * Callers that want full `EforgeEvent` typing on the `onEvent` callback
- * parameterize the helper with the engine's `EforgeEvent` type at the call
- * site; this module defines only a minimal structural shape.
+ * `parseSseChunk` is exported for test and internal use.
  *
  * ## Transport selection
  *
- * `connect()` branches on `typeof EventSource !== 'undefined'`:
+ * The internal `subscribeToStream` core branches on `typeof EventSource !== 'undefined'`:
  *   - **Browser runtime**: uses `fetch` + `ReadableStream` for manual SSE
- *     parsing. This gives full control over the `event:` field (enabling
- *     `onNamedEvent`), `Last-Event-ID` replay, and `AbortSignal` support.
- *     Pass `baseUrl: ''` to use same-origin relative URLs.
- *   - **Node runtime**: uses `node:http`. Requires an absolute `baseUrl` or
- *     a resolvable lockfile `cwd`. Passing `baseUrl: ''` in a non-browser
- *     runtime throws a clear error.
+ *     parsing. Pass a same-origin relative URL (e.g. `/api/daemon-events`).
+ *   - **Node runtime**: uses `node:http`. Requires an absolute URL.
  *
- * Both paths share the same reconnect/backoff counters, aggregate counters,
- * `SessionSummary` construction, and settlement logic.
+ * Both paths share the same reconnect/backoff counters, `Last-Event-ID` capture
+ * (including the cursor from `stream:hello`), and abort propagation.
  */
 
-import { readLockfile } from './lockfile.js';
-import { API_ROUTES } from './routes.js';
+import type { DaemonStreamSnapshot, SessionStreamSnapshot } from './events.schemas.js';
+
+export type { DaemonStreamSnapshot, SessionStreamSnapshot };
 
 /** Initial reconnect delay, doubled on each failure up to `MAX_RECONNECT_MS`. */
 const INITIAL_RECONNECT_MS = 1000;
@@ -51,8 +38,8 @@ const DEFAULT_MAX_RECONNECTS = 10;
 /**
  * Minimal structural shape for events streamed over SSE. The helper only
  * inspects `type` (and a few known fields during aggregation). Callers
- * parameterize `subscribeToSession<EforgeEvent>()` to get full typing on
- * their `onEvent` callback - this module does not depend on the engine.
+ * parameterize `subscribeWithSnapshot<S, EforgeEvent>()` to get full typing on
+ * their event frames — this module does not depend on the engine.
  */
 // Serialized form of EforgeEvent - keep in sync with event-to-progress.ts
 export interface DaemonStreamEvent {
@@ -63,9 +50,9 @@ export interface DaemonStreamEvent {
 }
 
 /**
- * Lifecycle summary returned by `subscribeToSession()` once `session:end`
- * arrives. Composed from the engine's `EforgeResult` plus aggregates
- * computed as events stream through the helper.
+ * Lifecycle summary for a session. Composed from the engine's `EforgeResult`
+ * plus aggregates computed from the event stream. Built by
+ * `aggregateSessionSummary` in `aggregate-session-summary.ts`.
  */
 export interface SessionSummary {
   sessionId: string;
@@ -177,41 +164,10 @@ export function parseSseChunk(chunk: string): ParsedSseBlock[] {
   return events;
 }
 
-function resolveBaseUrl(opts: { baseUrl?: string; cwd?: string }): string {
-  // Explicit same-origin opt-in for browser runtimes
-  if (opts.baseUrl === '') return '';
-  if (opts.baseUrl) return opts.baseUrl.replace(/\/$/, '');
-  if (!opts.cwd) {
-    throw new Error('subscribeToSession: either `baseUrl` or `cwd` must be provided');
-  }
-  const lock = readLockfile(opts.cwd);
-  if (!lock) {
-    throw new Error(
-      `subscribeToSession: daemon lockfile not found in ${opts.cwd}. Is the daemon running?`,
-    );
-  }
-  return `http://127.0.0.1:${lock.port}`;
-}
-
-function resolveDaemonEventsBaseUrl(opts: { baseUrl?: string; cwd?: string }): string {
-  if (opts.baseUrl === '') return '';
-  if (opts.baseUrl) return opts.baseUrl.replace(/\/$/, '');
-  if (!opts.cwd) {
-    throw new Error('subscribeToDaemonEvents: either `baseUrl` or `cwd` must be provided');
-  }
-  const lock = readLockfile(opts.cwd);
-  if (!lock) {
-    throw new Error(
-      `subscribeToDaemonEvents: daemon lockfile not found in ${opts.cwd}. Is the daemon running?`,
-    );
-  }
-  return `http://127.0.0.1:${lock.port}`;
-}
-
 /**
  * Internal SSE stream subscription core with reconnect/backoff and Last-Event-ID.
  *
- * Not exported directly — use `subscribeToSession` or `subscribeToDaemonEvents`.
+ * Not exported directly — used internally by `subscribeWithSnapshot`.
  *
  * Handles SSE parsing, reconnect scheduling, abort signal wiring, and delegates
  * per-event semantics to the `onParsedEvent` callback. The promise settles when:
@@ -421,6 +377,18 @@ function subscribeToStream<R>(
               for (const block of blocks) {
                 if (block.id !== undefined) lastEventId = block.id;
                 if (block.event !== undefined && block.data !== undefined) {
+                  // Cursor-capture rule: stream:hello carries the authoritative cursor
+                  // for Last-Event-ID on reconnect. Capture before surfacing to onNamedEvent.
+                  if (block.event === 'stream:hello') {
+                    try {
+                      const helloData = JSON.parse(block.data) as { cursor?: unknown };
+                      if (typeof helloData.cursor === 'number') {
+                        lastEventId = String(helloData.cursor);
+                      }
+                    } catch {
+                      // Ignore parse errors
+                    }
+                  }
                   // Named SSE event (has an `event:` field) — route to onNamedEvent
                   try {
                     opts.onNamedEvent?.(block.event, block.data);
@@ -515,6 +483,18 @@ function subscribeToStream<R>(
             for (const block of blocks) {
               if (block.id !== undefined) lastEventId = block.id;
               if (block.event !== undefined && block.data !== undefined) {
+                // Cursor-capture rule: stream:hello carries the authoritative cursor
+                // for Last-Event-ID on reconnect. Capture before surfacing to onNamedEvent.
+                if (block.event === 'stream:hello') {
+                  try {
+                    const helloData = JSON.parse(block.data) as { cursor?: unknown };
+                    if (typeof helloData.cursor === 'number') {
+                      lastEventId = String(helloData.cursor);
+                    }
+                  } catch {
+                    // Ignore parse errors
+                  }
+                }
                 // Named SSE event (has an `event:` field) — route to onNamedEvent
                 try {
                   opts.onNamedEvent?.(block.event, block.data);
@@ -552,160 +532,150 @@ function subscribeToStream<R>(
   });
 }
 
-/**
- * Subscribe to the daemon's SSE event stream for a single session.
- *
- * Resolves with a `SessionSummary` when `session:end` arrives. Rejects if:
- *   - the caller's `AbortSignal` fires (rejects with an `AbortError`),
- *   - the daemon returns a non-2xx status that is not retryable (404/410),
- *   - the reconnect count exceeds `maxReconnects`.
- *
- * Reconnect policy: the `reconnectCount`/`reconnectDelay` counters are reset
- * only after at least one valid event has been parsed from the stream - not
- * on 2xx response open. This ensures a misbehaving daemon that accepts
- * connections but emits no data cannot escape the `maxReconnects` cap.
- *
- * `onEvent` is invoked for every event received, including `session:end`.
- * The second `meta` argument carries the SSE `id:` value for the message.
- */
-export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEvent>(
-  sessionId: string,
-  opts: SubscribeOptions<E>,
-): Promise<SessionSummary> {
-  let baseUrl: string;
-  try {
-    baseUrl = resolveBaseUrl(opts);
-  } catch (err) {
-    return Promise.reject(err as Error);
-  }
-
-  // Guard: baseUrl: '' is only valid in browser runtimes
-  if (baseUrl === '' && typeof EventSource === 'undefined') {
-    return Promise.reject(new Error(
-      "subscribeToSession: baseUrl: '' is only supported in browser runtimes",
-    ));
-  }
-
-  const url = `${baseUrl}/api/events/${encodeURIComponent(sessionId)}`;
-
-  // Aggregates for SessionSummary construction
-  let eventCount = 0;
-  let phaseCount = 0;
-  let filesChanged = 0;
-  let errorCount = 0;
-
-  return subscribeToStream<SessionSummary>(
-    url,
-    { signal: opts.signal, maxReconnects: opts.maxReconnects, onNamedEvent: opts.onNamedEvent, onReconnect: opts.onReconnect },
-    (parsed, eventId, settle) => {
-      eventCount += 1;
-      if (parsed.type === 'phase:start') {
-        phaseCount += 1;
-      }
-      if (parsed.type === 'plan:build:files_changed') {
-        const files = (parsed as { files?: unknown }).files;
-        if (Array.isArray(files)) {
-          filesChanged += files.length;
-        }
-      }
-      if (parsed.type.endsWith(':error') || parsed.type.endsWith(':failed')) {
-        errorCount += 1;
-      }
-
-      try {
-        opts.onEvent(parsed as E, { eventId });
-      } catch {
-        // Callback exceptions must not disrupt the stream
-      }
-
-      if (parsed.type === 'session:end') {
-        const result = (parsed as { result?: { status?: string; summary?: string } }).result;
-        const status = result?.status === 'completed' || result?.status === 'failed'
-          ? result.status
-          : 'failed';
-        const summary: SessionSummary = {
-          sessionId,
-          status,
-          summary: result?.summary ?? '',
-          monitorUrl: baseUrl,
-          eventCount,
-          phaseCount,
-          filesChanged,
-          errorCount,
-        };
-        try {
-          opts.onEnd?.(summary);
-        } catch {
-          // onEnd must not break resolution
-        }
-        settle.resolve(summary);
-      }
-    },
-    {
-      abort: 'subscribeToSession aborted',
-      maxReconnects: (count) =>
-        `subscribeToSession: exceeded max reconnects (${count}) for session ${sessionId}`,
-      nonRetryStatus: (status) =>
-        `subscribeToSession: daemon returned ${status} for session ${sessionId}`,
-    },
-  );
-}
+// ---------------------------------------------------------------------------
+// subscribeWithSnapshot — async generator on top of subscribeToStream
+// ---------------------------------------------------------------------------
 
 /**
- * Subscribe to the daemon's cross-session SSE event stream `GET /api/daemon-events`.
+ * A single frame yielded by `subscribeWithSnapshot`.
  *
- * Delivers daemon-wide events: `daemon:auto-build:paused`, `queue:*`, `enqueue:*`,
- * plus session lifecycle (`session:start`, `session:end`). The stream does not carry
- * per-session build events — use `subscribeToSession` for those.
- *
- * Rejects if:
- *   - the caller's `AbortSignal` fires (rejects with an `AbortError`),
- *   - the daemon returns a non-retryable status (404/410),
- *   - the reconnect count exceeds `maxReconnects`.
- *
- * The promise never resolves with a value; callers signal termination via
- * `opts.signal.abort()` and catch the resulting `AbortError`.
- *
- * `onEvent` is invoked for every daemon-wide event received.
- * The second `meta` argument carries the SSE `id:` value.
+ * - `snapshot` — carries the `stream:hello` payload (first frame on every
+ *   (re)connect). `stream:hello` is intercepted by the library and never
+ *   appears as a `named` frame.
+ * - `event` — a regular JSON event from the SSE data field.
+ * - `named` — a named SSE event (e.g. `monitor:shutdown-pending`), excluding
+ *   `stream:hello` which is surfaced as `snapshot`.
  */
-export function subscribeToDaemonEvents(
-  opts: SubscribeOptions<DaemonStreamEvent>,
-): Promise<void> {
-  let baseUrl: string;
-  try {
-    baseUrl = resolveDaemonEventsBaseUrl(opts);
-  } catch (err) {
-    return Promise.reject(err as Error);
+export type SubscribeWithSnapshotFrame<S, E> =
+  | { kind: 'snapshot'; snapshot: S }
+  | { kind: 'event'; event: E; eventId?: string }
+  | { kind: 'named'; name: string; data: string };
+
+/**
+ * Subscribe to an SSE stream and yield frames as an async generator.
+ *
+ * The first frame on every (re)connect is `{ kind: 'snapshot' }` carrying the
+ * `stream:hello` payload. Subsequent frames are `{ kind: 'event' }` for JSON
+ * events and `{ kind: 'named' }` for other named SSE events (e.g.
+ * `monitor:shutdown-pending`). `stream:hello` is intercepted and never yielded
+ * as `{ kind: 'named' }`.
+ *
+ * The generator throws `AbortError` when the supplied `AbortSignal` fires.
+ *
+ * Implementation: in-memory queue + promise-resolver bridge on top of the
+ * existing `subscribeToStream` callback core. The core handles transport
+ * selection, `Last-Event-ID` capture (including the cursor from `stream:hello`),
+ * reconnect/backoff, and abort propagation. The queue is unbounded — slow
+ * consumers may grow it; backpressure is the consumer's responsibility.
+ *
+ * @param url   Full SSE endpoint URL (e.g. `http://127.0.0.1:4567/api/daemon-events`).
+ * @param opts  Options: `signal` to abort, `maxReconnects` cap.
+ */
+export async function* subscribeWithSnapshot<
+  S = unknown,
+  E extends DaemonStreamEvent = DaemonStreamEvent,
+>(
+  url: string,
+  opts: { signal?: AbortSignal; maxReconnects?: number } = {},
+): AsyncGenerator<SubscribeWithSnapshotFrame<S, E>> {
+  // In-memory queue + promise-resolver bridge.
+  // subscribeToStream callbacks push frames here; the generator drains them.
+  // Note: the queue is unbounded — a slow consumer may grow it without limit.
+  const queue: Array<SubscribeWithSnapshotFrame<S, E>> = [];
+  let wakeResolver: (() => void) | null = null;
+  let completed = false;
+  let streamError: Error | null = null;
+
+  function enqueue(frame: SubscribeWithSnapshotFrame<S, E>): void {
+    queue.push(frame);
+    if (wakeResolver) {
+      const r = wakeResolver;
+      wakeResolver = null;
+      r();
+    }
   }
 
-  // Guard: baseUrl: '' is only valid in browser runtimes
-  if (baseUrl === '' && typeof EventSource === 'undefined') {
-    return Promise.reject(new Error(
-      "subscribeToDaemonEvents: baseUrl: '' is only supported in browser runtimes",
-    ));
+  function waitForQueue(): Promise<void> {
+    return new Promise<void>((resolve) => {
+      wakeResolver = resolve;
+    });
   }
 
-  const url = `${baseUrl}${API_ROUTES.daemonEvents}`;
+  // Forward abort from the caller to the inner subscription.
+  const innerAbort = new AbortController();
+  if (opts.signal) {
+    const signal = opts.signal;
+    if (signal.aborted) {
+      innerAbort.abort(signal.reason);
+    } else {
+      signal.addEventListener(
+        'abort',
+        () => { innerAbort.abort(signal.reason); },
+        { once: true },
+      );
+    }
+  }
 
-  return subscribeToStream<void>(
+  // Start the inner subscription in the background.
+  const innerPromise = subscribeToStream<void>(
     url,
-    { signal: opts.signal, maxReconnects: opts.maxReconnects, onNamedEvent: opts.onNamedEvent, onReconnect: opts.onReconnect },
-    (parsed, eventId, _settle) => {
-      // Daemon-events stream has no terminal event; the promise only settles via
-      // abort signal, max reconnects, or 404/410. Just forward each event.
-      try {
-        opts.onEvent(parsed, { eventId });
-      } catch {
-        // Callback exceptions must not disrupt the stream
-      }
+    {
+      signal: innerAbort.signal,
+      maxReconnects: opts.maxReconnects,
+      onNamedEvent: (name: string, data: string) => {
+        if (name === 'stream:hello') {
+          // Intercepted: surface as snapshot frame, NOT as 'named'.
+          try {
+            const parsed = JSON.parse(data) as S;
+            enqueue({ kind: 'snapshot', snapshot: parsed });
+          } catch {
+            // Ignore malformed hello data
+          }
+          return;
+        }
+        enqueue({ kind: 'named', name, data });
+      },
+    },
+    (parsed: DaemonStreamEvent, eventId: string | undefined, _settle) => {
+      enqueue({ kind: 'event', event: parsed as E, eventId });
     },
     {
-      abort: 'subscribeToDaemonEvents aborted',
-      maxReconnects: (count) =>
-        `subscribeToDaemonEvents: exceeded max reconnects (${count}) for daemon-events stream`,
-      nonRetryStatus: (status) =>
-        `subscribeToDaemonEvents: daemon returned ${status} for daemon-events stream`,
+      abort: 'subscribeWithSnapshot aborted',
+      maxReconnects: (count: number) =>
+        `subscribeWithSnapshot: exceeded max reconnects (${count})`,
+      nonRetryStatus: (status: number) =>
+        `subscribeWithSnapshot: stream returned ${status}`,
     },
   );
+
+  // When the inner subscription settles, wake the generator so it can exit.
+  innerPromise.then(
+    () => {
+      completed = true;
+      if (wakeResolver) { const r = wakeResolver; wakeResolver = null; r(); }
+    },
+    (err: Error) => {
+      completed = true;
+      streamError = err;
+      if (wakeResolver) { const r = wakeResolver; wakeResolver = null; r(); }
+    },
+  );
+
+  try {
+    while (!completed || queue.length > 0) {
+      // Drain all queued frames before awaiting more.
+      while (queue.length > 0) {
+        yield queue.shift()!;
+      }
+      // If the stream is still open and the queue is empty, wait for more.
+      if (!completed) {
+        await waitForQueue();
+      }
+    }
+    // Re-throw any terminal error (AbortError, max-reconnects, etc.).
+    if (streamError) throw streamError;
+  } finally {
+    // Abort the inner subscription when the generator is abandoned (return/throw).
+    innerAbort.abort();
+  }
 }

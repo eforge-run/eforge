@@ -87,13 +87,21 @@ export type {
   ModelListResponse,
 } from './types.js';
 
-export { subscribeToSession, subscribeToDaemonEvents, parseSseChunk } from './session-stream.js';
+export {
+  parseSseChunk,
+  subscribeWithSnapshot,
+} from './session-stream.js';
 export type {
   SessionSummary,
   SubscribeOptions,
   DaemonStreamEvent,
   ParsedSseBlock,
+  DaemonStreamSnapshot,
+  SessionStreamSnapshot,
+  SubscribeWithSnapshotFrame,
 } from './session-stream.js';
+
+export { aggregateSessionSummary } from './aggregate-session-summary.js';
 
 export { eventToProgress } from './event-to-progress.js';
 export type { FollowCounters, ProgressUpdate } from './event-to-progress.js';
