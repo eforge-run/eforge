@@ -11,10 +11,10 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeToSession, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetLatestRunFromRuns } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
-  LatestRunResponse,
+  RunInfo,
   EnqueueResponse,
   RunSummary,
   ConfigValidateResponse,
@@ -83,7 +83,8 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     { description: 'Current eforge build status - latest session summary or idle state' },
     async () => {
       try {
-        const { data: latestRun } = await requireDaemon<LatestRunResponse>('GET', API_ROUTES.latestRun);
+        const { data: runs } = await requireDaemon<RunInfo[]>('GET', API_ROUTES.runs);
+        const latestRun = runs[0] ?? null;
         if (!latestRun?.sessionId) {
           return {
             contents: [{
@@ -352,7 +353,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }),
       };
 
-      const { data: latestRun } = await daemonRequest<LatestRunResponse>(toolCwd, 'GET', API_ROUTES.latestRun);
+      const latestRun = await apiGetLatestRunFromRuns({ cwd: toolCwd });
       if (!latestRun?.sessionId) {
         return { status: 'idle', message: 'No active eforge sessions.', ...versions };
       }
@@ -482,7 +483,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     handler: async ({ action, force }, { cwd: toolCwd }) => {
       async function checkActiveBuilds(): Promise<string | null> {
         try {
-          const { data: latestRun } = await daemonRequest<LatestRunResponse>(toolCwd, 'GET', API_ROUTES.latestRun);
+          const latestRun = await apiGetLatestRunFromRuns({ cwd: toolCwd });
           if (!latestRun?.sessionId) return null;
           const { data: summary } = await daemonRequest<RunSummary>(toolCwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
           if (summary?.status === 'running') {

@@ -19,6 +19,7 @@ export {
   apiGetRuns,
   apiGetLatestRun,
   apiGetLatestRunIfRunning,
+  apiGetLatestRunFromRuns,
   apiGetRunSummary,
   apiGetRunSummaryIfRunning,
   apiGetRunState,
@@ -159,7 +160,7 @@ export { DAEMON_API_VERSION, verifyApiVersion, clearApiVersionCache } from './ap
 
 export { sanitizeProfileName, parseRawConfigLegacy } from './profile-utils.js';
 
-export { subscribeToSession, parseSseChunk } from './session-stream.js';
+export { subscribeToSession, subscribeToDaemonEvents, parseSseChunk } from './session-stream.js';
 export type {
   SessionSummary,
   SubscribeOptions,

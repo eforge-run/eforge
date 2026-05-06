@@ -42,6 +42,7 @@ import {
   parseRawConfigLegacy,
   subscribeToSession,
   eventToProgress,
+  apiGetLatestRunFromRuns,
   LOCKFILE_POLL_INTERVAL_MS,
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
@@ -49,7 +50,6 @@ import {
 } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
-  LatestRunResponse,
   EnqueueResponse,
   RunSummary,
   ConfigValidateResponse,
@@ -93,11 +93,7 @@ async function checkActiveBuilds(
   cwd: string,
 ): Promise<string | null> {
   try {
-    const { data: latestRun } = await daemonRequest<LatestRunResponse>(
-      cwd,
-      "GET",
-      API_ROUTES.latestRun,
-    );
+    const latestRun = await apiGetLatestRunFromRuns({ cwd });
     if (!latestRun?.sessionId) return null;
     const { data: summary } = await daemonRequest<RunSummary>(
       cwd,
@@ -217,7 +213,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
     // Build status
     try {
-      const { data: latestRun } = await daemonRequest<LatestRunResponse>(ctx.cwd, 'GET', API_ROUTES.latestRun);
+      const latestRun = await apiGetLatestRunFromRuns({ cwd: ctx.cwd });
       if (latestRun?.sessionId) {
         const { data: summary } = await daemonRequest<RunSummary>(
           ctx.cwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId })
@@ -483,11 +479,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }),
       };
 
-      const { data: latestRun } = await daemonRequest<LatestRunResponse>(
-        ctx.cwd,
-        "GET",
-        API_ROUTES.latestRun,
-      );
+      const latestRun = await apiGetLatestRunFromRuns({ cwd: ctx.cwd });
       if (!latestRun?.sessionId) {
         return jsonResult({
           status: "idle",

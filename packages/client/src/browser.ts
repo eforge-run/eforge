@@ -88,7 +88,7 @@ export type {
   ModelListResponse,
 } from './types.js';
 
-export { subscribeToSession, parseSseChunk } from './session-stream.js';
+export { subscribeToSession, subscribeToDaemonEvents, parseSseChunk } from './session-stream.js';
 export type {
   SessionSummary,
   SubscribeOptions,

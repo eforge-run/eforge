@@ -143,6 +143,7 @@ export const API_ROUTES = {
   sessionPlanSelectDimensions: '/api/session-plan/select-dimensions',
   sessionPlanReadiness: '/api/session-plan/readiness',
   sessionPlanMigrateLegacy: '/api/session-plan/migrate-legacy',
+  daemonEvents: '/api/daemon-events',
 } as const;
 
 /** Response body for GET /api/version */

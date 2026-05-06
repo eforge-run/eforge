@@ -87,3 +87,13 @@ export function apiGetDiff(opts: { cwd: string; sessionId: string; planId: strin
 export function apiGetSessionMetadata(opts: { cwd: string }) {
   return daemonRequest<Record<string, SessionMetadata>>(opts.cwd, 'GET', API_ROUTES.sessionMetadata);
 }
+
+/**
+ * Fetch the latest run by querying GET /api/runs and returning the first entry.
+ * Runs are sorted by started_at DESC so index 0 is the most recent.
+ * Returns null when no runs exist.
+ */
+export async function apiGetLatestRunFromRuns(opts: { cwd: string }): Promise<RunInfo | null> {
+  const { data } = await daemonRequest<RunInfo[]>(opts.cwd, 'GET', API_ROUTES.runs);
+  return data[0] ?? null;
+}

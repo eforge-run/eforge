@@ -600,12 +600,12 @@ describe('Ambient status keys (plan-02-native-pi-ux)', () => {
     expect(refreshBlock).toContain('API_ROUTES.queue');
   });
 
-  it('fetches latest run status from /api/latest-run for ambient status', () => {
+  it('fetches latest run status from /api/runs for ambient status', () => {
     const refreshStart = source.indexOf('async function refreshStatus');
     expect(refreshStart).toBeGreaterThan(-1);
     const refreshEnd = source.indexOf('pi.on(', refreshStart);
     const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
-    expect(refreshBlock).toContain('API_ROUTES.latestRun');
+    expect(refreshBlock).toContain('apiGetLatestRunFromRuns');
   });
 
   it('fetches run summary for build phase/agent display', () => {

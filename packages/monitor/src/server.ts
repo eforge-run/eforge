@@ -163,12 +163,18 @@ interface SSESubscriber {
   lastSeenId: number;
 }
 
+interface DaemonSSESubscriber {
+  res: ServerResponse;
+  lastSeenId: number;
+}
+
 export async function startServer(
   db: MonitorDB,
   preferredPort = 4567,
   options?: { strictPort?: boolean; cwd?: string; queueDir?: string; planOutputDir?: string; workerTracker?: WorkerTracker; daemonState?: DaemonState; config?: Pick<EforgeConfig, 'monitor' | 'agents' | 'prdQueue'> },
 ): Promise<MonitorServer> {
   const subscribers = new Set<SSESubscriber>();
+  const daemonSubscribers = new Set<DaemonSSESubscriber>();
 
   // Resolve git remote once at startup
   const cwd = options?.cwd;
@@ -304,6 +310,44 @@ export async function startServer(
     });
   }
 
+  function serveDaemonEventsSSE(req: IncomingMessage, res: ServerResponse): void {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    // Replay historical daemon-wide events
+    const rawLastEventId = req.headers['last-event-id']
+      ? parseInt(req.headers['last-event-id'] as string, 10)
+      : undefined;
+    // Guard against malformed / non-finite ids (parseInt returns NaN) so the
+    // subscriber doesn't get stuck with `lastSeenId = NaN` (id > NaN is always
+    // false in SQL, which would silently drop every subsequent event).
+    const lastEventId = rawLastEventId !== undefined && Number.isFinite(rawLastEventId)
+      ? rawLastEventId
+      : undefined;
+    const historicalEvents = db.getDaemonEventsAfter(lastEventId ?? 0);
+    let lastSeenId = lastEventId ?? 0;
+    for (const event of historicalEvents) {
+      const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
+      const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
+      res.write(`id: ${event.id}\n${dataLines}\n\n`);
+      if (event.id > lastSeenId) {
+        lastSeenId = event.id;
+      }
+    }
+
+    // Register for poll-based live updates
+    const subscriber: DaemonSSESubscriber = { res, lastSeenId };
+    daemonSubscribers.add(subscriber);
+
+    req.on('close', () => {
+      daemonSubscribers.delete(subscriber);
+    });
+  }
+
   function serveHealth(_req: IncomingMessage, res: ServerResponse): void {
     res.writeHead(200, {
       'Content-Type': 'application/json',
@@ -331,6 +375,21 @@ export async function startServer(
       }
     }
 
+    for (const subscriber of daemonSubscribers) {
+      try {
+        const newEvents = db.getDaemonEventsAfter(subscriber.lastSeenId);
+        for (const event of newEvents) {
+          const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
+          const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
+          subscriber.res.write(`id: ${event.id}\n${dataLines}\n\n`);
+          if (event.id > subscriber.lastSeenId) {
+            subscriber.lastSeenId = event.id;
+          }
+        }
+      } catch {
+        // Subscriber may have disconnected
+      }
+    }
   }, POLL_INTERVAL_MS);
   pollTimer.unref();
 
@@ -2233,6 +2292,8 @@ export async function startServer(
       serveRuns(req, res);
     } else if (url === API_ROUTES.latestRun) {
       serveLatestRunId(req, res);
+    } else if (url === API_ROUTES.daemonEvents) {
+      serveDaemonEventsSSE(req, res);
     } else if (url.startsWith(`${EVENTS_BASE}/`)) {
       const runId = url.slice(`${EVENTS_BASE}/`.length);
       if (!runId || !/^[\w-]+$/.test(runId)) {
@@ -2450,7 +2511,7 @@ export async function startServer(
     url: `http://localhost:${port}`,
 
     get subscriberCount(): number {
-      return subscribers.size;
+      return subscribers.size + daemonSubscribers.size;
     },
 
     broadcast(eventName: string, data: string): void {
@@ -2467,11 +2528,16 @@ export async function startServer(
     stop(): Promise<void> {
       clearInterval(pollTimer);
       return new Promise((resolveStop) => {
-        // Close all SSE connections
+        // Close all per-session SSE connections
         for (const subscriber of subscribers) {
           subscriber.res.end();
         }
         subscribers.clear();
+        // Close all daemon-events SSE connections
+        for (const subscriber of daemonSubscribers) {
+          subscriber.res.end();
+        }
+        daemonSubscribers.clear();
         server.close(() => resolveStop());
       });
     },
