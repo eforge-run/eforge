@@ -170,10 +170,21 @@ async function* runModulePlannerAttempt(
 
       // Intercept <build-config> blocks from module planner messages
       if (event.type === 'agent:message') {
-        const buildConfig = parseBuildConfigBlock(event.content);
-        if (buildConfig) {
-          ctx.moduleBuildConfigs.set(mod.id, buildConfig);
+        const result = parseBuildConfigBlock(event.content);
+        if (result.ok) {
+          ctx.moduleBuildConfigs.set(mod.id, result.config);
+        } else if (result.reason === 'invalid-json' || result.reason === 'invalid-schema') {
+          yield {
+            timestamp: new Date().toISOString(),
+            type: 'planning:module:build-config:invalid' as const,
+            moduleId: mod.id,
+            reason: result.reason,
+            errors: result.reason === 'invalid-schema'
+              ? result.errors
+              : [`raw: ${result.raw.slice(0, 200)}`],
+          };
         }
+        // result.reason === 'no-block' → normal case, do nothing
       }
 
       yield event;

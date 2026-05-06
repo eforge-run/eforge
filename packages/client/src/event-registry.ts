@@ -186,6 +186,13 @@ const eventRegistry = {
       e.planId ? `Plan warning (${e.planId}): ${e.message}` : `Plan warning: ${e.message}`,
   },
 
+  'planning:module:build-config:invalid': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Module ${e.moduleId} emitted invalid <build-config> (${e.reason}): ${e.errors.join('; ')}`,
+  },
+
   // -------------------------------------------------------------------------
   // Planning
   // -------------------------------------------------------------------------

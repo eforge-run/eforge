@@ -455,7 +455,9 @@ Each plan entry in orchestration.yaml carries its own `build` and `review` field
 
 **`review`** — object with the following fields:
 - `strategy` — `auto`, `single`, or `parallel`. `auto` picks single or parallel per run.
-- `perspectives` — array of review perspectives: `code`, `security`, `api`, `docs`.
+- `perspectives` — array of review perspectives. Valid: `{{validPerspectives}}`.
+
+  **Do NOT use** `correctness`, `architecture`, `completeness`, `cohesion`, `feasibility`, `dependency`, `scope`, or `performance` as perspectives. Those terms are *issue categories* used by the planning-review agents (`architecture-reviewer`, `plan-reviewer`, `cohesion-reviewer`) — not build-time review perspectives. The build-time `reviewer` agent only knows the names listed above.
 - `maxRounds` — max review-evaluate cycles (integer, typically 1-3).
 - `evaluatorStrictness` — `strict`, `standard`, or `lenient`. Controls how aggressively the evaluator accepts reviewer fixes.
 

@@ -174,30 +174,67 @@ describe('parseBuildConfigBlock', () => {
 More text after`;
 
     const result = parseBuildConfigBlock(text);
-    expect(result).not.toBeNull();
-    expect(result!.build).toEqual([['implement', 'doc-author'], 'doc-sync', 'review-cycle']);
-    expect(result!.review.strategy).toBe('parallel');
-    expect(result!.review.perspectives).toEqual(['code', 'security']);
-    expect(result!.review.maxRounds).toBe(2);
-    expect(result!.review.evaluatorStrictness).toBe('strict');
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('Expected ok result');
+    expect(result.config.build).toEqual([['implement', 'doc-author'], 'doc-sync', 'review-cycle']);
+    expect(result.config.review.strategy).toBe('parallel');
+    expect(result.config.review.perspectives).toEqual(['code', 'security']);
+    expect(result.config.review.maxRounds).toBe(2);
+    expect(result.config.review.evaluatorStrictness).toBe('strict');
   });
 
-  it('returns null when no block is present', () => {
-    expect(parseBuildConfigBlock('just some text without any blocks')).toBeNull();
+  it('returns no-block when no block is present', () => {
+    const result = parseBuildConfigBlock('just some text without any blocks');
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected failure result');
+    expect(result.reason).toBe('no-block');
   });
 
-  it('returns null on invalid JSON content', () => {
+  it('returns invalid-json on malformed JSON', () => {
     const text = '<build-config>not valid json</build-config>';
-    expect(parseBuildConfigBlock(text)).toBeNull();
+    const result = parseBuildConfigBlock(text);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected failure result');
+    expect(result.reason).toBe('invalid-json');
+    expect(typeof result.raw).toBe('string');
   });
 
-  it('returns null when JSON does not match schema', () => {
+  it('returns invalid-schema with errors when JSON does not match schema', () => {
     const text = '<build-config>{"build": "not-an-array"}</build-config>';
-    expect(parseBuildConfigBlock(text)).toBeNull();
+    const result = parseBuildConfigBlock(text);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected failure result');
+    expect(result.reason).toBe('invalid-schema');
+    if (result.reason !== 'invalid-schema') throw new Error('Expected invalid-schema');
+    expect(result.errors.length).toBeGreaterThan(0);
   });
 
-  it('returns null when review field is missing', () => {
+  it('returns invalid-schema with errors when review field is missing', () => {
     const text = '<build-config>{"build": ["implement"]}</build-config>';
-    expect(parseBuildConfigBlock(text)).toBeNull();
+    const result = parseBuildConfigBlock(text);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected failure result');
+    expect(result.reason).toBe('invalid-schema');
+    if (result.reason !== 'invalid-schema') throw new Error('Expected invalid-schema');
+    expect(result.errors.length).toBeGreaterThan(0);
+  });
+
+  it('returns invalid-schema with errors mentioning perspectives when perspectives contains invalid value', () => {
+    const text = `<build-config>${JSON.stringify({
+      build: ['implement'],
+      review: {
+        strategy: 'single',
+        perspectives: ['correctness'],
+        maxRounds: 1,
+        evaluatorStrictness: 'standard',
+      },
+    })}</build-config>`;
+    const result = parseBuildConfigBlock(text);
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('Expected failure result');
+    expect(result.reason).toBe('invalid-schema');
+    if (result.reason !== 'invalid-schema') throw new Error('Expected invalid-schema');
+    expect(result.errors.length).toBeGreaterThan(0);
+    expect(result.errors.some((e) => e.includes('perspectives'))).toBe(true);
   });
 });

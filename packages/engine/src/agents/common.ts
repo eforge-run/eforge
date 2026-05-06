@@ -355,6 +355,20 @@ const buildConfigSchema = z.object({
 });
 
 /**
+ * Discriminated union result type for `parseBuildConfigBlock`.
+ *
+ * - `{ ok: true; config }` — a valid `<build-config>` block was found and parsed.
+ * - `{ ok: false; reason: 'no-block' }` — no `<build-config>` block present (normal case).
+ * - `{ ok: false; reason: 'invalid-json'; raw }` — block present but JSON parse failed.
+ * - `{ ok: false; reason: 'invalid-schema'; raw; errors }` — JSON parsed but failed Zod validation.
+ */
+export type ParseBuildConfigResult =
+  | { ok: true; config: { build: BuildStageSpec[]; review: ReviewProfileConfig } }
+  | { ok: false; reason: 'no-block' }
+  | { ok: false; reason: 'invalid-json'; raw: string }
+  | { ok: false; reason: 'invalid-schema'; raw: string; errors: string[] };
+
+/**
  * Parse a `<build-config>` XML block from assistant text into per-plan build/review config.
  *
  * Expected format:
@@ -365,23 +379,30 @@ const buildConfigSchema = z.object({
  *   }
  *   </build-config>
  *
- * Returns null if no block found, JSON is invalid, or Zod validation fails.
+ * Returns a `ParseBuildConfigResult` discriminated union — never returns null.
+ * Callers must branch on `result.ok` and `result.reason` to distinguish:
+ *   - `'no-block'` — normal case, no block emitted; do nothing.
+ *   - `'invalid-json'` / `'invalid-schema'` — real failures worth surfacing.
  */
-export function parseBuildConfigBlock(text: string): { build: BuildStageSpec[]; review: ReviewProfileConfig } | null {
+export function parseBuildConfigBlock(text: string): ParseBuildConfigResult {
   const match = text.match(/<build-config>([\s\S]*?)<\/build-config>/);
-  if (!match) return null;
+  if (!match) return { ok: false, reason: 'no-block' };
 
+  const raw = match[1].trim();
   let parsed: unknown;
   try {
-    parsed = JSON.parse(match[1].trim());
+    parsed = JSON.parse(raw);
   } catch {
-    return null;
+    return { ok: false, reason: 'invalid-json', raw };
   }
 
   const result = buildConfigSchema.safeParse(parsed);
-  if (!result.success) return null;
+  if (!result.success) {
+    const errors = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+    return { ok: false, reason: 'invalid-schema', raw, errors };
+  }
 
-  return result.data;
+  return { ok: true, config: result.data };
 }
 
 // ---------------------------------------------------------------------------

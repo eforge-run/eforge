@@ -6,6 +6,7 @@ import { loadPrompt } from '../prompts.js';
 import { pipelineCompositionSchema, getPipelineCompositionSchemaYaml } from '../schemas.js';
 import type { PipelineComposition } from '../schemas.js';
 import { formatStageRegistry, validatePipeline } from '../pipeline.js';
+import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
 
 /**
  * Options for the pipeline composer agent.
@@ -90,6 +91,7 @@ export async function* composePipeline(
       source,
       stageRegistry,
       schema,
+      validPerspectives: REVIEW_PERSPECTIVES.join(', '),
     }, options.promptAppend);
 
     // On retry, include the prior output AND the error so the model has

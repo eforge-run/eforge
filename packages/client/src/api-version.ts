@@ -14,7 +14,7 @@ import type { VersionResponse } from './routes.js';
  * the version. Removing a field, renaming a route, or changing a response's
  * required fields IS breaking and must bump the version.
  */
-export const DAEMON_API_VERSION = 20; // v20: Added plan:build:review:parallel:perspective:error event variant; tightened ReviewProfileConfig.perspectives to z.array(z.enum(REVIEW_PERSPECTIVES)).
+export const DAEMON_API_VERSION = 21; // v21: Added planning:module:build-config:invalid event variant; surfaces invalid <build-config> JSON or schema failures from the module planner.
 
 /** Per-process cache: maps `${port}:${pid}` to the verified daemon version. */
 const verifiedDaemons = new Map<string, number>();
