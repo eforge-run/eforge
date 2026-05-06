@@ -28,6 +28,7 @@ pnpm type-check   # Type check without emitting
 - The monitor UI (`packages/monitor-ui/`) uses **shadcn/ui components** rather than custom UI primitives.
 - **Workspace layout**: The repo uses pnpm workspaces with packages in `packages/` (engine, eforge, monitor, monitor-ui, client, pi-eforge, scopes, input) and the Claude Code plugin in `eforge-plugin/`.
 - **`.eforge/` is developer-facing**: the daemon writes runtime state here (`monitor.db`, `state.json`, lock files, session logs) and project-local config lives here too (`config.yaml`, `profiles/`). The directory is gitignored - do not commit it.
+- **Event types and schemas are co-located.** `packages/client/src/events.schemas.ts` is the wire-protocol source of truth. `EforgeEvent` is derived from `EforgeEventSchema` via `z.infer`. Every discriminant variant and its Zod schema live in that file. Do not define event shapes anywhere else.
 - Use Mermaid diagrams instead of ASCII art in documentation.
 - Exclude `node_modules/` and `dist/` from file searches.
 

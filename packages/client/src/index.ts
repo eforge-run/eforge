@@ -198,7 +198,7 @@ export type {
   PipelineComposition,
 } from './events.js';
 
-export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent } from './events.js';
+export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema } from './events.js';
 
 export type {
   HealthResponse,

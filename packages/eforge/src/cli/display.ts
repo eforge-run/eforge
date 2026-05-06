@@ -898,6 +898,14 @@ export function renderEvent(event: EforgeEvent): void {
       break;
     // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
+    // Plan lifecycle state events (no CLI output needed)
+    case 'plan:status:change':
+    case 'plan:error:set':
+    case 'plan:error:clear':
+    case 'merge:worktree:set':
+    case 'merge:worktree:clear':
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));
