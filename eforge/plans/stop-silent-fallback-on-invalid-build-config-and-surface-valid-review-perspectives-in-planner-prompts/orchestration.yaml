@@ -1,0 +1,86 @@
+name: stop-silent-fallback-on-invalid-build-config-and-surface-valid-review-perspectives-in-planner-prompts
+description: Stop silent fallback when module-planner emits an invalid
+  <build-config> block by changing the parser to return a tagged-union result,
+  emit a planning:module:build-config:invalid domain event at the call site, and
+  steer planner-tier agents away from the planning-review vocabulary by
+  injecting REVIEW_PERSPECTIVES into planner.md, module-planner.md, and
+  pipeline-composer.md as a {{validPerspectives}} template variable.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-surface-build-config-validation-failures
+    name: Surface build-config validation failures and inject valid perspectives
+      into planner prompts
+    depends_on: []
+    branch: stop-silent-fallback-on-invalid-build-config-and-surface-valid-review-perspectives-in-planner-prompts/plan-01-surface-build-config-validation-failures
+    build:
+      - implement
+      - - test-cycle
+        - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: "Coordinated multi-file change: parser API change + new wire-protocol
+          event variant (with DAEMON_API_VERSION bump and exhaustiveness check
+          propagation) + template variable injection across three agents and
+          three prompt files. The shape of the work is mechanically uniform but
+          spans engine, client, monitor-ui, prompts, and tests; getting the
+          tagged-union return type and the new event schema right in one pass
+          benefits from thorough reasoning."
+      reviewer:
+        effort: high
+        rationale: Wire-protocol additions (event schema + DAEMON_API_VERSION) and
+          parser-contract changes need careful review for completeness —
+          especially that all parseBuildConfigBlock callers and tests have been
+          migrated to the tagged-union shape, and that the new event variant is
+          added to both the discriminated union and the monitor-ui
+          exhaustiveness check.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - code
+      - api
+      - test
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "Excursion is the right scope: this is a focused,
+    sequentially-dependent change (tighten parser contract -> update call site
+    -> add event variant -> inject template var in 3 agents -> edit 3 prompt
+    files) that one planner session can fully enumerate. There are no genuinely
+    independent subsystems and no need for delegated module planning - the touch
+    points form a single coherent change ripple from `parseBuildConfigBlock`
+    outward. Compile uses planner + plan-review-cycle because the PRD changes a
+    parser's tagged-union contract, adds a wire-protocol event variant (with
+    DAEMON_API_VERSION bump), and modifies prompt copy across three agents -
+    plan quality matters enough to warrant a review gate before build, but
+    architecture/module planning would be overkill. Build pipeline runs
+    implement, then doc-sync (the parser signature change and new event type may
+    invalidate references in `docs/` and `AGENTS.md`-adjacent material), then
+    review-cycle for the quality pass. Review perspectives are `code` (parser
+    logic and event-emission correctness), `api` (the `ParseBuildConfigResult`
+    tagged union is a new internal contract and the event variant is part of the
+    public daemon API surface), and `test` (the PRD explicitly requires `pnpm
+    test` to pass and the new failure path needs coverage). Standard strictness
+    with 2 rounds is appropriate - this is a contract tightening with a clear
+    safety net (fallback preserved), not a security- or data-critical change."
