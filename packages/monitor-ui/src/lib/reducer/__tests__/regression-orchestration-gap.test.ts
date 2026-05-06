@@ -1,20 +1,14 @@
 /**
  * Test E from the validation plan.
  *
- * End-to-end regression that captures the user-visible symptom:
+ * End-to-end regression that verifies the fix for the user-visible symptom:
  *   1. Replay a compile-mode fixture containing a `planning:complete` event
  *      with non-trivial dependsOn relationships.
  *   2. Compute `effectiveOrchestration = state.orchestration ?? state.earlyOrchestration`
  *      with `state.orchestration === null` (the SWR fetch hasn't returned —
  *      this is exactly the window during which the user reports the bug).
- *   3. Assert that today, no dependency-graph data is reachable through
- *      `effectiveOrchestration`, even though the source data is present in
- *      the event log.
- *
- * If this test ever passes (effectiveOrchestration becoming non-null after
- * the fix lands), the regression is captured. If it fails to capture the
- * symptom even today, our hypothesis about the bug location is wrong and
- * the proposed fix needs re-investigation.
+ *   3. Assert that after the fix, dependency-graph data IS reachable through
+ *      `effectiveOrchestration` immediately after the event is processed.
  */
 import { describe, it, expect } from 'vitest';
 import { eforgeReducer, initialRunState } from '../../reducer';
@@ -38,39 +32,24 @@ describe('regression: orchestration data gap during compile-mode planning', () =
     expect(planningComplete!.plans[1].dependsOn).toEqual(['plan-01']);
   });
 
-  it('TODAY: replaying the fixture leaves effectiveOrchestration null when SWR fetch returns null', () => {
+  it('after the fix, effectiveOrchestration is populated immediately with dependsOn', () => {
     const state = (fixtureEvents as unknown as FixtureEntry[]).reduce(
       (acc, { event, eventId }) => eforgeReducer(acc, { type: 'ADD_EVENT', event, eventId }),
       initialRunState,
     );
 
     // The component-level `effectiveOrchestration` resolution from app.tsx:161–164.
-    // We simulate the in-flight window where the SWR fetch has not yet returned
-    // (the daemon serves 200 + null until planning:complete is logged, and SWR
-    // caches that null until focus revalidation).
+    // We simulate the in-flight window where the SWR fetch has not yet returned.
     const swrOrchestration: OrchestrationConfig | null = null;
     const effectiveOrchestration = swrOrchestration ?? state.earlyOrchestration;
 
-    // The bug: even though the planning:complete event has been processed
-    // (state.planStatuses is populated), there's no orchestration object the
-    // UI can read dependsOn / build / depth data from.
+    // After the fix: earlyOrchestration is synthesized from the planning:complete
+    // event, so effectiveOrchestration is non-null even before the SWR fetch returns.
     expect(state.planStatuses).toEqual({ 'plan-01': 'complete', 'plan-02': 'complete' });
-    expect(effectiveOrchestration).toBeNull();
-
-    // Stronger framing: the dependency-graph data carried by the event is
-    // unreachable through any RunState field accessible to the UI.
-    expect(state.earlyOrchestration).toBeNull();
+    expect(effectiveOrchestration).not.toBeNull();
+    expect(effectiveOrchestration?.plans).toHaveLength(2);
+    expect(effectiveOrchestration?.plans[0].dependsOn).toEqual([]);
+    expect(effectiveOrchestration?.plans[1].dependsOn).toEqual(['plan-01']);
     expect(state.expeditionModules).toHaveLength(0); // not expedition mode
   });
-
-  // Forward-looking contract for the post-fix state. Marked `todo` so the
-  // suite stays green until the fix lands. The eforge build that implements
-  // `handlePlanningComplete` synthesizing `earlyOrchestration` should
-  // convert this to a real `it(...)` block and assert:
-  //   - effectiveOrchestration is non-null
-  //   - plans.length === 2
-  //   - plans[0].dependsOn === []
-  //   - plans[1].dependsOn === ['plan-01']
-  // Plan reference: ~/.claude/plans/i-am-noticing-bugginess-synthetic-meadow.md
-  it.todo('DESIRED: after the fix, effectiveOrchestration is populated immediately with dependsOn');
 });

@@ -17,7 +17,7 @@ interface RunStateResponse {
 }
 
 /** Invalidate SWR cache keys based on incoming SSE events. */
-function invalidateOnEvent(event: EforgeEvent): void {
+export function invalidateOnEvent(event: EforgeEvent, sessionId: string | null): void {
   switch (event.type) {
     case 'phase:start':
     case 'phase:end':
@@ -35,6 +35,12 @@ function invalidateOnEvent(event: EforgeEvent): void {
     case 'plan:build:failed':
       void mutate(API_ROUTES.queue);
       void mutate(['sidecar', event.planId]);
+      break;
+    case 'planning:complete':
+    case 'expedition:compile:complete':
+      if (sessionId !== null) {
+        void mutate(buildPath(API_ROUTES.orchestration, { runId: sessionId }));
+      }
       break;
     default:
       break;
@@ -134,7 +140,7 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
             if (parseInt(meta.eventId, 10) <= lastBatchEventId) return;
           }
           dispatch({ type: 'ADD_EVENT', event, eventId: meta.eventId ?? '' });
-          invalidateOnEvent(event);
+          invalidateOnEvent(event, sessionId);
         },
         onNamedEvent: (name, payload) => {
           if (name === 'monitor:shutdown-pending') {
