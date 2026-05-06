@@ -1,12 +1,8 @@
 import { useMemo, useState } from 'react';
-import useSWR from 'swr';
 import * as Collapsible from '@radix-ui/react-collapsible';
 import { ChevronRight, CornerDownRight } from 'lucide-react';
 import type { QueueItem } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { API_ROUTES } from '@eforge-build/client/browser';
-import type { ReadSidecarResponse } from '@eforge-build/client/browser';
-import { fetcher } from '@/lib/swr-fetcher';
 import {
   RecoveryVerdictChip,
   type RecoveryVerdictValue,
@@ -67,31 +63,20 @@ function sortQueueItems(items: QueueItem[]): QueueItem[] {
 /**
  * Renders a single queue row for a failed item.
  *
- * Owns its own SWR call for the recovery sidecar so that useSWR is not called
- * inside a .map() (Rules-of-Hooks violation). SWR's per-key deduplication
- * replaces the manual fetchedKeysRef approach.
+ * Reads the recovery verdict directly from `item.recoveryVerdict`, which is
+ * embedded by the daemon in the `/api/queue` payload for items in `failed/`.
+ * No per-row SWR fetch is made — the full sidecar markdown is loaded lazily
+ * inside `RecoverySidecarSheet` when the user opens it.
  *
- * Three-state contract (matching computeRecoveryState in queue-section-recovery.test):
- *   data === undefined  → SWR loading (treated as recovery pending)
- *   data === null       → 404 response (no sidecar yet — recovery pending)
- *   data               → sidecar present, show verdict chip
+ * Two-state contract:
+ *   item.recoveryVerdict present  → show verdict chip + "view report" link
+ *   item.recoveryVerdict absent   → show "recovery pending" indicator
  */
 function RecoveryRow({ item, isChild }: { item: QueueItem; isChild: boolean }) {
-  const { data: sidecar } = useSWR<ReadSidecarResponse | null>(
-    ['sidecar', item.id],
-    fetcher,
-    { refreshInterval: 10000 },
-  );
-
-  // --- eforge:region plan-04-monitor-ui ---
-  const sidecarVerdict =
-    sidecar != null
-      ? sidecar.json.verdict
-      : null;
-  // undefined = not yet fetched; null = fetched but no sidecar (recovery pending)
-  // Both cases result in sidecarVerdict == null → show the "recovery pending" indicator.
-  const isRecoveryPending = item.status === 'failed' && sidecarVerdict == null;
-  // --- eforge:endregion plan-04-monitor-ui ---
+  // --- eforge:region plan-01-fix-recovery-ux ---
+  const rv = item.recoveryVerdict;
+  const isRecoveryPending = item.status === 'failed' && !rv;
+  // --- eforge:endregion plan-01-fix-recovery-ux ---
 
   return (
     <div
@@ -111,30 +96,30 @@ function RecoveryRow({ item, isChild }: { item: QueueItem; isChild: boolean }) {
         <span className="text-[11px] text-foreground truncate flex-1">
           {item.title}
         </span>
-        {/* --- eforge:region plan-04-monitor-ui --- */}
-        {sidecarVerdict != null && (
+        {/* --- eforge:region plan-01-fix-recovery-ux --- */}
+        {rv != null && (
           <RecoveryVerdictChip
-            verdict={sidecarVerdict.verdict}
-            confidence={sidecarVerdict.confidence}
+            verdict={rv.verdict as RecoveryVerdictValue}
+            confidence={rv.confidence as RecoveryConfidenceValue}
           />
         )}
         {isRecoveryPending && (
           <span className="text-[10px] text-text-dim/60 italic">recovery pending</span>
         )}
-        {/* --- eforge:endregion plan-04-monitor-ui --- */}
-        {item.priority !== undefined && sidecarVerdict == null && (
+        {/* --- eforge:endregion plan-01-fix-recovery-ux --- */}
+        {item.priority !== undefined && !rv && (
           <span className="text-[10px] text-text-dim">
             p{item.priority}
           </span>
         )}
       </div>
-      {/* --- eforge:region plan-04-monitor-ui --- */}
-      {sidecar != null && sidecarVerdict != null && (
+      {/* --- eforge:region plan-01-fix-recovery-ux --- */}
+      {rv != null && (
         <div className="pl-[calc(8px+0.5rem)] mt-0.5">
-          <RecoverySidecarSheet sidecar={sidecar} prdId={item.id} />
+          <RecoverySidecarSheet prdId={item.id} />
         </div>
       )}
-      {/* --- eforge:endregion plan-04-monitor-ui --- */}
+      {/* --- eforge:endregion plan-01-fix-recovery-ux --- */}
       {item.dependsOn && item.dependsOn.length > 0 && (
         <div className="pl-[calc(8px+0.5rem)] text-[11px] text-text-dim truncate">
           {/* --- eforge:region plan-05-piggyback-and-queue-scheduling --- */}

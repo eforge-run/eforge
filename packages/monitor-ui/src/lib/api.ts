@@ -5,6 +5,7 @@
  * through `useSWR(...)` with the shared fetcher from `lib/swr-fetcher.ts`.
  */
 import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
+import type { ApplyRecoveryResponse } from '@eforge-build/client/browser';
 
 export interface AutoBuildState {
   enabled: boolean;
@@ -52,18 +53,32 @@ export async function triggerRecover(
   }
 }
 
+/**
+ * Apply the recovery verdict for a failed PRD.
+ *
+ * Returns the parsed success body on 2xx, or `{ error: string }` on non-2xx.
+ * Callers must distinguish the two shapes: check for `'error' in result` before
+ * treating the response as a successful apply.
+ */
 export async function applyRecovery(
   prdId: string,
-): Promise<{ sessionId: string; pid: number } | null> {
+): Promise<ApplyRecoveryResponse | { error: string }> {
   try {
     const res = await fetch(API_ROUTES.applyRecovery, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prdId }),
     });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
-    return null;
+    if (!res.ok) {
+      try {
+        const body = await res.json() as { error?: string };
+        return { error: body.error ?? `HTTP ${res.status}` };
+      } catch {
+        return { error: `HTTP ${res.status}` };
+      }
+    }
+    return res.json() as Promise<ApplyRecoveryResponse>;
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'Network error' };
   }
 }
