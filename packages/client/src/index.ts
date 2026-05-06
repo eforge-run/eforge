@@ -169,6 +169,17 @@ export type {
 export { eventToProgress } from './event-to-progress.js';
 export type { FollowCounters, ProgressUpdate } from './event-to-progress.js';
 
+export {
+  eventRegistry,
+  DAEMON_EVENT_TYPES,
+  getEventSummary,
+} from './event-registry.js';
+export type {
+  EventMeta,
+  EventScope,
+  ProjectableState,
+} from './event-registry.js';
+
 export type {
   EforgeEvent,
   AgentRole,
