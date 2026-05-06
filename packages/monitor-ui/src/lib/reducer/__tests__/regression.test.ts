@@ -145,11 +145,19 @@ describe('regression: new reducer matches pre-refactor behavior on sample-build 
     expect(Object.keys(state.liveAgentUsage)).toHaveLength(0);
 
     // -------------------------------------------------------------------------
-    // Expedition / enqueue / other fields — default values (not exercised by fixture)
+    // Expedition / enqueue / other fields
     // -------------------------------------------------------------------------
     expect(state.expeditionModules).toHaveLength(0);
     expect(Object.keys(state.moduleStatuses)).toHaveLength(0);
-    expect(state.earlyOrchestration).toBeNull();
+    // earlyOrchestration is synthesized from the planning:complete event in the fixture.
+    // The fixture's planning:complete carries two plans with plan-02 depending on plan-01.
+    expect(state.earlyOrchestration).not.toBeNull();
+    expect(state.earlyOrchestration?.mode).toBe('compile');
+    expect(state.earlyOrchestration?.plans).toHaveLength(2);
+    expect(state.earlyOrchestration?.plans[0].id).toBe('plan-01');
+    expect(state.earlyOrchestration?.plans[0].dependsOn).toEqual([]);
+    expect(state.earlyOrchestration?.plans[1].id).toBe('plan-02');
+    expect(state.earlyOrchestration?.plans[1].dependsOn).toEqual(['plan-01']);
     expect(state.enqueueStatus).toBeNull();
     expect(state.enqueueTitle).toBeNull();
     expect(state.enqueueSource).toBeNull();
