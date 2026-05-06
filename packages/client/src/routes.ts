@@ -118,7 +118,6 @@ export const API_ROUTES = {
   runs: '/api/runs',
   latestRun: '/api/latest-run',
   events: '/api/events/:runId',
-  orchestration: '/api/orchestration/:runId',
   runSummary: '/api/run-summary/:id',
   runState: '/api/run-state/:id',
   plans: '/api/plans/:runId',

@@ -14,7 +14,6 @@ import type {
   RunState,
   PlansResponse,
   DiffResponse,
-  OrchestrationResponse,
   SessionMetadata,
 } from '../types.js';
 import type { EnqueueRequest } from '../routes.js';
@@ -83,14 +82,6 @@ export function apiGetDiff(opts: { cwd: string; sessionId: string; planId: strin
   const base = buildPath(API_ROUTES.diff, { sessionId: opts.sessionId, planId: opts.planId });
   const path = opts.file !== undefined ? `${base}?file=${encodeURIComponent(opts.file)}` : base;
   return daemonRequest<DiffResponse>(opts.cwd, 'GET', path);
-}
-
-export function apiGetOrchestration(opts: { cwd: string; runId: string }) {
-  return daemonRequest<OrchestrationResponse>(
-    opts.cwd,
-    'GET',
-    buildPath(API_ROUTES.orchestration, { runId: opts.runId }),
-  );
 }
 
 export function apiGetSessionMetadata(opts: { cwd: string }) {

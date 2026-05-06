@@ -61,7 +61,6 @@ export type {
   LatestRunResponse,
   BuildStageSpec,
   ReviewProfileConfig,
-  OrchestrationResponse,
   RunSummary,
   RunState,
   PlanInfo,

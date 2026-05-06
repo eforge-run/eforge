@@ -21,8 +21,8 @@ import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useAutoBuild } from '@/hooks/use-auto-build';
 import { getSummaryStats } from '@/lib/reducer';
 import { fetcher } from '@/lib/swr-fetcher';
-import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
-import type { OrchestrationConfig, PipelineStage, EforgeEvent } from '@/lib/types';
+import { API_ROUTES } from '@eforge-build/client/browser';
+import type { PipelineStage, EforgeEvent } from '@/lib/types';
 import type { ProjectContext } from '@/components/layout/header';
 
 function AppContent() {
@@ -53,13 +53,6 @@ function AppContent() {
     fetcher,
   );
   const projectContext = projectContextData ?? null;
-
-  // Fetch orchestration data when session changes (focus-revalidation only — no polling)
-  const { data: orchestrationData } = useSWR<OrchestrationConfig>(
-    currentSessionId ? buildPath(API_ROUTES.orchestration, { runId: currentSessionId }) : null,
-    fetcher,
-  );
-  const orchestration = orchestrationData ?? null;
 
   // Auto-switch to the latest session when latestRunData changes
   useEffect(() => {
@@ -157,11 +150,7 @@ function AppContent() {
     });
   }, [runState.events.length]);
 
-  // Use early orchestration (from expedition:architecture:complete) until server-fetched data arrives
-  const effectiveOrchestration = useMemo(
-    () => orchestration ?? runState.earlyOrchestration,
-    [orchestration, runState.earlyOrchestration],
-  );
+  const effectiveOrchestration = runState.earlyOrchestration;
   const hasOrchestration = effectiveOrchestration !== null && effectiveOrchestration.plans.length > 0;
   const hasDependencyEdges = effectiveOrchestration !== null && effectiveOrchestration.plans.some((p: { dependsOn?: string[] }) => p.dependsOn && p.dependsOn.length > 0);
   const graphEnabled = hasOrchestration && hasDependencyEdges;
@@ -171,7 +160,7 @@ function AppContent() {
   // 'planning' → 'implement' gives an animated blue node (active work).
   // 'complete' → 'plan' gives a static completed-plan look.
   // 'pending' is intentionally unmapped — the graph treats missing keys as pending.
-  const isCompilePhase = orchestration === null;
+  const isCompilePhase = runState.expeditionModules.length > 0 && !runState.events.some(e => e.event.type === 'expedition:compile:complete');
   const graphPlanStatuses = useMemo((): Record<string, PipelineStage> => {
     if (!isCompilePhase) return runState.planStatuses;
     const synthetic: Record<string, PipelineStage> = { ...runState.planStatuses };

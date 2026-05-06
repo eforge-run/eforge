@@ -36,12 +36,6 @@ export function invalidateOnEvent(event: EforgeEvent, sessionId: string | null):
       void mutate(API_ROUTES.queue);
       void mutate(['sidecar', event.planId]);
       break;
-    case 'planning:complete':
-    case 'expedition:compile:complete':
-      if (sessionId !== null) {
-        void mutate(buildPath(API_ROUTES.orchestration, { runId: sessionId }));
-      }
-      break;
     default:
       break;
   }

@@ -66,7 +66,7 @@ export interface LatestRunResponse {
   runId: string | null;
 }
 
-// Types used within OrchestrationResponse.
+// Types used within orchestration and plan endpoints.
 // Single owner: these types cross the daemon HTTP boundary and are re-exported
 // by @eforge-build/engine for engine-internal use. Do not duplicate elsewhere.
 export type BuildStageSpec = string | string[];
@@ -78,19 +78,6 @@ export interface ReviewProfileConfig {
   autoAcceptBelow?: 'suggestion' | 'warning';
   evaluatorStrictness: 'strict' | 'standard' | 'lenient';
 }
-
-// GET /api/orchestration/:id
-export interface OrchestrationResponse {
-  plans: Array<{
-    id: string;
-    name: string;
-    dependsOn: string[];
-    branch: string;
-    build?: BuildStageSpec[];
-    review?: ReviewProfileConfig;
-  }>;
-  mode: string | null;
-} // Returns null when no plan:complete event exists
 
 // GET /api/run-summary/:id
 export interface RunSummary {

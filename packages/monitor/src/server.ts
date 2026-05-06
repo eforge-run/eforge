@@ -25,7 +25,6 @@ declare const EFORGE_VERSION: string;
 const CANCEL_BASE = API_ROUTES.cancel.slice(0, API_ROUTES.cancel.indexOf('/:'));
 const PROFILE_BASE = API_ROUTES.profileDelete.slice(0, API_ROUTES.profileDelete.indexOf('/:'));
 const EVENTS_BASE = API_ROUTES.events.slice(0, API_ROUTES.events.indexOf('/:'));
-const ORCHESTRATION_BASE = API_ROUTES.orchestration.slice(0, API_ROUTES.orchestration.indexOf('/:'));
 const RUN_SUMMARY_BASE = API_ROUTES.runSummary.slice(0, API_ROUTES.runSummary.indexOf('/:'));
 const RUN_STATE_BASE = API_ROUTES.runState.slice(0, API_ROUTES.runState.indexOf('/:'));
 const PLANS_BASE = API_ROUTES.plans.slice(0, API_ROUTES.plans.indexOf('/:'));
@@ -71,27 +70,6 @@ function emitMutation(
     reason,
     timestamp: new Date().toISOString(),
   });
-}
-
-/**
- * Enrich orchestration plan entries with per-plan build + review from a
- * `planConfigs` array (sourced from the `planning:complete` event payload).
- *
- * Exported for unit testing; used by `serveOrchestration` to prefer durable
- * event-log data over the ephemeral filesystem orchestration.yaml.
- */
-export function enrichOrchestrationWithPlanConfigs(
-  plans: Array<Record<string, unknown>>,
-  planConfigs: Array<{ id: string; build?: unknown; review?: unknown }>,
-): void {
-  const configById = new Map(planConfigs.map((c) => [c.id, c]));
-  for (const plan of plans) {
-    const config = configById.get(plan.id as string);
-    if (config) {
-      if (config.build !== undefined) plan.build = config.build;
-      if (config.review !== undefined) plan.review = config.review;
-    }
-  }
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -364,68 +342,6 @@ export async function startServer(
       'Access-Control-Allow-Origin': '*',
     });
     res.end(JSON.stringify({ sessionId: sessionId ?? null, runId: runId ?? null }));
-  }
-
-  async function serveOrchestration(_req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
-    const sessionId = resolveSessionId(id);
-    const events = db.getEventsByTypeForSession(sessionId, 'planning:complete');
-    if (events.length === 0) {
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      });
-      res.end(JSON.stringify(null));
-      return;
-    }
-
-    try {
-      const data = JSON.parse(events[0].data);
-      const plans = data.plans || [];
-      const orchestration = {
-        plans: plans.map((p: { id: string; name: string; dependsOn: string[]; branch: string }) => ({
-          id: p.id,
-          name: p.name,
-          dependsOn: p.dependsOn || [],
-          branch: p.branch,
-        })),
-        mode: data.mode || null,
-      };
-
-      // Prefer per-plan build/review from the event payload's planConfigs (durable).
-      // Fall back to the filesystem orchestration.yaml only when the field is missing
-      // (older sessions written before this change).
-      const eventPlanConfigs = Array.isArray(data.planConfigs) && data.planConfigs.length > 0
-        ? data.planConfigs as Array<{ id: string; build?: unknown; review?: unknown }>
-        : null;
-
-      if (eventPlanConfigs) {
-        enrichOrchestrationWithPlanConfigs(orchestration.plans as Array<Record<string, unknown>>, eventPlanConfigs);
-      } else {
-        // Enrich plan entries with build/review config from orchestration.yaml (filesystem fallback)
-        const buildConfigMap = await readBuildConfigFromOrchestration(sessionId);
-        if (buildConfigMap) {
-          for (const plan of orchestration.plans) {
-            const config = buildConfigMap.get(plan.id);
-            if (config) {
-              (plan as Record<string, unknown>).build = config.build;
-              (plan as Record<string, unknown>).review = config.review;
-            }
-          }
-        }
-      }
-
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      });
-      res.end(JSON.stringify(orchestration));
-    } catch {
-      res.writeHead(200, {
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*',
-      });
-      res.end(JSON.stringify(null));
-    }
   }
 
   type PlanResponse = { id: string; name: string; body: string; dependsOn: string[]; type: 'architecture' | 'module' | 'plan'; build?: BuildStageSpec[]; review?: ReviewProfileConfig };
@@ -2325,14 +2241,6 @@ export async function startServer(
         return;
       }
       serveSSE(req, res, runId);
-    } else if (url.startsWith(`${ORCHESTRATION_BASE}/`)) {
-      const runId = url.slice(`${ORCHESTRATION_BASE}/`.length);
-      if (!runId || !/^[\w-]+$/.test(runId)) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.end('Invalid runId');
-        return;
-      }
-      await serveOrchestration(req, res, runId);
     } else if (url.startsWith(`${RUN_SUMMARY_BASE}/`)) {
       const id = url.slice(`${RUN_SUMMARY_BASE}/`.length);
       if (!id || !/^[\w-]+$/.test(id)) {

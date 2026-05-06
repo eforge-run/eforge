@@ -24,7 +24,6 @@ export {
   apiGetRunState,
   apiGetPlans,
   apiGetDiff,
-  apiGetOrchestration,
   apiGetSessionMetadata,
 } from './api/queue.js';
 
@@ -214,7 +213,6 @@ export type {
   LatestRunResponse,
   BuildStageSpec,
   ReviewProfileConfig,
-  OrchestrationResponse,
   RunSummary,
   RunState,
   PlanInfo,
