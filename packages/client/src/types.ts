@@ -76,7 +76,7 @@ export type BuildStageSpec = string | string[];
 
 export interface ReviewProfileConfig {
   strategy: 'auto' | 'single' | 'parallel';
-  perspectives: string[];
+  perspectives: ('code' | 'security' | 'api' | 'docs' | 'test' | 'verify')[];
   maxRounds: number;
   autoAcceptBelow?: 'suggestion' | 'warning';
   evaluatorStrictness: 'strict' | 'standard' | 'lenient';

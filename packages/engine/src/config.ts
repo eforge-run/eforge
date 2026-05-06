@@ -9,7 +9,7 @@ const execFileAsync = promisify(execFile);
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
 import { z } from 'zod/v4';
 
-import { sanitizeProfileName, parseRawConfigLegacy } from '@eforge-build/client';
+import { sanitizeProfileName, parseRawConfigLegacy, REVIEW_PERSPECTIVES } from '@eforge-build/client';
 import type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
 import { shardScopeSchema } from './schemas.js';
@@ -107,7 +107,8 @@ const AUTO_ACCEPT = ['suggestion', 'warning'] as const;
 // the shared TypeScript type in `@eforge-build/client` produces a compile error.
 export const reviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.object({
   strategy: z.enum(STRATEGIES).describe('Review strategy: "auto" picks based on perspective count, "single" uses one reviewer, "parallel" runs all perspectives concurrently'),
-  perspectives: z.array(z.string()).nonempty().describe('Review perspective names, e.g. ["code", "security", "performance"]'),
+  perspectives: z.array(z.enum(REVIEW_PERSPECTIVES)).nonempty()
+    .describe(`Review perspective names. Valid: ${REVIEW_PERSPECTIVES.join(', ')}. Example: ["code", "security", "api"]`),
   maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles (default 1)'),
   autoAcceptBelow: z.enum(AUTO_ACCEPT).optional().describe('Auto-accept issues at or below this severity'),
   evaluatorStrictness: z.enum(STRICTNESS).describe('How strictly the evaluator judges fixes: "strict", "standard", or "lenient"'),
@@ -429,7 +430,7 @@ export const MIN_POST_MERGE_COMMAND_TIMEOUT_MS = 10_000;
 
 export const DEFAULT_REVIEW: ReviewProfileConfig = Object.freeze({
   strategy: 'auto' as const,
-  perspectives: Object.freeze(['code']) as unknown as string[],
+  perspectives: Object.freeze(['code']) as unknown as ReviewProfileConfig['perspectives'],
   maxRounds: 1,
   evaluatorStrictness: 'standard' as const,
 });

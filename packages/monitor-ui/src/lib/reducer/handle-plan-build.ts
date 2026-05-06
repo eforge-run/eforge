@@ -1,7 +1,7 @@
 /**
  * Handlers for per-plan build and merge events.
  *
- * Owns: planStatuses, reviewIssues, fileChanges, mergeCommits.
+ * Owns: planStatuses, reviewIssues, fileChanges, mergeCommits, perspectiveErrors.
  *
  * Stage-advancement rules (encoded explicitly as switch arms):
  *   plan:build:start / plan:build:implement:start  → 'implement'
@@ -18,6 +18,7 @@
  *   plan:build:complete                             → 'complete'
  *   plan:build:failed                               → 'failed'
  *   plan:build:files_changed                        → update fileChanges Map
+ *   plan:build:review:parallel:perspective:error    → append error to perspectiveErrors[planId]
  *   plan:merge:complete                             → 'complete' + capture commitSha
  */
 import type { ReviewIssue, PipelineStage } from '../types';
@@ -109,6 +110,23 @@ export const handlePlanBuildFilesChanged: EventHandler<'plan:build:files_changed
   const fileChanges = new Map(state.fileChanges);
   fileChanges.set(event.planId, event.files);
   return { fileChanges };
+};
+
+// ---------------------------------------------------------------------------
+// Perspective errors
+// ---------------------------------------------------------------------------
+
+export const handlePlanBuildReviewPerspectiveError: EventHandler<'plan:build:review:parallel:perspective:error'> = (event, state) => {
+  const existing = state.perspectiveErrors[event.planId] ?? [];
+  return {
+    perspectiveErrors: {
+      ...state.perspectiveErrors,
+      [event.planId]: [
+        ...existing,
+        { perspective: event.perspective, error: event.error, timestamp: event.timestamp },
+      ],
+    },
+  };
 };
 
 // ---------------------------------------------------------------------------

@@ -33,6 +33,7 @@ import {
   handlePlanBuildComplete,
   handlePlanBuildFailed,
   handlePlanBuildFilesChanged,
+  handlePlanBuildReviewPerspectiveError,
   handlePlanMergeComplete,
 } from './handle-plan-build';
 import {
@@ -110,6 +111,7 @@ export const handlerRegistry = {
   'plan:build:complete': handlePlanBuildComplete,
   'plan:build:failed': handlePlanBuildFailed,
   'plan:build:files_changed': handlePlanBuildFilesChanged,
+  'plan:build:review:parallel:perspective:error': handlePlanBuildReviewPerspectiveError,
   'plan:merge:complete': handlePlanMergeComplete,
 
   // Agent lifecycle

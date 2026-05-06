@@ -428,7 +428,7 @@ describe('plannerStage expedition wiring', () => {
         defaultBuild: ['implement'],
         defaultReview: {
           strategy: 'single',
-          perspectives: ['general'],
+          perspectives: ['code'],
           maxRounds: 1,
           evaluatorStrictness: 'standard',
         },

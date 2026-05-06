@@ -440,6 +440,12 @@ const eventRegistry = {
         : undefined,
   },
 
+  'plan:build:review:parallel:perspective:error': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Plan ${e.planId}: ${e.perspective} review failed: ${e.error}`,
+  },
+
   'plan:build:review:fix:start': {
     scope: 'session',
     persist: false,

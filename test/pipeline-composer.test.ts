@@ -10,7 +10,7 @@ const VALID_SEQUENTIAL = JSON.stringify({
   defaultBuild: ['implement', 'test-write'],
   defaultReview: {
     strategy: 'single',
-    perspectives: ['correctness'],
+    perspectives: ['code'],
     maxRounds: 1,
     evaluatorStrictness: 'lenient',
   },
@@ -24,7 +24,7 @@ const INVALID_PARALLEL = JSON.stringify({
   defaultBuild: [['implement', 'test-write']],
   defaultReview: {
     strategy: 'single',
-    perspectives: ['correctness'],
+    perspectives: ['code'],
     maxRounds: 1,
     evaluatorStrictness: 'lenient',
   },

@@ -14,7 +14,7 @@ import type { VersionResponse } from './routes.js';
  * the version. Removing a field, renaming a route, or changing a response's
  * required fields IS breaking and must bump the version.
  */
-export const DAEMON_API_VERSION = 19; // v19: events.schemas.ts introduced as wire-protocol source of truth; EforgeEvent derived via z.infer<typeof EforgeEventSchema>. Added 5 new event variants: plan:status:change, plan:error:set, plan:error:clear, merge:worktree:set, merge:worktree:clear.
+export const DAEMON_API_VERSION = 20; // v20: Added plan:build:review:parallel:perspective:error event variant; tightened ReviewProfileConfig.perspectives to z.array(z.enum(REVIEW_PERSPECTIVES)).
 
 /** Per-process cache: maps `${port}:${pid}` to the verified daemon version. */
 const verifiedDaemons = new Map<string, number>();

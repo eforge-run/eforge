@@ -17,6 +17,7 @@ import {
   handlePlanBuildComplete,
   handlePlanBuildFailed,
   handlePlanBuildFilesChanged,
+  handlePlanBuildReviewPerspectiveError,
   handlePlanMergeComplete,
 } from '../handle-plan-build';
 import { initialRunState } from '../../reducer';
@@ -192,6 +193,55 @@ describe('handle-plan-build — stage advancement rules', () => {
     });
     const delta = handlePlanBuildTestComplete(event, initialRunState);
     expect(delta).toBeUndefined();
+  });
+
+  // ---------------------------------------------------------------------------
+  // plan:build:review:parallel:perspective:error — perspectiveErrors accumulation
+  // ---------------------------------------------------------------------------
+  it('plan:build:review:parallel:perspective:error appends entry to perspectiveErrors[planId]', () => {
+    const event = makeEvent('plan:build:review:parallel:perspective:error', {
+      planId: PLAN_ID,
+      perspective: 'correctness',
+      error: 'Agent exceeded turn limit',
+    });
+    const delta = handlePlanBuildReviewPerspectiveError(event, initialRunState);
+    expect(delta?.perspectiveErrors?.[PLAN_ID]).toHaveLength(1);
+    expect(delta?.perspectiveErrors?.[PLAN_ID]?.[0]).toMatchObject({
+      perspective: 'correctness',
+      error: 'Agent exceeded turn limit',
+      timestamp: '2024-01-15T10:00:00.000Z',
+    });
+  });
+
+  it('plan:build:review:parallel:perspective:error accumulates multiple errors for the same plan in order', () => {
+    const event1 = makeEvent('plan:build:review:parallel:perspective:error', {
+      planId: PLAN_ID,
+      perspective: 'security',
+      error: 'First error',
+    });
+    const state1 = { ...initialRunState, perspectiveErrors: { [PLAN_ID]: [{ perspective: 'security', error: 'First error', timestamp: '2024-01-15T10:00:00.000Z' }] } };
+    const event2 = makeEvent('plan:build:review:parallel:perspective:error', {
+      planId: PLAN_ID,
+      perspective: 'api',
+      error: 'Second error',
+    });
+    const delta = handlePlanBuildReviewPerspectiveError(event2, state1);
+    expect(delta?.perspectiveErrors?.[PLAN_ID]).toHaveLength(2);
+    expect(delta?.perspectiveErrors?.[PLAN_ID]?.[0]).toMatchObject({ perspective: 'security', error: 'First error' });
+    expect(delta?.perspectiveErrors?.[PLAN_ID]?.[1]).toMatchObject({ perspective: 'api', error: 'Second error' });
+  });
+
+  it('plan:build:review:parallel:perspective:error preserves errors for other plans', () => {
+    const OTHER = 'plan-02';
+    const state = { ...initialRunState, perspectiveErrors: { [OTHER]: [{ perspective: 'docs', error: 'Other error', timestamp: '2024-01-15T09:00:00.000Z' }] } };
+    const event = makeEvent('plan:build:review:parallel:perspective:error', {
+      planId: PLAN_ID,
+      perspective: 'test',
+      error: 'New error',
+    });
+    const delta = handlePlanBuildReviewPerspectiveError(event, state);
+    expect(delta?.perspectiveErrors?.[OTHER]).toHaveLength(1);
+    expect(delta?.perspectiveErrors?.[PLAN_ID]).toHaveLength(1);
   });
 
   // ---------------------------------------------------------------------------
