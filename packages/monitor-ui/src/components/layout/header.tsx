@@ -1,6 +1,5 @@
 import { PanelLeftClose, PanelLeft } from 'lucide-react';
 import type { AutoBuildState } from '@/lib/api';
-import type { ConnectionStatus } from '@/lib/types';
 import type { DaemonState } from '@/lib/daemon-reducer';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
@@ -13,7 +12,6 @@ export interface ProjectContext {
 }
 
 interface HeaderProps {
-  connectionStatus: ConnectionStatus;
   autoBuildState: AutoBuildState | null;
   autoBuildToggling: boolean;
   onToggleAutoBuild: () => void;
@@ -41,7 +39,7 @@ function getProjectLabel(projectContext: ProjectContext | null | undefined): str
   return null;
 }
 
-export function Header({ connectionStatus, autoBuildState, autoBuildToggling, onToggleAutoBuild, projectContext, sidebarCollapsed, onToggleSidebar, daemonState }: HeaderProps) {
+export function Header({ autoBuildState, autoBuildToggling, onToggleAutoBuild, projectContext, sidebarCollapsed, onToggleSidebar, daemonState }: HeaderProps) {
   const projectLabel = getProjectLabel(projectContext);
 
   return (
@@ -67,15 +65,6 @@ export function Header({ connectionStatus, autoBuildState, autoBuildToggling, on
             />
           </label>
         )}
-        <div
-          className={cn(
-            'w-2 h-2 rounded-full',
-            connectionStatus === 'connected' && 'bg-green',
-            connectionStatus === 'connecting' && 'bg-yellow animate-[pulse-opacity_1.5s_ease-in-out_infinite]',
-            connectionStatus === 'disconnected' && 'bg-text-dim',
-          )}
-        />
-        <span className="text-text-dim">{connectionStatus}</span>
       </div>
     </header>
   );

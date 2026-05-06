@@ -387,6 +387,16 @@ export async function startServer(
     const subscriber: DaemonSSESubscriber = { res, lastSeenId };
     daemonSubscribers.add(subscriber);
 
+    // Emit one immediate heartbeat to the just-registered client so the pill
+    // shows "alive 0s ago" on first load instead of waiting up to HEARTBEAT_INTERVAL_MS.
+    // Omit the SSE `id:` field — exactly like the periodic tick — so reconnect
+    // replay via last-event-id continues to ignore heartbeats.
+    try {
+      res.write(`data: ${buildHeartbeatPayload()}\n\n`);
+    } catch {
+      // Client may have disconnected immediately
+    }
+
     req.on('close', () => {
       daemonSubscribers.delete(subscriber);
     });
@@ -446,10 +456,8 @@ export async function startServer(
   // `daemonSubscribers` set on each tick avoids leaked timers on subscriber churn.
   const instanceStartedAt = Date.now();
   const HEARTBEAT_INTERVAL_MS = 10_000;
-  const heartbeatTimer = setInterval(() => {
-    // No-op fast path: skip DB queries and iteration when no subscribers are connected.
-    if (daemonSubscribers.size === 0) return;
 
+  function buildHeartbeatPayload(): string {
     const uptime = Date.now() - instanceStartedAt;
 
     let runningBuilds = 0;
@@ -471,7 +479,7 @@ export async function startServer(
       }
     }
 
-    const heartbeatData = JSON.stringify({
+    return JSON.stringify({
       type: 'daemon:heartbeat',
       timestamp: new Date().toISOString(),
       uptime,
@@ -483,6 +491,13 @@ export async function startServer(
       },
       subscribers: daemonSubscribers.size,
     });
+  }
+
+  const heartbeatTimer = setInterval(() => {
+    // No-op fast path: skip DB queries and iteration when no subscribers are connected.
+    if (daemonSubscribers.size === 0) return;
+
+    const heartbeatData = buildHeartbeatPayload();
 
     for (const subscriber of daemonSubscribers) {
       try {
