@@ -56,7 +56,8 @@ const AgentTerminalSubtypeSchema = z.enum([
   'error_during_execution',
 ]);
 
-const ReviewPerspectiveSchema = z.enum(['code', 'security', 'api', 'docs', 'test', 'verify']);
+export const REVIEW_PERSPECTIVES = ['code', 'security', 'api', 'docs', 'test', 'verify'] as const;
+const ReviewPerspectiveSchema = z.enum(REVIEW_PERSPECTIVES);
 
 const StalenessVerdictSchema = z.enum(['proceed', 'revise', 'obsolete']);
 
@@ -82,7 +83,7 @@ const BuildStageSpecSchema = z.union([z.string(), z.array(z.string())]);
 
 const ReviewProfileConfigSchema = z.object({
   strategy: z.enum(['auto', 'single', 'parallel']),
-  perspectives: z.array(z.string()),
+  perspectives: z.array(ReviewPerspectiveSchema),
   maxRounds: z.number(),
   autoAcceptBelow: z.enum(['suggestion', 'warning']).optional(),
   evaluatorStrictness: z.enum(['strict', 'standard', 'lenient']),
@@ -552,6 +553,12 @@ const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
     planId: z.string(),
     perspective: ReviewPerspectiveSchema,
     issues: z.array(ReviewIssueSchema),
+  }),
+  z.object({
+    type: z.literal('plan:build:review:parallel:perspective:error'),
+    planId: z.string(),
+    perspective: z.string(),
+    error: z.string(),
   }),
   z.object({
     type: z.literal('plan:build:review:fix:start'),

@@ -43,6 +43,7 @@ export {
   ORCHESTRATION_MODES,
   SEVERITY_ORDER,
   isAlwaysYieldedAgentEvent,
+  REVIEW_PERSPECTIVES,
 } from './events.schemas.js';
 
 export { EforgeEventSchema } from './events.schemas.js';

@@ -80,7 +80,7 @@ async function createPlanSet(
       defaultBuild: ['implement'],
       defaultReview: {
         strategy: 'single',
-        perspectives: ['general'],
+        perspectives: ['code'],
         maxRounds: 1,
         evaluatorStrictness: 'standard',
       },
@@ -90,7 +90,7 @@ async function createPlanSet(
     (orchConfig.plans as Array<Record<string, unknown>>)[0].build = ['implement'];
     (orchConfig.plans as Array<Record<string, unknown>>)[0].review = {
       strategy: 'single',
-      perspectives: ['general'],
+      perspectives: ['code'],
       maxRounds: 1,
       evaluatorStrictness: 'standard',
     };
@@ -158,7 +158,7 @@ describe('applyPlanReviewFixes: replace_orchestration', () => {
           build: ['implement'],
           review: {
             strategy: 'single',
-            perspectives: ['general'],
+            perspectives: ['code'],
             maxRounds: 1,
             evaluatorStrictness: 'standard',
           },
@@ -192,7 +192,7 @@ describe('applyPlanReviewFixes: replace_orchestration', () => {
           build: ['implement'],
           review: {
             strategy: 'single',
-            perspectives: ['general'],
+            perspectives: ['code'],
             maxRounds: 1,
             evaluatorStrictness: 'standard',
           },
@@ -239,7 +239,7 @@ describe('applyPlanReviewFixes: replace_orchestration', () => {
             build: ['implement'],
             review: {
               strategy: 'single',
-              perspectives: ['general'],
+              perspectives: ['code'],
               maxRounds: 1,
               evaluatorStrictness: 'standard',
             },
@@ -252,7 +252,7 @@ describe('applyPlanReviewFixes: replace_orchestration', () => {
             build: ['implement'],
             review: {
               strategy: 'single',
-              perspectives: ['general'],
+              perspectives: ['code'],
               maxRounds: 1,
               evaluatorStrictness: 'standard',
             },

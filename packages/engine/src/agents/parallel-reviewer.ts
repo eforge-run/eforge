@@ -167,31 +167,41 @@ export async function* runParallelReview(
     run: async function* (): AsyncGenerator<EforgeEvent> {
       yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:start', planId, perspective };
 
-      const prompt = await loadPrompt(PERSPECTIVE_PROMPTS[perspective], {
-        plan_content: planContent,
-        base_branch: baseBranch,
-        review_issue_schema: PERSPECTIVE_SCHEMA_YAML[perspective](),
-      }, options.promptAppend);
+      try {
+        const prompt = await loadPrompt(PERSPECTIVE_PROMPTS[perspective], {
+          plan_content: planContent,
+          base_branch: baseBranch,
+          review_issue_schema: PERSPECTIVE_SCHEMA_YAML[perspective](),
+        }, options.promptAppend);
 
-      let fullText = '';
+        let fullText = '';
 
-      for await (const event of harness.run(
-        { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
-        'reviewer',
-        planId,
-      )) {
-        if (isAlwaysYieldedAgentEvent(event) || verbose) {
-          yield event;
+        for await (const event of harness.run(
+          { prompt, cwd, maxTurns: 30, tools: 'coding', abortSignal: abortController?.signal, ...pickSdkOptions(options), perspective },
+          'reviewer',
+          planId,
+        )) {
+          if (isAlwaysYieldedAgentEvent(event) || verbose) {
+            yield event;
+          }
+          if (event.type === 'agent:message' && event.content) {
+            fullText += event.content;
+          }
         }
-        if (event.type === 'agent:message' && event.content) {
-          fullText += event.content;
-        }
+
+        const issues = parseReviewIssues(fullText);
+        allIssues.push({ perspective, issues });
+
+        yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues };
+      } catch (err) {
+        yield {
+          timestamp: new Date().toISOString(),
+          type: 'plan:build:review:parallel:perspective:error',
+          planId,
+          perspective,
+          error: err instanceof Error ? err.message : String(err),
+        };
       }
-
-      const issues = parseReviewIssues(fullText);
-      allIssues.push({ perspective, issues });
-
-      yield { timestamp: new Date().toISOString(), type: 'plan:build:review:parallel:perspective:complete', planId, perspective, issues };
     },
   }));
 

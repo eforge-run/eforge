@@ -6,6 +6,7 @@ import {
 } from '../agent-stage-map';
 import type { BuildStageSpec } from '@/lib/types';
 import type { AgentThread } from '@/lib/reducer';
+import { eventRegistry, getEventSummary } from '@eforge-build/client';
 
 function makeThread(overrides: Partial<AgentThread> = {}): AgentThread {
   return {
@@ -128,5 +129,30 @@ describe('getBuildStageStatuses', () => {
     expect(statuses[0]).toBe('completed'); // implement
     expect(statuses[1]).toBe('active');    // ['review','evaluate'] group
     expect(statuses[2]).toBe('pending');   // validate
+  });
+});
+
+describe('plan:build:review:parallel:perspective:error registry entry', () => {
+  const entry = eventRegistry['plan:build:review:parallel:perspective:error'];
+
+  it('has scope: session', () => {
+    expect(entry.scope).toBe('session');
+  });
+
+  it('has persist: false', () => {
+    expect(entry.persist).toBe(false);
+  });
+
+  it('produces a summary containing the perspective name and error message', () => {
+    const summary = getEventSummary({
+      timestamp: '2024-01-01T00:00:00Z',
+      type: 'plan:build:review:parallel:perspective:error',
+      planId: 'plan-01',
+      perspective: 'foo',
+      error: 'undefined is not a function',
+    });
+    expect(typeof summary).toBe('string');
+    expect(summary).toContain('foo');
+    expect(summary).toContain('undefined is not a function');
   });
 });
