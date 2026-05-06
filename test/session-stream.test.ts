@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { AddressInfo } from 'node:net';
 import {
-  subscribeToSession,
   parseSseChunk,
+  subscribeWithSnapshot,
   type DaemonStreamEvent,
-  type SessionSummary,
+  type SubscribeWithSnapshotFrame,
 } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
@@ -15,7 +15,6 @@ import {
 interface TestServer {
   server: Server;
   baseUrl: string;
-  /** Index of requests the server has received (each is a handler invocation). */
   requestCount: () => number;
   close: () => Promise<void>;
 }
@@ -45,8 +44,41 @@ function writeSseEvent(res: ServerResponse, event: DaemonStreamEvent, id?: numbe
   res.write(`data: ${JSON.stringify(event)}\n\n`);
 }
 
+function writeHelloFrame(res: ServerResponse, cursor: number, extra?: object): void {
+  const payload = JSON.stringify({ cursor, ...extra });
+  res.write(`event: stream:hello\ndata: ${payload}\n\n`);
+}
+
 function ts(): string {
   return new Date().toISOString();
+}
+
+/** Collect N frames from a subscribeWithSnapshot generator, then abort. */
+async function collectFrames<S = unknown>(
+  url: string,
+  count: number,
+  signal?: AbortSignal,
+): Promise<Array<SubscribeWithSnapshotFrame<S, DaemonStreamEvent>>> {
+  const frames: Array<SubscribeWithSnapshotFrame<S, DaemonStreamEvent>> = [];
+  const ac = new AbortController();
+  const combinedSignal = signal ?? ac.signal;
+
+  const gen = subscribeWithSnapshot<S, DaemonStreamEvent>(url, {
+    signal: combinedSignal,
+    maxReconnects: 3,
+  });
+  try {
+    for await (const frame of gen) {
+      frames.push(frame);
+      if (frames.length >= count) {
+        ac.abort();
+        break;
+      }
+    }
+  } catch (err) {
+    if ((err as Error).name !== 'AbortError') throw err;
+  }
+  return frames;
 }
 
 // ---------------------------------------------------------------------------
@@ -81,164 +113,169 @@ describe('parseSseChunk', () => {
 });
 
 // ---------------------------------------------------------------------------
-// subscribeToSession
+// subscribeWithSnapshot — basic frame routing
 // ---------------------------------------------------------------------------
 
-describe('subscribeToSession', () => {
-  it('invokes onEvent per event and resolves on session:end with aggregates', async () => {
+describe('subscribeWithSnapshot', () => {
+  it('yields kind:snapshot first, then kind:event frames', async () => {
+    const snapshot = { cursor: 5, status: 'running', events: [] };
+
     const test = await startTestServer((_req, res) => {
-      res.writeHead(200, {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
-        Connection: 'keep-alive',
-      });
-      writeSseEvent(res, { type: 'phase:start', timestamp: ts(), runId: 'r1', planSet: 'p', command: 'build' }, 1);
-      writeSseEvent(res, { type: 'plan:build:files_changed', timestamp: ts(), planId: 'plan-a', files: ['a.ts', 'b.ts'] }, 2);
-      writeSseEvent(res, { type: 'plan:build:failed', timestamp: ts(), planId: 'plan-a', error: 'boom' }, 3);
-      writeSseEvent(res, {
-        type: 'session:end',
-        sessionId: 'sess-1',
-        timestamp: ts(),
-        result: { status: 'completed', summary: 'ok' },
-      }, 4);
-      // Keep the connection open briefly so the client drains buffered data
-      // before `end` fires (otherwise some Node versions merge chunks).
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      writeHelloFrame(res, snapshot.cursor, { status: snapshot.status, events: snapshot.events });
+      writeSseEvent(res, { type: 'phase:start', timestamp: ts() }, 6);
       setTimeout(() => res.end(), 10);
     });
 
     try {
-      const events: DaemonStreamEvent[] = [];
-      let endSummary: SessionSummary | null = null;
-      const summary = await subscribeToSession('sess-1', {
-        baseUrl: test.baseUrl,
-        onEvent: (event) => events.push(event),
-        onEnd: (s) => { endSummary = s; },
-      });
-
-      expect(events).toHaveLength(4);
-      expect(events.map((e) => e.type)).toEqual([
-        'phase:start',
-        'plan:build:files_changed',
-        'plan:build:failed',
-        'session:end',
-      ]);
-      expect(summary.status).toBe('completed');
-      expect(summary.summary).toBe('ok');
-      expect(summary.sessionId).toBe('sess-1');
-      expect(summary.monitorUrl).toBe(test.baseUrl);
-      expect(summary.eventCount).toBe(4);
-      expect(summary.phaseCount).toBe(1);
-      expect(summary.filesChanged).toBe(2);
-      expect(summary.errorCount).toBe(1); // build:failed
-      expect(endSummary).toEqual(summary);
+      const frames = await collectFrames<typeof snapshot>(`${test.baseUrl}/sse`, 2);
+      expect(frames).toHaveLength(2);
+      expect(frames[0].kind).toBe('snapshot');
+      expect((frames[0] as { kind: 'snapshot'; snapshot: typeof snapshot }).snapshot.cursor).toBe(5);
+      expect((frames[0] as { kind: 'snapshot'; snapshot: typeof snapshot }).snapshot.status).toBe('running');
+      expect(frames[1].kind).toBe('event');
+      expect((frames[1] as { kind: 'event'; event: DaemonStreamEvent }).event.type).toBe('phase:start');
     } finally {
       await test.close();
     }
   });
 
-  it('rejects with AbortError when the signal fires mid-stream', async () => {
-    const test = await startTestServer((_req, res) => {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      writeSseEvent(res, { type: 'phase:start', timestamp: ts() }, 1);
-      // Do not end: keep the stream open so the abort path is exercised.
-    });
-
-    try {
-      const controller = new AbortController();
-      let firstEventSeen = false;
-      const started = Date.now();
-      const promise = subscribeToSession('sess-abort', {
-        baseUrl: test.baseUrl,
-        signal: controller.signal,
-        onEvent: () => {
-          if (!firstEventSeen) {
-            firstEventSeen = true;
-            // Abort shortly after the first event to test mid-stream abort.
-            setTimeout(() => controller.abort(), 5);
-          }
-        },
-      });
-
-      await expect(promise).rejects.toMatchObject({ name: 'AbortError' });
-      // Must settle quickly after abort fires.
-      expect(Date.now() - started).toBeLessThan(2000);
-    } finally {
-      await test.close();
-    }
-  });
-
-  it('rejects immediately when signal is already aborted', async () => {
-    const test = await startTestServer((_req, res) => {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-    });
-
-    try {
-      const controller = new AbortController();
-      controller.abort();
-      await expect(
-        subscribeToSession('sess-preaborted', {
-          baseUrl: test.baseUrl,
-          signal: controller.signal,
-          onEvent: () => { /* unreached */ },
-        }),
-      ).rejects.toMatchObject({ name: 'AbortError' });
-    } finally {
-      await test.close();
-    }
-  });
-
-  it('reconnects when the server closes mid-stream and resumes to session:end', async () => {
+  it('yields a fresh snapshot on reconnect', async () => {
     const test = await startTestServer((_req, res, idx) => {
-      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
       if (idx === 0) {
-        // First connection: send one event then close.
-        writeSseEvent(res, { type: 'phase:start', timestamp: ts() }, 1);
+        writeHelloFrame(res, 10, { connectIndex: 0 });
+        writeSseEvent(res, { type: 'session:start', timestamp: ts() }, 10);
         setTimeout(() => res.end(), 10);
       } else {
-        // Second connection: send the terminal event.
-        writeSseEvent(res, {
-          type: 'session:end',
-          sessionId: 'sess-rc',
-          timestamp: ts(),
-          result: { status: 'completed', summary: 'reconnected' },
-        }, 2);
+        writeHelloFrame(res, 11, { connectIndex: 1 });
+        writeSseEvent(res, { type: 'phase:start', timestamp: ts() }, 11);
         setTimeout(() => res.end(), 10);
       }
     });
 
     try {
-      const events: DaemonStreamEvent[] = [];
-      const summary = await subscribeToSession('sess-rc', {
-        baseUrl: test.baseUrl,
-        onEvent: (e) => events.push(e),
-        maxReconnects: 3,
-      });
-      expect(test.requestCount()).toBeGreaterThanOrEqual(2);
-      expect(events.map((e) => e.type)).toEqual(['phase:start', 'session:end']);
-      expect(summary.status).toBe('completed');
-      expect(summary.summary).toBe('reconnected');
+      const frames = await collectFrames<{ cursor: number; connectIndex: number }>(
+        `${test.baseUrl}/sse`,
+        4,
+      );
+
+      const snapshots = frames.filter((f) => f.kind === 'snapshot');
+      expect(snapshots.length).toBeGreaterThanOrEqual(2);
+
+      const snap0 = (snapshots[0] as { kind: 'snapshot'; snapshot: { cursor: number; connectIndex: number } }).snapshot;
+      const snap1 = (snapshots[1] as { kind: 'snapshot'; snapshot: { cursor: number; connectIndex: number } }).snapshot;
+      expect(snap0.cursor).toBe(10);
+      expect(snap0.connectIndex).toBe(0);
+      expect(snap1.cursor).toBe(11);
+      expect(snap1.connectIndex).toBe(1);
+    } finally {
+      await test.close();
+    }
+  });
+
+  it('uses stream:hello cursor as Last-Event-ID on reconnect', async () => {
+    const observedLastEventIds: Array<string | undefined> = [];
+
+    const test = await startTestServer((req, res, idx) => {
+      observedLastEventIds.push(
+        typeof req.headers['last-event-id'] === 'string'
+          ? (req.headers['last-event-id'] as string)
+          : undefined,
+      );
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      if (idx === 0) {
+        writeHelloFrame(res, 42);
+        setTimeout(() => res.end(), 10);
+      } else {
+        writeHelloFrame(res, 99);
+        setTimeout(() => res.end(), 10);
+      }
+    });
+
+    try {
+      await collectFrames(`${test.baseUrl}/sse`, 2);
+      expect(observedLastEventIds.length).toBeGreaterThanOrEqual(2);
+      expect(observedLastEventIds[0]).toBeUndefined();
+      expect(observedLastEventIds[1]).toBe('42');
     } finally {
       await test.close();
     }
   }, 15_000);
 
+  it('throws AbortError when signal fires mid-stream', async () => {
+    const test = await startTestServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      writeHelloFrame(res, 0);
+      // Keep open indefinitely
+    });
+
+    try {
+      const ac = new AbortController();
+      const gen = subscribeWithSnapshot(`${test.baseUrl}/sse`, { signal: ac.signal, maxReconnects: 0 });
+
+      const first = await gen.next();
+      expect(first.done).toBe(false);
+      expect(first.value.kind).toBe('snapshot');
+
+      ac.abort();
+
+      let thrownError: Error | undefined;
+      try {
+        await gen.next();
+      } catch (err) {
+        thrownError = err as Error;
+      }
+      expect(thrownError?.name).toBe('AbortError');
+    } finally {
+      await test.close();
+    }
+  });
+
+  it('throws immediately when signal is already aborted', async () => {
+    const test = await startTestServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+    });
+
+    try {
+      const ac = new AbortController();
+      ac.abort();
+
+      const gen = subscribeWithSnapshot(`${test.baseUrl}/sse`, { signal: ac.signal });
+
+      let thrownError: Error | undefined;
+      try {
+        await gen.next();
+      } catch (err) {
+        thrownError = err as Error;
+      }
+      expect(thrownError?.name).toBe('AbortError');
+    } finally {
+      await test.close();
+    }
+  });
+
   it('rejects once reconnect cap is exceeded', async () => {
     const test = await startTestServer((_req, res) => {
-      // Always return 500 - non-retryable by content but we treat as retryable.
       res.writeHead(500, { 'Content-Type': 'text/plain' });
       res.end('nope');
     });
 
     try {
-      await expect(
-        subscribeToSession('sess-fail', {
-          baseUrl: test.baseUrl,
-          onEvent: () => { /* unreached */ },
-          maxReconnects: 2,
-        }),
-      ).rejects.toMatchObject({
-        name: 'Error',
-      });
+      const gen = subscribeWithSnapshot(`${test.baseUrl}/sse`, { maxReconnects: 2 });
+      let thrownError: Error | undefined;
+      try {
+        for await (const _frame of gen) {
+          // Should not yield any frames
+        }
+      } catch (err) {
+        thrownError = err as Error;
+      }
+      expect(thrownError).toBeDefined();
+      // Assert on the message — `name === 'Error'` is tautological for any
+      // plain Error and would not catch a refactor that throws an unrelated
+      // Error instance instead of the max-reconnects error.
+      expect(thrownError?.message).toMatch(/max reconnects|exceeded/i);
     } finally {
       await test.close();
     }
@@ -249,63 +286,79 @@ describe('subscribeToSession', () => {
     const test = await startTestServer((_req, res) => {
       hits++;
       res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.end('no such session');
+      res.end('not found');
     });
 
     try {
-      await expect(
-        subscribeToSession('sess-404', {
-          baseUrl: test.baseUrl,
-          onEvent: () => { /* unreached */ },
-          maxReconnects: 5,
-        }),
-      ).rejects.toThrow(/404/);
+      let thrownError: Error | undefined;
+      try {
+        for await (const _frame of subscribeWithSnapshot(`${test.baseUrl}/sse`, { maxReconnects: 5 })) {
+          // Should not yield
+        }
+      } catch (err) {
+        thrownError = err as Error;
+      }
+      expect(thrownError?.message).toMatch(/404/);
       expect(hits).toBe(1);
     } finally {
       await test.close();
     }
   });
 
-  it("rejects with clear error when baseUrl: '' is used in a non-browser (node) runtime", async () => {
-    // In the Node.js test environment EventSource is not defined globally,
-    // so passing baseUrl: '' must reject immediately with the documented error.
-    await expect(
-      subscribeToSession('sess-browser-only', {
-        baseUrl: '',
-        onEvent: () => { /* unreached */ },
-      }),
-    ).rejects.toThrow("subscribeToSession: baseUrl: '' is only supported in browser runtimes");
-  });
-
-  it('sends Last-Event-ID on reconnect to resume from the last observed id', async () => {
-    const seenLastEventIds: Array<string | undefined> = [];
-    const test = await startTestServer((req, res, idx) => {
-      seenLastEventIds.push(req.headers['last-event-id'] as string | undefined);
-      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-      if (idx === 0) {
-        writeSseEvent(res, { type: 'phase:start', timestamp: ts() }, 5);
-        setTimeout(() => res.end(), 10);
-      } else {
-        writeSseEvent(res, {
-          type: 'session:end',
-          sessionId: 'sess-lei',
-          timestamp: ts(),
-          result: { status: 'completed', summary: 'done' },
-        }, 6);
-        setTimeout(() => res.end(), 10);
-      }
+  it('yields kind:named for non-stream:hello named events', async () => {
+    const test = await startTestServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      writeHelloFrame(res, 0);
+      res.write(`event: monitor:shutdown-pending\ndata: {"countdown":30}\n\n`);
+      setTimeout(() => res.end(), 10);
     });
 
     try {
-      await subscribeToSession('sess-lei', {
-        baseUrl: test.baseUrl,
-        onEvent: () => { /* noop */ },
-        maxReconnects: 3,
-      });
-      expect(seenLastEventIds[0]).toBeUndefined();
-      expect(seenLastEventIds[1]).toBe('5');
+      const frames = await collectFrames(`${test.baseUrl}/sse`, 2);
+      const namedFrames = frames.filter((f) => f.kind === 'named');
+      expect(namedFrames.length).toBeGreaterThanOrEqual(1);
+      const named = namedFrames[0] as { kind: 'named'; name: string; data: string };
+      expect(named.name).toBe('monitor:shutdown-pending');
     } finally {
       await test.close();
     }
-  }, 15_000);
+  });
+
+  it('does NOT yield stream:hello as kind:named', async () => {
+    const test = await startTestServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      writeHelloFrame(res, 42, { extra: 'value' });
+      setTimeout(() => res.end(), 10);
+    });
+
+    try {
+      const frames = await collectFrames(`${test.baseUrl}/sse`, 1);
+      const namedFrames = frames.filter((f) => f.kind === 'named');
+      expect(namedFrames).toHaveLength(0);
+      const snapshotFrames = frames.filter((f) => f.kind === 'snapshot');
+      expect(snapshotFrames.length).toBeGreaterThanOrEqual(1);
+    } finally {
+      await test.close();
+    }
+  });
+
+  it('carries eventId on kind:event frames', async () => {
+    const test = await startTestServer((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+      writeHelloFrame(res, 5);
+      writeSseEvent(res, { type: 'queue:start', timestamp: ts() }, 6);
+      setTimeout(() => res.end(), 10);
+    });
+
+    try {
+      const frames = await collectFrames(`${test.baseUrl}/sse`, 2);
+      const eventFrames = frames.filter((f) => f.kind === 'event');
+      expect(eventFrames.length).toBeGreaterThanOrEqual(1);
+      const ev = eventFrames[0] as { kind: 'event'; event: DaemonStreamEvent; eventId?: string };
+      expect(ev.event.type).toBe('queue:start');
+      expect(ev.eventId).toBe('6');
+    } finally {
+      await test.close();
+    }
+  });
 });

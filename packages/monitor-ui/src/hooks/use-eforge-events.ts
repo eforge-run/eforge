@@ -1,18 +1,14 @@
 import { useReducer, useEffect, useRef, useState, useCallback } from 'react';
 import { eforgeReducer, initialRunState, type RunState } from '@/lib/reducer';
 import type { ConnectionStatus, EforgeEvent } from '@/lib/types';
-import { API_ROUTES, buildPath, subscribeToSession } from '@eforge-build/client/browser';
+import { API_ROUTES, buildPath, subscribeWithSnapshot } from '@eforge-build/client/browser';
+import type { SessionStreamSnapshot } from '@eforge-build/client/browser';
 import { BoundedMap } from '@/lib/lru';
 
 interface UseEforgeEventsResult {
   runState: RunState;
   connectionStatus: ConnectionStatus;
   shutdownCountdown: number | null;
-}
-
-interface RunStateResponse {
-  status: string;
-  events: Array<{ id: number; data: string }>;
 }
 
 export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult {
@@ -63,66 +59,60 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
 
     const abort = new AbortController();
     setConnectionStatus('connecting');
+    const url = buildPath(API_ROUTES.events, { id: sessionId });
 
     (async () => {
-      // Initial HTTP snapshot (batch-load all events already stored by the daemon)
-      const res = await fetch(buildPath(API_ROUTES.runState, { id: sessionId }), { signal: abort.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = (await res.json()) as RunStateResponse;
-
-      // Parse all events and dispatch as a single batch
-      const parsed: Array<{ event: EforgeEvent; eventId: string }> = [];
-      for (const ev of data.events) {
-        try {
-          parsed.push({ event: JSON.parse(ev.data) as EforgeEvent, eventId: String(ev.id) });
-        } catch { /* skip unparseable */ }
-      }
-
-      dispatch({ type: 'BATCH_LOAD', events: parsed, serverStatus: data.status });
-      setConnectionStatus('connected');
-
-      const isServerComplete = data.status === 'completed' || data.status === 'failed';
-
-      if (isServerComplete) {
-        // Session is done — cache it and skip SSE
-        const finalState = parsed.reduce(
-          (st, ev) => eforgeReducer(st, { type: 'ADD_EVENT', ...ev }),
-          { ...initialRunState, fileChanges: new Map() } as RunState,
-        );
-        cacheRef.current.set(sessionId, finalState);
-        return;
-      }
-
-      // Track the highest event id from the batch so we can skip replayed events
-      // on the first SSE connection (the daemon replays historical events when no
-      // Last-Event-ID header is sent).
-      const lastBatchEventId = data.events.length > 0 ? data.events[data.events.length - 1].id : null;
-
-      // Session is still active — subscribe for live events via subscribeToSession
-      await subscribeToSession<EforgeEvent>(sessionId, {
-        baseUrl: '',
-        signal: abort.signal,
-        onEvent: (event, meta) => {
-          // Skip events already received via the batch load
-          if (lastBatchEventId !== null && meta.eventId !== undefined) {
-            if (parseInt(meta.eventId, 10) <= lastBatchEventId) return;
-          }
-          dispatch({ type: 'ADD_EVENT', event, eventId: meta.eventId ?? '' });
-        },
-        onNamedEvent: (name, payload) => {
-          if (name === 'monitor:shutdown-pending') {
+      for await (const frame of subscribeWithSnapshot<SessionStreamSnapshot, EforgeEvent>(
+        url,
+        { signal: abort.signal },
+      )) {
+        if (frame.kind === 'snapshot') {
+          const snapshot = frame.snapshot;
+          // Parse snapshot events and dispatch as a single batch
+          const parsedEvents: Array<{ event: EforgeEvent; eventId: string }> = [];
+          for (const ev of snapshot.events) {
             try {
-              const parsed = JSON.parse(payload) as { countdown: number };
+              parsedEvents.push({
+                event: JSON.parse(ev.data) as EforgeEvent,
+                eventId: String(ev.id),
+              });
+            } catch { /* skip unparseable */ }
+          }
+          dispatch({ type: 'BATCH_LOAD', events: parsedEvents, serverStatus: snapshot.status });
+          setConnectionStatus('connected');
+
+          if (snapshot.status === 'completed' || snapshot.status === 'failed') {
+            // Cache the final state and stop the iterator — server closes the
+            // connection after stream:hello for terminal sessions, so no live
+            // subscription is needed.
+            let finalState = parsedEvents.reduce(
+              (st, ev) => eforgeReducer(st, { type: 'ADD_EVENT', ...ev }),
+              { ...initialRunState, fileChanges: new Map() } as RunState,
+            );
+            // Mirror the serverStatus override BATCH_LOAD applies, so the cached
+            // state agrees with the dispatched state when events lack a session:end.
+            if (!finalState.isComplete) {
+              finalState = { ...finalState, isComplete: true, resultStatus: snapshot.status };
+            }
+            cacheRef.current.set(sessionId, finalState);
+            break;
+          }
+        } else if (frame.kind === 'event') {
+          dispatch({ type: 'ADD_EVENT', event: frame.event, eventId: frame.eventId ?? '' });
+        } else if (frame.kind === 'named') {
+          if (frame.name === 'monitor:shutdown-pending') {
+            try {
+              const parsed = JSON.parse(frame.data) as { countdown: number };
               startCountdownTick(parsed.countdown);
             } catch { /* ignore malformed payload */ }
-          } else if (name === 'monitor:shutdown-cancelled') {
+          } else if (frame.name === 'monitor:shutdown-cancelled') {
             cancelCountdownTick();
           }
-        },
-      });
+        }
+      }
     })().catch((err: unknown) => {
       if (abort.signal.aborted) return;
-      console.error('subscribeToSession failed:', err);
+      console.error('subscribeWithSnapshot failed:', err);
       setConnectionStatus('disconnected');
     });
 

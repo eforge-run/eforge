@@ -160,41 +160,51 @@ describe('eforgeReducer', () => {
   });
 
   it('tracks plan statuses through build lifecycle', () => {
-    const events: Array<{ event: EforgeEvent; eventId: string }> = [
-      { event: { type: 'plan:build:start', planId: 'plan-01' }, eventId: '1' },
-      { event: { type: 'plan:build:implement:start', planId: 'plan-01' }, eventId: '2' },
-      { event: { type: 'plan:build:implement:complete', planId: 'plan-01' }, eventId: '3' },
-      { event: { type: 'plan:build:review:start', planId: 'plan-01' }, eventId: '4' },
-      { event: { type: 'plan:build:review:complete', planId: 'plan-01', issues: [] }, eventId: '5' },
-      { event: { type: 'plan:build:evaluate:start', planId: 'plan-01' }, eventId: '6' },
-      { event: { type: 'plan:build:complete', planId: 'plan-01' }, eventId: '7' },
-    ];
-
-    // Check intermediate states
+    // planStatuses is now driven exclusively by plan:status:change lifecycle events.
+    // Build events (plan:build:start, plan:build:review:start, etc.) no longer set status.
+    // plan:status:change maps engine PlanStatus → UI PipelineStage:
+    //   running   → 'implement'
+    //   completed → 'complete'
+    //   failed    → 'failed'
     let state = initialRunState;
 
-    state = eforgeReducer(state, { type: 'ADD_EVENT', event: events[0].event, eventId: '1' });
+    // plan:status:change(running) → UI stage 'implement'
+    state = eforgeReducer(state, {
+      type: 'ADD_EVENT',
+      event: { type: 'plan:status:change', planId: 'plan-01', status: 'running' },
+      eventId: '1',
+    });
     expect(state.planStatuses['plan-01']).toBe('implement');
 
-    state = eforgeReducer(state, { type: 'ADD_EVENT', event: events[2].event, eventId: '3' });
-    // build:implement:complete no longer advances — next stage (test or review) sets status
-    expect(state.planStatuses['plan-01']).toBe('implement');
-
-    // build:review:start advances to review
-    state = eforgeReducer(state, { type: 'ADD_EVENT', event: events[3].event, eventId: '4' });
+    // plan:build:review:start still advances the visible pipeline stage within a run
+    state = eforgeReducer(state, {
+      type: 'ADD_EVENT',
+      event: { type: 'plan:build:review:start', planId: 'plan-01' },
+      eventId: '2',
+    });
     expect(state.planStatuses['plan-01']).toBe('review');
 
-    state = eforgeReducer(state, { type: 'ADD_EVENT', event: events[4].event, eventId: '5' });
+    // plan:build:review:complete advances to evaluate
+    state = eforgeReducer(state, {
+      type: 'ADD_EVENT',
+      event: { type: 'plan:build:review:complete', planId: 'plan-01', issues: [] },
+      eventId: '3',
+    });
     expect(state.planStatuses['plan-01']).toBe('evaluate');
 
-    state = eforgeReducer(state, { type: 'ADD_EVENT', event: events[6].event, eventId: '7' });
+    // plan:status:change(completed) → UI stage 'complete'
+    state = eforgeReducer(state, {
+      type: 'ADD_EVENT',
+      event: { type: 'plan:status:change', planId: 'plan-01', status: 'completed' },
+      eventId: '4',
+    });
     expect(state.planStatuses['plan-01']).toBe('complete');
   });
 
   it('tracks failed plan status', () => {
     const state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
-      event: { type: 'plan:build:failed', planId: 'plan-01', error: 'oops' },
+      event: { type: 'plan:status:change', planId: 'plan-01', status: 'failed' },
       eventId: '1',
     });
     expect(state.planStatuses['plan-01']).toBe('failed');
@@ -315,7 +325,7 @@ describe('eforgeReducer', () => {
     expect(state.fileChanges.size).toBe(1);
   });
 
-  it('marks plan as complete on merge:complete', () => {
+  it('marks plan as complete via plan:status:change after merge', () => {
     let state = eforgeReducer(initialRunState, {
       type: 'ADD_EVENT',
       event: { type: 'planning:complete', plans: [{ id: 'plan-01', name: 'Plan 1', branch: 'b', dependsOn: [], body: '', filePath: '' }] },
@@ -323,9 +333,11 @@ describe('eforgeReducer', () => {
     });
     expect(state.planStatuses['plan-01']).toBe('plan');
 
+    // plan:merge:complete no longer sets status; plan:status:change drives it
+    // 'merged' status maps to UI stage 'complete'
     state = eforgeReducer(state, {
       type: 'ADD_EVENT',
-      event: { type: 'plan:merge:complete', planId: 'plan-01' },
+      event: { type: 'plan:status:change', planId: 'plan-01', status: 'merged' },
       eventId: '2',
     });
     expect(state.planStatuses['plan-01']).toBe('complete');

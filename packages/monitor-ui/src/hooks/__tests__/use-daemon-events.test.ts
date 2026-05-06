@@ -35,17 +35,53 @@ function makeAutoBuild(): AutoBuildState {
   return { enabled: true, watcher: { running: true, pid: 9, sessionId: null } };
 }
 
-// Encode an event as an SSE data line.
-function toSseLine(event: object): string {
-  return `id: 99\ndata: ${JSON.stringify(event)}\n\n`;
-}
-
 // ---------------------------------------------------------------------------
 // Mocks
 // ---------------------------------------------------------------------------
 
-// Stub subscribeToDaemonEvents so tests control what events arrive.
-let onEventCallback: ((event: object, meta: { eventId?: string }) => void) | null = null;
+/**
+ * Stub subscribeWithSnapshot so tests can control what frames arrive.
+ * The stub is an async generator that yields frames injected via `pushFrame`.
+ */
+type AnyFrame =
+  | { kind: 'snapshot'; snapshot: unknown }
+  | { kind: 'event'; event: object; eventId?: string }
+  | { kind: 'named'; name: string; data: string };
+
+let frameQueue: AnyFrame[] = [];
+let frameResolver: (() => void) | null = null;
+let generatorAborted = false;
+
+function waitForFrame(): Promise<void> {
+  return new Promise<void>((resolve) => {
+    frameResolver = resolve;
+  });
+}
+
+async function* stubGenerator(
+  _url: string,
+  opts?: { signal?: AbortSignal },
+): AsyncGenerator<AnyFrame> {
+  generatorAborted = false;
+  opts?.signal?.addEventListener('abort', () => {
+    generatorAborted = true;
+    if (frameResolver) { const r = frameResolver; frameResolver = null; r(); }
+  });
+
+  while (!generatorAborted) {
+    while (frameQueue.length > 0) {
+      yield frameQueue.shift()!;
+    }
+    if (!generatorAborted) {
+      await waitForFrame();
+    }
+  }
+}
+
+function pushFrame(frame: AnyFrame): void {
+  frameQueue.push(frame);
+  if (frameResolver) { const r = frameResolver; frameResolver = null; r(); }
+}
 
 vi.mock('@eforge-build/client/browser', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@eforge-build/client/browser')>();
@@ -58,41 +94,40 @@ vi.mock('@eforge-build/client/browser', async (importOriginal) => {
       autoBuildGet: '/api/auto-build',
       daemonEvents: '/api/daemon-events',
     },
-    subscribeToDaemonEvents: vi.fn(async (opts: { onEvent: (event: object, meta: { eventId?: string }) => void; signal?: AbortSignal }) => {
-      onEventCallback = opts.onEvent;
-      // Wait until aborted
-      return new Promise<void>((_resolve, reject) => {
-        opts.signal?.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')));
-      });
-    }),
+    subscribeWithSnapshot: vi.fn(stubGenerator),
   };
 });
 
-const defaultFetchResponses: Record<string, unknown> = {
-  '/api/runs': [makeRun()],
-  '/api/queue': [makeQueue()],
-  '/api/session-metadata': { 'session-1': { planCount: 2, baseProfile: 'errand' } },
-  '/api/auto-build': makeAutoBuild(),
-};
-
-function stubFetch(responses: Record<string, unknown> = defaultFetchResponses): void {
-  vi.stubGlobal(
-    'fetch',
-    vi.fn(async (url: string) => ({
-      ok: true,
-      json: async () => responses[url] ?? null,
-    })),
-  );
+function makeDaemonSnapshot() {
+  return {
+    cursor: 5,
+    liveness: {
+      type: 'daemon:heartbeat',
+      timestamp: '2024-01-15T09:00:00.000Z',
+      uptime: 60000,
+      queueDepth: 0,
+      runningBuilds: 0,
+      autoBuild: { enabled: true, paused: false },
+      subscribers: 1,
+    },
+    recentActivity: [] as Array<{ id: number; event: object }>,
+    runs: [makeRun()],
+    queue: [makeQueue()],
+    sessionMetadata: { 'session-1': { planCount: 2, baseProfile: 'errand' } },
+    autoBuild: makeAutoBuild(),
+  };
 }
 
 beforeEach(() => {
-  onEventCallback = null;
-  stubFetch();
+  frameQueue = [];
+  frameResolver = null;
+  generatorAborted = false;
 });
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   vi.clearAllMocks();
+  // Drain any pending frame waiting
+  if (frameResolver) { const r = frameResolver; frameResolver = null; r(); }
 });
 
 // ---------------------------------------------------------------------------
@@ -100,8 +135,13 @@ afterEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('useDaemonEvents', () => {
-  it('seeds state from snapshot fetches on mount', async () => {
+  it('seeds state from snapshot frame on mount', async () => {
     const { result } = renderHook(() => useDaemonEvents());
+
+    // Push a snapshot frame to trigger BATCH_SEED
+    act(() => {
+      pushFrame({ kind: 'snapshot', snapshot: makeDaemonSnapshot() });
+    });
 
     await waitFor(() => {
       expect(result.current.connectionStatus).toBe('connected');
@@ -109,29 +149,42 @@ describe('useDaemonEvents', () => {
 
     expect(result.current.daemonState.runs).toHaveLength(1);
     expect(result.current.daemonState.runs[0].sessionId).toBe('session-1');
-
     expect(result.current.daemonState.queue).toHaveLength(1);
     expect(result.current.daemonState.queue[0].id).toBe('prd-1');
-
     expect(result.current.daemonState.sessionMetadata).toEqual({
       'session-1': { planCount: 2, baseProfile: 'errand' },
     });
-
     expect(result.current.daemonState.autoBuild?.enabled).toBe(true);
   });
 
-  it('processes SSE events via the reducer', async () => {
+  it('populates latestHeartbeat from snapshot liveness field', async () => {
     const { result } = renderHook(() => useDaemonEvents());
 
-    await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
-    expect(onEventCallback).not.toBeNull();
-
-    // Simulate a new session starting via SSE
     act(() => {
-      onEventCallback?.(
-        { type: 'session:start', sessionId: 'new-session', timestamp: '2024-01-15T11:00:00.000Z' },
-        { eventId: '100' },
-      );
+      pushFrame({ kind: 'snapshot', snapshot: makeDaemonSnapshot() });
+    });
+
+    await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
+
+    expect(result.current.daemonState.latestHeartbeat).not.toBeNull();
+    expect(result.current.daemonState.latestHeartbeat!.payload.uptime).toBe(60000);
+  });
+
+  it('processes SSE event frames via the reducer', async () => {
+    const { result } = renderHook(() => useDaemonEvents());
+
+    act(() => {
+      pushFrame({ kind: 'snapshot', snapshot: makeDaemonSnapshot() });
+    });
+    await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
+
+    // Simulate a new session starting via SSE event frame
+    act(() => {
+      pushFrame({
+        kind: 'event',
+        event: { type: 'session:start', sessionId: 'new-session', timestamp: '2024-01-15T11:00:00.000Z' },
+        eventId: '100',
+      });
     });
 
     await waitFor(() => {
@@ -139,18 +192,23 @@ describe('useDaemonEvents', () => {
     });
   });
 
-  it('selectLatestSessionId returns runs[0].sessionId', async () => {
+  it('selectLatestSessionId returns runs[0].sessionId after snapshot', async () => {
     const { result } = renderHook(() => useDaemonEvents());
 
+    act(() => {
+      pushFrame({ kind: 'snapshot', snapshot: makeDaemonSnapshot() });
+    });
     await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
 
-    // After mount, runs[0] is the seeded run
     expect(result.current.daemonState.runs[0]?.sessionId).toBe('session-1');
   });
 
   it('setDaemonAutoBuild updates autoBuild state directly', async () => {
     const { result } = renderHook(() => useDaemonEvents());
 
+    act(() => {
+      pushFrame({ kind: 'snapshot', snapshot: makeDaemonSnapshot() });
+    });
     await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
 
     const newState: AutoBuildState = {
@@ -165,25 +223,57 @@ describe('useDaemonEvents', () => {
     expect(result.current.daemonState.autoBuild?.enabled).toBe(false);
   });
 
-  it('daemon:auto-build:paused SSE event disables autoBuild', async () => {
+  it('daemon:auto-build:paused event frame disables autoBuild', async () => {
     const { result } = renderHook(() => useDaemonEvents());
 
+    act(() => {
+      pushFrame({ kind: 'snapshot', snapshot: makeDaemonSnapshot() });
+    });
     await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
 
     act(() => {
-      onEventCallback?.(
-        {
+      pushFrame({
+        kind: 'event',
+        event: {
           type: 'daemon:auto-build:paused',
           reason: 'Build failed',
           sessionId: undefined,
           timestamp: '2024-01-15T10:05:00.000Z',
         },
-        { eventId: '101' },
-      );
+        eventId: '101',
+      });
     });
 
     await waitFor(() => {
       expect(result.current.daemonState.autoBuild?.enabled).toBe(false);
     });
+  });
+
+  it('dedupes recentActivity on re-seed', async () => {
+    const { result } = renderHook(() => useDaemonEvents());
+
+    const activity = [
+      { id: 1, event: { type: 'session:start', timestamp: '2024-01-15T09:00:00.000Z', sessionId: 's1' } },
+    ];
+    const snapshot1 = { ...makeDaemonSnapshot(), recentActivity: activity };
+    const snapshot2 = {
+      ...makeDaemonSnapshot(),
+      recentActivity: [
+        ...activity,
+        { id: 2, event: { type: 'session:end', timestamp: '2024-01-15T09:01:00.000Z', sessionId: 's1', result: { status: 'completed', summary: 'done' } } },
+      ],
+    };
+
+    act(() => { pushFrame({ kind: 'snapshot', snapshot: snapshot1 }); });
+    await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
+    expect(result.current.daemonState.daemonActivity).toHaveLength(1);
+
+    // Re-seed with overlapping + new activity
+    act(() => { pushFrame({ kind: 'snapshot', snapshot: snapshot2 }); });
+    await waitFor(() => expect(result.current.daemonState.daemonActivity).toHaveLength(2));
+
+    // Each id appears exactly once
+    const ids = result.current.daemonState.daemonActivity.map((a) => a.id);
+    expect(ids).toEqual(['1', '2']);
   });
 });

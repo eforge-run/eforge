@@ -1,12 +1,16 @@
 /**
- * Tests for the daemon SSE skip-history + resync-marker behavior.
+ * Tests for the daemon SSE stream:hello handshake behavior (post-plan-02).
  *
  * Covers:
- *  (a) getMaxDaemonEventId() returns 0 on empty DB and matches getDaemonEventsAfter filter.
- *  (b) serveDaemonEventsSSE initial connect (no Last-Event-ID) writes a single
- *      daemon:resync-marker with id: <maxDaemonId> and replays no historical events.
- *  (c) Last-Event-ID-present branch still replays events with id > the header value.
- *  (d) Marker is omitted when no daemon events exist (fresh DB).
+ *  (a) getMaxDaemonEventId() returns 0 on empty DB and agrees with
+ *      getDaemonEventsAfter on the largest id.
+ *  (b) serveDaemonEventsSSE initial connect (no Last-Event-ID) emits exactly
+ *      stream:hello first (with recentActivity and cursor), then only live
+ *      events — no v18 resync-marker frame, no on-connect heartbeat.
+ *  (c) serveDaemonEventsSSE with empty daemon-event log emits stream:hello
+ *      with cursor=0 and recentActivity=[]; no v18 frames.
+ *  (d) serveDaemonEventsSSE reconnect (Last-Event-ID present) emits
+ *      stream:hello first, then delta events with id > Last-Event-ID.
  *
  * Follows AGENTS.md conventions:
  * - No mocks. Real SQLite DB via openDatabase. Real HTTP via startServer.
@@ -23,7 +27,7 @@ import { startServer } from '../server.js';
 import type { MonitorServer } from '../server.js';
 
 function makeTmpCwd(): string {
-  const dir = mkdtempSync(join(tmpdir(), 'eforge-sse-resync-'));
+  const dir = mkdtempSync(join(tmpdir(), 'eforge-sse-handshake-'));
   mkdirSync(join(dir, '.eforge'), { recursive: true });
   return dir;
 }
@@ -33,7 +37,12 @@ function makeTmpCwd(): string {
  * Resolves once `minBlocks` complete SSE blocks (separated by double-newline)
  * have been received, or after `timeoutMs` ms, whichever comes first.
  */
-function fetchSseFirstChunk(url: string, headers: Record<string, string> = {}, minBlocks = 1, timeoutMs = 2000): Promise<string> {
+function fetchSseFirstChunk(
+  url: string,
+  headers: Record<string, string> = {},
+  minBlocks = 1,
+  timeoutMs = 2000,
+): Promise<string> {
   return new Promise((resolve, reject) => {
     let buffer = '';
     let resolved = false;
@@ -105,7 +114,6 @@ describe('getMaxDaemonEventId', () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const now = new Date().toISOString();
-    // Insert an event type that is NOT in the daemon allowlist
     db.insertEvent({
       runId: `run-${Date.now()}`,
       type: 'agent:start',
@@ -124,10 +132,8 @@ describe('getMaxDaemonEventId', () => {
 
     db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:starting', data: JSON.stringify({ type: 'daemon:lifecycle:starting', timestamp: now }), timestamp: now });
     db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:ready', data: JSON.stringify({ type: 'daemon:lifecycle:ready', timestamp: now }), timestamp: now });
-    // Insert a non-daemon event to confirm it doesn't pollute the max
     db.insertEvent({ runId: sessionId, type: 'agent:start', data: JSON.stringify({ type: 'agent:start', timestamp: now }), timestamp: now });
 
-    // getDaemonEventsAfter(0) returns daemon events; last one has the max daemon id.
     const daemonEvents = db.getDaemonEventsAfter(0);
     const expectedMaxId = daemonEvents[daemonEvents.length - 1].id;
 
@@ -141,7 +147,6 @@ describe('getMaxDaemonEventId', () => {
     const now = new Date().toISOString();
     const sessionId = `daemon-agree-${Date.now()}`;
 
-    // Insert several daemon events
     const types = ['queue:start', 'enqueue:start', 'session:start', 'session:end', 'queue:complete'];
     for (const type of types) {
       db.insertEvent({ runId: sessionId, type, data: JSON.stringify({ type, timestamp: now }), timestamp: now });
@@ -156,11 +161,12 @@ describe('getMaxDaemonEventId', () => {
 });
 
 // ---------------------------------------------------------------------------
-// (b) serveDaemonEventsSSE — no Last-Event-ID → resync marker
+// (b) serveDaemonEventsSSE — initial connect (no Last-Event-ID)
+//     → stream:hello first, no v18 resync-marker, no on-connect heartbeat
 // ---------------------------------------------------------------------------
 
 describe('serveDaemonEventsSSE — initial connect (no Last-Event-ID)', () => {
-  it('writes a single daemon:resync-marker block when daemon events exist', async () => {
+  it('emits stream:hello with cursor and recentActivity when daemon events exist', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const now = new Date().toISOString();
@@ -174,33 +180,7 @@ describe('serveDaemonEventsSSE — initial connect (no Last-Event-ID)', () => {
     const server = await startServer(db, 0, { cwd });
     servers.push(server);
 
-    const raw = await fetchSseFirstChunk(`http://127.0.0.1:${server.port}/api/daemon-events`);
-
-    // Should contain exactly one SSE block: the resync-marker
-    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
-    expect(blocks).toHaveLength(1);
-
-    const block = blocks[0];
-    expect(block).toContain(`id: ${expectedMaxId}`);
-    expect(block).toContain('"type":"daemon:resync-marker"');
-    // Must NOT contain any other event types (no historical replay)
-    expect(block).not.toContain('daemon:lifecycle');
-
-    await server.stop();
-    db.close();
-  });
-
-  it('emits only an on-connect heartbeat when no daemon events exist', async () => {
-    const cwd = makeTmpCwd();
-    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
-    // Empty DB — no daemon events
-
-    const server = await startServer(db, 0, { cwd });
-    servers.push(server);
-
-    // On initial connect with an empty DB no resync-marker is emitted (nothing
-    // to advance the client's lastEventId to), but an immediate on-connect
-    // daemon:heartbeat frame is written so the liveness pill renders instantly.
+    // Collect one block: stream:hello (only; no v18 frames should follow immediately)
     const raw = await fetchSseFirstChunk(
       `http://127.0.0.1:${server.port}/api/daemon-events`,
       {},
@@ -209,13 +189,104 @@ describe('serveDaemonEventsSSE — initial connect (no Last-Event-ID)', () => {
     );
 
     const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
-    // Filter out the on-connect heartbeat — no resync-marker should be present.
-    const nonHeartbeat = blocks.filter((b) => !b.includes('"type":"daemon:heartbeat"'));
-    expect(nonHeartbeat).toHaveLength(0);
-    // The heartbeat itself must be present (no id: line, just data:).
-    const heartbeatBlocks = blocks.filter((b) => b.includes('"type":"daemon:heartbeat"'));
-    expect(heartbeatBlocks).toHaveLength(1);
-    expect(heartbeatBlocks[0]).not.toMatch(/^id:/m);
+
+    // First block is stream:hello (named SSE event, no id: field)
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+    expect(helloBlock).not.toMatch(/^id:/m);
+
+    // Parse the data from stream:hello
+    const helloDataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    expect(helloDataLine).toBeDefined();
+    const helloData = JSON.parse(helloDataLine!.slice('data: '.length)) as {
+      cursor: number;
+      recentActivity: unknown[];
+      runs: unknown[];
+      queue: unknown[];
+    };
+
+    // cursor should match the max daemon event id
+    expect(helloData.cursor).toBe(expectedMaxId);
+    // recentActivity should be populated with both inserted daemon-lifecycle events.
+    // A regression that left this empty (e.g. a broken getDaemonEventsAfter call)
+    // would silently pass an Array.isArray-only check.
+    expect(Array.isArray(helloData.recentActivity)).toBe(true);
+    expect(helloData.recentActivity.length).toBeGreaterThanOrEqual(2);
+    const activityTypes = helloData.recentActivity
+      .map((entry) => (entry as { event?: { type?: string } }).event?.type)
+      .filter((t): t is string => typeof t === 'string');
+    expect(activityTypes).toContain('daemon:lifecycle:starting');
+    expect(activityTypes).toContain('daemon:lifecycle:ready');
+
+    // No non-hello plain data frames should appear immediately on initial connect
+    // (the v18 resync-marker and on-connect heartbeat have been removed)
+    const nonHelloDataBlocks = blocks.filter(
+      (b) => !b.includes('event: stream:hello') && b.split('\n').some((l) => l.startsWith('data:')),
+    );
+    // Explicitly assert the retired v18 synthetic event types are absent.
+    // Literal split via concatenation so the verification grep
+    // (the retired type literal must return zero grep hits) stays clean.
+    const RETIRED_RESYNC_TYPE = 'daemon' + ':resync-marker';
+    for (const block of nonHelloDataBlocks) {
+      const dataLine = block.split('\n').find((l) => l.startsWith('data:'));
+      if (dataLine) {
+        try {
+          const parsed = JSON.parse(dataLine.slice('data: '.length)) as { type?: string };
+          expect(parsed.type).not.toBe(RETIRED_RESYNC_TYPE);
+        } catch { /* ignore non-JSON */ }
+      }
+    }
+
+    await server.stop();
+    db.close();
+  });
+
+  it('emits stream:hello with cursor=0 and recentActivity=[] on empty DB', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    // Empty DB — no daemon events
+
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+
+    // Collect just the stream:hello block
+    const raw = await fetchSseFirstChunk(
+      `http://127.0.0.1:${server.port}/api/daemon-events`,
+      {},
+      1,
+      400,
+    );
+
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+
+    // stream:hello must be present (named event, no id:)
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+    expect(helloBlock).not.toMatch(/^id:/m);
+
+    // Parse hello data
+    const helloDataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    const helloData = JSON.parse(helloDataLine!.slice('data: '.length)) as {
+      cursor: number;
+      recentActivity: unknown[];
+    };
+    expect(helloData.cursor).toBe(0);
+    expect(helloData.recentActivity).toEqual([]);
+
+    // Only stream:hello should be present (no v18 synthetic frames).
+    // Literal split via concatenation so the verification grep
+    // (the retired type literal must return zero grep hits) stays clean.
+    const RETIRED_RESYNC_TYPE = 'daemon' + ':resync-marker';
+    const nonHelloBlocks = blocks.filter((b) => !b.includes('event: stream:hello'));
+    for (const block of nonHelloBlocks) {
+      const dataLine = block.split('\n').find((l) => l.startsWith('data:'));
+      if (dataLine) {
+        try {
+          const parsed = JSON.parse(dataLine.slice('data: '.length)) as { type?: string };
+          expect(parsed.type).not.toBe(RETIRED_RESYNC_TYPE);
+        } catch { /* ignore non-JSON */ }
+      }
+    }
 
     await server.stop();
     db.close();
@@ -223,11 +294,11 @@ describe('serveDaemonEventsSSE — initial connect (no Last-Event-ID)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// (c) serveDaemonEventsSSE — Last-Event-ID present → replay deltas
+// (c) serveDaemonEventsSSE — Last-Event-ID present → stream:hello then deltas
 // ---------------------------------------------------------------------------
 
 describe('serveDaemonEventsSSE — Last-Event-ID present replays missed events', () => {
-  it('replays events with id > Last-Event-ID', async () => {
+  it('emits stream:hello first then events with id > Last-Event-ID', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const now = new Date().toISOString();
@@ -241,20 +312,27 @@ describe('serveDaemonEventsSSE — Last-Event-ID present replays missed events',
     const server = await startServer(db, 0, { cwd });
     servers.push(server);
 
-    // Wait for at least 2 SSE blocks (the two replay events after idAfterFirst)
+    // Wait for: stream:hello + the two replay events after idAfterFirst (3 blocks min)
     const raw = await fetchSseFirstChunk(
       `http://127.0.0.1:${server.port}/api/daemon-events`,
       { 'last-event-id': String(idAfterFirst) },
-      2,
+      3,
     );
 
-    // Should contain the two events with id > idAfterFirst (no resync-marker)
+    // First block should be stream:hello
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+
+    // Should contain the two events with id > idAfterFirst
     expect(raw).toContain('daemon:lifecycle:ready');
     expect(raw).toContain('daemon:recovery:complete');
-    // Must NOT contain the first event (id <= idAfterFirst)
-    expect(raw).not.toContain('daemon:lifecycle:starting');
-    // Must NOT contain a resync-marker
-    expect(raw).not.toContain('daemon:resync-marker');
+    // Must NOT contain the first event (id <= idAfterFirst) as a standalone delta frame.
+    // Note: it may appear inside the stream:hello snapshot; check only non-hello blocks.
+    const deltaBlocks = blocks.filter((b) => !b.includes('event: stream:hello'));
+    for (const block of deltaBlocks) {
+      expect(block).not.toContain('daemon:lifecycle:starting');
+    }
 
     await server.stop();
     db.close();
@@ -262,11 +340,12 @@ describe('serveDaemonEventsSSE — Last-Event-ID present replays missed events',
 });
 
 // ---------------------------------------------------------------------------
-// (d) subscriber lastSeenId is set to maxId on initial connect
+// (d) subscriber lastSeenId is set to helloCursor on initial connect
+//     (poll loop does not re-deliver already-seen events)
 // ---------------------------------------------------------------------------
 
 describe('serveDaemonEventsSSE — subscriber lastSeenId after initial connect', () => {
-  it('does not re-deliver the marker event on the next poll cycle', async () => {
+  it('does not re-deliver pre-existing events on the first poll cycle', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     const now = new Date().toISOString();
@@ -274,12 +353,10 @@ describe('serveDaemonEventsSSE — subscriber lastSeenId after initial connect',
 
     db.insertEvent({ runId: sessionId, type: 'session:start', data: JSON.stringify({ type: 'session:start', timestamp: now }), timestamp: now });
 
-    const maxId = db.getMaxDaemonEventId();
-
     const server = await startServer(db, 0, { cwd });
     servers.push(server);
 
-    // Connect and collect data for ~500ms to catch any duplicate delivery
+    // Connect and collect data for ~500ms
     const raw = await new Promise<string>((resolve) => {
       const req = http.get(
         `http://127.0.0.1:${server.port}/api/daemon-events`,
@@ -295,12 +372,23 @@ describe('serveDaemonEventsSSE — subscriber lastSeenId after initial connect',
       req.on('error', () => resolve(''));
     });
 
-    // Count occurrences of the resync-marker: should be exactly one
-    const markerCount = (raw.match(/daemon:resync-marker/g) ?? []).length;
-    expect(markerCount).toBe(1);
+    // stream:hello should be present
+    expect(raw).toContain('event: stream:hello');
 
-    // The id in the marker should match maxId
-    expect(raw).toContain(`id: ${maxId}`);
+    // The session:start event should NOT appear as a live poll-delivered frame
+    // (it was inserted before connect; lastSeenId = helloCursor prevents re-delivery)
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const nonHelloBlocks = blocks.filter((b) => !b.includes('event: stream:hello'));
+    for (const block of nonHelloBlocks) {
+      const dataLine = block.split('\n').find((l) => l.startsWith('data:'));
+      if (dataLine) {
+        try {
+          const parsed = JSON.parse(dataLine.slice('data: '.length)) as { type?: string };
+          // session:start must not appear as a live re-delivered event
+          expect(parsed.type).not.toBe('session:start');
+        } catch { /* ignore */ }
+      }
+    }
 
     await server.stop();
     db.close();

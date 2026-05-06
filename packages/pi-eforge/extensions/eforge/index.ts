@@ -40,7 +40,8 @@ import {
   sleep,
   sanitizeProfileName,
   parseRawConfigLegacy,
-  subscribeToSession,
+  subscribeWithSnapshot,
+  aggregateSessionSummary,
   eventToProgress,
   apiGetLatestRunFromRuns,
   LOCKFILE_POLL_INTERVAL_MS,
@@ -58,6 +59,7 @@ import type {
   ConfigShowResponse,
   DaemonStreamEvent,
   SessionSummary,
+  SessionStreamSnapshot,
   FollowCounters,
   VersionResponse,
 } from '@eforge-build/client';
@@ -313,23 +315,52 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       let summary: SessionSummary | null = null;
       let followError: Error | null = null;
       const startedAt = Date.now();
+      const events: DaemonStreamEvent[] = [];
 
       try {
-        summary = await subscribeToSession<DaemonStreamEvent>(params.sessionId, {
-          cwd: ctx.cwd,
-          signal: combined,
-          onEvent: (event) => {
-            const update = eventToProgress(event, counters);
-            if (!update) return;
-            counters = update.counters;
-            try {
-              onUpdate(update.message);
-            } catch {
-              // Pi UI may be closed or the callback may throw; swallow so the
-              // subscription keeps running.
+        // Resolve base URL from lockfile — consistent with the pre-plan-02 subscriber
+        // behavior which did the same resolution internally.
+        const lock = readLockfile(ctx.cwd);
+        if (!lock) throw new Error("Daemon not running — lockfile not found");
+        const monitorUrl = `http://127.0.0.1:${lock.port}`;
+        const url = `${monitorUrl}${buildPath(API_ROUTES.events, { id: params.sessionId })}`;
+
+        for await (const frame of subscribeWithSnapshot<SessionStreamSnapshot, DaemonStreamEvent>(
+          url,
+          { signal: combined },
+        )) {
+          if (frame.kind === "snapshot") {
+            const snapshot = frame.snapshot;
+            // Re-seed events from snapshot (handles initial connect and reconnect).
+            events.length = 0;
+            for (const ev of snapshot.events) {
+              try {
+                events.push(JSON.parse(ev.data) as DaemonStreamEvent);
+              } catch { /* skip unparseable */ }
             }
-          },
-        });
+            // If terminal, aggregate from snapshot events and stop.
+            if (snapshot.status === "completed" || snapshot.status === "failed") {
+              summary = aggregateSessionSummary(params.sessionId, events, monitorUrl);
+              break;
+            }
+          } else if (frame.kind === "event") {
+            events.push(frame.event);
+            const update = eventToProgress(frame.event, counters);
+            if (update) {
+              counters = update.counters;
+              try {
+                onUpdate(update.message);
+              } catch {
+                // Pi UI may be closed or the callback may throw; swallow so the
+                // subscription keeps running.
+              }
+            }
+            if (frame.event.type === "session:end") {
+              summary = aggregateSessionSummary(params.sessionId, events, monitorUrl);
+              break;
+            }
+          }
+        }
       } catch (err) {
         followError = err instanceof Error ? err : new Error(String(err));
       } finally {

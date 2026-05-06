@@ -616,8 +616,8 @@ describe('agent config threading', () => {
     const { resolveAgentConfig } = await import('@eforge-build/engine/pipeline');
 
     const config = { ...DEFAULT_CONFIG, agents: { ...DEFAULT_CONFIG.agents, maxTurns: 42 } };
-    // reviewer has no role default, so it should fall back to the global config value
-    const result = resolveAgentConfig('reviewer', config);
+    // evaluator has no role default, so it should fall back to the global config value
+    const result = resolveAgentConfig('evaluator', config);
     expect(result.maxTurns).toBe(42);
   });
 

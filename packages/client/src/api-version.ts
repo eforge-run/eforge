@@ -14,7 +14,7 @@ import type { VersionResponse } from './routes.js';
  * the version. Removing a field, renaming a route, or changing a response's
  * required fields IS breaking and must bump the version.
  */
-export const DAEMON_API_VERSION = 22; // v22: lifecycle events (plan:status:change, plan:error:set, plan:error:clear, merge:worktree:set, merge:worktree:clear) flipped to persist:true and now flow on per-session SSE.
+export const DAEMON_API_VERSION = 23; // v23: stream:hello SSE handshake primitive; removal of the v18 resync-marker mechanism on initial daemon-events connect; removal of on-connect heartbeat write; snapshot envelope added to stream:hello for both daemon-events and per-session streams.
 
 /** Per-process cache: maps `${port}:${pid}` to the verified daemon version. */
 const verifiedDaemons = new Map<string, number>();

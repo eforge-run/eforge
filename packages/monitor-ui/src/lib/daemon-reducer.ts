@@ -20,7 +20,7 @@ import { daemonHandlerRegistry } from './daemon-reducer/index';
 // ---------------------------------------------------------------------------
 
 /** Maximum number of entries kept in the daemonActivity ring buffer. */
-const ACTIVITY_BUFFER_CAP = 500;
+export const ACTIVITY_BUFFER_CAP = 500;
 
 /** A single entry in the daemon activity ring buffer. */
 export interface DaemonActivityEntry {
@@ -90,6 +90,17 @@ export type DaemonAction =
       queue: QueueItem[];
       sessionMetadata: Record<string, SessionMetadata>;
       autoBuild: AutoBuildState | null;
+      /**
+       * Recent daemon activity entries from the snapshot's `recentActivity` field.
+       * Entries are appended to `state.daemonActivity`, deduped by id, capped at
+       * `ACTIVITY_BUFFER_CAP`. Handles reconnect without duplicating existing entries.
+       */
+      recentActivity?: { id: string; event: EforgeEvent }[];
+      /**
+       * Liveness snapshot from the `stream:hello` payload, dispatched as a synthetic
+       * heartbeat so `state.latestHeartbeat` is populated immediately on (re)connect.
+       */
+      latestHeartbeat?: { at: number; payload: HeartbeatPayload };
     }
   | { type: 'ADD_EVENT'; event: EforgeEvent; eventId: string }
   | { type: 'SET_CONNECTION_STATUS'; status: ConnectionStatus }
@@ -101,14 +112,35 @@ export type DaemonAction =
 
 export function daemonReducer(state: DaemonState, action: DaemonAction): DaemonState {
   switch (action.type) {
-    case 'BATCH_SEED':
+    case 'BATCH_SEED': {
+      // Append incoming recentActivity entries, deduping by id to prevent
+      // duplicate rows on reconnect (snapshot re-emits entries already rendered).
+      let newActivity = state.daemonActivity;
+      if (action.recentActivity && action.recentActivity.length > 0) {
+        const existingIds = new Set(state.daemonActivity.map((e) => e.id));
+        const newEntries = action.recentActivity
+          .filter((a) => !existingIds.has(a.id))
+          .map((a): DaemonActivityEntry => ({ id: a.id, event: a.event, receivedAt: Date.now() }));
+        if (newEntries.length > 0) {
+          const combined = [...state.daemonActivity, ...newEntries];
+          newActivity =
+            combined.length <= ACTIVITY_BUFFER_CAP
+              ? combined
+              : combined.slice(combined.length - ACTIVITY_BUFFER_CAP);
+        }
+      }
       return {
         ...state,
         runs: action.runs,
         queue: action.queue,
         sessionMetadata: action.sessionMetadata,
         autoBuild: action.autoBuild,
+        daemonActivity: newActivity,
+        ...(action.latestHeartbeat !== undefined && {
+          latestHeartbeat: action.latestHeartbeat,
+        }),
       };
+    }
 
     case 'ADD_EVENT': {
       const { event, eventId } = action;

@@ -158,13 +158,21 @@ export { DAEMON_API_VERSION, verifyApiVersion, clearApiVersionCache } from './ap
 
 export { sanitizeProfileName, parseRawConfigLegacy } from './profile-utils.js';
 
-export { subscribeToSession, subscribeToDaemonEvents, parseSseChunk } from './session-stream.js';
+export {
+  parseSseChunk,
+  subscribeWithSnapshot,
+} from './session-stream.js';
 export type {
   SessionSummary,
   SubscribeOptions,
   DaemonStreamEvent,
   ParsedSseBlock,
+  DaemonStreamSnapshot,
+  SessionStreamSnapshot,
+  SubscribeWithSnapshotFrame,
 } from './session-stream.js';
+
+export { aggregateSessionSummary } from './aggregate-session-summary.js';
 
 export { eventToProgress } from './event-to-progress.js';
 export type { FollowCounters, ProgressUpdate } from './event-to-progress.js';

@@ -45,7 +45,9 @@ describe('regression: orchestration data gap during compile-mode planning', () =
 
     // After the fix: earlyOrchestration is synthesized from the planning:complete
     // event, so effectiveOrchestration is non-null even before the SWR fetch returns.
-    expect(state.planStatuses).toEqual({ 'plan-01': 'complete', 'plan-02': 'complete' });
+    // planStatuses ends at 'evaluate' because this fixture lacks plan:status:change events
+    // (status is now driven exclusively by those lifecycle events, not build events).
+    expect(state.planStatuses).toEqual({ 'plan-01': 'evaluate', 'plan-02': 'evaluate' });
     expect(effectiveOrchestration).not.toBeNull();
     expect(effectiveOrchestration?.plans).toHaveLength(2);
     expect(effectiveOrchestration?.plans[0].dependsOn).toEqual([]);

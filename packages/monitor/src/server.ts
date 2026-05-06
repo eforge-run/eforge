@@ -7,7 +7,7 @@ import {
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, readdir, stat } from 'node:fs/promises';
-import { readdirSync } from 'node:fs';
+import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, extname, join, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -28,6 +28,9 @@ import {
   applyRecoveryManual,
 } from '@eforge-build/engine/recovery/apply';
 // --- eforge:endregion plan-01-fix-recovery-ux ---
+// --- eforge:region plan-01-handshake-primitive-additive ---
+import { writeHello } from './sse-handshake.js';
+// --- eforge:endregion plan-01-handshake-primitive-additive ---
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -328,21 +331,73 @@ export async function startServer(
       'Access-Control-Allow-Origin': '*',
     });
 
-    // Replay historical events
-    const lastEventId = req.headers['last-event-id']
+    // --- eforge:region plan-01-handshake-primitive-additive ---
+    // stream:hello: per-session snapshot as the first frame on every connection.
+    // cursor = max event id for this session at connect time.
+    const allSessionEvents = db.getEventsBySession(sessionId);
+    const sessionCursor =
+      allSessionEvents.length > 0 ? allSessionEvents[allSessionEvents.length - 1].id : 0;
+    const sessionRuns = db.getSessionRuns(sessionId);
+    let sessionStatus: 'pending' | 'running' | 'completed' | 'failed';
+    if (sessionRuns.length === 0) {
+      sessionStatus = 'pending';
+    } else if (sessionRuns.some((r) => r.status === 'running')) {
+      sessionStatus = 'running';
+    } else if (sessionRuns.some((r) => r.status === 'failed')) {
+      sessionStatus = 'failed';
+    } else {
+      sessionStatus = 'completed';
+    }
+    const sessionSnapshot = {
+      status: sessionStatus,
+      events: allSessionEvents.map((evt) => ({ id: evt.id, data: evt.data })),
+    };
+    writeHello(res, sessionCursor, sessionSnapshot);
+    // --- eforge:endregion plan-01-handshake-primitive-additive ---
+
+    // Terminal sessions: close after stream:hello. The snapshot carries the full
+    // event history; no live subscription is needed.
+    if (sessionStatus === 'completed' || sessionStatus === 'failed') {
+      res.end();
+      return;
+    }
+
+    const rawLastEventId = req.headers['last-event-id']
       ? parseInt(req.headers['last-event-id'] as string, 10)
       : undefined;
-    const historicalEvents = db.getEventsBySession(sessionId, lastEventId);
-    let lastSeenId = lastEventId ?? 0;
-    for (const event of historicalEvents) {
-      const parsed = parseEventRow(event.data, event.timestamp, event.type, event.id);
-      if (!parsed) continue;
-      const serialized = JSON.stringify(parsed);
-      const dataLines = serialized.split('\n').map((l: string) => `data: ${l}`).join('\n');
-      res.write(`id: ${event.id}\n${dataLines}\n\n`);
-      if (event.id > lastSeenId) {
-        lastSeenId = event.id;
+    // Guard against malformed / non-finite / negative ids. Event ids are
+    // monotonic non-negative integers; a negative value would be interpreted
+    // by SQL as `id > -1` and replay every event ever stored.
+    const lastEventId =
+      rawLastEventId !== undefined &&
+      Number.isInteger(rawLastEventId) &&
+      rawLastEventId >= 0
+        ? rawLastEventId
+        : undefined;
+
+    let lastSeenId: number;
+
+    if (lastEventId !== undefined) {
+      // Last-Event-ID present: replay events the client missed while disconnected.
+      // This is the only per-session replay path — the client already has a
+      // snapshot-seeded state and just needs to catch up on deltas.
+      const historicalEvents = db.getEventsBySession(sessionId, lastEventId);
+      lastSeenId = lastEventId;
+      for (const event of historicalEvents) {
+        const parsed = parseEventRow(event.data, event.timestamp, event.type, event.id);
+        if (!parsed) continue;
+        const serialized = JSON.stringify(parsed);
+        const dataLines = serialized.split('\n').map((l: string) => `data: ${l}`).join('\n');
+        res.write(`id: ${event.id}\n${dataLines}\n\n`);
+        if (event.id > lastSeenId) {
+          lastSeenId = event.id;
+        }
       }
+    } else {
+      // No Last-Event-ID: initial connect. Skip historical replay — the snapshot
+      // already carries all session events. Set lastSeenId to the cursor so
+      // subsequent reconnects (with Last-Event-ID) replay only truly new events.
+      lastSeenId = sessionCursor;
     }
 
     // Register for poll-based live updates
@@ -362,15 +417,47 @@ export async function startServer(
       'Access-Control-Allow-Origin': '*',
     });
 
+    // --- eforge:region plan-01-handshake-primitive-additive ---
+    // stream:hello: daemon-events snapshot as the first frame on every connection.
+    // cursor = max daemon-wide event id at connect time.
+    const helloCursor = db.getMaxDaemonEventId();
+    const recentActivityRows = db.getDaemonEventsAfter(Math.max(0, helloCursor - 20));
+    const recentActivity = recentActivityRows
+      .map((row) => {
+        const event = parseEventRow(row.data, row.timestamp, row.type, row.id);
+        return event !== null ? { id: row.id, event } : null;
+      })
+      // Trim to id <= helloCursor: the two DB reads are unsynchronized, so rows
+      // written between them would otherwise appear in recentActivity with
+      // id > helloCursor and be re-delivered when the live stream catches up.
+      .filter((x): x is { id: number; event: EforgeEvent } => x !== null && x.id <= helloCursor);
+    const daemonSnapshot = {
+      liveness: buildHeartbeatObject(),
+      recentActivity,
+      runs: db.getRuns(),
+      queue: buildQueueSnapshotSync(),
+      sessionMetadata: db.getSessionMetadataBatch(),
+      autoBuild: {
+        enabled: options?.daemonState?.autoBuild ?? false,
+        watcher: options?.daemonState?.watcher ?? { running: false, pid: null, sessionId: null },
+      },
+    };
+    writeHello(res, helloCursor, daemonSnapshot);
+    // --- eforge:endregion plan-01-handshake-primitive-additive ---
+
     const rawLastEventId = req.headers['last-event-id']
       ? parseInt(req.headers['last-event-id'] as string, 10)
       : undefined;
-    // Guard against malformed / non-finite ids (parseInt returns NaN) so the
-    // subscriber doesn't get stuck with `lastSeenId = NaN` (id > NaN is always
-    // false in SQL, which would silently drop every subsequent event).
-    const lastEventId = rawLastEventId !== undefined && Number.isFinite(rawLastEventId)
-      ? rawLastEventId
-      : undefined;
+    // Guard against malformed / non-finite / negative ids. parseInt returns NaN
+    // for garbage which would otherwise leave `lastSeenId = NaN` (id > NaN is
+    // always false in SQL, silently dropping every subsequent event); a negative
+    // value would be interpreted as `id > -1` and replay every event ever stored.
+    const lastEventId =
+      rawLastEventId !== undefined &&
+      Number.isInteger(rawLastEventId) &&
+      rawLastEventId >= 0
+        ? rawLastEventId
+        : undefined;
 
     let lastSeenId: number;
 
@@ -391,38 +478,15 @@ export async function startServer(
         }
       }
     } else {
-      // No Last-Event-ID: initial connect. Skip historical replay entirely — the
-      // UI seeds state from REST snapshots (BATCH_SEED). Instead emit a single
-      // resync-marker so the client's lastEventId advances to the current tail,
-      // enabling correct delta replay on the next reconnect.
-      //
-      // The marker uses an unknown SSE event type (`daemon:resync-marker`) that
-      // the reducer silently ignores (unknown types are no-ops via the registry
-      // fallthrough). Its sole purpose is to set the client's `lastEventId` via
-      // the SSE `id:` field so subsequent reconnects arrive with a valid cutoff.
-      //
-      // Skip the marker when no daemon events exist (fresh DB): the client has
-      // no history to skip, and live events on this connection will set lastEventId.
-      const maxId = db.getMaxDaemonEventId();
-      lastSeenId = maxId;
-      if (maxId > 0) {
-        res.write(`id: ${maxId}\ndata: {"type":"daemon:resync-marker"}\n\n`);
-      }
+      // No Last-Event-ID: initial connect. Skip historical replay — the snapshot
+      // already carries recentActivity for seeding. Set lastSeenId to helloCursor
+      // so delta replay via Last-Event-ID starts from the correct position on reconnect.
+      lastSeenId = helloCursor;
     }
 
     // Register for poll-based live updates
     const subscriber: DaemonSSESubscriber = { res, lastSeenId };
     daemonSubscribers.add(subscriber);
-
-    // Emit one immediate heartbeat to the just-registered client so the pill
-    // shows "alive 0s ago" on first load instead of waiting up to HEARTBEAT_INTERVAL_MS.
-    // Omit the SSE `id:` field — exactly like the periodic tick — so reconnect
-    // replay via last-event-id continues to ignore heartbeats.
-    try {
-      res.write(`data: ${buildHeartbeatPayload()}\n\n`);
-    } catch {
-      // Client may have disconnected immediately
-    }
 
     req.on('close', () => {
       daemonSubscribers.delete(subscriber);
@@ -488,7 +552,7 @@ export async function startServer(
   const instanceStartedAt = Date.now();
   const HEARTBEAT_INTERVAL_MS = 10_000;
 
-  function buildHeartbeatPayload(): string {
+  function buildHeartbeatObject(): object {
     const uptime = Date.now() - instanceStartedAt;
 
     let runningBuilds = 0;
@@ -510,7 +574,7 @@ export async function startServer(
       }
     }
 
-    return JSON.stringify({
+    return {
       type: 'daemon:heartbeat',
       timestamp: new Date().toISOString(),
       uptime,
@@ -521,7 +585,11 @@ export async function startServer(
         paused: options?.daemonState?.autoBuildPaused ?? false,
       },
       subscribers: daemonSubscribers.size,
-    });
+    };
+  }
+
+  function buildHeartbeatPayload(): string {
+    return JSON.stringify(buildHeartbeatObject());
   }
 
   const heartbeatTimer = setInterval(() => {
@@ -801,6 +869,110 @@ export async function startServer(
 
     return result;
   }
+
+  // --- eforge:region plan-01-handshake-primitive-additive ---
+  /**
+   * Synchronously build a queue snapshot matching the shape of `GET /api/queue`.
+   * Used by `serveDaemonEventsSSE` to embed queue state in the `stream:hello` frame.
+   * Uses `readdirSync` / `readFileSync` to avoid making `serveDaemonEventsSSE` async.
+   */
+  function buildQueueSnapshotSync(): Array<{
+    id: string;
+    title: string;
+    status: string;
+    priority?: number;
+    created?: string;
+    dependsOn?: string[];
+    recoveryVerdict?: { verdict: 'retry' | 'split' | 'abandon' | 'manual'; confidence: 'low' | 'medium' | 'high' };
+  }> {
+    const cwd = options?.cwd;
+    if (!cwd) return [];
+
+    const queueDir = resolve(cwd, options?.queueDir ?? 'eforge/queue');
+    const lockDir = resolve(cwd, '.eforge', 'queue-locks');
+
+    type SnapshotItem = {
+      id: string;
+      title: string;
+      status: string;
+      priority?: number;
+      created?: string;
+      dependsOn?: string[];
+      recoveryVerdict?: { verdict: 'retry' | 'split' | 'abandon' | 'manual'; confidence: 'low' | 'medium' | 'high' };
+    };
+    const items: SnapshotItem[] = [];
+
+    function loadDirSync(dir: string, derivedStatus: string): void {
+      let entries: string[];
+      try {
+        entries = readdirSync(dir);
+      } catch {
+        return;
+      }
+      const mdFiles = entries.filter((f) => f.endsWith('.md')).sort();
+      for (const file of mdFiles) {
+        try {
+          const content = readFileSync(resolve(dir, file), 'utf-8');
+          const fm = parseQueueFrontmatter(content);
+          if (!fm || typeof fm.title !== 'string') continue;
+          const id = basename(file, '.md');
+
+          let status = derivedStatus;
+          if (derivedStatus === 'pending') {
+            if (existsSync(resolve(lockDir, `${id}.lock`))) {
+              status = 'running';
+            }
+          }
+
+          const item: SnapshotItem = { id, title: fm.title, status };
+          if (typeof fm.priority === 'number') item.priority = fm.priority;
+          if (typeof fm.created === 'string') item.created = fm.created;
+          if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
+
+          if (derivedStatus === 'failed') {
+            try {
+              const sidecarRaw = readFileSync(resolve(dir, `${id}.recovery.json`), 'utf-8');
+              const sidecarData = JSON.parse(sidecarRaw) as Record<string, unknown>;
+              if (sidecarData && typeof sidecarData.verdict === 'object' && sidecarData.verdict !== null) {
+                const parsed = recoveryVerdictSchema.parse(sidecarData.verdict);
+                item.recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
+              }
+            } catch {
+              // silently omit — missing or malformed sidecar is normal
+            }
+          }
+
+          items.push(item);
+        } catch {
+          // skip unreadable files
+        }
+      }
+    }
+
+    loadDirSync(queueDir, 'pending');
+    loadDirSync(resolve(queueDir, 'failed'), 'failed');
+    loadDirSync(resolve(queueDir, 'skipped'), 'skipped');
+    loadDirSync(resolve(queueDir, 'waiting'), 'waiting');
+
+    // Post-filter dependsOn to mirror resolveQueueOrder runtime semantics.
+    const liveIds = new Set(
+      items
+        .filter((i) => i.status === 'pending' || i.status === 'running' || i.status === 'waiting')
+        .map((i) => i.id),
+    );
+    for (const item of items) {
+      if (item.status === 'failed' || item.status === 'skipped') {
+        delete item.dependsOn;
+      } else if (item.dependsOn) {
+        const filtered = item.dependsOn.filter((dep) => liveIds.has(dep));
+        if (filtered.length === 0) delete item.dependsOn;
+        else item.dependsOn = filtered;
+      }
+    }
+
+    return items;
+  }
+  // --- eforge:endregion plan-01-handshake-primitive-additive ---
 
   async function serveQueue(_req: IncomingMessage, res: ServerResponse): Promise<void> {
     const cwd = options?.cwd;
