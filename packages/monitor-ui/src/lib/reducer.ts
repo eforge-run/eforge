@@ -185,9 +185,9 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
  * event has been received for the current session. Returns `{ paused: true,
  * reason: string }` after such an event arrives via the reducer.
  *
- * Note: the SWR poll in `useAutoBuild` is the authoritative source for the
- * current enabled/disabled state. This selector provides the pause reason and a
- * fast-path flip derived from the SSE stream.
+ * Note: `useDaemonEvents().daemonState.autoBuild` is the authoritative source
+ * for the current enabled/disabled state. This selector provides the pause
+ * reason derived from the per-session SSE stream.
  */
 export function selectAutoBuild(state: RunState): { paused: boolean; reason: string | null } {
   return {
