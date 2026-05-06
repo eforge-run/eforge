@@ -564,19 +564,19 @@ const eventRegistry = {
 
   'plan:status:change': {
     scope: 'session',
-    persist: false,
+    persist: true,
     summary: (e) => `Plan ${e.planId}: status → ${e.status}`,
   },
 
   'plan:error:set': {
     scope: 'session',
-    persist: false,
+    persist: true,
     summary: (e) => `Plan ${e.planId}: error set`,
   },
 
   'plan:error:clear': {
     scope: 'session',
-    persist: false,
+    persist: true,
     summary: (e) => `Plan ${e.planId}: error cleared`,
   },
 
@@ -643,12 +643,12 @@ const eventRegistry = {
 
   'merge:worktree:set': {
     scope: 'session',
-    persist: false,
+    persist: true,
   },
 
   'merge:worktree:clear': {
     scope: 'session',
-    persist: false,
+    persist: true,
   },
 
   // -------------------------------------------------------------------------

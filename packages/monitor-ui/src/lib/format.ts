@@ -65,8 +65,15 @@ export function formatThinking(value: unknown): string | undefined {
     if (obj.type === 'disabled') return 'disabled';
     if (obj.type === 'adaptive') return 'adaptive';
     if (obj.type === 'enabled') {
-      if (typeof obj.budgetTokens === 'number') {
-        return `enabled (${formatNumber(obj.budgetTokens)} tokens)`;
+      // Accept both camelCase (budgetTokens) and snake_case (budget_tokens) from wire protocol
+      const v = value as Record<string, unknown>;
+      const budget = typeof v['budgetTokens'] === 'number'
+        ? v['budgetTokens'] as number
+        : typeof v['budget_tokens'] === 'number'
+        ? v['budget_tokens'] as number
+        : undefined;
+      if (budget !== undefined) {
+        return `enabled (${formatNumber(budget)} tokens)`;
       }
       return 'enabled';
     }

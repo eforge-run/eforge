@@ -56,6 +56,13 @@ import {
 import { handleConfigWarning, handlePlanningWarning } from './handle-misc';
 import { handleDaemonAutoBuildPaused } from './handle-daemon';
 import {
+  handlePlanStatusChange,
+  handlePlanErrorSet,
+  handlePlanErrorClear,
+  handleMergeWorktreeSet,
+  handleMergeWorktreeClear,
+} from './handle-plan-lifecycle';
+import {
   handleValidationStart,
   handleValidationCommandStart,
   handleValidationCommandComplete,
@@ -133,6 +140,13 @@ export const handlerRegistry = {
 
   // Daemon internal
   'daemon:auto-build:paused': handleDaemonAutoBuildPaused,
+
+  // Plan lifecycle state events
+  'plan:status:change': handlePlanStatusChange,
+  'plan:error:set': handlePlanErrorSet,
+  'plan:error:clear': handlePlanErrorClear,
+  'merge:worktree:set': handleMergeWorktreeSet,
+  'merge:worktree:clear': handleMergeWorktreeClear,
 
   // Validation lifecycle
   'validation:start': handleValidationStart,
@@ -258,12 +272,6 @@ export const IGNORED_EVENT_TYPES = [
   'daemon:warning',
   'daemon:error',
   // --- eforge:endregion plan-01-types-and-daemon-emission ---
-  // New plan lifecycle and merge-worktree events — monitor UI handling is deferred.
-  'plan:status:change',
-  'plan:error:set',
-  'plan:error:clear',
-  'merge:worktree:set',
-  'merge:worktree:clear',
 ] as const;
 
 // ---------------------------------------------------------------------------

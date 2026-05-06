@@ -89,8 +89,11 @@ describe('propagateFailure', () => {
 
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['b'].error).toContain('a');
-    expect(events).toHaveLength(1);
-    expect(events[0]).toMatchObject({ type: 'plan:build:failed', planId: 'b' });
+    // 3 events per blocked plan: plan:status:change, plan:error:set, plan:build:failed
+    expect(events).toHaveLength(3);
+    expect(events.some((e) => e.type === 'plan:status:change' && e.planId === 'b' && e.status === 'blocked')).toBe(true);
+    expect(events.some((e) => e.type === 'plan:error:set' && e.planId === 'b')).toBe(true);
+    expect(events.some((e) => e.type === 'plan:build:failed' && e.planId === 'b')).toBe(true);
   });
 
   it('blocks transitive chain A→B→C', () => {
@@ -109,7 +112,8 @@ describe('propagateFailure', () => {
 
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['c'].status).toBe('blocked');
-    expect(events).toHaveLength(2);
+    // 3 events per blocked plan (plan:status:change, plan:error:set, plan:build:failed)
+    expect(events).toHaveLength(6);
   });
 
   it('blocks diamond A→{B,C}→D (D reached once)', () => {
@@ -131,8 +135,8 @@ describe('propagateFailure', () => {
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['c'].status).toBe('blocked');
     expect(state.plans['d'].status).toBe('blocked');
-    // 3 events: b, c, d (d only once due to visited set)
-    expect(events).toHaveLength(3);
+    // 3 events per blocked plan: b, c, d (d only once due to visited set)
+    expect(events).toHaveLength(9);
   });
 
   it('skips completed dependents', () => {
@@ -186,7 +190,8 @@ describe('propagateFailure', () => {
     expect(state.plans['b'].status).toBe('blocked');
     expect(state.plans['c'].status).toBe('blocked');
     expect(state.plans['d'].status).toBe('blocked');
-    expect(events).toHaveLength(3);
+    // 3 events per blocked plan: b, c, d
+    expect(events).toHaveLength(9);
   });
 });
 

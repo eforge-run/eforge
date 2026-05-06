@@ -98,7 +98,8 @@ export function propagateFailure(
 
       const planState = state.plans[dep];
       if (planState && planState.status !== 'completed' && planState.status !== 'merged') {
-        transitionPlan(state, dep, 'blocked', { error: `Blocked by failed dependency: ${failedPlanId}` });
+        // Emit lifecycle events (plan:status:change, plan:error:set) before plan:build:failed
+        events.push(...transitionPlan(state, dep, 'blocked', { error: `Blocked by failed dependency: ${failedPlanId}` }));
         events.push({
           timestamp: new Date().toISOString(),
           type: 'plan:build:failed',
@@ -204,9 +205,10 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
   // On resume, reconcile persisted state with actual filesystem/git state
   if (ctx.resumed) {
     yield { timestamp: new Date().toISOString(), type: 'reconciliation:start' };
-    const report = await ctx.worktreeManager.reconcile(state);
+    const { report, events: reconcileEvents } = await ctx.worktreeManager.reconcile(state);
     saveState(stateDir, state);
     yield { timestamp: new Date().toISOString(), type: 'reconciliation:complete', report };
+    for (const e of reconcileEvents) yield e;
   }
 
   // Determine if plan worktrees are needed based on dependency graph concurrency
@@ -259,7 +261,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         worktreePath = await ctx.worktreeManager.acquireForPlan(planId, plan.branch, needsPlanWorktrees);
 
         state.plans[planId].worktreePath = worktreePath;
-        transitionPlan(state, planId, 'running');
+        for (const e of transitionPlan(state, planId, 'running')) eventQueue.push(e);
         saveState(stateDir, state);
 
         // Delegate to injected plan runner
@@ -277,20 +279,20 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         }
 
         if (buildFailedError !== undefined) {
-          transitionPlan(state, planId, 'failed', { error: buildFailedError });
+          for (const e of transitionPlan(state, planId, 'failed', { error: buildFailedError })) eventQueue.push(e);
           saveState(stateDir, state);
 
           const failureEvents = propagateFailure(state, planId, config.plans);
           saveState(stateDir, state);
           for (const e of failureEvents) eventQueue.push(e);
         } else {
-          transitionPlan(state, planId, 'completed');
+          for (const e of transitionPlan(state, planId, 'completed')) eventQueue.push(e);
           saveState(stateDir, state);
         }
       } catch (err) {
         // Handle all failures (worktree creation, plan runner, etc.)
         if (state.plans[planId].status !== 'failed') {
-          transitionPlan(state, planId, 'failed', { error: (err as Error).message });
+          for (const e of transitionPlan(state, planId, 'failed', { error: (err as Error).message })) eventQueue.push(e);
           saveState(stateDir, state);
         }
 
@@ -380,7 +382,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         const skipReason = shouldSkipMerge(planId, config.plans, ctx.failedMerges);
         if (skipReason) {
           ctx.failedMerges.add(planId);
-          transitionPlan(state, planId, 'failed', { error: skipReason });
+          yield* transitionPlan(state, planId, 'failed', { error: skipReason });
           saveState(stateDir, state);
           yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId, error: skipReason };
 
@@ -403,7 +405,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
             modelTracker: perPlanTrackers.get(planId),
           });
 
-          transitionPlan(state, planId, 'merged');
+          yield* transitionPlan(state, planId, 'merged');
           planState.merged = true;
           ctx.recentlyMergedIds.push(planId);
           saveState(stateDir, state);
@@ -411,7 +413,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
           yield { timestamp: new Date().toISOString(), type: 'plan:merge:complete', planId, commitSha };
         } catch (err) {
           ctx.failedMerges.add(planId);
-          transitionPlan(state, planId, 'failed', { error: `Merge failed: ${(err as Error).message}` });
+          yield* transitionPlan(state, planId, 'failed', { error: `Merge failed: ${(err as Error).message}` });
           saveState(stateDir, state);
 
           yield {

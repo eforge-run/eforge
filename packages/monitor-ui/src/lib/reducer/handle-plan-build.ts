@@ -1,25 +1,28 @@
 /**
  * Handlers for per-plan build and merge events.
  *
- * Owns: planStatuses, reviewIssues, fileChanges, mergeCommits, perspectiveErrors.
+ * Owns: reviewIssues, fileChanges, mergeCommits, perspectiveErrors.
  *
- * Stage-advancement rules (encoded explicitly as switch arms):
- *   plan:build:start / plan:build:implement:start  → 'implement'
- *   plan:build:doc-author:start / :complete         → no-op (runs parallel with implement)
+ * NOTE: planStatuses is now driven exclusively by plan:status:change events
+ * handled in handle-plan-lifecycle.ts. Build events no longer infer plan-level
+ * status — they are wire-level signals only.
+ *
+ * Stage-advancement rules still active (within-build stages, not plan-level status):
  *   plan:build:doc-sync:start                       → 'doc-sync' (sequential after implement)
- *   plan:build:doc-sync:complete                    → no-op (next stage sets the status)
- *   plan:build:implement:complete                   → no-op (next stage sets the status)
  *   plan:build:test:write:start / plan:build:test:start → 'test'
- *   plan:build:test:write:complete                  → no-op (next stage sets the status)
  *   plan:build:test:complete                        → extract productionIssues into reviewIssues
  *   plan:build:review:start                         → 'review'
  *   plan:build:review:complete                      → 'evaluate' + extract issues into reviewIssues
  *   plan:build:evaluate:start                       → 'evaluate'
- *   plan:build:complete                             → 'complete'
- *   plan:build:failed                               → 'failed'
  *   plan:build:files_changed                        → update fileChanges Map
  *   plan:build:review:parallel:perspective:error    → append error to perspectiveErrors[planId]
- *   plan:merge:complete                             → 'complete' + capture commitSha
+ *   plan:merge:complete                             → capture commitSha (status set by plan:status:change)
+ *
+ * Removed inferences (now handled by plan:status:change lifecycle events):
+ *   plan:build:start / plan:build:implement:start  → removed 'implement' setStatus
+ *   plan:build:complete                            → removed 'complete' setStatus
+ *   plan:build:failed                              → removed 'failed' setStatus
+ *   plan:merge:complete                            → removed 'complete' setStatus
  */
 import type { ReviewIssue, PipelineStage } from '../types';
 import type { RunState } from '../reducer';
@@ -37,11 +40,11 @@ function setStatus(state: Readonly<RunState>, planId: string, stage: PipelineSta
 // Build stage advancement
 // ---------------------------------------------------------------------------
 
-export const handlePlanBuildStart: EventHandler<'plan:build:start'> = (event, state) =>
-  setStatus(state, event.planId, 'implement');
+/** plan:build:start — stage now driven by plan:status:change(running); no-op here. */
+export const handlePlanBuildStart: EventHandler<'plan:build:start'> = (_event, _state) => undefined;
 
-export const handlePlanBuildImplementStart: EventHandler<'plan:build:implement:start'> = (event, state) =>
-  setStatus(state, event.planId, 'implement');
+/** plan:build:implement:start — stage now driven by plan:status:change(running); no-op here. */
+export const handlePlanBuildImplementStart: EventHandler<'plan:build:implement:start'> = (_event, _state) => undefined;
 
 /** Doc-author runs in parallel with implement — do not advance stage. */
 export const handlePlanBuildDocAuthorStart: EventHandler<'plan:build:doc-author:start'> = (_event, _state) =>
@@ -96,11 +99,11 @@ export const handlePlanBuildReviewComplete: EventHandler<'plan:build:review:comp
 export const handlePlanBuildEvaluateStart: EventHandler<'plan:build:evaluate:start'> = (event, state) =>
   setStatus(state, event.planId, 'evaluate');
 
-export const handlePlanBuildComplete: EventHandler<'plan:build:complete'> = (event, state) =>
-  setStatus(state, event.planId, 'complete');
+/** plan:build:complete — status now driven by plan:status:change(completed); no-op here. */
+export const handlePlanBuildComplete: EventHandler<'plan:build:complete'> = (_event, _state) => undefined;
 
-export const handlePlanBuildFailed: EventHandler<'plan:build:failed'> = (event, state) =>
-  setStatus(state, event.planId, 'failed');
+/** plan:build:failed — status now driven by plan:status:change(failed); no-op here. */
+export const handlePlanBuildFailed: EventHandler<'plan:build:failed'> = (_event, _state) => undefined;
 
 // ---------------------------------------------------------------------------
 // File changes
@@ -133,7 +136,6 @@ export const handlePlanBuildReviewPerspectiveError: EventHandler<'plan:build:rev
 // Merge
 // ---------------------------------------------------------------------------
 
-export const handlePlanMergeComplete: EventHandler<'plan:merge:complete'> = (event, state) => ({
-  planStatuses: { ...state.planStatuses, [event.planId]: 'complete' },
-  ...(event.commitSha && { mergeCommits: { ...state.mergeCommits, [event.planId]: event.commitSha } }),
-});
+/** plan:merge:complete — status now driven by plan:status:change(merged); capture commitSha only. */
+export const handlePlanMergeComplete: EventHandler<'plan:merge:complete'> = (event, state) =>
+  event.commitSha ? { mergeCommits: { ...state.mergeCommits, [event.planId]: event.commitSha } } : undefined;
