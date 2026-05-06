@@ -82,6 +82,37 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
     [threads],
   );
 
+  // Pack validation commands into the minimum number of lanes so sequential
+  // validations share a single row. Greedy: place each span in the first lane
+  // whose last span ended at or before the new span's start.
+  const validationLanes = useMemo<ValidationCommandSpan[][]>(() => {
+    if (!validationCommands || validationCommands.length === 0) return [];
+    const sorted = [...validationCommands].sort(
+      (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime(),
+    );
+    const fallbackEnd = endTime ?? Date.now();
+    const lanes: ValidationCommandSpan[][] = [];
+    const laneEnds: number[] = [];
+    for (const span of sorted) {
+      const start = new Date(span.startedAt).getTime();
+      const end = span.endedAt ? new Date(span.endedAt).getTime() : fallbackEnd;
+      let placed = false;
+      for (let i = 0; i < lanes.length; i++) {
+        if (laneEnds[i] <= start) {
+          lanes[i].push(span);
+          laneEnds[i] = end;
+          placed = true;
+          break;
+        }
+      }
+      if (!placed) {
+        lanes.push([span]);
+        laneEnds.push(end);
+      }
+    }
+    return lanes;
+  }, [validationCommands, endTime]);
+
   // Build tooltip text for plan pills (always returns string[] for consistent rendering)
   const planTooltipText = useMemo(() => {
     if (!planArtifact) return [planId];
@@ -187,45 +218,6 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
             <BuildStageProgress buildStages={buildStages} currentStage={currentStage} hoveredStage={hoveredStage} onStageHover={onStageHover} threads={threads} />
           )}
         <div className="flex-1 bg-bg-tertiary rounded-sm overflow-x-clip flex flex-col gap-px py-px min-h-4">
-          {validationCommands && validationCommands.length > 0 && [...validationCommands].sort((a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()).map((span, idx) => {
-            const spanStart = new Date(span.startedAt).getTime();
-            const spanEnd = span.endedAt
-              ? new Date(span.endedAt).getTime()
-              : (endTime ?? Date.now());
-            const leftPercent = Math.max(0, ((spanStart - sessionStart) / totalSpan) * 100);
-            const widthPercent = Math.max(0, Math.min(((spanEnd - spanStart) / totalSpan) * 100, 100 - leftPercent));
-            const isRunning = span.endedAt === null;
-            const durationMs = spanEnd - spanStart;
-            const durationStr = isRunning ? 'running...' : `${(durationMs / 1000).toFixed(1)}s`;
-            const statusGlyph = span.status === 'passed' ? '✓' : span.status === 'failed' ? '✗' : span.status === 'timeout' ? '⧖' : '';
-            const exitInfo = span.exitCode !== null ? ` (exit ${span.exitCode})` : '';
-
-            return (
-              <div key={`validation-${idx}`} className="relative h-4">
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div
-                      className={`absolute inset-y-0 rounded-sm border transition-all duration-150 ${VALIDATION_BAR_COLOR.bg} ${VALIDATION_BAR_COLOR.border} flex items-center overflow-hidden cursor-default`}
-                      style={{
-                        left: `${leftPercent}%`,
-                        width: `max(2px, ${widthPercent}%)`,
-                        animation: isRunning ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
-                      }}
-                    >
-                      <span className="text-[9px] truncate px-1 leading-4 text-foreground/70 relative z-10">
-                        {statusGlyph ? `${statusGlyph} ` : ''}{span.command}
-                      </span>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent side="top">
-                    <div className="font-medium">{span.command}</div>
-                    <div className="opacity-70">{durationStr}</div>
-                    {!isRunning && <div className="opacity-70">status: {span.status}{exitInfo}</div>}
-                  </TooltipContent>
-                </Tooltip>
-              </div>
-            );
-          })}
           {sortedThreads.map((thread) => {
             const threadStart = new Date(thread.startedAt).getTime();
             const threadEnd = thread.endedAt
@@ -328,6 +320,47 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
               </div>
             );
           })}
+          {validationLanes.map((lane, laneIdx) => (
+            <div key={`validation-lane-${laneIdx}`} className="relative h-4">
+              {lane.map((span, idx) => {
+                const spanStart = new Date(span.startedAt).getTime();
+                const spanEnd = span.endedAt
+                  ? new Date(span.endedAt).getTime()
+                  : (endTime ?? Date.now());
+                const leftPercent = Math.max(0, ((spanStart - sessionStart) / totalSpan) * 100);
+                const widthPercent = Math.max(0, Math.min(((spanEnd - spanStart) / totalSpan) * 100, 100 - leftPercent));
+                const isRunning = span.endedAt === null;
+                const durationMs = spanEnd - spanStart;
+                const durationStr = isRunning ? 'running...' : `${(durationMs / 1000).toFixed(1)}s`;
+                const statusGlyph = span.status === 'passed' ? '✓' : span.status === 'failed' ? '✗' : span.status === 'timeout' ? '⧖' : '';
+                const exitInfo = span.exitCode !== null ? ` (exit ${span.exitCode})` : '';
+
+                return (
+                  <Tooltip key={`validation-${laneIdx}-${idx}`}>
+                    <TooltipTrigger asChild>
+                      <div
+                        className={`absolute inset-y-0 rounded-sm border transition-all duration-150 ${VALIDATION_BAR_COLOR.bg} ${VALIDATION_BAR_COLOR.border} flex items-center overflow-hidden cursor-default`}
+                        style={{
+                          left: `${leftPercent}%`,
+                          width: `max(2px, ${widthPercent}%)`,
+                          animation: isRunning ? 'pulse-opacity 2s ease-in-out infinite' : undefined,
+                        }}
+                      >
+                        <span className="text-[9px] truncate px-1 leading-4 text-foreground/70 relative z-10">
+                          {statusGlyph ? `${statusGlyph} ` : ''}{span.command}
+                        </span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <div className="font-medium">{span.command}</div>
+                      <div className="opacity-70">{durationStr}</div>
+                      {!isRunning && <div className="opacity-70">status: {span.status}{exitInfo}</div>}
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          ))}
         </div>
         </div>
       </div>
