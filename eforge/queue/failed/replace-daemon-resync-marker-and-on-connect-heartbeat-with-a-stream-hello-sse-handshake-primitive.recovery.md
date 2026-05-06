@@ -1,0 +1,54 @@
+# Recovery Analysis: replace-daemon-resync-marker-and-on-connect-heartbeat-with-a-stream-hello-sse-handshake-primitive
+
+**Generated:** 2026-05-06T18:32:01.371Z
+**Set:** replace-daemon-resync-marker-and-on-connect-heartbeat-with-a-stream-hello-sse-handshake-primitive
+**Feature Branch:** `eforge/replace-daemon-resync-marker-and-on-connect-heartbeat-with-a-stream-hello-sse-handshake-primitive`
+**Base Branch:** `main`
+**Failed At:** 2026-05-06T18:31:28.120Z
+
+## Verdict
+
+**MANUAL** (confidence: low)
+
+## Rationale
+
+The failure summary is partial (state.json was missing at recovery time), so the root cause cannot be determined with confidence. Key indicators: no plans ran (`plans: []`), no commits landed (`landedCommits: []`), no diff stat, and `failingPlan.planId` is `"unknown"`. This pattern — failure before any plan executed — is consistent with a transient initialization failure (daemon lock contention, quota exhaustion, subprocess spawn error, or session setup timeout), but it is equally consistent with a planning-phase error that left no trace in the event log. Without state.json or a concrete error message, there is no basis to distinguish transient from structural. A human should inspect the daemon logs (`.eforge/event-log.jsonl`, `.eforge/session-*/`) for the failing session around `2026-05-06T18:31:28Z` to determine whether this was a transient infrastructure failure (→ retry is safe, no work to preserve) or a planning agent failure (→ retry with possible PRD adjustments). If logs confirm a transient cause, a straight retry is appropriate — no work was done, so there is nothing to split and no progress to preserve.
+
+## Plans
+
+| Plan | Status | Error |
+|------|--------|-------|
+
+## Failing Plan
+
+**Plan ID:** unknown
+
+## Completed Work
+
+- No plans were merged to the feature branch before failure — zero commits on the feature branch
+
+## Remaining Work
+
+- All acceptance criteria from the original PRD remain unimplemented
+- New server file: packages/monitor/src/sse-handshake.ts (writeHello helper)
+- Modify packages/monitor/src/server.ts: emit stream:hello first in both serveSSE() and serveDaemonEventsSSE(); remove daemon:resync-marker and on-connect heartbeat
+- New client file: packages/client/src/aggregate-session-summary.ts
+- Modify packages/client/src/session-stream.ts: add subscribeWithSnapshot generator; remove subscribeToSession and subscribeToDaemonEvents exports
+- Migrate packages/monitor-ui/src/hooks/use-eforge-events.ts to subscribeWithSnapshot
+- Migrate packages/monitor-ui/src/hooks/use-daemon-events.ts to subscribeWithSnapshot
+- Migrate packages/eforge/src/cli/mcp-proxy.ts to subscribeWithSnapshot
+- Migrate packages/pi-eforge/extensions/eforge/index.ts to subscribeWithSnapshot
+- Modify packages/monitor-ui/src/lib/daemon-reducer.ts: add BATCH_SEED dedupe by id
+- Bump DAEMON_API_VERSION in packages/client/src/api-version.ts
+- Rename and rewrite daemon-sse-resync.test.ts → daemon-sse-handshake.test.ts
+- New test: packages/monitor/src/__tests__/sse-handshake.test.ts
+- New test: packages/monitor/src/__tests__/session-sse-handshake.test.ts
+- New test: packages/client/src/__tests__/subscribe-with-snapshot.test.ts
+- New test: packages/client/src/__tests__/aggregate-session-summary.test.ts
+- Rewrite test/session-stream.test.ts in subscribeWithSnapshot terms
+
+## Risks
+
+- Root cause unknown — if not transient, the same failure will recur on retry
+- Partial context (state.json missing) means the session's terminal error message is unavailable — manual log inspection is required before retrying
+- This is a large, multi-package refactor (10-14 files across 5 packages); if the failure was a planning-agent context exhaustion, the PRD may need to be split before retrying
