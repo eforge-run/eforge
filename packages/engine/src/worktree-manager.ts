@@ -20,6 +20,7 @@ import {
 import type { ModelTracker } from './model-tracker.js';
 import { composeCommitMessage } from './model-tracker.js';
 import type { EforgeState, ReconciliationReport } from './events.js';
+import { mutateState } from './state.js';
 
 const exec = promisify(execFile);
 
@@ -234,7 +235,7 @@ export class WorktreeManager {
       if (!existsSync(mergeWtPath)) {
         report.missing.push('__merge__');
         report.cleared.push('__merge__');
-        state.mergeWorktreePath = undefined;
+        mutateState(state, { type: 'merge:worktree:clear', timestamp: new Date().toISOString() });
       } else {
         try {
           const { stdout } = await exec('git', ['branch', '--show-current'], { cwd: mergeWtPath });
@@ -243,7 +244,7 @@ export class WorktreeManager {
             report.corrupt.push('__merge__');
             report.cleared.push('__merge__');
             try { await removeWorktree(this.repoRoot, mergeWtPath); } catch { /* best-effort */ }
-            state.mergeWorktreePath = undefined;
+            mutateState(state, { type: 'merge:worktree:clear', timestamp: new Date().toISOString() });
           } else {
             report.valid.push('__merge__');
           }
@@ -251,7 +252,7 @@ export class WorktreeManager {
           report.corrupt.push('__merge__');
           report.cleared.push('__merge__');
           try { await removeWorktree(this.repoRoot, mergeWtPath); } catch { /* best-effort */ }
-          state.mergeWorktreePath = undefined;
+          mutateState(state, { type: 'merge:worktree:clear', timestamp: new Date().toISOString() });
         }
       }
     }
@@ -267,7 +268,7 @@ export class WorktreeManager {
         planState.worktreePath = undefined;
         this.worktrees.delete(planId);
         if (planState.status === 'running') {
-          planState.status = 'pending';
+          mutateState(state, { type: 'plan:status:change', planId, status: 'pending', timestamp: new Date().toISOString() });
         }
         continue;
       }
@@ -281,7 +282,7 @@ export class WorktreeManager {
           try { await removeWorktree(this.repoRoot, wtPath); } catch { /* best-effort */ }
           planState.worktreePath = undefined;
           if (planState.status === 'running') {
-            planState.status = 'pending';
+            mutateState(state, { type: 'plan:status:change', planId, status: 'pending', timestamp: new Date().toISOString() });
           }
         } else {
           report.valid.push(planId);
@@ -302,7 +303,7 @@ export class WorktreeManager {
         try { await removeWorktree(this.repoRoot, wtPath); } catch { /* best-effort */ }
         planState.worktreePath = undefined;
         if (planState.status === 'running') {
-          planState.status = 'pending';
+          mutateState(state, { type: 'plan:status:change', planId, status: 'pending', timestamp: new Date().toISOString() });
         }
       }
     }
