@@ -96,14 +96,6 @@ function AppContent() {
     setUserSelectedSessionId(sessionId);
   }, []);
 
-  // Clear user selection when the watched session completes so future new
-  // sessions can auto-switch again.
-  useEffect(() => {
-    if (runState.isComplete && userSelectedSessionId === currentSessionId) {
-      setUserSelectedSessionId(null);
-    }
-  }, [runState.isComplete, currentSessionId, userSelectedSessionId]);
-
   // Track merged plan IDs from events
   const [mergedPlanIds, setMergedPlanIds] = useState<Set<string>>(new Set());
   useEffect(() => {
