@@ -26,15 +26,18 @@ export function useDaemonEvents(): UseDaemonEventsResult {
   useEffect(() => {
     const abort = new AbortController();
 
-    (async () => {
-      dispatch({ type: 'SET_CONNECTION_STATUS', status: 'connecting' });
-
-      // Parallel snapshot fetch to seed the reducer on mount (one-time, no refresh).
+    /**
+     * Fetch REST snapshots in parallel and dispatch BATCH_SEED + SET_CONNECTION_STATUS.
+     * Called once on mount and again from the onReconnect callback so the reducer
+     * heals automatically across daemon restarts without a manual browser refresh.
+     * A fetch aborted by `abort.signal` resolves silently (no log, no disconnected).
+     */
+    async function seedSnapshot(signal: AbortSignal): Promise<void> {
       const [runsRes, queueRes, metadataRes, autoBuildRes] = await Promise.all([
-        fetch(API_ROUTES.runs, { signal: abort.signal }),
-        fetch(API_ROUTES.queue, { signal: abort.signal }),
-        fetch(API_ROUTES.sessionMetadata, { signal: abort.signal }),
-        fetch(API_ROUTES.autoBuildGet, { signal: abort.signal }),
+        fetch(API_ROUTES.runs, { signal }),
+        fetch(API_ROUTES.queue, { signal }),
+        fetch(API_ROUTES.sessionMetadata, { signal }),
+        fetch(API_ROUTES.autoBuildGet, { signal }),
       ]);
 
       const runs: RunInfo[] = runsRes.ok ? ((await runsRes.json()) as RunInfo[]) : [];
@@ -48,6 +51,13 @@ export function useDaemonEvents(): UseDaemonEventsResult {
 
       dispatch({ type: 'BATCH_SEED', runs, queue, sessionMetadata, autoBuild });
       dispatch({ type: 'SET_CONNECTION_STATUS', status: 'connected' });
+    }
+
+    (async () => {
+      dispatch({ type: 'SET_CONNECTION_STATUS', status: 'connecting' });
+
+      // Parallel snapshot fetch to seed the reducer on mount.
+      await seedSnapshot(abort.signal);
 
       // Subscribe to the daemon-events SSE stream for live updates.
       await subscribeToDaemonEvents({
@@ -58,6 +68,15 @@ export function useDaemonEvents(): UseDaemonEventsResult {
             type: 'ADD_EVENT',
             event: event as EforgeEvent,
             eventId: meta.eventId ?? '',
+          });
+        },
+        onReconnect: () => {
+          // Re-seed snapshot after reconnect so REST state (runs, queue,
+          // session metadata, auto-build) is refreshed. Aborted fetches
+          // are silently ignored.
+          void seedSnapshot(abort.signal).catch((err: unknown) => {
+            if (abort.signal.aborted) return;
+            console.error('useDaemonEvents: seedSnapshot on reconnect failed:', err);
           });
         },
       });

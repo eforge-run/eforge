@@ -337,7 +337,6 @@ export async function startServer(
       'Access-Control-Allow-Origin': '*',
     });
 
-    // Replay historical daemon-wide events
     const rawLastEventId = req.headers['last-event-id']
       ? parseInt(req.headers['last-event-id'] as string, 10)
       : undefined;
@@ -347,14 +346,40 @@ export async function startServer(
     const lastEventId = rawLastEventId !== undefined && Number.isFinite(rawLastEventId)
       ? rawLastEventId
       : undefined;
-    const historicalEvents = db.getDaemonEventsAfter(lastEventId ?? 0);
-    let lastSeenId = lastEventId ?? 0;
-    for (const event of historicalEvents) {
-      const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
-      const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
-      res.write(`id: ${event.id}\n${dataLines}\n\n`);
-      if (event.id > lastSeenId) {
-        lastSeenId = event.id;
+
+    let lastSeenId: number;
+
+    if (lastEventId !== undefined) {
+      // Last-Event-ID present: replay events the client missed while disconnected.
+      // This is the only path that replays history — the client already has a
+      // snapshot-seeded state and just needs to catch up on deltas.
+      const historicalEvents = db.getDaemonEventsAfter(lastEventId);
+      lastSeenId = lastEventId;
+      for (const event of historicalEvents) {
+        const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
+        const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
+        res.write(`id: ${event.id}\n${dataLines}\n\n`);
+        if (event.id > lastSeenId) {
+          lastSeenId = event.id;
+        }
+      }
+    } else {
+      // No Last-Event-ID: initial connect. Skip historical replay entirely — the
+      // UI seeds state from REST snapshots (BATCH_SEED). Instead emit a single
+      // resync-marker so the client's lastEventId advances to the current tail,
+      // enabling correct delta replay on the next reconnect.
+      //
+      // The marker uses an unknown SSE event type (`daemon:resync-marker`) that
+      // the reducer silently ignores (unknown types are no-ops via the registry
+      // fallthrough). Its sole purpose is to set the client's `lastEventId` via
+      // the SSE `id:` field so subsequent reconnects arrive with a valid cutoff.
+      //
+      // Skip the marker when no daemon events exist (fresh DB): the client has
+      // no history to skip, and live events on this connection will set lastEventId.
+      const maxId = db.getMaxDaemonEventId();
+      lastSeenId = maxId;
+      if (maxId > 0) {
+        res.write(`id: ${maxId}\ndata: {"type":"daemon:resync-marker"}\n\n`);
       }
     }
 
@@ -2720,6 +2745,7 @@ export async function startServer(
           subscriber.res.end();
         }
         daemonSubscribers.clear();
+        server.closeAllConnections();
         server.close(() => resolveStop());
       });
     },

@@ -205,7 +205,7 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     }
   });
 
-  it('(b) replays historical daemon-wide events, honouring Last-Event-ID', async () => {
+  it('(b) initial connect emits resync-marker; Last-Event-ID triggers delta replay', async () => {
     tmpDir = await mkdtemp(join(tmpdir(), 'eforge-daemon-sse-replay-'));
     const eforgeDir = resolve(tmpDir, '.eforge');
     mkdirSync(eforgeDir, { recursive: true });
@@ -222,13 +222,12 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     server = await startServer(db, 0);
     const daemonEventsUrl = `http://127.0.0.1:${server.port}${API_ROUTES.daemonEvents}`;
 
-    // Without Last-Event-ID: should replay all 3
-    const allEvents = await collectSseEvents(daemonEventsUrl, 3);
-    expect(allEvents.length).toBe(3);
-    const types = allEvents.map((e) => JSON.parse(e.data).type);
-    expect(types).toContain('session:start');
-    expect(types).toContain('queue:prd:start');
-    expect(types).toContain('enqueue:complete');
+    // Without Last-Event-ID: new behavior — emits a single daemon:resync-marker
+    // with the current max daemon event id. No historical replay.
+    const initialEvents = await collectSseEvents(daemonEventsUrl, 1, undefined, 500);
+    expect(initialEvents.length).toBe(1);
+    expect(JSON.parse(initialEvents[0].data).type).toBe('daemon:resync-marker');
+    expect(Number(initialEvents[0].id)).toBe(id3);
 
     // With Last-Event-ID = id1: should replay only events after id1 (id2, id3)
     const afterFirst = await collectSseEvents(daemonEventsUrl, 2, id1);
@@ -287,15 +286,28 @@ describe('GET /api/daemon-events SSE endpoint', () => {
 
     // Insert a mix: one daemon-wide, two non-daemon-wide
     insertEvent(db, runId, 'agent:start', { agentId: 'a1' });
-    insertEvent(db, runId, 'session:start');
+    const sessionStartId = insertEvent(db, runId, 'session:start');
     insertEvent(db, runId, 'phase:start', { phase: 'planning' });
 
     server = await startServer(db, 0);
     const daemonEventsUrl = `http://127.0.0.1:${server.port}${API_ROUTES.daemonEvents}`;
 
-    // Expect exactly 1 event: session:start only
-    const events = await collectSseEvents(daemonEventsUrl, 1, undefined, 500);
-    expect(events.length).toBe(1);
-    expect(JSON.parse(events[0].data).type).toBe('session:start');
+    // Initial connect (no Last-Event-ID): emits resync-marker pointing at
+    // the daemon-wide max id (session:start). No per-session events included.
+    const initialEvents = await collectSseEvents(daemonEventsUrl, 1, undefined, 500);
+    expect(initialEvents.length).toBe(1);
+    expect(JSON.parse(initialEvents[0].data).type).toBe('daemon:resync-marker');
+    // The marker id equals the max daemon-wide event id (session:start)
+    expect(Number(initialEvents[0].id)).toBe(sessionStartId);
+
+    // With Last-Event-ID = 0: replay from beginning — only daemon-wide events
+    // (session:start); agent:start and phase:start must not appear.
+    const deltaEvents = await collectSseEvents(daemonEventsUrl, 1, 0, 500);
+    expect(deltaEvents.length).toBe(1);
+    expect(JSON.parse(deltaEvents[0].data).type).toBe('session:start');
+    // Confirm non-daemon-wide types were filtered
+    const deltaTypes = deltaEvents.map((e) => JSON.parse(e.data).type);
+    expect(deltaTypes).not.toContain('agent:start');
+    expect(deltaTypes).not.toContain('phase:start');
   });
 });

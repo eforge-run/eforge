@@ -14,7 +14,7 @@ import type { VersionResponse } from './routes.js';
  * the version. Removing a field, renaming a route, or changing a response's
  * required fields IS breaking and must bump the version.
  */
-export const DAEMON_API_VERSION = 17; // v17: POST /api/recover/apply response reshaped from { sessionId, pid } to { verdict, commitSha?, successorPrdId?, noAction? }; QueueItem gains optional recoveryVerdict field.
+export const DAEMON_API_VERSION = 18; // v18: GET /api/daemon-events SSE no longer replays historical events on initial connect (no Last-Event-ID). Instead emits a single `daemon:resync-marker` block (when daemon-event log is non-empty) so the client's `lastEventId` advances to the current tail. Last-Event-ID-present branch unchanged. Old clients relying on initial-connect replay must upgrade.
 
 /** Per-process cache: maps `${port}:${pid}` to the verified daemon version. */
 const verifiedDaemons = new Map<string, number>();
