@@ -1,23 +1,25 @@
 ---
 title: W6 — Async daemon mutation sweep
 created: 2026-05-06
-depends_on: ["replace-daemon-resync-marker-and-on-connect-heartbeat-with-a-designed-in-stream-hello-sse-handshake-primitive"]
+depends_on: []
 ---
 
 # W6 — Async daemon mutation sweep
 
 ## Problem / Motivation
 
-The daemon's mutating HTTP surface in `packages/monitor/src/server.ts` has 24 POST/DELETE handlers whose result semantics have not been systematically audited. Some routes may return success before the underlying mutation is observable, leading to misleading client behavior. Additionally, `packages/monitor/src/recorder.ts` derives `runs.plan_set` post-hoc from `enqueue:complete.title` (a display field), instead of a typed payload field — a known gap from the W6 plan.
+The daemon's mutating HTTP surface in `packages/monitor/src/server.ts` has 23 POST/DELETE handlers whose result semantics have not been systematically audited. Some routes may return success before the underlying mutation is observable, leading to misleading client behavior. Additionally, `packages/monitor/src/recorder.ts` derives `runs.plan_set` post-hoc from `enqueue:complete.title` (a display field), instead of a typed payload field — a known gap from the W6 plan.
 
 Relevant repo state:
-- The spine appears to have landed in this checkout: `packages/client/src/events.schemas.ts` and `packages/client/src/event-registry.ts` exist, so W6 should use schemas/registry for any event shape changes.
+- W3 (`stream:hello` SSE handshake) has landed: `packages/monitor/src/sse-handshake.ts` exists and SSE handshake tests are committed. W6 is now unblocked.
+- The spine has landed: `packages/client/src/events.schemas.ts` and `packages/client/src/event-registry.ts` exist, so W6 should use schemas/registry for any event shape changes.
 - `docs/roadmap.md` aligns with the daemon-as-orchestration-authority direction and warns against scheduler/workflow scope creep.
-- `packages/monitor/src/server.ts` has 24 mutating POST/DELETE handlers to audit.
-- `packages/monitor/src/recorder.ts` still derives enqueue run `plan_set` from `enqueue:complete.title`.
+- `packages/monitor/src/server.ts` has 23 mutating POST/DELETE handlers to audit.
+- `packages/monitor/src/recorder.ts` still derives enqueue run `plan_set` from `enqueue:complete.title` (line ~108: `db.updateRunPlanSet(enqueueRunId, event.title)`).
 - `packages/engine/src/eforge.ts` emits `enqueue:complete` with `{ id, filePath, title }`; there is no dedicated typed field for the recorder's `plan_set` value.
+- `packages/client/src/event-registry.ts` projection for `enqueue:complete` still maps `planSet: event.title` — the derivation must be removed from both the registry and recorder.
 
-This is the remaining Wave 3 maintenance sweep in the event-source refactor, with W3 (`stream:hello` SSE handshake) currently running and W4 (`RunInfo` row/API/UI type unification) pending behind W3. This looks like a **maintenance / focused** change: bounded route audit plus one typed event payload cleanup.
+This is the remaining Wave 3 maintenance sweep in the event-source refactor. W4 (`RunInfo` row/API/UI type unification) may run in parallel with W6. This is a **maintenance / focused** change: bounded route audit plus one typed event payload cleanup.
 
 ## Goal
 
@@ -25,17 +27,15 @@ Audit and harden every daemon-side mutating HTTP route so success responses are 
 
 ## Approach
 
-**Profile signal:** Recommended profile is **Excursion**. The work is not large enough for an expedition, but it spans daemon routes, event schemas/registry, engine emit sites, recorder behavior, and tests. It should be built as one coordinated PRD after W3 and may run in parallel with W4 rather than as a trivial errand.
+**Profile signal:** Recommended profile is **Excursion**. The work is not large enough for an expedition, but it spans daemon routes, event schemas/registry, engine emit sites, recorder behavior, and tests.
 
 **High-level steps:**
 
 - Inspect every POST/DELETE/PATCH handler in `packages/monitor/src/server.ts` and classify it as synchronous, async-with-existing-result-channel, async-needs-new-result-event, or no-mutation.
 - Fix any route that returns success before a mutation outcome is observable. Prefer synchronous completion for short/idempotent operations; add a typed `mutation:result`/specific result event only for genuinely long-running work that cannot be made synchronous.
-- Replace `packages/monitor/src/recorder.ts` post-hoc `enqueue:complete.title -> runs.plan_set` derivation with a typed source field. Because the spine has landed in this checkout (`events.schemas.ts` and `event-registry.ts` exist), extend the Zod schema, `EforgeEvent` inference, event registry projection/summary if needed, and engine emit site rather than editing a hand-written union.
+- Replace `packages/monitor/src/recorder.ts` post-hoc `enqueue:complete.title -> runs.plan_set` derivation with a typed source field. Because the spine has landed (`events.schemas.ts` and `event-registry.ts` exist), extend the Zod schema, `EforgeEvent` inference, event registry projection/summary if needed, and engine emit site rather than editing a hand-written union.
+- Remove the matching derivation in `packages/client/src/event-registry.ts` where `planSet: event.title` is used in the `enqueue:complete` projection.
 - Produce a durable audit log of route decisions. The original W6 note names `tmp/event-source-refactor/w6-audit.md`, but `tmp/` is gitignored; the build should either write there for local traceability and also commit a tracked audit summary (recommended: `docs/daemon-mutation-audit.md`), or choose a tracked package-local doc and mention the path in the final summary.
-
-**Sequencing:**
-- W3 is currently running and W4 is queued behind it. W6 should wait for W3's `server.ts` SSE changes to settle, but it can run in parallel with W4. If enqueuing now, chain W6 after the W3 queue entry (not after W4) so W4 and W6 form the next wave.
 
 **Code Impact:**
 
@@ -56,7 +56,7 @@ Audit and harden every daemon-side mutating HTTP route so success responses are 
   - `enqueue()` emit site currently yields `enqueue:complete` with `{ id, filePath, title }`. Add the typed field consumed by recorder. Use the actual queue PRD id if `runs.plan_set` should identify the queue entry, or the canonical plan-set/name if that is the intended meaning; document the choice.
 
 - `packages/client/src/events.schemas.ts` and `packages/client/src/event-registry.ts`
-  - Add/validate the new field on `enqueue:complete` and update registry projection/sample/summary logic. Existing registry projection currently maps `planSet` from `event.title`; remove that derivation.
+  - Add/validate the new field on `enqueue:complete` and update registry projection/sample/summary logic. Remove the existing `planSet: event.title` derivation in the `enqueue:complete` projection.
   - If any new mutation result event is introduced, add schema + registry entry and persistence/projection metadata.
 
 - Tests:
@@ -70,8 +70,9 @@ Audit and harden every daemon-side mutating HTTP route so success responses are 
 
 - Inspect every POST/DELETE/PATCH handler in `packages/monitor/src/server.ts` and classify it as synchronous, async-with-existing-result-channel, async-needs-new-result-event, or no-mutation.
 - Fix any route that returns success before a mutation outcome is observable. Prefer synchronous completion for short/idempotent operations; add a typed `mutation:result`/specific result event only for genuinely long-running work that cannot be made synchronous.
-- Replace `packages/monitor/src/recorder.ts` post-hoc `enqueue:complete.title -> runs.plan_set` derivation with a typed source field. Because the spine has landed in this checkout (`events.schemas.ts` and `event-registry.ts` exist), extend the Zod schema, `EforgeEvent` inference, event registry projection/summary if needed, and engine emit site rather than editing a hand-written union.
-- Produce a durable audit log of route decisions. The original W6 note names `tmp/event-source-refactor/w6-audit.md`, but `tmp/` is gitignored; the build should either write there for local traceability and also commit a tracked audit summary (recommended: `docs/daemon-mutation-audit.md`), or choose a tracked package-local doc and mention the path in the final summary.
+- Replace `packages/monitor/src/recorder.ts` post-hoc `enqueue:complete.title -> runs.plan_set` derivation with a typed source field. Extend the Zod schema, `EforgeEvent` inference, event registry projection/summary if needed, and engine emit site.
+- Remove `planSet: event.title` derivation from `packages/client/src/event-registry.ts`.
+- Produce a durable audit log of route decisions (recommended: `docs/daemon-mutation-audit.md`).
 
 **Out of scope:**
 
@@ -85,8 +86,9 @@ Audit and harden every daemon-side mutating HTTP route so success responses are 
 2. No daemon-side mutating route returns a misleading success response before the mutation has either completed synchronously or become observable through a documented result channel (existing worker session events/sidecars count only if explicitly documented in the audit and tested where feasible).
 3. `packages/monitor/src/server.ts` has no undocumented detached subprocess/resultless mutation pattern. Grep for `spawn(` and `detached:` in `server.ts` returns zero hits, or each remaining/indirect worker path is covered by the audit with its result channel.
 4. The `recorder.ts` post-hoc derivation is gone: `runs.plan_set` is not populated from `enqueue:complete.title`. The source event carries a typed payload field for the value recorder needs.
-5. `enqueue:complete` schema, registry metadata/projection/sample, engine emit site, and recorder consumer are consistent. Adding/removing the new field incorrectly fails type-check or tests.
-6. If any new `mutation:*`/result event is added, it is represented in `packages/client/src/events.schemas.ts`, `packages/client/src/event-registry.ts`, persistence/projection config, and relevant UI/client consumption.
-7. Tests cover the `enqueue:complete` typed field and recorder update path; route behavior tests are added for any route whose semantics changed.
-8. Existing behavior is preserved for enqueue/recovery/playbook/profile/session-plan routes except for clearer result semantics. No queue/scheduler redesign is introduced.
-9. Verification commands pass: `pnpm type-check` and targeted tests (or `pnpm test` if practical).
+5. The `event-registry.ts` `enqueue:complete` projection no longer maps `planSet: event.title`. The typed field from the schema is used instead.
+6. `enqueue:complete` schema, registry metadata/projection/sample, engine emit site, and recorder consumer are consistent. Adding/removing the new field incorrectly fails type-check or tests.
+7. If any new `mutation:*`/result event is added, it is represented in `packages/client/src/events.schemas.ts`, `packages/client/src/event-registry.ts`, persistence/projection config, and relevant UI/client consumption.
+8. Tests cover the `enqueue:complete` typed field and recorder update path; route behavior tests are added for any route whose semantics changed.
+9. Existing behavior is preserved for enqueue/recovery/playbook/profile/session-plan routes except for clearer result semantics. No queue/scheduler redesign is introduced.
+10. Verification commands pass: `pnpm type-check` and targeted tests (or `pnpm test` if practical).
