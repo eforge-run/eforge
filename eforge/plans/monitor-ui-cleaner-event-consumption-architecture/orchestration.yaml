@@ -1,0 +1,172 @@
+name: monitor-ui-cleaner-event-consumption-architecture
+description: Simplify the monitor UI's event-consumption architecture to two SSE
+  subscribers (one per concern) backed by reducers, eliminating the SSE-to-SWR
+  bridge that has been the source of recurring swimlane / orchestration bugs.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-auto-build-slice
+    name: Auto-build slice in useEforgeEvents reducer
+    depends_on: []
+    branch: monitor-ui-cleaner-event-consumption-architecture/auto-build-slice
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: medium
+        rationale: Reducer slice addition + handler registration is well-trodden
+          territory in this codebase.
+  - id: plan-02-orchestration-single-source
+    name: earlyOrchestration as the sole orchestration source
+    depends_on:
+      - plan-01-auto-build-slice
+    branch: monitor-ui-cleaner-event-consumption-architecture/orchestration-single-source
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: medium
+        rationale: Mostly deletion + simplification across server, client, and UI; the
+          cross-package route removal needs care to delete every consumer.
+  - id: plan-03-delete-invalidate-on-event
+    name: Delete invalidateOnEvent SSE-to-SWR bridge
+    depends_on:
+      - plan-02-orchestration-single-source
+    branch: monitor-ui-cleaner-event-consumption-architecture/delete-invalidate-on-event
+    build:
+      - implement
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: low
+        rationale: Pure deletion; no logic to preserve.
+  - id: plan-04-daemon-events-server
+    name: Daemon-events SSE endpoint and client primitive
+    depends_on:
+      - plan-03-delete-invalidate-on-event
+    branch: monitor-ui-cleaner-event-consumption-architecture/daemon-events-server
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Adds a new HTTP route, generalizes the SSE client primitive, and
+          migrates external CLI/Pi consumers off the deleted /api/latest-run
+          endpoint. Cross-package coordination needs care.
+      reviewer:
+        effort: high
+        rationale: API surface change with external (CLI + Pi) consumers; reviewer
+          should validate every consumer is updated and reconnect/Last-Event-ID
+          semantics are preserved.
+  - id: plan-05-daemon-events-ui-consumer
+    name: useDaemonEvents hook + UI consumer migration
+    depends_on:
+      - plan-04-daemon-events-server
+    branch: monitor-ui-cleaner-event-consumption-architecture/daemon-events-ui-consumer
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Introduces a new reducer + hook, replatforms three components off
+          SWR, removes the auto-switch refs and the latest-run endpoint
+          entirely. Multi-component coordination.
+      reviewer:
+        effort: high
+        rationale: Final architecture-converging plan; reviewer must validate that
+          exactly two SSE subscribers exist and the auto-switch derived selector
+          handles all the edge cases the refs covered.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - architecture
+      - regression-risk
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This is a multi-step refactor of the monitor UI's event-consumption
+    architecture with a clear sequential migration plan (5 ordered steps,
+    delete-only first). It touches multiple files across packages/monitor-ui/,
+    packages/monitor/, and the daemon HTTP surface, but the planning scope is
+    well-defined and a single planner session can enumerate all plans, file
+    changes, and the cross-step dependencies. That makes this an excursion, not
+    an expedition - the steps form a sequential dependency chain (Step 4 depends
+    on Steps 1-3 proving out), which is a negative signal for expedition.
+    Compile uses planner + plan-review-cycle because plan quality matters here:
+    the PRD explicitly calls out a Step 2 verification gate (confirming
+    planning:complete carries full plan list including for expedition-mode runs)
+    and a strict ordering requirement (delete-only first, each step shippable
+    independently) that the plan reviewer should validate. Default build uses
+    [[implement, doc-author], doc-sync, review-cycle]: doc-author runs in
+    parallel with implement because the PRD changes user/developer-facing
+    architecture (new /api/daemon-events endpoint, deleted endpoints, new hook)
+    that warrants doc updates; doc-sync runs after implement to catch stale
+    references to deleted endpoints (/api/orchestration/:id, /api/latest-run)
+    and removed hooks (useAutoBuild SSE, invalidateOnEvent) across existing
+    docs; review-cycle (rather than single review) because this code path has
+    been the source of recurring swimlane / orchestration bugs per the PRD, so
+    iterative review-fix-evaluate is justified. Review uses single strategy with
+    three perspectives (correctness, architecture, regression-risk) and standard
+    strictness: regression-risk is essential given the PRD's explicit framing as
+    a fix for recurring bugs, architecture matters because the work is a
+    deliberate replatform of state ownership (reducer vs SWR boundaries), and
+    standard strictness fits a developer-tool refactor without security/data
+    sensitivity. maxRounds: 2 keeps the cycle bounded while giving room to
+    address regressions. autoAcceptBelow: suggestion avoids noise from
+    low-severity nits."
