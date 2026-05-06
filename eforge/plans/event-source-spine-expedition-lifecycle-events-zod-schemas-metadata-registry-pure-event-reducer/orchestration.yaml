@@ -1,0 +1,121 @@
+name: event-source-spine-expedition-lifecycle-events-zod-schemas-metadata-registry-pure-event-reducer
+description: "Make events the single source of truth for eforge runtime state:
+  add lifecycle event variants, Zod schemas at every boundary, a metadata
+  registry, mutateState single mutation entry point, and a pure-event reducer
+  with replay-equivalence acceptance test."
+created: 2026-05-06
+compiled: 2026-05-06
+mode: expedition
+base_branch: main
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-foundation
+    name: "Lifecycle events + Zod schemas: add 5 new event variants
+      (plan:status:change, plan:error:set, plan:error:clear, merge:worktree:set,
+      merge:worktree:clear), create events.schemas.ts as wire-protocol source of
+      truth, make EforgeEvent = z.infer<typeof EforgeEventSchema>, bump
+      DAEMON_API_VERSION 18→19, remove the 'Pure TypeScript — no Zod' comment,
+      add the 'Event types and schemas are co-located' convention to AGENTS.md."
+    depends_on: []
+    branch: event-source-spine-expedition-lifecycle-events-zod-schemas-metadata-registry-pure-event-reducer/foundation
+    build: &a1
+      - - implement
+        - doc-author
+      - doc-sync
+      - - review-cycle
+        - test-write
+    review: &a2
+      strategy: parallel
+      perspectives:
+        - correctness
+        - architecture
+      maxRounds: 3
+      autoAcceptBelow: suggestion
+      evaluatorStrictness: strict
+  - id: plan-02-mutate-state
+    name: "Single mutation entry point: add mutateState(state, event) to
+      packages/engine/src/state.ts (folds in updatePlanStatus), route every
+      direct mutation in plan-lifecycle.ts and worktree-manager.ts through it,
+      rewrite orchestrator.initializeState() to prefer event-log replay with
+      state.json fallback, replace hydrateEventData with parseEventRow (Zod
+      log-and-skip, preserves back-compat field-patching), add the 'State
+      mutation is single-entry-point' convention to AGENTS.md, write
+      state.json.bak guard before first overwrite."
+    depends_on:
+      - plan-01-foundation
+    branch: event-source-spine-expedition-lifecycle-events-zod-schemas-metadata-registry-pure-event-reducer/mutate-state
+    build: *a1
+    review: *a2
+  - id: plan-03-registry
+    name: "Event metadata registry: create packages/client/src/event-registry.ts
+      with one entry per variant declaring {scope, persist, project?, summary?},
+      add the _Exhaustive type-check gate, derive DAEMON_EVENT_TYPES from
+      registry (replacing the literal at packages/monitor/src/db.ts:149-193),
+      replace the 140-branch switch in CLI display.ts and the eventToProgress
+      summary table with registry summary lookups (rich rendering paths stay),
+      inline the projection logic from
+      packages/monitor-ui/src/lib/daemon-reducer/handle-*.ts into registry
+      project functions."
+    depends_on:
+      - plan-01-foundation
+    branch: event-source-spine-expedition-lifecycle-events-zod-schemas-metadata-registry-pure-event-reducer/registry
+    build: *a1
+    review: *a2
+  - id: plan-04-pure-reducer
+    name: "Pure-event reducer + acceptance gate: delete inference heuristics from
+      packages/monitor-ui/src/lib/reducer.ts (e.g. plan:build:start ⇒ running),
+      delete DAEMON_IGNORED_EVENT_TYPES (line 122) and surrounding filter logic
+      from daemon-reducer/index.ts, delete the now-redundant handle-*.ts files
+      whose logic moved to the registry, add
+      packages/monitor-ui/test/event-replay-equivalence.test.ts (must fail on
+      main, pass after merge — uses multiple recorded sessions including
+      merge/errors/recovery as fixtures), verify agent:start
+      thinkingCoerced/thinkingOriginal reaches the agent-stage hover, remove
+      docs/roadmap.md line 32 ('Typed SSE events in client package')."
+    depends_on:
+      - plan-02-mutate-state
+      - plan-03-registry
+    branch: event-source-spine-expedition-lifecycle-events-zod-schemas-metadata-registry-pure-event-reducer/pure-reducer
+    build: *a1
+    review: *a2
+pipeline:
+  scope: expedition
+  compile:
+    - planner
+    - architecture-review-cycle
+    - module-planning
+    - cohesion-review-cycle
+    - compile-expedition
+  defaultBuild: *a1
+  defaultReview: *a2
+  rationale: "The PRD explicitly self-identifies as an expedition with a four-plan
+    dependency graph (A → (B ∥ C) → D) and a Profile Signal section recommending
+    exactly that. The work spans 6 packages (client, engine, monitor,
+    monitor-ui, eforge CLI, pi-eforge) and introduces a new state-mutation
+    contract, a new schema source-of-truth, a new metadata registry, and a
+    pure-event reducer with a replay-equivalence test that must turn from red to
+    green. Plans B and C are file-disjoint and run in parallel after A, exactly
+    the case where delegated module planning + plan-merge orchestration earns
+    its keep. Architecture-review and cohesion-review cycles are critical
+    because Plan A defines contracts (EforgeEventSchema, eventRegistry shape)
+    that Plans B/C/D consume; a contract miss in A propagates everywhere. Build
+    pipeline runs implement in parallel with doc-author (AGENTS.md additions,
+    removal of roadmap.md:32, in-place comment reversal at events.ts:4 are all
+    explicit deliverables), then doc-sync sweeps existing references that may
+    have gone stale (140-branch CLI switch, 12 handle-*.ts files, 23-entry
+    DAEMON_EVENT_TYPES literal all collapse). After doc-sync, review-cycle and
+    test-write run in parallel - test-write is essential because acceptance
+    criterion #1 (event-replay-equivalence test) and the api-version pinning
+    test (#12) are themselves part of the deliverable, not just safety nets.
+    Parallel review with correctness + architecture perspectives matches the
+    PRD's own risk analysis: 'High - surgery on the orchestrator's mutation
+    paths' and 'High - partial application across plans A → B/C → D' both call
+    for multi-front review gates. maxRounds: 3 and evaluatorStrictness: strict
+    reflect the grep-zero acceptance criteria (#2, #5), the type-check
+    exhaustiveness gate (#4), and the explicit project convention that runtime
+    decision fields (thinkingCoerced/thinkingOriginal) must survive end-to-end
+    (#8) - prior refactors regressed this and the user has flagged it as a
+    sticky failure mode."

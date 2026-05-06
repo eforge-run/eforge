@@ -4,7 +4,8 @@ description: "Make events the single source of truth for eforge runtime state:
   registry, mutateState single mutation entry point, and a pure-event reducer
   with replay-equivalence acceptance test."
 created: 2026-05-06
-status: draft
+status: compiled
+compiled: "2026-05-06"
 mode: expedition
 validate:
   - pnpm type-check
