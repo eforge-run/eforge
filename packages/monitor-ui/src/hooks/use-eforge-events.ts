@@ -1,5 +1,4 @@
 import { useReducer, useEffect, useRef, useState, useCallback } from 'react';
-import { mutate } from 'swr';
 import { eforgeReducer, initialRunState, type RunState } from '@/lib/reducer';
 import type { ConnectionStatus, EforgeEvent } from '@/lib/types';
 import { API_ROUTES, buildPath, subscribeToSession } from '@eforge-build/client/browser';
@@ -14,31 +13,6 @@ interface UseEforgeEventsResult {
 interface RunStateResponse {
   status: string;
   events: Array<{ id: number; data: string }>;
-}
-
-/** Invalidate SWR cache keys based on incoming SSE events. */
-export function invalidateOnEvent(event: EforgeEvent, sessionId: string | null): void {
-  switch (event.type) {
-    case 'phase:start':
-    case 'phase:end':
-      void mutate(API_ROUTES.runs);
-      void mutate(API_ROUTES.sessionMetadata);
-      break;
-    case 'session:end':
-      void mutate(API_ROUTES.runs);
-      void mutate(API_ROUTES.latestRun);
-      break;
-    case 'enqueue:complete':
-    case 'plan:build:complete':
-      void mutate(API_ROUTES.queue);
-      break;
-    case 'plan:build:failed':
-      void mutate(API_ROUTES.queue);
-      void mutate(['sidecar', event.planId]);
-      break;
-    default:
-      break;
-  }
 }
 
 export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult {
@@ -134,7 +108,6 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
             if (parseInt(meta.eventId, 10) <= lastBatchEventId) return;
           }
           dispatch({ type: 'ADD_EVENT', event, eventId: meta.eventId ?? '' });
-          invalidateOnEvent(event, sessionId);
         },
         onNamedEvent: (name, payload) => {
           if (name === 'monitor:shutdown-pending') {

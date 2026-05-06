@@ -26,8 +26,4 @@ session is still active, it then calls `subscribeToSession` from
 live events over SSE. `subscribeToSession` handles reconnect with exponential
 backoff, `Last-Event-ID` replay, and abort via `AbortSignal`.
 
-SSE events also drive SWR cache invalidation via the global `mutate()` call —
-see `use-eforge-events.ts` for the event-to-invalidation mapping. Note: orchestration
-data is sourced exclusively from `runState.earlyOrchestration` (synthesized by the
-reducer from `planning:complete` events) — there is no separate SWR fetch for
-orchestration.
+SWR is reserved for genuinely on-demand reads (`projectContext`, recovery sidecar). All live event-driven UI updates flow through `useEforgeEvents`'s reducer — SSE events are no longer used to trigger SWR cache invalidation.
