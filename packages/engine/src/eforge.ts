@@ -6,7 +6,8 @@
 
 import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { existsSync, watch as fsWatch, type FSWatcher } from 'node:fs';
+import { EventEmitter } from 'node:events';
+import { existsSync } from 'node:fs';
 import { readFile, readdir, mkdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
@@ -58,6 +59,7 @@ import { cleanupPlanFiles } from './cleanup.js';
 import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { withRunId } from './session.js';
 import { applyShardedPlanGuard } from './sharded-plan-guard.js';
+import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
 
 const exec = promisify(execFile);
 
@@ -97,6 +99,13 @@ export interface QueueOptions {
   watch?: boolean;
   /** Poll interval in milliseconds (overrides config) */
   pollIntervalMs?: number;
+  /**
+   * Callback invoked with an `inject` function once the scheduler is ready.
+   * The daemon passes this to capture the inject handle so HTTP routes can
+   * wake the scheduler via explicit `queue:mutation` events without relying
+   * on fs.watch. The inject function is a no-op after the watcher is aborted.
+   */
+  onInjectEventRegister?: (inject: (event: SchedulerInputEvent) => void) => void;
 }
 
 export interface RecoveryOptions {
@@ -132,6 +141,7 @@ function abortableSleep(ms: number, signal?: AbortSignal): Promise<boolean> {
 }
 
 export { abortableSleep };
+export type { SchedulerInputEvent };
 
 export class EforgeEngine {
   private readonly config: EforgeConfig;
@@ -1517,9 +1527,17 @@ export class EforgeEngine {
   }
 
   /**
-   * Watch queue: long-lived fs.watch-based watcher that discovers new PRDs
-   * via filesystem events. Uses a 500ms debounce to coalesce rapid events.
-   * Stays alive until abort signal fires or SIGTERM.
+   * Watch queue: long-lived event-driven watcher that discovers new PRDs
+   * via explicit `queue:mutation` events injected by daemon HTTP routes.
+   * Stays alive until the abort signal fires or SIGTERM.
+   *
+   * Discovery is triggered by:
+   *   - `onInjectEventRegister` callback (used by the daemon to wire HTTP routes)
+   *   - `queue:prd:complete` events re-emitted from the pump after each build
+   *
+   * The consumer loop (pump) yields every event from `eventQueue` to the
+   * caller, then conditionally re-emits scheduler-relevant events onto the
+   * internal bus so the QueueScheduler can react without relying on fs.watch.
    */
   async *watchQueue(options: QueueOptions = {}): AsyncGenerator<EforgeEvent> {
     const cwd = this.cwd;
@@ -1534,16 +1552,38 @@ export class EforgeEngine {
       process.once('SIGINT', signalHandler);
     }
 
-    // Ensure queue directory exists before watching
+    // Ensure queue directory exists before scanning
     await mkdir(absQueueDir, { recursive: true });
 
     // Load and order initial queue
     const allPrds = await loadQueue(queueDir, cwd);
     const allOrdered = resolveQueueOrder(allPrds);
 
-    let orderedPrds = options.name
+    const orderedPrds = options.name
       ? allOrdered.filter((p) => p.id === options.name)
       : [...allOrdered];
+
+    const bus = new EventEmitter();
+    const eventQueue = new AsyncEventQueue<EforgeEvent>();
+
+    const scheduler = new QueueScheduler({
+      bus,
+      cwd,
+      queueDir,
+      config: this.config,
+      configProfile: this.configProfile,
+      parallelism: this.config.maxConcurrentBuilds,
+      abortController,
+      eventQueue,
+      spawnPrdChild: (prd, opts, sessionId) => this.spawnPrdChild(prd, opts, sessionId),
+      options,
+      initialPrds: orderedPrds,
+    });
+
+    // Wire the inject callback BEFORE yielding queue:start so callers that
+    // want to inject immediately upon receiving the first event can do so.
+    // HTTP routes use this to wake the scheduler without relying on fs.watch.
+    options.onInjectEventRegister?.((event) => bus.emit(event.type, event));
 
     yield {
       timestamp: new Date().toISOString(),
@@ -1552,259 +1592,13 @@ export class EforgeEngine {
       dir: queueDir,
     };
 
-    // Per-PRD state tracking for the greedy scheduler
-    type PrdRunStatus = 'pending' | 'running' | 'completed' | 'failed' | 'skipped' | 'blocked';
-    interface PrdRunState {
-      status: PrdRunStatus;
-      dependsOn: string[];
-    }
-
-    const prdState = new Map<string, PrdRunState>();
-    for (const prd of orderedPrds) {
-      const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
-        orderedPrds.some((p) => p.id === dep),
-      );
-      prdState.set(prd.id, { status: 'pending', dependsOn: deps });
-    }
-
-    const isReady = (prdId: string): boolean => {
-      const state = prdState.get(prdId)!;
-      if (state.status !== 'pending') return false;
-      return state.dependsOn.every((dep) => {
-        const depState = prdState.get(dep);
-        return depState && (depState.status === 'completed' || depState.status === 'skipped');
-      });
-    };
-
-    const propagateBlocked = (failedId: string): void => {
-      const queue = [failedId];
-      while (queue.length > 0) {
-        const current = queue.shift()!;
-        for (const [id, state] of prdState) {
-          if (state.status === 'pending' && state.dependsOn.includes(current)) {
-            state.status = 'blocked';
-            queue.push(id);
-          }
-        }
-      }
-    };
-
-    const parallelism = this.config.maxConcurrentBuilds;
-    const semaphore = new Semaphore(parallelism);
-    const eventQueue = new AsyncEventQueue<EforgeEvent>();
-
-    let processed = 0;
-    let skipped = 0;
-
-    /**
-     * Re-scan the queue directory, discover new PRDs not yet in prdState,
-     * and emit queue:prd:discovered for each. Also resets re-queued PRDs
-     * that were previously failed or blocked back to pending.
-     */
-    const discoverNewPrds = async (): Promise<void> => {
-      let freshPrds: Awaited<ReturnType<typeof loadQueue>>;
-      try {
-        freshPrds = await loadQueue(queueDir, cwd);
-      } catch {
-        return;
-      }
-      const freshOrdered = resolveQueueOrder(freshPrds);
-      for (const prd of freshOrdered) {
-        if (!prdState.has(prd.id)) {
-          const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
-            prdState.has(dep) || freshOrdered.some((p) => p.id === dep),
-          );
-          prdState.set(prd.id, { status: 'pending', dependsOn: deps });
-          orderedPrds.push(prd);
-          eventQueue.push({
-            timestamp: new Date().toISOString(),
-            type: 'queue:prd:discovered',
-            prdId: prd.id,
-            title: prd.frontmatter.title ?? prd.id,
-          } as EforgeEvent);
-        } else {
-          const existing = prdState.get(prd.id)!;
-          if (existing.status === 'failed' || existing.status === 'blocked') {
-            // Re-queued PRD: reset state to pending
-            const deps = (prd.frontmatter.depends_on ?? []).filter((dep) =>
-              prdState.has(dep) || freshOrdered.some((p) => p.id === dep),
-            );
-            existing.status = 'pending';
-            existing.dependsOn = deps;
-            // Replace stale entry in orderedPrds with fresh PRD object
-            const idx = orderedPrds.findIndex((p) => p.id === prd.id);
-            if (idx !== -1) {
-              orderedPrds[idx] = prd;
-            } else {
-              orderedPrds.push(prd);
-            }
-            eventQueue.push({
-              timestamp: new Date().toISOString(),
-              type: 'queue:prd:discovered',
-              prdId: prd.id,
-              title: prd.frontmatter.title ?? prd.id,
-            } as EforgeEvent);
-          }
-        }
-      }
-    };
-
-    const startReadyPrds = (): void => {
-      for (const prd of orderedPrds) {
-        if (abortController?.signal.aborted) break;
-        if (!isReady(prd.id)) continue;
-
-        const state = prdState.get(prd.id)!;
-        state.status = 'running';
-
-        // Parent owns the sessionId: generate it here and emit session:start
-        // immediately so the DB row exists before the child subprocess starts.
-        // The child receives the id via --session-id and skips its own
-        // session:start emission to avoid double-creating the row.
-        const prdSessionId = randomUUID();
-        eventQueue.push({
-          type: 'session:start',
-          sessionId: prdSessionId,
-          timestamp: new Date().toISOString(),
-        } as EforgeEvent);
-        eventQueue.push({
-          type: 'session:profile',
-          sessionId: prdSessionId,
-          profileName: this.configProfile.name,
-          source: this.configProfile.source,
-          scope: this.configProfile.scope,
-          config: this.configProfile.config,
-          timestamp: new Date().toISOString(),
-        } as EforgeEvent);
-
-        eventQueue.addProducer();
-
-        void (async () => {
-          let acquired = false;
-          let status: 'completed' | 'failed' | 'skipped' = 'failed';
-          try {
-            await semaphore.acquire();
-            acquired = true;
-
-            status = await this.spawnPrdChild(prd, options, prdSessionId);
-
-            eventQueue.push({
-              timestamp: new Date().toISOString(),
-              type: 'queue:prd:complete',
-              prdId: prd.id,
-              status,
-            } as EforgeEvent);
-          } catch {
-            status = 'failed';
-            eventQueue.push({
-              timestamp: new Date().toISOString(),
-              type: 'queue:prd:complete',
-              prdId: prd.id,
-              status: 'failed',
-            } as EforgeEvent);
-          } finally {
-            if (acquired) semaphore.release();
-
-            const finalState = prdState.get(prd.id)!;
-            if (finalState.status === 'running') {
-              finalState.status = status;
-            }
-
-            if (finalState.status === 'failed') {
-              propagateBlocked(prd.id);
-            }
-
-            eventQueue.removeProducer();
-          }
-        })();
-      }
-    };
-
-    // Register fs.watch as a producer — keeps the consumer loop alive
+    // Watcher producer — keeps the consumer loop alive while the watcher is running.
     eventQueue.addProducer();
 
-    // Set up fs.watch with 500ms debounce
-    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
-    let watcher: FSWatcher | null = null;
-
-    // Circuit breaker: track consecutive fs.watch failures for recovery
-    const failureTimestamps: number[] = [];
-    const MAX_CONSECUTIVE_FAILURES = 3;
-    const FAILURE_WINDOW_MS = 10_000;
-
-    const onFsChange = async (): Promise<void> => {
-      await discoverNewPrds();
-      startReadyPrds();
-    };
-
-    /**
-     * Set up (or re-establish) the fs.watch watcher on the queue directory.
-     * Called during initial setup and during recovery after directory deletion.
-     */
-    const setupWatcher = (): void => {
-      watcher = fsWatch(absQueueDir, { persistent: true }, () => {
-        if (debounceTimer) clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          debounceTimer = null;
-          void onFsChange();
-        }, 500);
-      });
-
-      // Handle watcher errors (e.g. directory removed, permission change)
-      // with recovery: recreate directory, re-establish watcher, re-scan.
-      watcher.on('error', () => {
-        const now = Date.now();
-        failureTimestamps.push(now);
-
-        // Prune failures outside the window
-        while (failureTimestamps.length > 0 && failureTimestamps[0] <= now - FAILURE_WINDOW_MS) {
-          failureTimestamps.shift();
-        }
-
-        // Circuit breaker: too many consecutive failures within the window
-        if (failureTimestamps.length >= MAX_CONSECUTIVE_FAILURES) {
-          onAbort();
-          return;
-        }
-
-        // Recovery: close broken watcher, recreate directory, re-establish watcher
-        if (debounceTimer) {
-          clearTimeout(debounceTimer);
-          debounceTimer = null;
-        }
-        if (watcher) {
-          watcher.close();
-          watcher = null;
-        }
-
-        void (async () => {
-          try {
-            await mkdir(absQueueDir, { recursive: true });
-            setupWatcher();
-            await discoverNewPrds();
-            startReadyPrds();
-          } catch {
-            // Recovery itself failed — abort
-            onAbort();
-          }
-        })();
-      });
-    };
-
-    setupWatcher();
-
-    // Clean shutdown on abort: close watcher, let in-flight builds drain
+    // Clean shutdown on abort: remove bus listeners and release the watcher producer.
+    // In-flight build producers drain naturally (their IIFEs complete independently).
     const onAbort = (): void => {
-      if (debounceTimer) {
-        clearTimeout(debounceTimer);
-        debounceTimer = null;
-      }
-      if (watcher) {
-        watcher.close();
-        watcher = null;
-      }
-      // Remove the fs.watch producer — consumer will drain remaining events
-      // and terminate once all build producers also finish
+      bus.removeAllListeners();
       eventQueue.removeProducer();
     };
 
@@ -1814,63 +1608,29 @@ export class EforgeEngine {
       abortController.signal.addEventListener('abort', onAbort, { once: true });
     }
 
-    // Initial scan + launch ready PRDs
-    startReadyPrds();
+    // Initial scan + launch ready PRDs.
+    await scheduler.start();
 
-    // Consume multiplexed events
+    // Thin pump: yield every event from eventQueue to the outer caller, then
+    // re-emit scheduler-relevant types onto the bus.
+    // Yield-before-emit ordering guarantees downstream consumers (SSE, hooks,
+    // persistence) see queue:prd:complete before the scheduler reacts and
+    // potentially pushes follow-up session:start / spawn events onto eventQueue.
     for await (const event of eventQueue) {
       yield event;
-
-      if (event.type === 'queue:prd:complete') {
-        const completionStatus = event.status;
-        const completedPrdId = event.prdId;
-        if (completionStatus === 'skipped') {
-          skipped++;
-        } else {
-          processed++;
-        }
-
-        // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-        // Transition filesystem state for waiting PRDs before discovering new ones.
-        if (completionStatus === 'completed') {
-          try {
-            await unblockWaiting(queueDir, cwd, completedPrdId);
-          } catch {
-            // Non-fatal
-          }
-        } else if (completionStatus === 'failed') {
-          try {
-            await propagateSkipFS(queueDir, cwd, completedPrdId, 'failed');
-          } catch {
-            // Non-fatal
-          }
-        } else if (completionStatus === 'skipped') {
-          try {
-            await propagateSkipFS(queueDir, cwd, completedPrdId, 'cancelled');
-          } catch {
-            // Non-fatal
-          }
-        }
-        // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
-
-        // Discover any new PRDs and launch newly-ready PRDs
-        await discoverNewPrds();
-        startReadyPrds();
+      if (SCHEDULER_INPUT_TYPES.has(event.type)) {
+        bus.emit(event.type, event);
       }
     }
 
-    // Count blocked PRDs as skipped
-    for (const [, state] of prdState) {
-      if (state.status === 'blocked') {
-        skipped++;
-      }
-    }
+    // Finalize: count blocked PRDs as skipped, then emit the terminal event.
+    scheduler.finalizeBlockedAsSkipped();
 
     yield {
       timestamp: new Date().toISOString(),
       type: 'queue:complete',
-      processed,
-      skipped,
+      processed: scheduler.processed,
+      skipped: scheduler.skipped,
     };
   }
 

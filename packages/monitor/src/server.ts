@@ -16,6 +16,7 @@ import type { MonitorDB } from './db.js';
 import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
+import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 
 // Derived prefix constants for parameterised routes (used in startsWith checks)
 const CANCEL_BASE = API_ROUTES.cancel.slice(0, API_ROUTES.cancel.indexOf('/:'));
@@ -52,6 +53,22 @@ function isWithinDir(resolvedPath: string, baseDir: string): boolean {
   return resolvedPath.startsWith(base);
 }
 // --- eforge:endregion plan-03-daemon-mcp-pi ---
+
+/**
+ * Emit a `queue:mutation` event onto the active QueueScheduler's bus so it
+ * immediately re-scans the queue directory and launches newly-ready PRDs.
+ * No-op when the watcher is not running or the inject handle is unavailable.
+ */
+function emitMutation(
+  state: DaemonState | undefined,
+  reason: 'enqueue' | 'playbook-enqueue' | 'apply-recovery' | 'external',
+): void {
+  state?.injectSchedulerEvent?.({
+    type: 'queue:mutation',
+    reason,
+    timestamp: new Date().toISOString(),
+  });
+}
 
 /**
  * Enrich orchestration plan entries with per-plan build + review from a
@@ -150,6 +167,13 @@ export interface DaemonState {
   onKillWatcher?: () => void;
   /** Callback to trigger graceful daemon shutdown — set by server-main.ts */
   onShutdown?: () => void;
+  /**
+   * Injects a scheduler event directly onto the QueueScheduler's bus.
+   * Set by server-main.ts via `onInjectEventRegister` when the watcher starts,
+   * and cleared when the watcher stops. HTTP routes call `emitMutation()` which
+   * delegates here, so the scheduler can react without relying on fs.watch.
+   */
+  injectSchedulerEvent?: (event: SchedulerInputEvent) => void;
 }
 
 interface SSESubscriber {
@@ -938,7 +962,9 @@ export async function startServer(
         }
         const args = [enqueueSource, ...(body.flags ?? [])];
         // --- eforge:endregion plan-04-daemon-cli-wiring ---
-        const result = options.workerTracker.spawnWorker('enqueue', args);
+        const result = options.workerTracker.spawnWorker('enqueue', args, () => {
+          emitMutation(options.daemonState, 'enqueue');
+        });
         // --- eforge:region plan-02-daemon-routes ---
         // After successful spawn, if source is a session-plan file under THIS
         // project's .eforge/session-plans/ directory, mark it submitted.
@@ -1069,6 +1095,7 @@ export async function startServer(
         const result = options.workerTracker.spawnWorker(
           'apply-recovery',
           [body.prdId],
+          () => emitMutation(options.daemonState, 'apply-recovery'),
         );
         sendJson(res, { sessionId: result.sessionId, pid: result.pid });
       } catch (err) {
@@ -1143,6 +1170,17 @@ export async function startServer(
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
+      return;
+    }
+
+    // --- Scheduler kick route ---
+    if (req.method === 'POST' && url === API_ROUTES.schedulerKick) {
+      if (!options?.daemonState) {
+        sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      emitMutation(options.daemonState, 'external');
+      sendJson(res, { ok: true });
       return;
     }
 
@@ -1539,6 +1577,7 @@ export async function startServer(
           postMerge: plan.postMerge,
         });
         await commitEnqueuedPrd(result.filePath, result.id, title, cwd);
+        emitMutation(options.daemonState, 'playbook-enqueue');
         sendJson(res, { id: result.id });
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to enqueue playbook';

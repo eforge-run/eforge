@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { abortableSleep, EforgeEngine } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
+import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 import { StubHarness } from './stub-harness.js';
 
 describe('abortableSleep', () => {
@@ -83,60 +84,68 @@ describe('watchQueue', () => {
     expect(types[types.length - 1]).toBe('queue:complete');
   });
 
-  it('writing a new PRD file into queue directory triggers queue:prd:discovered', async () => {
+  it('injecting a queue:mutation event triggers queue:prd:discovered for a new PRD', async () => {
     const { engine, queueDir } = await createTestEngine();
     const abortController = new AbortController();
 
+    let capturedInject: ((event: SchedulerInputEvent) => void) | null = null;
     const events: EforgeEvent[] = [];
     let discoveredSeen = false;
 
-    // Write a PRD file after watcher starts, then abort after discovery
-    const writeTimer = setTimeout(async () => {
-      const prdContent = [
-        '---',
-        'title: Test PRD',
-        'status: pending',
-        '---',
-        '',
-        '# Test PRD',
-        '',
-        'Do something.',
-      ].join('\n');
-      await writeFile(join(queueDir, 'test-prd.md'), prdContent);
-    }, 300);
-
-    // Give enough time for fs.watch to fire + debounce (500ms) + discovery
-    const abortTimer = setTimeout(() => abortController.abort(), 1500);
+    const abortTimer = setTimeout(() => abortController.abort(), 5000);
 
     try {
-      for await (const event of engine.watchQueue({ abortController })) {
+      for await (const event of engine.watchQueue({
+        abortController,
+        onInjectEventRegister: (inject) => {
+          capturedInject = inject;
+        },
+      })) {
         events.push(event);
+
+        // After queue:start, write a PRD and inject a mutation event
+        if (event.type === 'queue:start' && capturedInject && !discoveredSeen) {
+          const prdContent = [
+            '---',
+            'title: Inject Test PRD',
+            'status: pending',
+            '---',
+            '',
+            '# Inject Test PRD',
+            '',
+            'Do something.',
+          ].join('\n');
+          await writeFile(join(queueDir, 'inject-test-prd.md'), prdContent);
+          capturedInject({
+            type: 'queue:mutation',
+            reason: 'external',
+            timestamp: new Date().toISOString(),
+          });
+        }
+
         if (event.type === 'queue:prd:discovered') {
           discoveredSeen = true;
-          // Abort once we've seen the discovery event
           abortController.abort();
         }
       }
     } finally {
-      clearTimeout(writeTimer);
       clearTimeout(abortTimer);
     }
 
     expect(discoveredSeen).toBe(true);
     const discoveredEvent = events.find((e) => e.type === 'queue:prd:discovered');
     expect(discoveredEvent).toBeDefined();
-    expect((discoveredEvent as { prdId: string }).prdId).toBe('test-prd');
+    expect((discoveredEvent as { prdId: string }).prdId).toBe('inject-test-prd');
 
     // Final event should be queue:complete
     expect(events[events.length - 1].type).toBe('queue:complete');
   });
 
-
-  it('re-queued PRD that was previously failed is re-discovered with queue:prd:discovered', async () => {
+  it('re-queued PRD that was previously failed is re-discovered after inject', async () => {
     const { engine, queueDir } = await createTestEngine();
     const abortController = new AbortController();
 
-    // Pre-write a PRD so it's discovered immediately
+    // Pre-write a PRD so it's discovered on initial start
     const prdContent = [
       '---',
       'title: Requeue PRD',
@@ -149,17 +158,22 @@ describe('watchQueue', () => {
     ].join('\n');
     await writeFile(join(queueDir, 'requeue-prd.md'), prdContent);
 
+    let capturedInject: ((event: SchedulerInputEvent) => void) | null = null;
     const events: EforgeEvent[] = [];
     let discoveredCount = 0;
     let sawComplete = false;
 
-    // After the PRD fails (queue:prd:complete with status: failed),
-    // touch the file to trigger re-discovery via fs.watch
     const abortTimer = setTimeout(() => abortController.abort(), 15000);
 
     try {
-      for await (const event of engine.watchQueue({ abortController })) {
+      for await (const event of engine.watchQueue({
+        abortController,
+        onInjectEventRegister: (inject) => {
+          capturedInject = inject;
+        },
+      })) {
         events.push(event);
+
         if (event.type === 'queue:prd:discovered') {
           discoveredCount++;
           if (discoveredCount >= 2) {
@@ -167,11 +181,17 @@ describe('watchQueue', () => {
             abortController.abort();
           }
         }
-        if (event.type === 'queue:prd:complete' && !sawComplete) {
+
+        if (event.type === 'queue:prd:complete' && !sawComplete && capturedInject) {
           sawComplete = true;
-          // PRD failed — touch the file to trigger fs.watch and re-discovery
+          // PRD failed — write it back to queue/ and inject a mutation event
           setTimeout(async () => {
             await writeFile(join(queueDir, 'requeue-prd.md'), prdContent + '\n');
+            capturedInject!({
+              type: 'queue:mutation',
+              reason: 'enqueue',
+              timestamp: new Date().toISOString(),
+            });
           }, 200);
         }
       }
@@ -186,4 +206,40 @@ describe('watchQueue', () => {
     expect((discoveredEvents[0] as { prdId: string }).prdId).toBe('requeue-prd');
     expect((discoveredEvents[1] as { prdId: string }).prdId).toBe('requeue-prd');
   }, 20_000);
+
+  it('inject is a no-op after the watcher is aborted', async () => {
+    const { engine } = await createTestEngine();
+    const abortController = new AbortController();
+
+    let capturedInject: ((event: SchedulerInputEvent) => void) | null = null;
+    const events: EforgeEvent[] = [];
+
+    // Abort after a short delay
+    setTimeout(() => abortController.abort(), 200);
+
+    for await (const event of engine.watchQueue({
+      abortController,
+      onInjectEventRegister: (inject) => {
+        capturedInject = inject;
+      },
+    })) {
+      events.push(event);
+    }
+
+    // Generator has finished — capturedInject should now be a no-op
+    expect(capturedInject).not.toBeNull();
+
+    // Calling inject after abort must not throw and must produce no further events
+    expect(() => {
+      capturedInject!({
+        type: 'queue:mutation',
+        reason: 'external',
+        timestamp: new Date().toISOString(),
+      });
+    }).not.toThrow();
+
+    // No events were added after the generator completed
+    const types = events.map((e) => e.type);
+    expect(types[types.length - 1]).toBe('queue:complete');
+  });
 });

@@ -126,6 +126,7 @@ export const API_ROUTES = {
   recover: '/api/recover',
   readRecoverySidecar: '/api/recovery/sidecar',
   applyRecovery: '/api/recover/apply',
+  schedulerKick: '/api/scheduler/kick',
   playbookList: '/api/playbook/list',
   playbookShow: '/api/playbook/show',
   playbookSave: '/api/playbook/save',
