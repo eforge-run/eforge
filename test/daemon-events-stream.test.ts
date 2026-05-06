@@ -222,27 +222,35 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     server = await startServer(db, 0);
     const daemonEventsUrl = `http://127.0.0.1:${server.port}${API_ROUTES.daemonEvents}`;
 
-    // Without Last-Event-ID: new behavior — emits a single daemon:resync-marker
-    // with the current max daemon event id. No historical replay.
-    const initialEvents = await collectSseEvents(daemonEventsUrl, 1, undefined, 500);
+    // Without Last-Event-ID: new behavior — emits a daemon:resync-marker (with id:)
+    // followed by an immediate on-connect daemon:heartbeat (no id:). Filter out
+    // heartbeats to isolate the resync-marker assertion.
+    const allInitialEvents = await collectSseEvents(daemonEventsUrl, 2, undefined, 500);
+    const initialEvents = allInitialEvents.filter(
+      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
+    );
     expect(initialEvents.length).toBe(1);
     expect(JSON.parse(initialEvents[0].data).type).toBe('daemon:resync-marker');
     expect(Number(initialEvents[0].id)).toBe(id3);
 
-    // With Last-Event-ID = id1: should replay only events after id1 (id2, id3)
-    const afterFirst = await collectSseEvents(daemonEventsUrl, 2, id1);
+    // With Last-Event-ID = id1: should replay only events after id1 (id2, id3).
+    // The on-connect heartbeat (no id:) is also emitted; filter it out.
+    const allAfterFirst = await collectSseEvents(daemonEventsUrl, 3, id1);
+    const afterFirst = allAfterFirst.filter(
+      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
+    );
     expect(afterFirst.length).toBe(2);
     const afterFirstIds = afterFirst.map((e) => e.id);
     expect(afterFirstIds).not.toContain(String(id1));
     expect(afterFirstIds).toContain(String(id2));
     expect(afterFirstIds).toContain(String(id3));
 
-    // With Last-Event-ID = id3: should replay nothing (0 historical events).
-    // Pass expectedCount=1 so the helper actually awaits the timeout instead of
-    // returning immediately on the `collected.length < expectedCount` check —
-    // otherwise we would never read from the response body and the assertion
-    // would be vacuous.
-    const afterLast = await collectSseEvents(daemonEventsUrl, 1, id3, 300);
+    // With Last-Event-ID = id3: should replay no historical events.
+    // The on-connect heartbeat (no id:) is still emitted; filter it out.
+    const allAfterLast = await collectSseEvents(daemonEventsUrl, 1, id3, 300);
+    const afterLast = allAfterLast.filter(
+      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
+    );
     expect(afterLast.length).toBe(0);
   });
 
@@ -258,8 +266,8 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     server = await startServer(db, 0);
     const daemonEventsUrl = `http://127.0.0.1:${server.port}${API_ROUTES.daemonEvents}`;
 
-    // Start collecting — will wait up to 2s for 2 events
-    const collectPromise = collectSseEvents(daemonEventsUrl, 2, undefined, 2000);
+    // Start collecting — will wait up to 2s for 3 events (on-connect heartbeat + 2 real events)
+    const collectPromise = collectSseEvents(daemonEventsUrl, 3, undefined, 2000);
 
     // Give the SSE connection a moment to establish, then insert events
     await new Promise((r) => setTimeout(r, 150));
@@ -292,9 +300,13 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     server = await startServer(db, 0);
     const daemonEventsUrl = `http://127.0.0.1:${server.port}${API_ROUTES.daemonEvents}`;
 
-    // Initial connect (no Last-Event-ID): emits resync-marker pointing at
-    // the daemon-wide max id (session:start). No per-session events included.
-    const initialEvents = await collectSseEvents(daemonEventsUrl, 1, undefined, 500);
+    // Initial connect (no Last-Event-ID): emits resync-marker (with id:) and an
+    // immediate on-connect daemon:heartbeat (no id:). Filter heartbeats to isolate
+    // the resync-marker assertion. No per-session events included.
+    const allInitialEvents = await collectSseEvents(daemonEventsUrl, 2, undefined, 500);
+    const initialEvents = allInitialEvents.filter(
+      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
+    );
     expect(initialEvents.length).toBe(1);
     expect(JSON.parse(initialEvents[0].data).type).toBe('daemon:resync-marker');
     // The marker id equals the max daemon-wide event id (session:start)
@@ -302,7 +314,11 @@ describe('GET /api/daemon-events SSE endpoint', () => {
 
     // With Last-Event-ID = 0: replay from beginning — only daemon-wide events
     // (session:start); agent:start and phase:start must not appear.
-    const deltaEvents = await collectSseEvents(daemonEventsUrl, 1, 0, 500);
+    // Filter out the on-connect heartbeat frame (emitted after subscriber registration).
+    const allDeltaEvents = await collectSseEvents(daemonEventsUrl, 2, 0, 500);
+    const deltaEvents = allDeltaEvents.filter(
+      (e) => JSON.parse(e.data).type !== 'daemon:heartbeat',
+    );
     expect(deltaEvents.length).toBe(1);
     expect(JSON.parse(deltaEvents[0].data).type).toBe('session:start');
     // Confirm non-daemon-wide types were filtered

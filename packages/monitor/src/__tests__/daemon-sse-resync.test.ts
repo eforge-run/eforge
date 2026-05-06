@@ -190,7 +190,7 @@ describe('serveDaemonEventsSSE — initial connect (no Last-Event-ID)', () => {
     db.close();
   });
 
-  it('does not write any SSE blocks when no daemon events exist', async () => {
+  it('emits only an on-connect heartbeat when no daemon events exist', async () => {
     const cwd = makeTmpCwd();
     const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
     // Empty DB — no daemon events
@@ -198,9 +198,9 @@ describe('serveDaemonEventsSSE — initial connect (no Last-Event-ID)', () => {
     const server = await startServer(db, 0, { cwd });
     servers.push(server);
 
-    // Use fetchSseFirstChunk with a short timeout (400ms). Since no marker is
-    // emitted on initial connect with an empty DB, we expect no complete SSE
-    // blocks to arrive within that window.
+    // On initial connect with an empty DB no resync-marker is emitted (nothing
+    // to advance the client's lastEventId to), but an immediate on-connect
+    // daemon:heartbeat frame is written so the liveness pill renders instantly.
     const raw = await fetchSseFirstChunk(
       `http://127.0.0.1:${server.port}/api/daemon-events`,
       {},
@@ -209,7 +209,13 @@ describe('serveDaemonEventsSSE — initial connect (no Last-Event-ID)', () => {
     );
 
     const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
-    expect(blocks).toHaveLength(0);
+    // Filter out the on-connect heartbeat — no resync-marker should be present.
+    const nonHeartbeat = blocks.filter((b) => !b.includes('"type":"daemon:heartbeat"'));
+    expect(nonHeartbeat).toHaveLength(0);
+    // The heartbeat itself must be present (no id: line, just data:).
+    const heartbeatBlocks = blocks.filter((b) => b.includes('"type":"daemon:heartbeat"'));
+    expect(heartbeatBlocks).toHaveLength(1);
+    expect(heartbeatBlocks[0]).not.toMatch(/^id:/m);
 
     await server.stop();
     db.close();
