@@ -1,0 +1,78 @@
+name: engine-owns-structural-fields-in-orchestration-yaml-planner-can-no-longer-emit-placeholders-for-name-basebranch-mode-per-plan-branch
+description: Engine becomes the sole source of truth for the structural fields
+  in orchestration.yaml (name, baseBranch, mode, per-plan branch). Trim the
+  planner submission schema so the LLM cannot inject placeholders for these
+  values, and replace the silent fall-through in Orchestrator.initializeState
+  with a descriptive throw on setName mismatch so config/state drift surfaces
+  clearly instead of hiding behind a generic "branch not found" failure.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-engine-owned-structural-fields
+    name: Engine-owned structural fields in orchestration.yaml
+    depends_on: []
+    branch: engine-owns-structural-fields-in-orchestration-yaml-planner-can-no-longer-emit-placeholders-for-name-basebranch-mode-per-plan-branch/engine-owned-structural-fields
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Coordinated changes across schema/writer/prompt/orchestrator/tests
+          must land together to keep type-check and tests green in a single
+          commit.
+      reviewer:
+        effort: high
+        rationale: Reviewer must verify both halves of the fix (schema trim +
+          initializeState throw) plus the prompt edit and test updates land
+          coherently — partial application would be a silent regression risk.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - tests
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "The PRD itself recommends excursion: a well-bounded, multi-file
+    engine-internal change touching one schema, one write function, one call
+    site, one orchestrator branch, one prompt, and 2-3 test files. This is far
+    below expedition thresholds (no 4+ independent subsystems, no cross-package
+    coordination) and far above errand (multiple files, schema + behavior
+    change, requires test updates). Compile uses planner plus plan-review-cycle
+    because the PRD has tightly coupled changes (schema trim, writePlanSet
+    derivation, planner.ts call site, orchestrator throw, prompt edits, multiple
+    test updates) where a quality gate on the plan catches scope drift before
+    build - especially valuable given this is a reactive fix to a production
+    incident where plan completeness matters. Build uses a sequential implement
+    -> review-cycle: the change is engine-internal with no public API or
+    documentation surface (per the 'Out of scope' section, no CHANGELOG, no
+    roadmap, no consumer-package updates expected), so doc-author/doc-sync are
+    not needed. Tests are explicitly enumerated in the PRD and will be authored
+    as part of implement (the PRD lists exact test cases to add/update), so a
+    separate test-write stage would be redundant. review-cycle with maxRounds=2
+    and standard strictness gives a quality gate without overkill - the change
+    is small enough that 2 rounds is sufficient. Perspectives focus on
+    correctness (the schema/derivation/throw logic must be exact) and tests (the
+    PRD specifies exact assertions to add). Strictness is standard rather than
+    strict because this is engine-internal plumbing, not security/data;
+    auto-accept suggestions to keep the cycle moving on cosmetic feedback."
