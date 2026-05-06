@@ -448,6 +448,44 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   // Daemon internal
   | { type: 'daemon:auto-build:paused'; reason: string }
 
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  // Daemon lifecycle
+  | { type: 'daemon:lifecycle:starting'; pid: number; port: number; version: string; mode: string }
+  | { type: 'daemon:lifecycle:ready'; pid: number; port: number; version: string; mode: string; recoveryDurationMs: number }
+  | { type: 'daemon:lifecycle:shutdown:start'; signal: string; reason: string }
+  | { type: 'daemon:lifecycle:shutdown:complete'; durationMs: number }
+  /**
+   * LIVE-ONLY: never persisted, never replayed.
+   * Pushed directly to active SSE subscribers approximately every 10 seconds,
+   * bypassing the DB poll loop. The SSE `id:` field is intentionally omitted
+   * so `last-event-id` replay skips heartbeats entirely.
+   */
+  | { type: 'daemon:heartbeat'; uptime: number; queueDepth: number; runningBuilds: number; autoBuild: { enabled: boolean; paused: boolean }; subscribers: number }
+
+  // Daemon scheduler (emitted by engine scheduler — types registered here for type safety)
+  | { type: 'daemon:scheduler:dequeued'; prdId: string; queueDepth: number; capacityRemaining: number }
+  | { type: 'daemon:scheduler:capacity-blocked'; queueDepth: number; runningCount: number; limit: number }
+  | { type: 'daemon:scheduler:dependency-blocked'; prdId: string; blockedBy: string[] }
+
+  // Daemon auto-build extensions
+  | { type: 'daemon:auto-build:enabled' }
+  | { type: 'daemon:auto-build:resumed' }
+  | { type: 'daemon:auto-build:triggered'; trigger: 'file' | 'git' | string; prdsEnqueued: number }
+
+  // Daemon recovery (startup reconciliation)
+  | { type: 'daemon:recovery:start' }
+  | { type: 'daemon:recovery:run-marked-failed'; runId: string; planSet: string; reason: string }
+  | { type: 'daemon:recovery:lock-removed'; path: string; pid: number }
+  | { type: 'daemon:recovery:complete'; runsFailed: number; locksRemoved: number; durationMs: number }
+
+  // Daemon orphan reaping (periodic detection loop)
+  | { type: 'daemon:orphan:reaped'; runId: string; sessionId: string; planSet: string; pid: number }
+
+  // Daemon errors and warnings
+  | { type: 'daemon:warning'; source: string; message: string; details?: string }
+  | { type: 'daemon:error'; source: string; message: string; stack?: string }
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
+
   // Queue
   | QueueEvent
 );

@@ -1,8 +1,8 @@
 /**
  * DaemonState reducer + initial state + action types + selectors.
  *
- * Owns the daemon-wide slices: runs list, queue, session metadata, and
- * auto-build state. Fed by:
+ * Owns the daemon-wide slices: runs list, queue, session metadata, auto-build
+ * state, activity ring-buffer, and latest heartbeat. Fed by:
  *   1. A one-shot BATCH_SEED from parallel snapshot fetches on mount.
  *   2. ADD_EVENT actions from the /api/daemon-events SSE stream.
  *   3. SET_CONNECTION_STATUS and SET_AUTO_BUILD for targeted mutations.
@@ -14,6 +14,32 @@ import type { RunInfo, QueueItem, SessionMetadata, ConnectionStatus } from '@/li
 import type { EforgeEvent } from '@/lib/types';
 import type { AutoBuildState } from '@/lib/api';
 import { daemonHandlerRegistry } from './daemon-reducer/index';
+
+// ---------------------------------------------------------------------------
+// Activity ring-buffer types
+// ---------------------------------------------------------------------------
+
+/** Maximum number of entries kept in the daemonActivity ring buffer. */
+const ACTIVITY_BUFFER_CAP = 500;
+
+/** A single entry in the daemon activity ring buffer. */
+export interface DaemonActivityEntry {
+  /** The SSE event ID (or empty string for live-only events). */
+  id: string;
+  /** The full EforgeEvent that was received. */
+  event: EforgeEvent;
+  /** Wall-clock time (Date.now()) when the event arrived in the UI. */
+  receivedAt: number;
+}
+
+/** Payload shape of daemon:heartbeat events, extracted into a named type. */
+export interface HeartbeatPayload {
+  uptime: number;
+  queueDepth: number;
+  runningBuilds: number;
+  autoBuild: { enabled: boolean; paused: boolean };
+  subscribers: number;
+}
 
 // ---------------------------------------------------------------------------
 // State shape
@@ -30,6 +56,17 @@ export interface DaemonState {
   autoBuild: AutoBuildState | null;
   /** Connection status for the /api/daemon-events SSE stream. */
   connectionStatus: ConnectionStatus;
+  /**
+   * Ring buffer of all daemon-stream events received since mount, capped at
+   * ACTIVITY_BUFFER_CAP. daemon:heartbeat events are excluded (they would
+   * dominate the buffer). Newest entries are at the end.
+   */
+  daemonActivity: DaemonActivityEntry[];
+  /**
+   * The most recently received daemon:heartbeat payload, or null if no
+   * heartbeat has been received yet. Used to determine daemon liveness.
+   */
+  latestHeartbeat: { at: number; payload: HeartbeatPayload } | null;
 }
 
 export const initialDaemonState: DaemonState = {
@@ -38,6 +75,8 @@ export const initialDaemonState: DaemonState = {
   sessionMetadata: {},
   autoBuild: null,
   connectionStatus: 'disconnected',
+  daemonActivity: [],
+  latestHeartbeat: null,
 };
 
 // ---------------------------------------------------------------------------
@@ -72,7 +111,9 @@ export function daemonReducer(state: DaemonState, action: DaemonAction): DaemonS
       };
 
     case 'ADD_EVENT': {
-      const { event } = action;
+      const { event, eventId } = action;
+      const isHeartbeat = event.type === 'daemon:heartbeat';
+
       const handler = (
         daemonHandlerRegistry as Record<
           string,
@@ -80,8 +121,20 @@ export function daemonReducer(state: DaemonState, action: DaemonAction): DaemonS
           | undefined
         >
       )[event.type];
-      if (!handler) return state;
-      const delta = handler(event as never, state);
+      const delta = handler ? handler(event as never, state) : undefined;
+
+      if (!isHeartbeat) {
+        // Centralised activity-append: every non-heartbeat daemon-stream event
+        // is recorded in the ring buffer regardless of whether it has a handler.
+        const entry: DaemonActivityEntry = { id: eventId, event, receivedAt: Date.now() };
+        const newActivity =
+          state.daemonActivity.length < ACTIVITY_BUFFER_CAP
+            ? [...state.daemonActivity, entry]
+            : [...state.daemonActivity.slice(1), entry];
+        return { ...state, ...delta, daemonActivity: newActivity };
+      }
+
+      // Heartbeat: only apply delta (latestHeartbeat update), no activity append.
       if (!delta) return state;
       return { ...state, ...delta };
     }
@@ -119,3 +172,28 @@ export const selectRuns = (state: DaemonState): RunInfo[] => state.runs;
 export const selectSessionMetadata = (
   state: DaemonState,
 ): Record<string, SessionMetadata> => state.sessionMetadata;
+
+/** The daemon activity ring buffer (newest entries are at the end). */
+export const selectDaemonActivity = (state: DaemonState): DaemonActivityEntry[] =>
+  state.daemonActivity;
+
+/**
+ * Daemon liveness based on time elapsed since the last heartbeat.
+ *
+ * - 'fresh'  — heartbeat received within the last 15 seconds (green).
+ * - 'stale'  — between 15 and 30 seconds ago (amber).
+ * - 'dead'   — more than 30 seconds ago, or no heartbeat received (red).
+ *
+ * @param state — current DaemonState.
+ * @param now   — current timestamp in ms (defaults to Date.now()).
+ */
+export const selectHeartbeatStaleness = (
+  state: DaemonState,
+  now: number = Date.now(),
+): 'fresh' | 'stale' | 'dead' => {
+  if (!state.latestHeartbeat) return 'dead';
+  const age = now - state.latestHeartbeat.at;
+  if (age < 15_000) return 'fresh';
+  if (age < 30_000) return 'stale';
+  return 'dead';
+};

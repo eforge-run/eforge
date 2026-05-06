@@ -1,9 +1,11 @@
 import { PanelLeftClose, PanelLeft } from 'lucide-react';
 import type { AutoBuildState } from '@/lib/api';
 import type { ConnectionStatus } from '@/lib/types';
+import type { DaemonState } from '@/lib/daemon-reducer';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
+import { DaemonStatusPill } from '@/components/daemon/daemon-status-pill';
 
 export interface ProjectContext {
   cwd: string | null;
@@ -18,6 +20,7 @@ interface HeaderProps {
   projectContext?: ProjectContext | null;
   sidebarCollapsed: boolean;
   onToggleSidebar: () => void;
+  daemonState: DaemonState;
 }
 
 function extractOwnerRepo(gitRemote: string): string | null {
@@ -38,7 +41,7 @@ function getProjectLabel(projectContext: ProjectContext | null | undefined): str
   return null;
 }
 
-export function Header({ connectionStatus, autoBuildState, autoBuildToggling, onToggleAutoBuild, projectContext, sidebarCollapsed, onToggleSidebar }: HeaderProps) {
+export function Header({ connectionStatus, autoBuildState, autoBuildToggling, onToggleAutoBuild, projectContext, sidebarCollapsed, onToggleSidebar, daemonState }: HeaderProps) {
   const projectLabel = getProjectLabel(projectContext);
 
   return (
@@ -53,6 +56,7 @@ export function Header({ connectionStatus, autoBuildState, autoBuildToggling, on
         </span>
       )}
       <div className="ml-auto text-xs flex items-center gap-2">
+        <DaemonStatusPill daemonState={daemonState} />
         {autoBuildState !== null && (
           <label className={cn('flex items-center gap-1.5 text-text-dim', autoBuildToggling ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
             <span>Auto-build</span>

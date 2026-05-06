@@ -23,7 +23,7 @@ Subscribe to a single session's live event stream. Use for per-session dashboard
 
 ### `useDaemonEvents()`
 
-Subscribe to the daemon-wide SSE stream. Owns the runs list, queue, session metadata, and auto-build slices for the whole app. Intended to be called **once** in `AppContent` and passed as props to sub-components.
+Subscribe to the daemon-wide SSE stream. Owns the runs list, queue, session metadata, auto-build, activity ring-buffer, and latest heartbeat slices for the whole app. Intended to be called **once** in `AppContent` and passed as props to sub-components.
 
 - Performs one-shot parallel snapshot fetches (`/api/runs`, `/api/queue`, `/api/session-metadata`, `/api/auto-build`) on mount.
 - Then calls `subscribeToDaemonEvents` for live SSE updates.

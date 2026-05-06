@@ -25,7 +25,32 @@ import {
   handleEnqueueComplete,
   handleEnqueueFailed,
 } from './handle-enqueue';
-import { handleDaemonAutoBuildPaused } from './handle-auto-build';
+import {
+  handleDaemonAutoBuildPaused,
+  handleDaemonAutoBuildEnabled,
+  handleDaemonAutoBuildResumed,
+  handleDaemonAutoBuildTriggered,
+} from './handle-auto-build';
+import {
+  handleDaemonLifecycleStarting,
+  handleDaemonLifecycleReady,
+  handleDaemonLifecycleShutdownStart,
+  handleDaemonLifecycleShutdownComplete,
+} from './handle-lifecycle';
+import { handleDaemonHeartbeat } from './handle-heartbeat';
+import {
+  handleDaemonSchedulerDequeued,
+  handleDaemonSchedulerCapacityBlocked,
+  handleDaemonSchedulerDependencyBlocked,
+} from './handle-scheduler';
+import {
+  handleDaemonRecoveryStart,
+  handleDaemonRecoveryRunMarkedFailed,
+  handleDaemonRecoveryLockRemoved,
+  handleDaemonRecoveryComplete,
+} from './handle-recovery';
+import { handleDaemonOrphanReaped } from './handle-orphan';
+import { handleDaemonWarning, handleDaemonError } from './handle-errors';
 
 // ---------------------------------------------------------------------------
 // Handler registry
@@ -48,8 +73,38 @@ export const daemonHandlerRegistry = {
   'enqueue:complete': handleEnqueueComplete,
   'enqueue:failed': handleEnqueueFailed,
 
-  // Daemon internal
+  // Daemon internal — auto-build
   'daemon:auto-build:paused': handleDaemonAutoBuildPaused,
+  'daemon:auto-build:enabled': handleDaemonAutoBuildEnabled,
+  'daemon:auto-build:resumed': handleDaemonAutoBuildResumed,
+  'daemon:auto-build:triggered': handleDaemonAutoBuildTriggered,
+
+  // Daemon lifecycle
+  'daemon:lifecycle:starting': handleDaemonLifecycleStarting,
+  'daemon:lifecycle:ready': handleDaemonLifecycleReady,
+  'daemon:lifecycle:shutdown:start': handleDaemonLifecycleShutdownStart,
+  'daemon:lifecycle:shutdown:complete': handleDaemonLifecycleShutdownComplete,
+
+  // Daemon heartbeat
+  'daemon:heartbeat': handleDaemonHeartbeat,
+
+  // Daemon scheduler
+  'daemon:scheduler:dequeued': handleDaemonSchedulerDequeued,
+  'daemon:scheduler:capacity-blocked': handleDaemonSchedulerCapacityBlocked,
+  'daemon:scheduler:dependency-blocked': handleDaemonSchedulerDependencyBlocked,
+
+  // Daemon recovery (startup reconciliation)
+  'daemon:recovery:start': handleDaemonRecoveryStart,
+  'daemon:recovery:run-marked-failed': handleDaemonRecoveryRunMarkedFailed,
+  'daemon:recovery:lock-removed': handleDaemonRecoveryLockRemoved,
+  'daemon:recovery:complete': handleDaemonRecoveryComplete,
+
+  // Daemon orphan reaping
+  'daemon:orphan:reaped': handleDaemonOrphanReaped,
+
+  // Daemon errors and warnings
+  'daemon:warning': handleDaemonWarning,
+  'daemon:error': handleDaemonError,
 };
 
 // ---------------------------------------------------------------------------
@@ -80,13 +135,14 @@ export const DAEMON_IGNORED_EVENT_TYPES = [
  * Enumerating them here lets the _Exhaustive check verify our registry handles
  * or explicitly ignores every one.
  *
- * Source: subscribeToDaemonEvents() docstring in session-stream.ts:
- *   "Delivers daemon-wide events: daemon:auto-build:paused, queue:*, enqueue:*,
- *    plus session lifecycle (session:start, session:end)."
+ * Source: DAEMON_EVENT_TYPES in packages/monitor/src/db.ts plus daemon:heartbeat
+ * which is LIVE-ONLY (not persisted, not in that list, but still streamed).
  */
 type DaemonEventSubset =
+  // Session lifecycle
   | 'session:start'
   | 'session:end'
+  // Queue lifecycle
   | 'queue:start'
   | 'queue:prd:discovered'
   | 'queue:prd:stale'
@@ -95,11 +151,40 @@ type DaemonEventSubset =
   | 'queue:prd:start'
   | 'queue:prd:complete'
   | 'queue:complete'
+  // Enqueue lifecycle
   | 'enqueue:start'
   | 'enqueue:complete'
   | 'enqueue:failed'
   | 'enqueue:commit-failed'
-  | 'daemon:auto-build:paused';
+  // Daemon internal — auto-build (pre-existing)
+  | 'daemon:auto-build:paused'
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  // Daemon lifecycle
+  | 'daemon:lifecycle:starting'
+  | 'daemon:lifecycle:ready'
+  | 'daemon:lifecycle:shutdown:start'
+  | 'daemon:lifecycle:shutdown:complete'
+  // Daemon heartbeat (LIVE-ONLY: not persisted, but arrives via SSE)
+  | 'daemon:heartbeat'
+  // Daemon scheduler
+  | 'daemon:scheduler:dequeued'
+  | 'daemon:scheduler:capacity-blocked'
+  | 'daemon:scheduler:dependency-blocked'
+  // Daemon auto-build extensions
+  | 'daemon:auto-build:enabled'
+  | 'daemon:auto-build:resumed'
+  | 'daemon:auto-build:triggered'
+  // Daemon recovery
+  | 'daemon:recovery:start'
+  | 'daemon:recovery:run-marked-failed'
+  | 'daemon:recovery:lock-removed'
+  | 'daemon:recovery:complete'
+  // Daemon orphan reaping
+  | 'daemon:orphan:reaped'
+  // Daemon errors and warnings
+  | 'daemon:warning'
+  | 'daemon:error';
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
 // Verify all members of DaemonEventSubset are valid EforgeEvent types.
 type _InvalidDaemonTypes = Exclude<DaemonEventSubset, EforgeEvent['type']>;

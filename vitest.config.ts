@@ -17,6 +17,9 @@ export default defineConfig({
       // --- eforge:region plan-04-daemon-events-server ---
       'packages/client/src/__tests__/**/*.test.ts',
       // --- eforge:endregion plan-04-daemon-events-server ---
+      // --- eforge:region plan-01-types-and-daemon-emission ---
+      'packages/monitor/src/__tests__/**/*.test.ts',
+      // --- eforge:endregion plan-01-types-and-daemon-emission ---
     ],
     server: {
       deps: {

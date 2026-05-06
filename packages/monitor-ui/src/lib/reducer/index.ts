@@ -233,6 +233,28 @@ export const IGNORED_EVENT_TYPES = [
   'queue:prd:commit-failed',
   'queue:prd:complete',
   'queue:complete',
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  // New daemon-scoped event types — monitor UI handling is plan-03's responsibility.
+  // Listed here so the exhaustive check passes without requiring plan-03 to land first.
+  'daemon:lifecycle:starting',
+  'daemon:lifecycle:ready',
+  'daemon:lifecycle:shutdown:start',
+  'daemon:lifecycle:shutdown:complete',
+  'daemon:heartbeat',
+  'daemon:scheduler:dequeued',
+  'daemon:scheduler:capacity-blocked',
+  'daemon:scheduler:dependency-blocked',
+  'daemon:auto-build:enabled',
+  'daemon:auto-build:resumed',
+  'daemon:auto-build:triggered',
+  'daemon:recovery:start',
+  'daemon:recovery:run-marked-failed',
+  'daemon:recovery:lock-removed',
+  'daemon:recovery:complete',
+  'daemon:orphan:reaped',
+  'daemon:warning',
+  'daemon:error',
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 ] as const;
 
 // ---------------------------------------------------------------------------

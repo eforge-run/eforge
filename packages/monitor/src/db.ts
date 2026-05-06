@@ -132,9 +132,41 @@ const SCHEMA = `
  * Hardcoded allowlist of daemon-wide event types surfaced via GET /api/daemon-events.
  * Only events whose type appears here are included in the daemon-wide SSE stream.
  * Adding a new daemon-wide event type requires updating this list.
+ *
+ * Note: `daemon:heartbeat` is intentionally absent — it is LIVE-ONLY, pushed
+ * directly to SSE subscribers without being persisted to the DB, and must never
+ * be replayed from storage.
  */
 const DAEMON_EVENT_TYPES = [
+  // Pre-existing daemon event
   'daemon:auto-build:paused',
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  // Daemon lifecycle
+  'daemon:lifecycle:starting',
+  'daemon:lifecycle:ready',
+  'daemon:lifecycle:shutdown:start',
+  'daemon:lifecycle:shutdown:complete',
+  // daemon:heartbeat intentionally absent: LIVE-ONLY, never persisted or replayed
+  // Daemon scheduler
+  'daemon:scheduler:dequeued',
+  'daemon:scheduler:capacity-blocked',
+  'daemon:scheduler:dependency-blocked',
+  // Daemon auto-build extensions
+  'daemon:auto-build:enabled',
+  'daemon:auto-build:resumed',
+  'daemon:auto-build:triggered',
+  // Daemon recovery
+  'daemon:recovery:start',
+  'daemon:recovery:run-marked-failed',
+  'daemon:recovery:lock-removed',
+  'daemon:recovery:complete',
+  // Daemon orphan reaping
+  'daemon:orphan:reaped',
+  // Daemon errors and warnings
+  'daemon:warning',
+  'daemon:error',
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
+  // Queue events
   'queue:start',
   'queue:prd:start',
   'queue:prd:discovered',

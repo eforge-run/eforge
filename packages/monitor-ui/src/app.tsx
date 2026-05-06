@@ -246,7 +246,7 @@ function AppContent() {
   return (
     <AppLayout
       sidebarCollapsed={sidebarCollapsed}
-      header={<Header connectionStatus={connectionStatus} autoBuildState={daemonState.autoBuild} autoBuildToggling={autoBuildToggling} onToggleAutoBuild={onToggleAutoBuild} projectContext={projectContext} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(prev => !prev)} />}
+      header={<Header connectionStatus={connectionStatus} autoBuildState={daemonState.autoBuild} autoBuildToggling={autoBuildToggling} onToggleAutoBuild={onToggleAutoBuild} projectContext={projectContext} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(prev => !prev)} daemonState={daemonState} />}
       sidebar={
         <Sidebar
           currentSessionId={currentSessionId}
