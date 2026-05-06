@@ -393,16 +393,6 @@ export async function startServer(
   }, POLL_INTERVAL_MS);
   pollTimer.unref();
 
-  function serveLatestRunId(_req: IncomingMessage, res: ServerResponse): void {
-    const sessionId = db.getLatestSessionId();
-    const runId = db.getLatestRunId();
-    res.writeHead(200, {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-    });
-    res.end(JSON.stringify({ sessionId: sessionId ?? null, runId: runId ?? null }));
-  }
-
   type PlanResponse = { id: string; name: string; body: string; dependsOn: string[]; type: 'architecture' | 'module' | 'plan'; build?: BuildStageSpec[]; review?: ReviewProfileConfig };
 
   /**
@@ -2290,8 +2280,6 @@ export async function startServer(
       sendJson(res, metadata);
     } else if (url === API_ROUTES.runs) {
       serveRuns(req, res);
-    } else if (url === API_ROUTES.latestRun) {
-      serveLatestRunId(req, res);
     } else if (url === API_ROUTES.daemonEvents) {
       serveDaemonEventsSSE(req, res);
     } else if (url.startsWith(`${EVENTS_BASE}/`)) {

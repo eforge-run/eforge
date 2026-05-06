@@ -60,12 +60,6 @@ export interface RunInfo {
   pid?: number;
 }
 
-// GET /api/latest-run
-export interface LatestRunResponse {
-  sessionId: string | null;
-  runId: string | null;
-}
-
 // Types used within orchestration and plan endpoints.
 // Single owner: these types cross the daemon HTTP boundary and are re-exported
 // by @eforge-build/engine for engine-internal use. Do not duplicate elsewhere.

@@ -58,7 +58,6 @@ export type {
   QueueItem,
   SessionMetadata,
   RunInfo,
-  LatestRunResponse,
   BuildStageSpec,
   ReviewProfileConfig,
   RunSummary,

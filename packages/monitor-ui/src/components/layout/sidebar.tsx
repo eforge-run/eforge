@@ -1,10 +1,7 @@
 import { useMemo, useState } from 'react';
-import useSWR from 'swr';
 import { CheckCircle2, XCircle, Loader2, CircleStop, X } from 'lucide-react';
-import type { RunInfo, SessionMetadata } from '@/lib/types';
+import type { RunInfo, SessionMetadata, QueueItem } from '@/lib/types';
 import { cancelSession } from '@/lib/api';
-import { API_ROUTES } from '@eforge-build/client/browser';
-import { fetcher } from '@/lib/swr-fetcher';
 import { groupRunsBySessions, partitionEnqueueSessions, type SessionGroup } from '@/lib/session-utils';
 import { formatRelativeTime, formatRunDuration } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -29,6 +26,12 @@ interface SidebarProps {
   currentSessionId: string | null;
   onSelectSession: (sessionId: string) => void;
   daemonActive: boolean;
+  /** Runs list sourced from useDaemonEvents (replaces SWR poll). */
+  runs: RunInfo[];
+  /** Session metadata map sourced from useDaemonEvents (replaces SWR poll). */
+  metadataMap: Record<string, SessionMetadata>;
+  /** Queue items sourced from useDaemonEvents (replaces SWR poll). */
+  queueItems: QueueItem[];
 }
 
 function StatusIcon({ status }: { status: SessionGroup['status'] }) {
@@ -153,13 +156,18 @@ function SessionItem({ group, isActive, onSelect, daemonActive, metadata }: {
 
 const PAGE_SIZE = 25;
 
-export function Sidebar({ currentSessionId, onSelectSession, daemonActive }: SidebarProps) {
-  const { data: runs } = useSWR<RunInfo[]>(API_ROUTES.runs, fetcher, { refreshInterval: 10000 });
-  const { data: metadataMap } = useSWR<Record<string, SessionMetadata>>(API_ROUTES.sessionMetadata, fetcher, { refreshInterval: 10000 });
+export function Sidebar({
+  currentSessionId,
+  onSelectSession,
+  daemonActive,
+  runs,
+  metadataMap,
+  queueItems,
+}: SidebarProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
-  const allGroups = useMemo(() => groupRunsBySessions(runs ?? []), [runs]);
+  const allGroups = useMemo(() => groupRunsBySessions(runs), [runs]);
   const { enqueue: enqueueGroups, sessions: sessionGroups } = useMemo(
     () => partitionEnqueueSessions(allGroups),
     [allGroups],
@@ -203,7 +211,7 @@ export function Sidebar({ currentSessionId, onSelectSession, daemonActive }: Sid
         currentSessionId={currentSessionId}
         onSelectSession={onSelectSession}
       />
-      <QueueSection />
+      <QueueSection items={queueItems} />
       <div className="relative mb-2">
         <Input
           type="text"

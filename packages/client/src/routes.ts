@@ -116,7 +116,6 @@ export const API_ROUTES = {
   queue: '/api/queue',
   sessionMetadata: '/api/session-metadata',
   runs: '/api/runs',
-  latestRun: '/api/latest-run',
   events: '/api/events/:runId',
   runSummary: '/api/run-summary/:id',
   runState: '/api/run-state/:id',

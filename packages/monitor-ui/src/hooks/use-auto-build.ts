@@ -1,40 +1,41 @@
 import { useState, useCallback } from 'react';
-import useSWR, { mutate } from 'swr';
 import { setAutoBuild, type AutoBuildState } from '@/lib/api';
-import { fetcher } from '@/lib/swr-fetcher';
-import { API_ROUTES } from '@eforge-build/client/browser';
 
-// sessionId is kept for caller compatibility but is no longer used in this hook.
-// Auto-build pause notifications are now handled via the useEforgeEvents reducer.
-// The SWR poll below acts as fallback for the no-session and reconnect-gap paths.
-export function useAutoBuild(_sessionId?: string | null): {
-  state: AutoBuildState | null;
+/**
+ * Writer-only hook for the auto-build toggle.
+ *
+ * The reader path — the current enabled/disabled state — is now owned by
+ * `useDaemonEvents().daemonState.autoBuild`. This hook only fires the HTTP
+ * mutation and tracks in-flight state to prevent double-clicks.
+ *
+ * After a successful toggle the caller's `onUpdate` is invoked with the new
+ * state returned by the server, so the daemon-state slice can be updated
+ * immediately without waiting for the next SSE event.
+ */
+export function useAutoBuild(
+  autoBuildState: AutoBuildState | null,
+  onUpdate: (state: AutoBuildState | null) => void,
+): {
   toggling: boolean;
   toggle: () => void;
 } {
   const [toggling, setToggling] = useState(false);
 
-  const { data } = useSWR<AutoBuildState | null>(
-    API_ROUTES.autoBuildGet,
-    fetcher,
-    { refreshInterval: 10000 },
-  );
-  const state = data ?? null;
-
   const toggle = useCallback(() => {
-    if (!state || toggling) return;
-    const optimisticState: AutoBuildState = { ...state, enabled: !state.enabled };
-    void mutate(API_ROUTES.autoBuildGet, optimisticState, { revalidate: false });
+    if (!autoBuildState || toggling) return;
     setToggling(true);
-    setAutoBuild(!state.enabled)
-      .then(() => {
-        // SWR polling / SSE event will reconcile the actual server value
+    setAutoBuild(!autoBuildState.enabled)
+      .then((newState) => {
+        if (newState) {
+          onUpdate(newState);
+        }
       })
       .catch(() => {
-        void mutate(API_ROUTES.autoBuildGet);
+        // Server error — the daemon state will reflect reality on the next
+        // snapshot or SSE event; no local rollback needed.
       })
       .finally(() => setToggling(false));
-  }, [state, toggling]);
+  }, [autoBuildState, toggling, onUpdate]);
 
-  return { state, toggling, toggle };
+  return { toggling, toggle };
 }

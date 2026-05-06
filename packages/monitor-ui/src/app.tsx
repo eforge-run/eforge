@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { usePanelRef, useDefaultLayout } from 'react-resizable-panels';
 import useSWR from 'swr';
 
@@ -19,33 +19,34 @@ import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/componen
 import { useEforgeEvents } from '@/hooks/use-eforge-events';
 import { useAutoScroll } from '@/hooks/use-auto-scroll';
 import { useAutoBuild } from '@/hooks/use-auto-build';
+import { useDaemonEvents } from '@/hooks/use-daemon-events';
 import { getSummaryStats } from '@/lib/reducer';
+import { selectLatestSessionId } from '@/lib/daemon-reducer';
 import { fetcher } from '@/lib/swr-fetcher';
 import { API_ROUTES } from '@eforge-build/client/browser';
 import type { PipelineStage, EforgeEvent } from '@/lib/types';
 import type { ProjectContext } from '@/components/layout/header';
 
 function AppContent() {
-  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [userSelectedSessionId, setUserSelectedSessionId] = useState<string | null>(null);
   const [lowerTab, setLowerTab] = useState<LowerTab>('log');
   const [showVerbose, setShowVerbose] = useState(false);
   const [consoleCollapsed, setConsoleCollapsed] = useState(false);
   const consolePanelRef = usePanelRef();
-  const knownLatestRef = useRef<string | null>(null);
-  const userSelectedRef = useRef<string | null>(null);
-  const isCurrentRunningRef = useRef(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  // Daemon-wide state: runs, queue, metadata, auto-build (drives auto-switch + sidebar)
+  const { daemonState, setDaemonAutoBuild } = useDaemonEvents();
+  const latestSessionId = selectLatestSessionId(daemonState);
+  const currentSessionId = userSelectedSessionId ?? latestSessionId;
+
   const { runState, connectionStatus, shutdownCountdown } = useEforgeEvents(currentSessionId);
   const { containerRef, autoScroll, enableAutoScroll } = useAutoScroll([runState.events.length]);
-  const { state: autoBuildState, toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild(currentSessionId);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const { setRuntimeData } = usePlanPreview();
-
-  // Fetch latest run (10 s polling) — drives the auto-switch logic below
-  const { data: latestRunData } = useSWR<{ sessionId?: string; runId?: string }>(
-    API_ROUTES.latestRun,
-    fetcher,
-    { refreshInterval: 10000 },
+  const { toggling: autoBuildToggling, toggle: onToggleAutoBuild } = useAutoBuild(
+    daemonState.autoBuild,
+    setDaemonAutoBuild,
   );
+  const { setRuntimeData } = usePlanPreview();
 
   // Fetch project context once (no refresh interval — static per daemon session)
   const { data: projectContextData } = useSWR<ProjectContext>(
@@ -53,31 +54,6 @@ function AppContent() {
     fetcher,
   );
   const projectContext = projectContextData ?? null;
-
-  // Auto-switch to the latest session when latestRunData changes
-  useEffect(() => {
-    if (!latestRunData) return;
-    const latestId = (latestRunData as { sessionId?: string; runId?: string }).sessionId
-      ?? (latestRunData as { sessionId?: string; runId?: string }).runId
-      ?? null;
-    if (!latestId) return;
-
-    if (!currentSessionId) {
-      // Initial selection on mount
-      knownLatestRef.current = latestId;
-      setCurrentSessionId(latestId);
-      return;
-    }
-
-    if (latestId !== knownLatestRef.current) {
-      knownLatestRef.current = latestId;
-      // Auto-switch only when the user hasn't explicitly selected a session
-      // AND the current session isn't actively running
-      if (!userSelectedRef.current && !isCurrentRunningRef.current) {
-        setCurrentSessionId(latestId);
-      }
-    }
-  }, [latestRunData, currentSessionId]);
 
   // Sync runtime data into PlanPreviewContext
   useEffect(() => {
@@ -117,22 +93,16 @@ function AppContent() {
 
   // Select session handler — marks as user-selected to prevent auto-switch
   const handleSelectSession = useCallback((sessionId: string) => {
-    userSelectedRef.current = sessionId;
-    setCurrentSessionId(sessionId);
+    setUserSelectedSessionId(sessionId);
   }, []);
 
-  // Track whether the current session is actively running (for auto-switch suppression).
-  // Uses a ref so the polling interval closure reads fresh state.
+  // Clear user selection when the watched session completes so future new
+  // sessions can auto-switch again.
   useEffect(() => {
-    isCurrentRunningRef.current = runState.events.length > 0 && !runState.isComplete;
-  }, [runState.events.length, runState.isComplete]);
-
-  // Clear user selection when the watched session completes
-  useEffect(() => {
-    if (runState.isComplete && userSelectedRef.current === currentSessionId) {
-      userSelectedRef.current = null;
+    if (runState.isComplete && userSelectedSessionId === currentSessionId) {
+      setUserSelectedSessionId(null);
     }
-  }, [runState.isComplete, currentSessionId]);
+  }, [runState.isComplete, currentSessionId, userSelectedSessionId]);
 
   // Track merged plan IDs from events
   const [mergedPlanIds, setMergedPlanIds] = useState<Set<string>>(new Set());
@@ -264,7 +234,7 @@ function AppContent() {
 
   // Detect collapse/expand via onResize
   const handleConsolePanelResize = useCallback(
-    (panelSize: { asPercentage: number }) => {
+    (_panelSize: { asPercentage: number }) => {
       const panel = consolePanelRef.current;
       if (panel) {
         setConsoleCollapsed(panel.isCollapsed());
@@ -276,12 +246,15 @@ function AppContent() {
   return (
     <AppLayout
       sidebarCollapsed={sidebarCollapsed}
-      header={<Header connectionStatus={connectionStatus} autoBuildState={autoBuildState} autoBuildToggling={autoBuildToggling} onToggleAutoBuild={onToggleAutoBuild} projectContext={projectContext} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(prev => !prev)} />}
+      header={<Header connectionStatus={connectionStatus} autoBuildState={daemonState.autoBuild} autoBuildToggling={autoBuildToggling} onToggleAutoBuild={onToggleAutoBuild} projectContext={projectContext} sidebarCollapsed={sidebarCollapsed} onToggleSidebar={() => setSidebarCollapsed(prev => !prev)} />}
       sidebar={
         <Sidebar
           currentSessionId={currentSessionId}
           onSelectSession={handleSelectSession}
-          daemonActive={autoBuildState !== null}
+          daemonActive={daemonState.autoBuild !== null}
+          runs={daemonState.runs}
+          metadataMap={daemonState.sessionMetadata}
+          queueItems={daemonState.queue}
         />
       }
     >

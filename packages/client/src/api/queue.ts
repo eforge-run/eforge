@@ -9,7 +9,6 @@ import type {
   CancelResponse,
   QueueItem,
   RunInfo,
-  LatestRunResponse,
   RunSummary,
   RunState,
   PlansResponse,
@@ -36,14 +35,6 @@ export function apiGetQueue(opts: { cwd: string }) {
 
 export function apiGetRuns(opts: { cwd: string }) {
   return daemonRequest<RunInfo[]>(opts.cwd, 'GET', API_ROUTES.runs);
-}
-
-export function apiGetLatestRun(opts: { cwd: string }) {
-  return daemonRequest<LatestRunResponse>(opts.cwd, 'GET', API_ROUTES.latestRun);
-}
-
-export function apiGetLatestRunIfRunning(opts: { cwd: string }) {
-  return daemonRequestIfRunning<LatestRunResponse>(opts.cwd, 'GET', API_ROUTES.latestRun);
 }
 
 export function apiGetRunSummary(opts: { cwd: string; id: string }) {
