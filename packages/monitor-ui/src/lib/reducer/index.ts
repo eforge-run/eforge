@@ -156,6 +156,7 @@ export const handlerRegistry = {
  */
 export const IGNORED_EVENT_TYPES = [
   'phase:end',
+  'planning:module:build-config:invalid',
   'planning:start',
   'planning:skip',
   'planning:submission',

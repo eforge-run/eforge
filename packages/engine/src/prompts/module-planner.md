@@ -156,7 +156,9 @@ After writing the module plan, emit a `<build-config>` XML block containing JSON
 - **`build`** — array of stage specs. Each element is a stage name (string) or an array of stage names (parallel group). `review-cycle` is a composite stage that expands to `[review, review-fix, evaluate]`. `test-cycle` expands to `[test, evaluate]` — use it when the module has testable behavior.
 - **`review`** — object controlling the review cycle:
   - `strategy` — `auto`, `single`, or `parallel`
-  - `perspectives` — array of review perspectives: `code`, `security`, `api`, `docs`
+  - `perspectives` — array of review perspectives. Valid: `{{validPerspectives}}`.
+
+    **Do NOT use** `correctness`, `architecture`, `completeness`, `cohesion`, `feasibility`, `dependency`, `scope`, or `performance` as perspectives. Those terms are *issue categories* used by the planning-review agents (`architecture-reviewer`, `plan-reviewer`, `cohesion-reviewer`) — not build-time review perspectives. The build-time `reviewer` agent only knows the names listed above.
   - `maxRounds` — max review-evaluate cycles (integer, typically 1-3)
   - `evaluatorStrictness` — `strict`, `standard`, or `lenient`
 

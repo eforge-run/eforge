@@ -391,6 +391,12 @@ const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
     source: z.string(),
     details: z.string().optional(),
   }),
+  z.object({
+    type: z.literal('planning:module:build-config:invalid'),
+    moduleId: z.string(),
+    reason: z.enum(['invalid-json', 'invalid-schema']),
+    errors: z.array(z.string()),
+  }),
 
   // Planning
   z.object({ type: z.literal('planning:start'), source: z.string(), label: z.string().optional() }),

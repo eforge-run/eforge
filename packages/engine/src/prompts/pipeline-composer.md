@@ -58,6 +58,7 @@ Analyze the PRD above and compose a pipeline by:
 - When the PRD mentions testing requirements, include test-write and test stages.
 - When the PRD touches documentation or public APIs, include `doc-author` (parallel with `implement`) and/or `doc-sync` (after `implement`). Most user-facing changes need both: `[[implement, doc-author], doc-sync, review-cycle]`.
 - Match review strictness to risk: `strict` for security/data, `standard` for features, `lenient` for cosmetic changes.
+- **Review perspectives must come from this set:** `{{validPerspectives}}`. Do NOT use `correctness`, `architecture`, `completeness`, `cohesion`, `feasibility`, `dependency`, `scope`, or `performance` — those are issue categories used by planning-review agents (`architecture-reviewer`, `plan-reviewer`, `cohesion-reviewer`), not build-time perspectives.
 
 ## Schema
 

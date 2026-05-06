@@ -2,6 +2,7 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type ClarificationQuestion } from '../events.js';
 import { loadPrompt } from '../prompts.js';
+import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
 
 export interface ModulePlannerOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -43,6 +44,7 @@ export async function* runModulePlanner(
     dependencyPlans: options.dependencyPlanContent || 'No dependencies - this module is planned independently.',
     cwd: options.cwd,
     outputDir: options.outputDir ?? 'eforge/plans',
+    validPerspectives: REVIEW_PERSPECTIVES.join(', '),
   }, options.promptAppend);
 
   for await (const event of options.harness.run(

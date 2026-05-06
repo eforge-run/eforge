@@ -11,6 +11,7 @@ import {
   planSetSubmissionSchema, architectureSubmissionSchema,
   type PlanSetSubmission, type ArchitectureSubmission,
 } from '../schemas.js';
+import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
@@ -214,6 +215,7 @@ ${existingPlans}`;
       module_schema: getModuleSchemaYaml(),
       plan_frontmatter_schema: getPlanFrontmatterSchemaYaml(),
       submitTool,
+      validPerspectives: REVIEW_PERSPECTIVES.join(', '),
     }, options.promptAppend);
   }
 
