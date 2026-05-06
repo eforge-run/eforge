@@ -1,0 +1,83 @@
+name: monitor-ui-stop-sse-replay-from-clobbering-snapshot-state
+description: "Stop SSE replay from clobbering snapshot state in the monitor UI
+  by committing to a snapshot+delta model: the daemon-events SSE stream skips
+  historical replay on initial connect (emitting a resync marker instead) and
+  the UI re-seeds its snapshot on every SSE reconnect."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-snapshot-and-delta-sse
+    name: Daemon SSE skip-history + UI re-seed on reconnect
+    depends_on: []
+    branch: monitor-ui-stop-sse-replay-from-clobbering-snapshot-state/plan-01-snapshot-and-delta-sse
+    build:
+      - implement
+      - doc-sync
+      - - test-cycle
+        - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Cross-package wire-protocol change (daemon SSE handler, shared client
+          subscription core, UI hook) where small edits must stay coordinated.
+          The change introduces a new SSE event type (`daemon:resync-marker`)
+          and a new optional callback (`onReconnect`) — both must be wired
+          end-to-end without regressing the existing `Last-Event-ID` reconnect
+          path.
+      reviewer:
+        effort: high
+        rationale: Reviewing a wire-level contract change and a reducer-replay
+          invariant. Requires checking all three packages and the existing tests
+          that cover `getDaemonEventsAfter`, the SSE handler, and the
+          reconnect/backoff state machine.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+      - architecture
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: This is a multi-package bug fix touching daemon (monitor), shared
+    client, and UI (monitor-ui) with a clearly bounded structural change (~50-80
+    lines). The PRD itself recommends excursion. A single planner session can
+    enumerate all file changes and resolve cross-package dependencies without
+    delegated module planning, so excursion (not expedition) is correct. The
+    dependency chain is sequential (daemon SSE contract -> client subscriber
+    options -> UI hook re-seed), which is a negative expedition signal. Compile
+    uses planner + plan-review-cycle to gate plan quality given the SSE protocol
+    contract change is visible to all consumers. Build runs implement parallel
+    with doc-author (the PRD explicitly requires updating hooks/README.md and
+    JSDoc, which doc-author can draft alongside the implementation since it has
+    no predecessors), then doc-sync to catch any stale references in adjacent
+    docs touched by the SSE protocol change, then review-cycle for iterative
+    quality assurance. Review uses standard strictness with correctness
+    (verifying both bugs are actually fixed end-to-end and the
+    Last-Event-ID-present path is preserved) and architecture (validating the
+    snapshot+delta commitment and the resync-marker contract) perspectives, with
+    2 rounds sufficient for a focused bug fix of this size. Test stages are
+    omitted because the acceptance criteria are primarily behavioral end-to-end
+    verifications (DevTools EventStream inspection, daemon restart cycles) that
+    don't map cleanly to unit tests, and the project's testing conventions
+    discourage testing harness/infra orchestration.
