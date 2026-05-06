@@ -6,7 +6,6 @@ function makePlan(overrides: Record<string, unknown> = {}) {
     frontmatter: {
       id: 'plan-01-auth',
       name: 'Auth Plan',
-      branch: 'auth/main',
       ...overrides,
     },
     body: '# Auth Plan\n\nImplement auth.',
@@ -15,19 +14,16 @@ function makePlan(overrides: Record<string, unknown> = {}) {
 
 function makeValidPayload(overrides: Record<string, unknown> = {}) {
   return {
-    name: 'my-plan-set',
     description: 'A plan set',
-    mode: 'excursion' as const,
-    baseBranch: 'main',
     plans: [
       makePlan(),
-      makePlan({ id: 'plan-02-api', name: 'API Plan', branch: 'api/main' }),
+      makePlan({ id: 'plan-02-api', name: 'API Plan' }),
     ],
     orchestration: {
       validate: [],
       plans: [
-        { id: 'plan-01-auth', name: 'Auth Plan', dependsOn: [], branch: 'auth/main' },
-        { id: 'plan-02-api', name: 'API Plan', dependsOn: ['plan-01-auth'], branch: 'api/main' },
+        { id: 'plan-01-auth', dependsOn: [] },
+        { id: 'plan-02-api', dependsOn: ['plan-01-auth'] },
       ],
     },
     ...overrides,
@@ -49,7 +45,7 @@ describe('planSetSubmissionSchema', () => {
       orchestration: {
         validate: [],
         plans: [
-          { id: 'plan-01-dup', name: 'Dup Plan', dependsOn: [], branch: 'dup/main' },
+          { id: 'plan-01-dup', dependsOn: [] },
         ],
       },
     });
@@ -69,7 +65,7 @@ describe('planSetSubmissionSchema', () => {
       orchestration: {
         validate: [],
         plans: [
-          { id: 'plan-01-a', name: 'A', dependsOn: ['plan-99-nonexistent'], branch: 'a/main' },
+          { id: 'plan-01-a', dependsOn: ['plan-99-nonexistent'] },
         ],
       },
     });
@@ -84,14 +80,14 @@ describe('planSetSubmissionSchema', () => {
   it('rejects dependency cycles (A depends on B, B depends on A)', () => {
     const payload = makeValidPayload({
       plans: [
-        makePlan({ id: 'plan-a', branch: 'a/main' }),
-        makePlan({ id: 'plan-b', name: 'B', branch: 'b/main' }),
+        makePlan({ id: 'plan-a' }),
+        makePlan({ id: 'plan-b', name: 'B' }),
       ],
       orchestration: {
         validate: [],
         plans: [
-          { id: 'plan-a', name: 'A', dependsOn: ['plan-b'], branch: 'a/main' },
-          { id: 'plan-b', name: 'B', dependsOn: ['plan-a'], branch: 'b/main' },
+          { id: 'plan-a', dependsOn: ['plan-b'] },
+          { id: 'plan-b', dependsOn: ['plan-a'] },
         ],
       },
     });
@@ -109,7 +105,7 @@ describe('planSetSubmissionSchema', () => {
       orchestration: {
         validate: [],
         plans: [
-          { id: 'plan-99-wrong', name: 'Wrong', dependsOn: [], branch: 'wrong/main' },
+          { id: 'plan-99-wrong', dependsOn: [] },
         ],
       },
     });
@@ -132,7 +128,7 @@ describe('planSetSubmissionSchema', () => {
       orchestration: {
         validate: [],
         plans: [
-          { id: 'plan-01-mig', name: 'Mig Plan', dependsOn: [], branch: 'mig/main' },
+          { id: 'plan-01-mig', dependsOn: [] },
         ],
       },
     });
@@ -151,7 +147,7 @@ describe('planSetSubmissionSchema', () => {
       orchestration: {
         validate: [],
         plans: [
-          { id: 'plan-01-mig', name: 'Mig Plan', dependsOn: [], branch: 'mig/main' },
+          { id: 'plan-01-mig', dependsOn: [] },
         ],
       },
     });
@@ -163,23 +159,19 @@ describe('planSetSubmissionSchema', () => {
     // A planner that emits dependsOn in plan frontmatter has it stripped silently by Zod.
     // deps belong in orchestration.plans[].dependsOn only.
     const payload = {
-      name: 'my-plan-set',
       description: 'A plan set',
-      mode: 'excursion' as const,
-      baseBranch: 'main',
       plans: [{
         frontmatter: {
           id: 'plan-01-auth',
           name: 'Auth Plan',
           dependsOn: ['plan-02-api'],  // unknown field — Zod strips it
-          branch: 'auth/main',
         },
         body: '# Auth Plan',
       }],
       orchestration: {
         validate: [],
         plans: [
-          { id: 'plan-01-auth', name: 'Auth Plan', dependsOn: [], branch: 'auth/main' },
+          { id: 'plan-01-auth', dependsOn: [] },
         ],
       },
     };

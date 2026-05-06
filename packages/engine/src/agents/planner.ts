@@ -23,6 +23,8 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   continuationContext?: { attempt: number; maxContinuations: number; existingPlans: string; reason: 'max_turns' | 'dropped_submission' };
   /** Plan output directory (defaults to 'eforge/plans'). */
   outputDir?: string;
+  /** The actual base branch from the repo (engine-supplied). Used to write orchestration.yaml. */
+  baseBranch?: string;
 }
 
 /**
@@ -309,7 +311,14 @@ ${existingPlans}`;
       hasMigrations: planSetPayload.plans.some(p => p.frontmatter.migrations && p.frontmatter.migrations.length > 0),
     };
 
-    await writePlanSet({ cwd, outputDir, planSetName, payload: planSetPayload });
+    await writePlanSet({
+      cwd,
+      outputDir,
+      planSetName,
+      payload: planSetPayload,
+      baseBranch: options.baseBranch ?? '',
+      mode: (options.scope as 'errand' | 'excursion' | 'expedition') ?? 'excursion',
+    });
 
     // Read back written plan files to build PlanFile array
     const planDir = resolve(cwd, outputDir, planSetName);

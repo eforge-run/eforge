@@ -223,16 +223,11 @@ describe('runPlanner wiring', () => {
         tool: 'submit_plan_set',
         toolUseId: 'tu-1',
         input: {
-          name: 'my-plan',
           description: 'A test plan',
-          mode: 'excursion',
-          baseBranch: 'main',
           plans: [{
             frontmatter: {
               id: 'feature',
               name: 'Add feature',
-              dependsOn: [],
-              branch: 'feature/add-feature',
             },
             body: '# Implementation\n\nDo the thing.',
           }],
@@ -240,9 +235,7 @@ describe('runPlanner wiring', () => {
             validate: [],
             plans: [{
               id: 'feature',
-              name: 'Add feature',
               dependsOn: [],
-              branch: 'feature/add-feature',
             }],
           },
         },

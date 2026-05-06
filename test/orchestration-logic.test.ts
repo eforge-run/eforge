@@ -634,7 +634,7 @@ describe('initializeState', () => {
     expect(state.plans['plan-b'].status).toBe('pending');
   });
 
-  it('creates fresh state when setName differs', () => {
+  it('throws when persisted setName does not match config', () => {
     const stateDir = makeTempDir();
     const config = makeConfig({ name: 'new-set' });
 
@@ -652,12 +652,9 @@ describe('initializeState', () => {
     };
     saveState(stateDir, oldState);
 
-    const { state } = initializeState(stateDir, config, '/tmp/repo');
-
-    expect(state.status).toBe('running');
-    expect(state.setName).toBe('new-set');
-    expect(state.plans['plan-a'].status).toBe('pending');
-    expect(state.plans['plan-b'].status).toBe('pending');
+    expect(() => initializeState(stateDir, config, '/tmp/repo')).toThrow(/old-set/);
+    expect(() => initializeState(stateDir, config, '/tmp/repo')).toThrow(/new-set/);
+    expect(() => initializeState(stateDir, config, '/tmp/repo')).toThrow(/\.eforge\/state\.json/);
   });
 });
 

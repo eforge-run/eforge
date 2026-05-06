@@ -103,7 +103,10 @@ export function initializeState(
 ): { state: EforgeState; resumed: boolean } {
   const existing = loadState(stateDir);
 
-  if (existing && existing.setName === config.name) {
+  if (existing) {
+    if (existing.setName !== config.name) {
+      throw new Error(`Persisted setName "${existing.setName}" does not match config setName "${config.name}" — delete or update .eforge/state.json to start a new plan set.`);
+    }
     if (isResumable(existing)) {
       resumeState(existing);
       saveState(stateDir, existing);

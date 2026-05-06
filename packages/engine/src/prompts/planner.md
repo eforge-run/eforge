@@ -272,7 +272,6 @@ Each plan file must be a markdown file with YAML frontmatter:
 id: plan-{NN}-{identifier}
 name: {Human Readable Name}
 depends_on: [{plan-ids}]
-branch: {planSetName}/{identifier}
 migrations:
   - timestamp: "{YYYYMMDDHHMMSS}"
     description: {description}
@@ -327,7 +326,6 @@ migrations:
 Important:
 - `id` must be unique across all plans in the set
 - `depends_on` lists plan IDs that must complete before this plan can start
-- `branch` is the git branch name for this plan's work
 - `migrations` is optional — only include if database changes are needed
 - Timestamps for migrations must use `YYYYMMDDHHMMSS` format
 - Verification criteria must be specific and testable
@@ -390,13 +388,12 @@ Guidelines:
 
 Create `{{outputDir}}/{{planSetName}}/orchestration.yaml` (errand/excursion only):
 
+The engine fills in `name`, `base_branch`, `mode`, and per-plan `branch`. Do not emit them.
+
 ```yaml
-name: {{planSetName}}
 description: {description derived from source}
 created: {YYYY-MM-DD}
 compiled: {YYYY-MM-DD}
-mode: {selected profile name}
-base_branch: {current git branch}
 
 validate:
   - {validation command 1}
@@ -404,9 +401,7 @@ validate:
 
 plans:
   - id: plan-01-{identifier}
-    name: {Plan 1 Name}
     depends_on: []
-    branch: {{planSetName}}/{identifier}
     build:                              # Per-plan build stages
       - [implement, doc-author]          # Parallel group
       - doc-sync                        # Sequential after implement
@@ -417,9 +412,7 @@ plans:
       maxRounds: 1
       evaluatorStrictness: standard
   - id: plan-02-{identifier}
-    name: {Plan 2 Name}
     depends_on: [plan-01-{identifier}]
-    branch: {{planSetName}}/{identifier}
     build:
       - implement
       - review-cycle
@@ -431,8 +424,6 @@ plans:
 ```
 
 Important:
-- Determine the current git branch for `base_branch` (run `git rev-parse --abbrev-ref HEAD`)
-- `mode` must match the selected profile name
 - Plan entries must match the plan files exactly
 - `depends_on` in orchestration.yaml must use the same IDs as in plan file frontmatter
 
