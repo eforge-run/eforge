@@ -868,6 +868,36 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.yellow(`  ⚠ Auto-build paused: ${event.reason}`));
       break;
 
+    // --- eforge:region plan-01-types-and-daemon-emission ---
+    // New daemon-scoped event types — minimal CLI display for each.
+    case 'daemon:lifecycle:starting':
+    case 'daemon:lifecycle:ready':
+    case 'daemon:lifecycle:shutdown:start':
+    case 'daemon:lifecycle:shutdown:complete':
+    case 'daemon:heartbeat':
+    case 'daemon:scheduler:dequeued':
+    case 'daemon:scheduler:capacity-blocked':
+    case 'daemon:scheduler:dependency-blocked':
+    case 'daemon:auto-build:enabled':
+    case 'daemon:auto-build:resumed':
+    case 'daemon:auto-build:triggered':
+    case 'daemon:recovery:start':
+    case 'daemon:recovery:run-marked-failed':
+    case 'daemon:recovery:lock-removed':
+    case 'daemon:recovery:complete':
+    case 'daemon:orphan:reaped':
+      // Daemon-internal events — no CLI output needed
+      break;
+
+    case 'daemon:warning':
+      console.log(chalk.yellow(`  ⚠ Daemon warning [${event.source}]: ${event.message}`));
+      break;
+
+    case 'daemon:error':
+      console.log(chalk.red(`  ✗ Daemon error [${event.source}]: ${event.message}`));
+      break;
+    // --- eforge:endregion plan-01-types-and-daemon-emission ---
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

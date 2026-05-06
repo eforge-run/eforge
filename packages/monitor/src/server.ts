@@ -7,6 +7,7 @@ import {
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, readdir, stat } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
 import { resolve, dirname, extname, join, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
@@ -17,6 +18,7 @@ import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/con
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 // --- eforge:region plan-01-fix-recovery-ux ---
 import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
 import {
@@ -146,6 +148,8 @@ export interface WorkerTracker {
 
 export interface DaemonState {
   autoBuild: boolean;
+  /** True when auto-build was paused due to a build failure; cleared on re-enable. */
+  autoBuildPaused: boolean;
   watcher: {
     running: boolean;
     pid: number | null;
@@ -164,6 +168,12 @@ export interface DaemonState {
    * delegates here, so the scheduler can react without relying on fs.watch.
    */
   injectSchedulerEvent?: (event: SchedulerInputEvent) => void;
+  /**
+   * Emit a daemon-scoped event to persistent storage.
+   * Set by server-main.ts so the HTTP layer can trigger daemon events without
+   * coupling server.ts to the DB write logic or the daemon session id.
+   */
+  onDaemonEvent?: (event: EforgeEvent) => void;
 }
 
 interface SSESubscriber {
@@ -401,6 +411,65 @@ export async function startServer(
     }
   }, POLL_INTERVAL_MS);
   pollTimer.unref();
+
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  // Heartbeat timer: pushes live-only daemon:heartbeat events directly to active SSE
+  // subscribers approximately every 10 seconds, bypassing the DB poll loop.
+  // Heartbeats are stateless and historically uninteresting — omitting the SSE
+  // `id:` field ensures they are skipped when a reconnecting client replays via
+  // `last-event-id`. One timer per server instance; iterating the shared
+  // `daemonSubscribers` set on each tick avoids leaked timers on subscriber churn.
+  const instanceStartedAt = Date.now();
+  const HEARTBEAT_INTERVAL_MS = 10_000;
+  const heartbeatTimer = setInterval(() => {
+    // No-op fast path: skip DB queries and iteration when no subscribers are connected.
+    if (daemonSubscribers.size === 0) return;
+
+    const uptime = Date.now() - instanceStartedAt;
+
+    let runningBuilds = 0;
+    try {
+      runningBuilds = db.getRunningRuns().length;
+    } catch {
+      // DB might be closed during shutdown — skip this tick
+    }
+
+    // Count pending queue items from the filesystem queue directory.
+    let queueDepth = 0;
+    if (options?.cwd) {
+      try {
+        const queuePath = resolve(options.cwd, options?.queueDir ?? 'eforge/queue');
+        const entries = readdirSync(queuePath);
+        queueDepth = entries.filter((f) => f.endsWith('.md')).length;
+      } catch {
+        // Queue dir may not exist yet
+      }
+    }
+
+    const heartbeatData = JSON.stringify({
+      type: 'daemon:heartbeat',
+      timestamp: new Date().toISOString(),
+      uptime,
+      queueDepth,
+      runningBuilds,
+      autoBuild: {
+        enabled: options?.daemonState?.autoBuild ?? false,
+        paused: options?.daemonState?.autoBuildPaused ?? false,
+      },
+      subscribers: daemonSubscribers.size,
+    });
+
+    for (const subscriber of daemonSubscribers) {
+      try {
+        // Omit the SSE `id:` field so last-event-id replay ignores heartbeats.
+        subscriber.res.write(`data: ${heartbeatData}\n\n`);
+      } catch {
+        // Subscriber may have disconnected
+      }
+    }
+  }, HEARTBEAT_INTERVAL_MS);
+  heartbeatTimer.unref();
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
   type PlanResponse = { id: string; name: string; body: string; dependsOn: string[]; type: 'architecture' | 'module' | 'plan'; build?: BuildStageSpec[]; review?: ReviewProfileConfig };
 
@@ -1230,6 +1299,22 @@ export async function startServer(
           if (!options.daemonState.watcher.running && options.daemonState.onSpawnWatcher) {
             options.daemonState.onSpawnWatcher();
           }
+          // --- eforge:region plan-01-types-and-daemon-emission ---
+          // Emit enabled or resumed based on whether this follows a failure-triggered pause.
+          const wasPaused = options.daemonState.autoBuildPaused;
+          options.daemonState.autoBuildPaused = false;
+          if (wasPaused) {
+            options.daemonState.onDaemonEvent?.({
+              type: 'daemon:auto-build:resumed',
+              timestamp: new Date().toISOString(),
+            } as EforgeEvent);
+          } else {
+            options.daemonState.onDaemonEvent?.({
+              type: 'daemon:auto-build:enabled',
+              timestamp: new Date().toISOString(),
+            } as EforgeEvent);
+          }
+          // --- eforge:endregion plan-01-types-and-daemon-emission ---
         } else {
           // Toggle OFF — SIGTERM the watcher. Its abort handler stops new PRD
           // discovery and startReadyPrds short-circuits on the abort signal,
@@ -2621,6 +2706,9 @@ export async function startServer(
 
     stop(): Promise<void> {
       clearInterval(pollTimer);
+      // --- eforge:region plan-01-types-and-daemon-emission ---
+      clearInterval(heartbeatTimer);
+      // --- eforge:endregion plan-01-types-and-daemon-emission ---
       return new Promise((resolveStop) => {
         // Close all per-session SSE connections
         for (const subscriber of subscribers) {

@@ -27,6 +27,9 @@ import { randomBytes } from 'node:crypto';
 import { openSync, closeSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+/** Replaced at build time by tsup `define` with the daemon bundle's package version. */
+declare const EFORGE_VERSION: string;
+
 const WATCHER_DRAIN_TIMEOUT_MS = 5000;
 const ORPHAN_CHECK_INTERVAL_MS = 5000;
 const STATE_CHECK_INTERVAL_MS = 2000;
@@ -104,6 +107,54 @@ export function evaluateStateCheck(ctx: StateCheckContext): {
   return { state, lastActivityTimestamp, hasSeenActivity };
 }
 
+// --- eforge:region plan-01-types-and-daemon-emission ---
+
+/**
+ * Structured report returned by `reconcileOrphanedState`.
+ * The caller in `main()` uses this to emit the daemon:recovery:* event sequence.
+ * `reconcileOrphanedState` itself emits no events — all event emission lives in the caller.
+ */
+export interface ReconciliationReport {
+  /** Runs that were marked failed because their PID was no longer alive. */
+  runsFailed: Array<{ runId: string; sessionId: string; planSet: string; reason: string }>;
+  /** Lock files that were removed because their PID was no longer alive. */
+  locksRemoved: Array<{ path: string; pid: number }>;
+  /** Wall-clock duration of the reconciliation in milliseconds. */
+  durationMs: number;
+}
+
+/**
+ * Write a daemon-scoped event to the SQLite event log.
+ * Uses `daemonSessionId` as the runId so all daemon events aggregate cleanly
+ * under a single synthetic session. Foreign keys are OFF in the DB so an
+ * unmatched run_id is safe (see PRAGMA foreign_keys = OFF in db.ts).
+ *
+ * Best-effort: any DB error is silently swallowed to avoid crashing the daemon
+ * on a non-critical event write failure.
+ */
+export function writeDaemonEvent(
+  db: MonitorDB,
+  event: { type: string } & Record<string, unknown>,
+  daemonSessionId: string,
+): void {
+  try {
+    const now = new Date().toISOString();
+    // Default sessionId to daemonSessionId, but preserve any explicit sessionId
+    // on the event (e.g. `daemon:orphan:reaped` carries the orphan run's
+    // sessionId so consumers can correlate back to the original run).
+    db.insertEvent({
+      runId: daemonSessionId,
+      type: event.type,
+      data: JSON.stringify({ sessionId: daemonSessionId, ...event, timestamp: now }),
+      timestamp: now,
+    });
+  } catch {
+    // Best-effort: DB may be closed or temporarily unavailable during shutdown
+  }
+}
+
+// --- eforge:endregion plan-01-types-and-daemon-emission ---
+
 /**
  * Reconcile orphaned queue state on daemon startup.
  *
@@ -120,15 +171,26 @@ export function evaluateStateCheck(ctx: StateCheckContext): {
  *
  * This runs exactly once at daemon startup. The periodic orphan-detection
  * loop still handles live-running daemons.
+ *
+ * Returns a structured report of what was cleaned up. Emits no events itself —
+ * all daemon:recovery:* event emission is the caller's responsibility.
+ * The existing synthetic `phase:end` event per failed run is preserved here
+ * for backward compatibility with session-scoped event streams.
  */
-export function reconcileOrphanedState(db: MonitorDB, cwd: string): void {
+export function reconcileOrphanedState(db: MonitorDB, cwd: string): ReconciliationReport {
+  const startedAt = Date.now();
+  const runsFailed: Array<{ runId: string; sessionId: string; planSet: string; reason: string }> = [];
+  const locksRemoved: Array<{ path: string; pid: number }> = [];
+
   // 1) Runs whose PID is dead
   try {
     const runningRuns = db.getRunningRuns();
     const now = new Date().toISOString();
     for (const run of runningRuns) {
       if (run.pid && !isPidAlive(run.pid)) {
+        const reason = 'reconciled: process not alive at daemon startup';
         db.updateRunStatus(run.id, 'failed', now);
+        // Preserve backward-compatible synthetic phase:end event for session-scoped streams.
         try {
           db.insertEvent({
             runId: run.id,
@@ -136,7 +198,7 @@ export function reconcileOrphanedState(db: MonitorDB, cwd: string): void {
             data: JSON.stringify({
               type: 'phase:end',
               runId: run.id,
-              result: { status: 'failed', summary: 'reconciled: process not alive at daemon startup' },
+              result: { status: 'failed', summary: reason },
               timestamp: now,
             }),
             timestamp: now,
@@ -144,6 +206,12 @@ export function reconcileOrphanedState(db: MonitorDB, cwd: string): void {
         } catch {
           // insertEvent may fail if run row was removed between queries — best-effort
         }
+        runsFailed.push({
+          runId: run.id,
+          sessionId: run.sessionId ?? run.id,
+          planSet: run.planSet,
+          reason,
+        });
       }
     }
   } catch {
@@ -156,7 +224,7 @@ export function reconcileOrphanedState(db: MonitorDB, cwd: string): void {
   try {
     entries = readdirSync(lockDir);
   } catch {
-    return; // Dir doesn't exist yet — nothing to reconcile
+    return { runsFailed, locksRemoved, durationMs: Date.now() - startedAt }; // Dir doesn't exist yet — nothing to reconcile
   }
   for (const file of entries) {
     if (!file.endsWith('.lock')) continue;
@@ -168,14 +236,19 @@ export function reconcileOrphanedState(db: MonitorDB, cwd: string): void {
       continue;
     }
     if (!Number.isFinite(pid) || pid <= 0) {
-      // Corrupt lock file — remove it
+      // Corrupt lock file — remove it (not tracked in locksRemoved since no valid pid)
       try { unlinkSync(lockPath); } catch { /* ignore */ }
       continue;
     }
     if (!isPidAlive(pid)) {
-      try { unlinkSync(lockPath); } catch { /* ignore */ }
+      try {
+        unlinkSync(lockPath);
+        locksRemoved.push({ path: lockPath, pid });
+      } catch { /* ignore */ }
     }
   }
+
+  return { runsFailed, locksRemoved, durationMs: Date.now() - startedAt };
 }
 
 function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string, reason: string): void {
@@ -221,6 +294,9 @@ export function maybePauseOnFailure(event: EforgeEvent, ctx: PauseOnFailureCtx):
     ctx.daemonState.autoBuild
   ) {
     ctx.daemonState.autoBuild = false;
+    // --- eforge:region plan-01-types-and-daemon-emission ---
+    ctx.daemonState.autoBuildPaused = true;
+    // --- eforge:endregion plan-01-types-and-daemon-emission ---
     writeAutoBuildPausedEvent(ctx.db, ctx.sessionId, `Build failed: ${event.prdId}`);
     ctx.daemonState.onKillWatcher?.();
   }
@@ -257,6 +333,12 @@ async function main(): Promise<void> {
 
   const preferredPort = parseInt(portStr, 10);
   const db = openDatabase(dbPath);
+
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  // Stable session id for all daemon-scoped events in this process lifetime.
+  // FK is OFF in the DB so an unmatched run_id is safe (see PRAGMA in db.ts).
+  const daemonSessionId = `daemon-${process.pid}-${Date.now()}`;
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
   // Pre-flight: refuse to start if a live daemon already owns this cwd
   const existingLock = readLockfile(cwd);
@@ -394,6 +476,7 @@ async function main(): Promise<void> {
 
   const daemonState: DaemonState | undefined = persistent ? {
     autoBuild: false, // will be set from config below
+    autoBuildPaused: false,
     watcher: {
       running: false,
       pid: null,
@@ -402,6 +485,9 @@ async function main(): Promise<void> {
     onSpawnWatcher: () => { void startWatcher(config?.hooks ?? []); },
     onKillWatcher: () => { void stopWatcher(); },
     onShutdown: undefined as (() => void) | undefined,
+    // --- eforge:region plan-01-types-and-daemon-emission ---
+    onDaemonEvent: (event) => writeDaemonEvent(db, event as { type: string } & Record<string, unknown>, daemonSessionId),
+    // --- eforge:endregion plan-01-types-and-daemon-emission ---
   } : undefined;
 
   async function startWatcher(hooks: readonly HookConfig[] = []): Promise<void> {
@@ -426,7 +512,17 @@ async function main(): Promise<void> {
       daemonState.watcher = { running: false, pid: null, sessionId: null };
       daemonState.autoBuild = false;
       daemonState.injectSchedulerEvent = undefined;
-      const reason = `Watcher failed to initialize: ${err instanceof Error ? err.message : String(err)}`;
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const reason = `Watcher failed to initialize: ${errMsg}`;
+      // --- eforge:region plan-01-types-and-daemon-emission ---
+      writeDaemonEvent(db, {
+        type: 'daemon:error',
+        source: 'watcher:init',
+        message: reason,
+        ...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
+      }, daemonSessionId);
+      daemonState.autoBuildPaused = true;
+      // --- eforge:endregion plan-01-types-and-daemon-emission ---
       writeAutoBuildPausedEvent(db, sessionId, reason);
       return;
     }
@@ -470,13 +566,33 @@ async function main(): Promise<void> {
         };
         for await (const event of events) {
           maybePauseOnFailure(event, pauseCtx);
+          // --- eforge:region plan-01-types-and-daemon-emission ---
+          // Emit daemon:auto-build:triggered when a queue scan cycle produces builds.
+          if (event.type === 'queue:complete' && event.processed > 0) {
+            writeDaemonEvent(db, {
+              type: 'daemon:auto-build:triggered',
+              trigger: 'auto',
+              prdsEnqueued: event.processed,
+            }, daemonSessionId);
+          }
+          // --- eforge:endregion plan-01-types-and-daemon-emission ---
         }
       } catch (err) {
         // Only pause if this controller is still the active one — otherwise
         // a newer startWatcher() has already taken over.
         if (watcherAbort === controller && daemonState) {
           daemonState.autoBuild = false;
-          const reason = `Watcher crashed: ${err instanceof Error ? err.message : String(err)}`;
+          const errMsg = err instanceof Error ? err.message : String(err);
+          const reason = `Watcher crashed: ${errMsg}`;
+          // --- eforge:region plan-01-types-and-daemon-emission ---
+          writeDaemonEvent(db, {
+            type: 'daemon:error',
+            source: 'watcher',
+            message: errMsg,
+            ...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
+          }, daemonSessionId);
+          daemonState.autoBuildPaused = true;
+          // --- eforge:endregion plan-01-types-and-daemon-emission ---
           writeAutoBuildPausedEvent(db, sessionId, reason);
         }
       } finally {
@@ -530,6 +646,17 @@ async function main(): Promise<void> {
     throw err;
   }
 
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  // Emit lifecycle:starting now that port is known (server was just started above).
+  writeDaemonEvent(db, {
+    type: 'daemon:lifecycle:starting',
+    pid: process.pid,
+    port: server.port,
+    version: typeof EFORGE_VERSION !== 'undefined' ? EFORGE_VERSION : 'unknown',
+    mode: persistent ? 'persistent' : 'ephemeral',
+  }, daemonSessionId);
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
+
   // Write lockfile
   writeLockfile(cwd, {
     pid: process.pid,
@@ -543,7 +670,41 @@ async function main(): Promise<void> {
   // One-shot reconciliation for state left behind by a previous crash or
   // hard-kill. Runs after we own the lockfile so no other daemon instance
   // can be touching the same files.
-  reconcileOrphanedState(db, cwd);
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  writeDaemonEvent(db, { type: 'daemon:recovery:start' }, daemonSessionId);
+  const reconcileReport = reconcileOrphanedState(db, cwd);
+  for (const run of reconcileReport.runsFailed) {
+    // Emit the daemon-scoped failure event alongside the backward-compatible
+    // phase:end that reconcileOrphanedState already inserted per run.
+    writeDaemonEvent(db, {
+      type: 'daemon:recovery:run-marked-failed',
+      runId: run.runId,
+      planSet: run.planSet,
+      reason: run.reason,
+    }, daemonSessionId);
+  }
+  for (const lock of reconcileReport.locksRemoved) {
+    writeDaemonEvent(db, {
+      type: 'daemon:recovery:lock-removed',
+      path: lock.path,
+      pid: lock.pid,
+    }, daemonSessionId);
+  }
+  writeDaemonEvent(db, {
+    type: 'daemon:recovery:complete',
+    runsFailed: reconcileReport.runsFailed.length,
+    locksRemoved: reconcileReport.locksRemoved.length,
+    durationMs: reconcileReport.durationMs,
+  }, daemonSessionId);
+  writeDaemonEvent(db, {
+    type: 'daemon:lifecycle:ready',
+    pid: process.pid,
+    port: server.port,
+    version: typeof EFORGE_VERSION !== 'undefined' ? EFORGE_VERSION : 'unknown',
+    mode: persistent ? 'persistent' : 'ephemeral',
+    recoveryDurationMs: reconcileReport.durationMs,
+  }, daemonSessionId);
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
   // Declare state-machine variables before use (setupStateMachine assigns stateTimer)
   let stateTimer: ReturnType<typeof setInterval> | undefined;
@@ -570,6 +731,16 @@ async function main(): Promise<void> {
       for (const run of runningRuns) {
         if (run.pid && !isPidAlive(run.pid)) {
           db.updateRunStatus(run.id, 'killed');
+          // --- eforge:region plan-01-types-and-daemon-emission ---
+          // Only emit orphan:reaped when a run is actually marked killed (not on every tick).
+          writeDaemonEvent(db, {
+            type: 'daemon:orphan:reaped',
+            runId: run.id,
+            sessionId: run.sessionId ?? run.id,
+            planSet: run.planSet,
+            pid: run.pid,
+          }, daemonSessionId);
+          // --- eforge:endregion plan-01-types-and-daemon-emission ---
         }
       }
     } catch {
@@ -642,7 +813,9 @@ async function main(): Promise<void> {
           const elapsed = Date.now() - countdownStartedAt;
           if (elapsed >= countdownDurationMs()) {
             state = 'SHUTDOWN';
-            shutdown();
+            // --- eforge:region plan-01-types-and-daemon-emission ---
+            shutdown('none', 'idle timeout');
+            // --- eforge:endregion plan-01-types-and-daemon-emission ---
           }
         }
       } catch {
@@ -657,9 +830,20 @@ async function main(): Promise<void> {
     setupStateMachine(IDLE_FALLBACK_MS);
   }
 
-  function shutdown(): void {
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  function shutdown(signal = 'none', reason = 'process signal'): void {
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
     if (isShuttingDown) return;
     isShuttingDown = true;
+
+    // --- eforge:region plan-01-types-and-daemon-emission ---
+    writeDaemonEvent(db, {
+      type: 'daemon:lifecycle:shutdown:start',
+      signal,
+      reason,
+    }, daemonSessionId);
+    const shutdownStartedAt = Date.now();
+    // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
     clearInterval(orphanTimer);
     if (stateTimer) clearInterval(stateTimer);
@@ -672,6 +856,13 @@ async function main(): Promise<void> {
       removeLockfile(cwd);
 
       server.stop().then(() => {
+        // --- eforge:region plan-01-types-and-daemon-emission ---
+        // Write shutdown:complete before closing the DB so the event is persisted.
+        writeDaemonEvent(db, {
+          type: 'daemon:lifecycle:shutdown:complete',
+          durationMs: Date.now() - shutdownStartedAt,
+        }, daemonSessionId);
+        // --- eforge:endregion plan-01-types-and-daemon-emission ---
         db.close();
         process.exit(0);
       }).catch(() => {
@@ -683,11 +874,15 @@ async function main(): Promise<void> {
 
   // Wire onShutdown callback so the HTTP endpoint can trigger graceful shutdown
   if (daemonState) {
-    daemonState.onShutdown = shutdown;
+    // --- eforge:region plan-01-types-and-daemon-emission ---
+    daemonState.onShutdown = () => shutdown('none', 'HTTP request');
+    // --- eforge:endregion plan-01-types-and-daemon-emission ---
   }
 
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  // --- eforge:region plan-01-types-and-daemon-emission ---
+  process.on('SIGTERM', () => shutdown('SIGTERM', 'process signal'));
+  process.on('SIGINT', () => shutdown('SIGINT', 'process signal'));
+  // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
   // Disconnect stdio so the parent process can exit
   if (process.stdout.isTTY === false || process.send === undefined) {
