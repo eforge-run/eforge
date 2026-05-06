@@ -14,6 +14,7 @@ import {
   abbreviatePlanId,
   getAgentColor,
   VALIDATION_BAR_COLOR,
+  PERSPECTIVE_ERROR_BAR_COLOR,
 } from './pipeline-colors';
 import { AGENT_TO_STAGE, REVIEW_AGENTS, resolveBuildStage } from './agent-stage-map';
 import { ActivityOverlay } from './activity-overlay';
@@ -40,6 +41,7 @@ interface PlanRowProps {
   compileActiveStages?: Set<string>;
   compileCompletedStages?: Set<string>;
   validationCommands?: ValidationCommandSpan[];
+  perspectiveErrors?: Array<{ perspective: string; error: string; timestamp: string }>;
 }
 
 export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -74,7 +76,7 @@ export function DepthBars({ depth }: { depth: number }) {
   );
 }
 
-function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands }: PlanRowProps) {
+function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -365,6 +367,34 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
               })}
             </div>
           ))}
+          {perspectiveErrors && perspectiveErrors.length > 0 && (
+            <div className="relative h-4">
+              {perspectiveErrors.map((err, idx) => {
+                const errTs = new Date(err.timestamp).getTime();
+                const leftPercent = Math.max(0, ((errTs - sessionStart) / totalSpan) * 100);
+                return (
+                  <Tooltip key={`persp-err-${idx}`}>
+                    <TooltipTrigger asChild>
+                      <div
+                        className={`absolute inset-y-0 rounded-sm border ${PERSPECTIVE_ERROR_BAR_COLOR.bg} ${PERSPECTIVE_ERROR_BAR_COLOR.border} flex items-center overflow-hidden cursor-default text-red`}
+                        style={{
+                          left: `${leftPercent}%`,
+                          minWidth: '12px',
+                          width: '12px',
+                        }}
+                      >
+                        <span className="text-[9px] truncate px-0.5 leading-4 relative z-10">✗</span>
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top">
+                      <div className="font-medium">Perspective error: {err.perspective}</div>
+                      <div className="opacity-70 max-w-xs break-words">{err.error}</div>
+                    </TooltipContent>
+                  </Tooltip>
+                );
+              })}
+            </div>
+          )}
         </div>
         </div>
       </div>
