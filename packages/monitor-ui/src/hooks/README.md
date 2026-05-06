@@ -25,8 +25,9 @@ Subscribe to a single session's live event stream. Use for per-session dashboard
 
 Subscribe to the daemon-wide SSE stream. Owns the runs list, queue, session metadata, auto-build, activity ring-buffer, and latest heartbeat slices for the whole app. Intended to be called **once** in `AppContent` and passed as props to sub-components.
 
-- Performs one-shot parallel snapshot fetches (`/api/runs`, `/api/queue`, `/api/session-metadata`, `/api/auto-build`) on mount.
+- Performs parallel snapshot fetches (`/api/runs`, `/api/queue`, `/api/session-metadata`, `/api/auto-build`) on mount via a local `seedSnapshot()` function.
 - Then calls `subscribeToDaemonEvents` for live SSE updates.
+- On every SSE reconnect, `seedSnapshot()` is invoked again so REST snapshot state (runs, queue, session metadata, auto-build) is re-fetched and re-seeded into the reducer. This makes the UI heal automatically across daemon restarts without a manual browser refresh.
 - Returns `{ daemonState, connectionStatus, setDaemonAutoBuild }`.
 
 ### `useAutoBuild(autoBuildState, onUpdate)`
@@ -47,3 +48,7 @@ All live event-driven UI updates flow through `useEforgeEvents` or `useDaemonEve
 ## Transport details
 
 Both SSE hooks use `subscribeToSession` / `subscribeToDaemonEvents` from `@eforge-build/client/browser` with `baseUrl: ''` (same-origin relative URL). The underlying helper handles reconnect with exponential backoff, `Last-Event-ID` replay, and abort via `AbortSignal`.
+
+`subscribeToDaemonEvents` accepts an optional `onReconnect` callback (part of `SubscribeOptions`) that fires once after each successful reconnect — only when `reconnectCount > 0`, not on the initial open. `useDaemonEvents` passes `onReconnect: () => seedSnapshot()` to re-seed REST snapshot state on every reconnect.
+
+The daemon SSE handler (`GET /api/daemon-events`) no longer replays the full historical event log on initial connect (no `Last-Event-ID` header). Instead it emits a single `daemon:resync-marker` SSE block whose `id:` field advances the client's `lastEventId` to the current tail, so subsequent reconnects arrive with a valid `Last-Event-ID` cutoff and receive only missed deltas. The `daemon:resync-marker` event type is unknown to the reducer and is silently ignored. When `Last-Event-ID` is present, the server still replays all events past that cutoff (unchanged behavior).

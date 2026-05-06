@@ -119,6 +119,19 @@ export interface SubscribeOptions<E extends DaemonStreamEvent = DaemonStreamEven
    * raw `data:` payload string. Do not throw from this callback.
    */
   onNamedEvent?: (name: string, data: string) => void;
+  /**
+   * Called once after a successful reconnect, just before the first valid event
+   * from the new connection is delivered to `onEvent`. Not invoked on the
+   * initial open — only fires on reconnects (`reconnectCount > 0`).
+   *
+   * Intended for snapshot re-seeding: callers should re-fetch REST snapshots
+   * and dispatch a `BATCH_SEED` so the reducer heals across daemon restarts
+   * without requiring a browser refresh.
+   *
+   * Exceptions thrown from this callback are swallowed so they cannot disrupt
+   * the stream.
+   */
+  onReconnect?: () => void;
 }
 
 /** One parsed SSE block: a single `data:` payload with optional `id:` and `event:`. */
@@ -213,6 +226,7 @@ function subscribeToStream<R>(
     signal?: AbortSignal;
     maxReconnects?: number;
     onNamedEvent?: (name: string, data: string) => void;
+    onReconnect?: () => void;
   },
   onParsedEvent: (
     parsed: DaemonStreamEvent,
@@ -313,7 +327,17 @@ function subscribeToStream<R>(
       if (!hasReceivedValidEvent) {
         hasReceivedValidEvent = true;
         reconnectDelay = INITIAL_RECONNECT_MS;
+        // Capture before resetting: fire onReconnect only when this is a
+        // reconnect (count > 0), not on the initial open.
+        const prevReconnectCount = reconnectCount;
         reconnectCount = 0;
+        if (prevReconnectCount > 0) {
+          try {
+            opts.onReconnect?.();
+          } catch {
+            // Callback exceptions must not disrupt the stream
+          }
+        }
       }
 
       try {
@@ -428,6 +452,14 @@ function subscribeToStream<R>(
 
     function connect(): void {
       if (settled) return;
+
+      // Reset per-connection: the `!hasReceivedValidEvent` gate inside
+      // processDataRaw must fire once for each new connection attempt so that
+      // (a) `reconnectCount` resets only after a successful event-receiving
+      // reconnect (preserving consecutive-failure semantics for maxReconnects),
+      // and (b) `onReconnect` fires on every reconnect that produces a valid
+      // event, not just on the first event ever observed by this subscription.
+      hasReceivedValidEvent = false;
 
       // Browser path: use fetch + ReadableStream for full SSE text parsing,
       // supporting named events (event: field) and Last-Event-ID replay.
@@ -564,7 +596,7 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
 
   return subscribeToStream<SessionSummary>(
     url,
-    { signal: opts.signal, maxReconnects: opts.maxReconnects, onNamedEvent: opts.onNamedEvent },
+    { signal: opts.signal, maxReconnects: opts.maxReconnects, onNamedEvent: opts.onNamedEvent, onReconnect: opts.onReconnect },
     (parsed, eventId, settle) => {
       eventCount += 1;
       if (parsed.type === 'phase:start') {
@@ -658,7 +690,7 @@ export function subscribeToDaemonEvents(
 
   return subscribeToStream<void>(
     url,
-    { signal: opts.signal, maxReconnects: opts.maxReconnects, onNamedEvent: opts.onNamedEvent },
+    { signal: opts.signal, maxReconnects: opts.maxReconnects, onNamedEvent: opts.onNamedEvent, onReconnect: opts.onReconnect },
     (parsed, eventId, _settle) => {
       // Daemon-events stream has no terminal event; the promise only settles via
       // abort signal, max reconnects, or 404/410. Just forward each event.

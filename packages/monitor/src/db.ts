@@ -72,6 +72,15 @@ export interface MonitorDB {
    * (not per-session). Adding a new daemon-wide type requires updating `db.ts`.
    */
   getDaemonEventsAfter(afterId: number): EventRecord[];
+  /**
+   * Returns the highest event row id among daemon-wide events (those whose type
+   * appears in the `DAEMON_EVENT_TYPES` allowlist), or 0 when no such events exist.
+   *
+   * Filter parity: uses the same `DAEMON_EVENT_TYPES` allowlist as
+   * `getDaemonEventsAfter`, so `getMaxDaemonEventId()` always equals the largest
+   * `id` that `getDaemonEventsAfter(0)` would surface.
+   */
+  getMaxDaemonEventId(): number;
   close(): void;
 }
 
@@ -261,6 +270,9 @@ export function openDatabase(dbPath: string): MonitorDB {
     getDaemonEventsAfter: db.prepare(
       `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')}) AND id > ? ORDER BY id`,
     ),
+    getMaxDaemonEventId: db.prepare(
+      `SELECT COALESCE(MAX(id), 0) as maxId FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')})`,
+    ),
     getRunsBySession: db.prepare(
       `SELECT id, session_id as sessionId, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd, pid FROM runs WHERE session_id = ? ORDER BY started_at`,
     ),
@@ -428,6 +440,11 @@ export function openDatabase(dbPath: string): MonitorDB {
 
     getDaemonEventsAfter(afterId) {
       return stmts.getDaemonEventsAfter.all(...DAEMON_EVENT_TYPES, afterId) as unknown as EventRecord[];
+    },
+
+    getMaxDaemonEventId() {
+      const row = stmts.getMaxDaemonEventId.get(...DAEMON_EVENT_TYPES) as unknown as { maxId: number } | undefined;
+      return row?.maxId ?? 0;
     },
 
     insertFileDiffs(runId, planId, diffs, timestamp) {
