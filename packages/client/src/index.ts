@@ -55,6 +55,9 @@ export { apiListModelProviders, apiListModels } from './api/models.js';
 
 export { apiStopDaemon } from './api/daemon.js';
 
+export { apiSchedulerKick } from './api/scheduler.js';
+export type { SchedulerKickResponse } from './api/scheduler.js';
+
 export { apiRecover } from './api/recover.js';
 
 export { apiReadRecoverySidecar } from './api/recovery-sidecar.js';

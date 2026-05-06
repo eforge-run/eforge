@@ -425,6 +425,7 @@ async function main(): Promise<void> {
       watcherAbort = null;
       daemonState.watcher = { running: false, pid: null, sessionId: null };
       daemonState.autoBuild = false;
+      daemonState.injectSchedulerEvent = undefined;
       const reason = `Watcher failed to initialize: ${err instanceof Error ? err.message : String(err)}`;
       writeAutoBuildPausedEvent(db, sessionId, reason);
       return;
@@ -436,6 +437,7 @@ async function main(): Promise<void> {
       if (watcherAbort === controller) {
         watcherAbort = null;
         daemonState.watcher = { running: false, pid: null, sessionId: null };
+        daemonState.injectSchedulerEvent = undefined;
       }
       return;
     }
@@ -443,7 +445,15 @@ async function main(): Promise<void> {
     watcherDone = (async () => {
       try {
         const events = wrapWatcherEvents(
-          engine.watchQueue({ auto: true, abortController: controller }),
+          engine.watchQueue({
+            auto: true,
+            abortController: controller,
+            onInjectEventRegister: (inject) => {
+              if (daemonState && watcherAbort === controller) {
+                daemonState.injectSchedulerEvent = inject;
+              }
+            },
+          }),
           db,
           cwd,
           process.pid,
@@ -475,6 +485,7 @@ async function main(): Promise<void> {
           watcherDone = null;
           if (daemonState) {
             daemonState.watcher = { running: false, pid: null, sessionId: null };
+            daemonState.injectSchedulerEvent = undefined;
           }
         }
       }
