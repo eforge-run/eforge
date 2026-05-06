@@ -564,20 +564,29 @@ const eventRegistry = {
 
   'plan:status:change': {
     scope: 'session',
-    persist: false,
+    persist: true,
     summary: (e) => `Plan ${e.planId}: status → ${e.status}`,
+    // Projection is owned by the session reducer (handle-plan-lifecycle.ts);
+    // DaemonState has no per-plan status field, so this is intentionally a no-op.
+    project: () => undefined,
   },
 
   'plan:error:set': {
     scope: 'session',
-    persist: false,
+    persist: true,
     summary: (e) => `Plan ${e.planId}: error set`,
+    // Projection is owned by the session reducer (handle-plan-lifecycle.ts);
+    // DaemonState has no per-plan status field, so this is intentionally a no-op.
+    project: () => undefined,
   },
 
   'plan:error:clear': {
     scope: 'session',
-    persist: false,
+    persist: true,
     summary: (e) => `Plan ${e.planId}: error cleared`,
+    // Projection is owned by the session reducer (handle-plan-lifecycle.ts);
+    // DaemonState has no per-plan status field, so this is intentionally a no-op.
+    project: () => undefined,
   },
 
   // -------------------------------------------------------------------------
@@ -643,12 +652,18 @@ const eventRegistry = {
 
   'merge:worktree:set': {
     scope: 'session',
-    persist: false,
+    persist: true,
+    // Projection is owned by the session reducer (handle-plan-lifecycle.ts);
+    // DaemonState has no per-plan status field, so this is intentionally a no-op.
+    project: () => undefined,
   },
 
   'merge:worktree:clear': {
     scope: 'session',
-    persist: false,
+    persist: true,
+    // Projection is owned by the session reducer (handle-plan-lifecycle.ts);
+    // DaemonState has no per-plan status field, so this is intentionally a no-op.
+    project: () => undefined,
   },
 
   // -------------------------------------------------------------------------

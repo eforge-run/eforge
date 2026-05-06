@@ -20,8 +20,29 @@ import type { EventHandler } from './handler-types';
 import { formatThinking } from '../format';
 
 // ---------------------------------------------------------------------------
-// Private helper
+// Private helpers
 // ---------------------------------------------------------------------------
+
+/**
+ * Normalize a raw thinking config object from the wire protocol.
+ *
+ * The engine emits thinking payloads with snake_case `budget_tokens` (Zod
+ * wire schema). The monitor UI expects camelCase `budgetTokens`. This helper
+ * maps snake_case → camelCase at extraction time so downstream consumers
+ * (formatThinking, stage hover) always receive the camelCase form.
+ *
+ * Belt-and-suspenders: if `budgetTokens` is already present, the value is
+ * returned as-is so there is no double-conversion.
+ */
+function normalizeThinking(raw: unknown): Record<string, unknown> | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const obj = raw as Record<string, unknown>;
+  if (typeof obj['budget_tokens'] === 'number' && !('budgetTokens' in obj)) {
+    const { budget_tokens, ...rest } = obj;
+    return { ...rest, budgetTokens: budget_tokens as number };
+  }
+  return obj;
+}
 
 /**
  * Immutably updates the LAST thread in `threads` where `predicate` returns true,
@@ -72,7 +93,7 @@ export const handleAgentStart: EventHandler<'agent:start'> = (event, state) => {
     effortSource: event.effortSource,
     thinkingSource: event.thinkingSource,
     thinkingCoerced: event.thinkingCoerced,
-    thinkingOriginal: event.thinkingOriginal as Record<string, unknown> | undefined,
+    thinkingOriginal: normalizeThinking(event.thinkingOriginal),
     tier: event.tier,
     tierSource: event.tierSource,
     perspective: event.perspective,

@@ -70,18 +70,21 @@ describe('formatThinking', () => {
   });
 
   // -------------------------------------------------------------------------
-  // Zod-derived schema uses budget_tokens (snake_case) — formatThinking should
-  // fall back to JSON.stringify for unrecognised object shapes.
+  // Zod-derived schema uses budget_tokens (snake_case) — formatThinking must
+  // accept both camelCase and snake_case keys.
   // -------------------------------------------------------------------------
-  it('returns JSON string for object with budget_tokens (snake_case — not camelCase)', () => {
-    // The Zod schema emits budget_tokens; formatThinking reads budgetTokens.
-    // This fixture documents the current behavior (fallback to JSON.stringify).
-    const value = { type: 'enabled', budget_tokens: 10000 };
-    // The result is either the JSON fallback or "enabled" (without tokens, since
-    // budgetTokens is absent). Either is acceptable — the test asserts it does
-    // not throw and returns a string.
-    const result = formatThinking(value);
-    expect(typeof result === 'string' || result === undefined).toBe(true);
+  it('formats budget_tokens (snake_case wire format) identically to budgetTokens', () => {
+    // AC #8: the Zod schema emits budget_tokens (snake_case); formatThinking
+    // now accepts both keys so the agent-stage hover renders correctly.
+    expect(formatThinking({ type: 'enabled', budget_tokens: 32000 })).toBe('enabled (32.0k tokens)');
+  });
+
+  it('formats budget_tokens: 0 as "enabled (0 tokens)"', () => {
+    expect(formatThinking({ type: 'enabled', budget_tokens: 0 })).toBe('enabled (0 tokens)');
+  });
+
+  it('formats large budget_tokens with k abbreviation', () => {
+    expect(formatThinking({ type: 'enabled', budget_tokens: 100000 })).toBe('enabled (100.0k tokens)');
   });
 
   // -------------------------------------------------------------------------
@@ -98,15 +101,13 @@ describe('formatThinking', () => {
   });
 
   // -------------------------------------------------------------------------
-  // thinkingOriginal shapes from the wire protocol
+  // thinkingOriginal shapes from the wire protocol (AC #8 regression gate)
   // -------------------------------------------------------------------------
-  it('correctly formats thinkingOriginal when coercion reduced budget', () => {
-    // agent:start emits thinkingOriginal: { type: 'enabled', budget_tokens: 32000 }
-    // (snake_case from the wire schema). If budgetTokens (camelCase) is absent,
-    // formatThinking returns "enabled" (without budget count).
+  it('formats thinkingOriginal with snake_case budget_tokens as "enabled (32.0k tokens)"', () => {
+    // AC #8: agent:start emits thinkingOriginal: { type: 'enabled', budget_tokens: 32000 }
+    // (snake_case from the Zod wire schema). formatThinking must produce the correct
+    // human-readable string for the agent-stage hover tooltip.
     const wirePayload = { type: 'enabled', budget_tokens: 32000 };
-    const result = formatThinking(wirePayload);
-    // Must not throw; must return a non-empty string
-    expect(result).toBeTruthy();
+    expect(formatThinking(wirePayload)).toBe('enabled (32.0k tokens)');
   });
 });

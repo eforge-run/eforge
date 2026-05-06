@@ -19,7 +19,7 @@ import {
 } from './worktree-ops.js';
 import type { ModelTracker } from './model-tracker.js';
 import { composeCommitMessage } from './model-tracker.js';
-import type { EforgeState, ReconciliationReport } from './events.js';
+import type { EforgeEvent, EforgeState, ReconciliationReport } from './events.js';
 import { mutateState } from './state.js';
 
 const exec = promisify(execFile);
@@ -220,14 +220,20 @@ export class WorktreeManager {
    * Checks that worktrees referenced in state actually exist and are on the
    * correct branches. Missing or corrupt worktrees have their worktreePath
    * cleared so they'll be re-created on retry.
+   *
+   * Returns the ReconciliationReport and the lifecycle events produced during
+   * reconciliation. Callers should forward the events to the SSE event stream.
    */
-  async reconcile(state: EforgeState): Promise<ReconciliationReport> {
+  async reconcile(state: EforgeState): Promise<{ report: ReconciliationReport; events: readonly EforgeEvent[] }> {
     const report: ReconciliationReport = {
       valid: [],
       missing: [],
       corrupt: [],
       cleared: [],
     };
+    const events: EforgeEvent[] = [];
+
+    const makeEvent = (e: EforgeEvent): EforgeEvent => { events.push(e); return e; };
 
     // Check the merge worktree
     const mergeWtPath = state.mergeWorktreePath;
@@ -235,7 +241,7 @@ export class WorktreeManager {
       if (!existsSync(mergeWtPath)) {
         report.missing.push('__merge__');
         report.cleared.push('__merge__');
-        mutateState(state, { type: 'merge:worktree:clear', timestamp: new Date().toISOString() });
+        mutateState(state, makeEvent({ type: 'merge:worktree:clear', timestamp: new Date().toISOString() }));
       } else {
         try {
           const { stdout } = await exec('git', ['branch', '--show-current'], { cwd: mergeWtPath });
@@ -244,7 +250,7 @@ export class WorktreeManager {
             report.corrupt.push('__merge__');
             report.cleared.push('__merge__');
             try { await removeWorktree(this.repoRoot, mergeWtPath); } catch { /* best-effort */ }
-            mutateState(state, { type: 'merge:worktree:clear', timestamp: new Date().toISOString() });
+            mutateState(state, makeEvent({ type: 'merge:worktree:clear', timestamp: new Date().toISOString() }));
           } else {
             report.valid.push('__merge__');
           }
@@ -252,7 +258,7 @@ export class WorktreeManager {
           report.corrupt.push('__merge__');
           report.cleared.push('__merge__');
           try { await removeWorktree(this.repoRoot, mergeWtPath); } catch { /* best-effort */ }
-          mutateState(state, { type: 'merge:worktree:clear', timestamp: new Date().toISOString() });
+          mutateState(state, makeEvent({ type: 'merge:worktree:clear', timestamp: new Date().toISOString() }));
         }
       }
     }
@@ -268,7 +274,7 @@ export class WorktreeManager {
         planState.worktreePath = undefined;
         this.worktrees.delete(planId);
         if (planState.status === 'running') {
-          mutateState(state, { type: 'plan:status:change', planId, status: 'pending', timestamp: new Date().toISOString() });
+          mutateState(state, makeEvent({ type: 'plan:status:change', planId, status: 'pending', timestamp: new Date().toISOString() }));
         }
         continue;
       }
@@ -282,7 +288,7 @@ export class WorktreeManager {
           try { await removeWorktree(this.repoRoot, wtPath); } catch { /* best-effort */ }
           planState.worktreePath = undefined;
           if (planState.status === 'running') {
-            mutateState(state, { type: 'plan:status:change', planId, status: 'pending', timestamp: new Date().toISOString() });
+            mutateState(state, makeEvent({ type: 'plan:status:change', planId, status: 'pending', timestamp: new Date().toISOString() }));
           }
         } else {
           report.valid.push(planId);
@@ -303,12 +309,12 @@ export class WorktreeManager {
         try { await removeWorktree(this.repoRoot, wtPath); } catch { /* best-effort */ }
         planState.worktreePath = undefined;
         if (planState.status === 'running') {
-          mutateState(state, { type: 'plan:status:change', planId, status: 'pending', timestamp: new Date().toISOString() });
+          mutateState(state, makeEvent({ type: 'plan:status:change', planId, status: 'pending', timestamp: new Date().toISOString() }));
         }
       }
     }
 
-    return report;
+    return { report, events };
   }
 
   /**

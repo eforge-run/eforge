@@ -1,9 +1,14 @@
 /**
  * Plan lifecycle guards - validates status transitions before delegating
  * to the single-entry-point `mutateState()` mutator in state.ts.
+ *
+ * Both `transitionPlan` and `resumeState` return the lifecycle events they
+ * produced so callers can forward them to the SSE event stream. State mutation
+ * via `mutateState` always happens synchronously before the events are returned,
+ * so consumers receive the notification after the state has already been applied.
  */
 
-import type { EforgeState, PlanState } from '../events.js';
+import type { EforgeEvent, EforgeState, PlanState } from '../events.js';
 import { mutateState } from '../state.js';
 
 type PlanStatus = PlanState['status'];
@@ -36,16 +41,23 @@ export interface TransitionMetadata {
 /**
  * Resume a EforgeState by resetting running plans to pending and
  * re-evaluating blocked plans whose dependencies have resolved.
+ *
+ * Returns the lifecycle events produced (plan:error:clear and
+ * plan:status:change events). Callers should forward these to the SSE stream.
  */
-export function resumeState(state: EforgeState): EforgeState {
+export function resumeState(state: EforgeState): EforgeEvent[] {
+  const events: EforgeEvent[] = [];
+
   // Reset running plans to pending for re-execution
   for (const [id, plan] of Object.entries(state.plans)) {
     if (plan.status === 'running') {
       // Clear any prior error before transitioning back to pending
       if (plan.error !== undefined) {
-        mutateState(state, { type: 'plan:error:clear', planId: id, timestamp: new Date().toISOString() });
+        const clearEvent: EforgeEvent = { type: 'plan:error:clear', planId: id, timestamp: new Date().toISOString() };
+        mutateState(state, clearEvent);
+        events.push(clearEvent);
       }
-      transitionPlan(state, id, 'pending');
+      events.push(...transitionPlan(state, id, 'pending'));
     }
   }
   // Re-evaluate blocked plans — unblock if all deps resolved
@@ -56,11 +68,11 @@ export function resumeState(state: EforgeState): EforgeState {
         return depState && (depState.status === 'completed' || depState.status === 'merged');
       });
       if (allDepsResolved) {
-        transitionPlan(state, planId, 'pending');
+        events.push(...transitionPlan(state, planId, 'pending'));
       }
     }
   }
-  return state;
+  return events;
 }
 
 /**
@@ -69,13 +81,17 @@ export function resumeState(state: EforgeState): EforgeState {
  *
  * Routes all state mutations through `mutateState()` from state.ts —
  * the single mutation entry point — rather than assigning fields directly.
+ *
+ * Returns the lifecycle events produced (plan:status:change and optionally
+ * plan:error:set). Callers should forward these to the SSE event stream.
+ * State mutation happens synchronously before the events are returned.
  */
 export function transitionPlan(
   state: EforgeState,
   planId: string,
   to: PlanStatus,
   metadata?: TransitionMetadata,
-): EforgeState {
+): EforgeEvent[] {
   const plan = state.plans[planId];
   if (!plan) {
     throw new Error(`Unknown plan ID: '${planId}'`);
@@ -91,23 +107,29 @@ export function transitionPlan(
     );
   }
 
+  const events: EforgeEvent[] = [];
+
   // Route status change through the single mutation entry point
-  mutateState(state, {
+  const statusChangeEvent: EforgeEvent = {
     type: 'plan:status:change',
     planId,
     status: to,
     timestamp: new Date().toISOString(),
-  });
+  };
+  mutateState(state, statusChangeEvent);
+  events.push(statusChangeEvent);
 
   // Route error metadata through the single mutation entry point
   if (metadata?.error !== undefined) {
-    mutateState(state, {
+    const errorEvent: EforgeEvent = {
       type: 'plan:error:set',
       planId,
       error: metadata.error,
       timestamp: new Date().toISOString(),
-    });
+    };
+    mutateState(state, errorEvent);
+    events.push(errorEvent);
   }
 
-  return state;
+  return events;
 }

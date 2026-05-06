@@ -98,20 +98,23 @@ export interface OrchestratorOptions {
  *
  * On resume, resets running→pending and re-evaluates blocked plans.
  * Non-resumable states (failed, completed) fall through to fresh state creation.
+ *
+ * Returns `resumeEvents` — the lifecycle events produced by resumeState that
+ * should be yielded on the SSE stream by the orchestrator's execute() method.
  */
 export function initializeState(
   stateDir: string,
   config: OrchestrationConfig,
   repoRoot: string,
-): { state: EforgeState; resumed: boolean } {
+): { state: EforgeState; resumed: boolean; resumeEvents: readonly EforgeEvent[] } {
   // Prefer event-log snapshot over state.json: the log survives a mid-write crash
   // or manual deletion of state.json and always carries the most-recent snapshot.
   const logSnapshot = readEventLogSnapshot(stateDir);
   if (logSnapshot && logSnapshot.setName === config.name) {
     if (isResumable(logSnapshot)) {
-      resumeState(logSnapshot);
+      const resumeEvents = resumeState(logSnapshot);
       saveState(stateDir, logSnapshot);
-      return { state: logSnapshot, resumed: true };
+      return { state: logSnapshot, resumed: true, resumeEvents };
     }
     // Non-resumable snapshot — fall through to fresh state creation
   }
@@ -124,9 +127,9 @@ export function initializeState(
       throw new Error(`Persisted setName "${existing.setName}" does not match config setName "${config.name}" — delete or update .eforge/state.json to start a new plan set.`);
     }
     if (isResumable(existing)) {
-      resumeState(existing);
+      const resumeEvents = resumeState(existing);
       saveState(stateDir, existing);
-      return { state: existing, resumed: true };
+      return { state: existing, resumed: true, resumeEvents };
     }
     // Non-resumable (failed/completed) — fall through to fresh state creation
   }
@@ -158,7 +161,7 @@ export function initializeState(
   };
 
   saveState(stateDir, state);
-  return { state, resumed: false };
+  return { state, resumed: false, resumeEvents: [] };
 }
 
 export class Orchestrator {
@@ -170,7 +173,7 @@ export class Orchestrator {
 
   async *execute(config: OrchestrationConfig): AsyncGenerator<EforgeEvent> {
     const { stateDir, repoRoot, signal } = this.options;
-    const { state, resumed } = initializeState(stateDir, config, repoRoot);
+    const { state, resumed, resumeEvents } = initializeState(stateDir, config, repoRoot);
     if (state.status !== 'running') {
       yield { type: 'phase:end', runId: '', result: { status: 'failed', summary: `Non-resumable state: ${state.status}` }, timestamp: new Date().toISOString() };
       return;
@@ -195,6 +198,7 @@ export class Orchestrator {
       cleanupOutputDir: this.options.cleanupOutputDir, cleanupPrdFilePath: this.options.cleanupPrdFilePath,
     };
     try {
+      for (const e of resumeEvents) yield e;
       yield* executePlans(ctx);
       if ((state.status as string) !== 'failed') yield* validate(ctx);
       if ((state.status as string) !== 'failed') yield* prdValidate(ctx);

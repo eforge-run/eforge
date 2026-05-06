@@ -92,7 +92,7 @@ describe('WorktreeManager.reconcile', () => {
       },
     });
 
-    const report = await wm.reconcile(state);
+    const { report } = await wm.reconcile(state);
 
     expect(report.valid).toContain('__merge__');
     expect(report.valid).toContain('plan-01');
@@ -131,7 +131,7 @@ describe('WorktreeManager.reconcile', () => {
       },
     });
 
-    const report = await wm.reconcile(state);
+    const { report } = await wm.reconcile(state);
 
     expect(report.missing).toContain('plan-01');
     expect(report.cleared).toContain('plan-01');
@@ -170,7 +170,7 @@ describe('WorktreeManager.reconcile', () => {
       },
     });
 
-    const report = await wm.reconcile(state);
+    const { report } = await wm.reconcile(state);
 
     expect(report.corrupt).toContain('plan-01');
     expect(report.cleared).toContain('plan-01');
@@ -202,7 +202,7 @@ describe('WorktreeManager.reconcile', () => {
       },
     });
 
-    const report = await wm.reconcile(state);
+    const { report } = await wm.reconcile(state);
 
     expect(report.valid).toContain('__merge__');
     expect(report.missing).toEqual([]);
@@ -227,7 +227,7 @@ describe('WorktreeManager.reconcile', () => {
       plans: {},
     });
 
-    const report = await wm.reconcile(state);
+    const { report } = await wm.reconcile(state);
 
     expect(report.missing).toContain('__merge__');
     expect(report.cleared).toContain('__merge__');
