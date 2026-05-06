@@ -102,6 +102,9 @@ export class QueueScheduler {
   private readonly prdState = new Map<string, PrdRunState>();
   private orderedPrds: QueuedPrd[];
   private readonly semaphore: Semaphore;
+  // --- eforge:region plan-02-scheduler-emission ---
+  private readonly parallelism: number;
+  // --- eforge:endregion plan-02-scheduler-emission ---
   private _processed = 0;
   private _skipped = 0;
 
@@ -117,6 +120,9 @@ export class QueueScheduler {
     this.options = opts.options;
     this.orderedPrds = [...opts.initialPrds];
     this.semaphore = new Semaphore(opts.parallelism);
+    // --- eforge:region plan-02-scheduler-emission ---
+    this.parallelism = opts.parallelism;
+    // --- eforge:endregion plan-02-scheduler-emission ---
 
     // Initialise prdState from the pre-loaded initial PRD list.
     for (const prd of opts.initialPrds) {
@@ -270,12 +276,72 @@ export class QueueScheduler {
    * triggering `onComplete()` which updates state and re-triggers `tick()`.
    */
   private startReadyPrds(): void {
+    // --- eforge:region plan-02-scheduler-emission ---
+    // Per-tick dedup state: resets on every startReadyPrds() invocation.
+    let runningCount = 0;
+    for (const s of this.prdState.values()) {
+      if (s.status === 'running') runningCount++;
+    }
+    let capacityBlockedEmittedThisTick = false;
+    const dependencyBlockedEmitted = new Set<string>();
+    // --- eforge:endregion plan-02-scheduler-emission ---
+
     for (const prd of this.orderedPrds) {
       if (this.abortController.signal.aborted) break;
+
+      // --- eforge:region plan-02-scheduler-emission ---
+      // Emit dependency-blocked once per (prdId, tick) for pending PRDs whose deps are unmet.
+      const candidateState = this.prdState.get(prd.id);
+      if (candidateState?.status === 'pending') {
+        const unmetDeps = candidateState.dependsOn.filter((dep) => {
+          const depState = this.prdState.get(dep);
+          return !depState || (depState.status !== 'completed' && depState.status !== 'skipped');
+        });
+        if (unmetDeps.length > 0 && !dependencyBlockedEmitted.has(prd.id)) {
+          dependencyBlockedEmitted.add(prd.id);
+          this.eventQueue.push({
+            timestamp: new Date().toISOString(),
+            type: 'daemon:scheduler:dependency-blocked',
+            prdId: prd.id,
+            blockedBy: unmetDeps,
+          } as EforgeEvent);
+        }
+      }
+      // --- eforge:endregion plan-02-scheduler-emission ---
+
       if (!this.isReady(prd.id)) continue;
+
+      // --- eforge:region plan-02-scheduler-emission ---
+      // Emit capacity-blocked once per tick when the concurrency limit is reached.
+      if (runningCount >= this.parallelism) {
+        if (!capacityBlockedEmittedThisTick) {
+          capacityBlockedEmittedThisTick = true;
+          const queueDepth = [...this.prdState.values()].filter((s) => s.status === 'pending').length;
+          this.eventQueue.push({
+            timestamp: new Date().toISOString(),
+            type: 'daemon:scheduler:capacity-blocked',
+            queueDepth,
+            runningCount,
+            limit: this.parallelism,
+          } as EforgeEvent);
+        }
+        continue;
+      }
+      // --- eforge:endregion plan-02-scheduler-emission ---
 
       const state = this.prdState.get(prd.id)!;
       state.status = 'running';
+      // --- eforge:region plan-02-scheduler-emission ---
+      runningCount++;
+      const queueDepth = [...this.prdState.values()].filter((s) => s.status === 'pending').length;
+      this.eventQueue.push({
+        timestamp: new Date().toISOString(),
+        type: 'daemon:scheduler:dequeued',
+        prdId: prd.id,
+        queueDepth,
+        capacityRemaining: this.parallelism - runningCount,
+      } as EforgeEvent);
+      // --- eforge:endregion plan-02-scheduler-emission ---
 
       // Parent owns the sessionId: generate it here and emit session:start
       // immediately so the DB row exists before the child subprocess starts.
