@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   daemonReducer,
   initialDaemonState,
@@ -6,7 +6,10 @@ import {
   selectAutoBuildEnabled,
   selectQueueItems,
   selectRuns,
+  selectDaemonActivity,
+  selectHeartbeatStaleness,
   type DaemonState,
+  type HeartbeatPayload,
 } from '../daemon-reducer';
 import type { EforgeEvent } from '../types';
 import type { AutoBuildState } from '../api';
@@ -152,7 +155,7 @@ describe('daemonReducer', () => {
       expect(next.runs[0].status).toBe('failed');
     });
 
-    it('returns state unchanged when sessionId is not found', () => {
+    it('leaves runs unchanged when sessionId is not found but still appends to activity', () => {
       const state: DaemonState = { ...initialDaemonState, runs: [makeRun()] };
       const event = makeEvent('session:end', {
         sessionId: 'unknown-session',
@@ -161,7 +164,9 @@ describe('daemonReducer', () => {
 
       const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
 
-      expect(next).toBe(state);
+      expect(next.runs).toEqual(state.runs);
+      expect(next.daemonActivity).toHaveLength(1);
+      expect(next.daemonActivity[0].id).toBe('e1');
     });
   });
 
@@ -181,13 +186,15 @@ describe('daemonReducer', () => {
       expect(next.queue[0]).toMatchObject({ id: 'prd-42', title: 'New Feature', status: 'pending' });
     });
 
-    it('ignores duplicate prdIds', () => {
+    it('ignores duplicate prdIds but still appends to activity', () => {
       const state: DaemonState = { ...initialDaemonState, queue: [makeQueueItem()] };
       const event = makeEvent('queue:prd:discovered', { prdId: 'prd-1', title: 'Dup' });
 
       const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
 
-      expect(next).toBe(state);
+      expect(next.queue).toEqual(state.queue);
+      expect(next.daemonActivity).toHaveLength(1);
+      expect(next.daemonActivity[0].id).toBe('e1');
     });
   });
 
@@ -244,13 +251,15 @@ describe('daemonReducer', () => {
       expect(next.autoBuild?.enabled).toBe(false);
     });
 
-    it('returns state unchanged when autoBuild is null', () => {
+    it('leaves autoBuild null when autoBuild is null but still appends to activity', () => {
       const state: DaemonState = { ...initialDaemonState, autoBuild: null };
       const event = makeEvent('daemon:auto-build:paused', { reason: 'whatever' });
 
       const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
 
-      expect(next).toBe(state);
+      expect(next.autoBuild).toBeNull();
+      expect(next.daemonActivity).toHaveLength(1);
+      expect(next.daemonActivity[0].id).toBe('e1');
     });
   });
 
@@ -328,5 +337,466 @@ describe('selectRuns', () => {
     const runs = [makeRun()];
     const state: DaemonState = { ...initialDaemonState, runs };
     expect(selectRuns(state)).toBe(runs);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// daemonActivity ring buffer
+// ---------------------------------------------------------------------------
+
+describe('daemonActivity ring buffer', () => {
+  it('appends non-heartbeat events to daemonActivity', () => {
+    const event = makeEvent('daemon:lifecycle:starting', {
+      pid: 42,
+      port: 8080,
+      version: '1.0.0',
+      mode: 'development',
+    });
+
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'e1',
+    });
+
+    expect(next.daemonActivity).toHaveLength(1);
+    expect(next.daemonActivity[0].id).toBe('e1');
+    expect(next.daemonActivity[0].event).toBe(event);
+    expect(typeof next.daemonActivity[0].receivedAt).toBe('number');
+  });
+
+  it('caps at 500 entries and drops the oldest on overflow', () => {
+    let state = initialDaemonState;
+    for (let i = 0; i < 501; i++) {
+      const event = makeEvent('daemon:lifecycle:starting', {
+        pid: i,
+        port: 8080,
+        version: '1.0.0',
+        mode: 'dev',
+      });
+      state = daemonReducer(state, {
+        type: 'ADD_EVENT',
+        event,
+        eventId: `e${i}`,
+      });
+    }
+
+    expect(state.daemonActivity).toHaveLength(500);
+    // e0 was dropped; e1 is the oldest remaining
+    expect(state.daemonActivity[0].id).toBe('e1');
+    // e500 is the newest
+    expect(state.daemonActivity[499].id).toBe('e500');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// daemon:heartbeat
+// ---------------------------------------------------------------------------
+
+function makeHeartbeatPayload(overrides: Partial<HeartbeatPayload> = {}): HeartbeatPayload {
+  return {
+    uptime: 60_000,
+    queueDepth: 0,
+    runningBuilds: 0,
+    autoBuild: { enabled: true, paused: false },
+    subscribers: 1,
+    ...overrides,
+  };
+}
+
+describe('ADD_EVENT: daemon:heartbeat', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('updates latestHeartbeat and does NOT append to daemonActivity', () => {
+    const event = makeEvent('daemon:heartbeat', {
+      uptime: 5_000,
+      queueDepth: 2,
+      runningBuilds: 1,
+      autoBuild: { enabled: true, paused: false },
+      subscribers: 3,
+    });
+
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'hb1',
+    });
+
+    expect(next.latestHeartbeat).not.toBeNull();
+    expect(next.latestHeartbeat!.payload.uptime).toBe(5_000);
+    expect(next.latestHeartbeat!.payload.queueDepth).toBe(2);
+    expect(next.latestHeartbeat!.payload.runningBuilds).toBe(1);
+    expect(next.latestHeartbeat!.payload.autoBuild).toEqual({ enabled: true, paused: false });
+    expect(next.latestHeartbeat!.payload.subscribers).toBe(3);
+    // heartbeat must NOT go into the activity buffer
+    expect(next.daemonActivity).toHaveLength(0);
+  });
+
+  it('overwrites latestHeartbeat on successive heartbeats', () => {
+    const event1 = makeEvent('daemon:heartbeat', makeHeartbeatPayload({ uptime: 1_000 }));
+    const event2 = makeEvent('daemon:heartbeat', makeHeartbeatPayload({ uptime: 2_000 }));
+
+    const s1 = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event: event1,
+      eventId: 'hb1',
+    });
+    const s2 = daemonReducer(s1, {
+      type: 'ADD_EVENT',
+      event: event2,
+      eventId: 'hb2',
+    });
+
+    expect(s2.latestHeartbeat!.payload.uptime).toBe(2_000);
+    expect(s2.daemonActivity).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// New daemon event types — state deltas
+// ---------------------------------------------------------------------------
+
+describe('ADD_EVENT: daemon:lifecycle events', () => {
+  it('appends daemon:lifecycle:starting to daemonActivity with no other state change', () => {
+    const event = makeEvent('daemon:lifecycle:starting', {
+      pid: 1,
+      port: 8080,
+      version: '1.0.0',
+      mode: 'production',
+    });
+
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'e1',
+    });
+
+    expect(next.daemonActivity).toHaveLength(1);
+    expect(next.runs).toEqual(initialDaemonState.runs);
+    expect(next.queue).toEqual(initialDaemonState.queue);
+    expect(next.autoBuild).toBeNull();
+  });
+
+  it('appends daemon:lifecycle:ready to daemonActivity', () => {
+    const event = makeEvent('daemon:lifecycle:ready', {
+      pid: 1,
+      port: 8080,
+      version: '1.0.0',
+      mode: 'production',
+      recoveryDurationMs: 50,
+    });
+
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'e2',
+    });
+
+    expect(next.daemonActivity).toHaveLength(1);
+    expect(next.daemonActivity[0].event.type).toBe('daemon:lifecycle:ready');
+  });
+
+  it('appends daemon:lifecycle:shutdown:start to daemonActivity', () => {
+    const event = makeEvent('daemon:lifecycle:shutdown:start', {
+      signal: 'SIGTERM',
+      reason: 'user request',
+    });
+
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'e3',
+    });
+
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('appends daemon:lifecycle:shutdown:complete to daemonActivity', () => {
+    const event = makeEvent('daemon:lifecycle:shutdown:complete', { durationMs: 200 });
+
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'e4',
+    });
+
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+});
+
+describe('ADD_EVENT: daemon:scheduler events', () => {
+  it('appends daemon:scheduler:dequeued to daemonActivity', () => {
+    const event = makeEvent('daemon:scheduler:dequeued', {
+      prdId: 'prd-1',
+      queueDepth: 1,
+      capacityRemaining: 1,
+    });
+
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'e1',
+    });
+
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('appends daemon:scheduler:capacity-blocked to daemonActivity', () => {
+    const event = makeEvent('daemon:scheduler:capacity-blocked', {
+      queueDepth: 3,
+      runningCount: 2,
+      limit: 2,
+    });
+
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'e2',
+    });
+
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('appends daemon:scheduler:dependency-blocked to daemonActivity', () => {
+    const event = makeEvent('daemon:scheduler:dependency-blocked', {
+      prdId: 'prd-2',
+      blockedBy: ['prd-1'],
+    });
+
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'e3',
+    });
+
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+});
+
+describe('ADD_EVENT: daemon:auto-build extensions', () => {
+  it('daemon:auto-build:enabled sets autoBuild.enabled = true and appends to activity', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      autoBuild: makeAutoBuildState(false),
+    };
+    const event = makeEvent('daemon:auto-build:enabled', {});
+
+    const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.autoBuild?.enabled).toBe(true);
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('daemon:auto-build:enabled is a no-op when autoBuild is null', () => {
+    const event = makeEvent('daemon:auto-build:enabled', {});
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.autoBuild).toBeNull();
+    expect(next.daemonActivity).toHaveLength(1); // activity still appended
+  });
+
+  it('daemon:auto-build:resumed sets autoBuild.enabled = true and appends to activity', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      autoBuild: makeAutoBuildState(false),
+    };
+    const event = makeEvent('daemon:auto-build:resumed', {});
+
+    const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.autoBuild?.enabled).toBe(true);
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('daemon:auto-build:triggered appends to activity with no autoBuild change', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      autoBuild: makeAutoBuildState(true),
+    };
+    const event = makeEvent('daemon:auto-build:triggered', {
+      trigger: 'file',
+      prdsEnqueued: 1,
+    });
+
+    const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.autoBuild?.enabled).toBe(true); // unchanged
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+});
+
+describe('ADD_EVENT: daemon:recovery events', () => {
+  it('appends daemon:recovery:start to daemonActivity', () => {
+    const event = makeEvent('daemon:recovery:start', {});
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('appends daemon:recovery:run-marked-failed to daemonActivity', () => {
+    const event = makeEvent('daemon:recovery:run-marked-failed', {
+      runId: 'run-1',
+      planSet: 'my-set',
+      reason: 'orphaned',
+    });
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e2' });
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('appends daemon:recovery:lock-removed to daemonActivity', () => {
+    const event = makeEvent('daemon:recovery:lock-removed', {
+      path: '/tmp/eforge.lock',
+      pid: 999,
+    });
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e3' });
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('appends daemon:recovery:complete to daemonActivity', () => {
+    const event = makeEvent('daemon:recovery:complete', {
+      runsFailed: 1,
+      locksRemoved: 1,
+      durationMs: 50,
+    });
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e4' });
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+});
+
+describe('ADD_EVENT: daemon:orphan:reaped', () => {
+  it('appends to daemonActivity', () => {
+    const event = makeEvent('daemon:orphan:reaped', {
+      runId: 'run-1',
+      sessionId: 'session-99',
+      planSet: 'my-set',
+      pid: 1234,
+    });
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+    expect(next.daemonActivity).toHaveLength(1);
+    expect(next.daemonActivity[0].event.type).toBe('daemon:orphan:reaped');
+  });
+});
+
+describe('ADD_EVENT: daemon:warning / daemon:error', () => {
+  it('appends daemon:warning to daemonActivity', () => {
+    const event = makeEvent('daemon:warning', {
+      source: 'scheduler',
+      message: 'high queue depth',
+    });
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('appends daemon:error to daemonActivity', () => {
+    const event = makeEvent('daemon:error', {
+      source: 'db',
+      message: 'write failed',
+      stack: 'Error: ...',
+    });
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectDaemonActivity
+// ---------------------------------------------------------------------------
+
+describe('selectDaemonActivity', () => {
+  it('returns the daemonActivity array', () => {
+    expect(selectDaemonActivity(initialDaemonState)).toEqual([]);
+
+    const event = makeEvent('daemon:lifecycle:starting', {
+      pid: 1,
+      port: 8080,
+      version: '1.0.0',
+      mode: 'dev',
+    });
+    const next = daemonReducer(initialDaemonState, {
+      type: 'ADD_EVENT',
+      event,
+      eventId: 'e1',
+    });
+
+    expect(selectDaemonActivity(next)).toBe(next.daemonActivity);
+    expect(selectDaemonActivity(next)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// selectHeartbeatStaleness
+// ---------------------------------------------------------------------------
+
+describe('selectHeartbeatStaleness', () => {
+  const now = 1_000_000;
+
+  it('returns dead when latestHeartbeat is null', () => {
+    expect(selectHeartbeatStaleness(initialDaemonState, now)).toBe('dead');
+  });
+
+  it('returns fresh for age < 15 000 ms', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      latestHeartbeat: { at: now - 5_000, payload: makeHeartbeatPayload() },
+    };
+    expect(selectHeartbeatStaleness(state, now)).toBe('fresh');
+  });
+
+  it('returns fresh at exactly 0 ms', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      latestHeartbeat: { at: now, payload: makeHeartbeatPayload() },
+    };
+    expect(selectHeartbeatStaleness(state, now)).toBe('fresh');
+  });
+
+  it('returns fresh at 14 999 ms', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      latestHeartbeat: { at: now - 14_999, payload: makeHeartbeatPayload() },
+    };
+    expect(selectHeartbeatStaleness(state, now)).toBe('fresh');
+  });
+
+  it('returns stale at exactly 15 000 ms', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      latestHeartbeat: { at: now - 15_000, payload: makeHeartbeatPayload() },
+    };
+    expect(selectHeartbeatStaleness(state, now)).toBe('stale');
+  });
+
+  it('returns stale for 15 000 – 29 999 ms', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      latestHeartbeat: { at: now - 20_000, payload: makeHeartbeatPayload() },
+    };
+    expect(selectHeartbeatStaleness(state, now)).toBe('stale');
+  });
+
+  it('returns dead at exactly 30 000 ms', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      latestHeartbeat: { at: now - 30_000, payload: makeHeartbeatPayload() },
+    };
+    expect(selectHeartbeatStaleness(state, now)).toBe('dead');
+  });
+
+  it('returns dead for age > 30 000 ms', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      latestHeartbeat: { at: now - 60_000, payload: makeHeartbeatPayload() },
+    };
+    expect(selectHeartbeatStaleness(state, now)).toBe('dead');
+  });
+
+  it('uses Date.now() as default when now is omitted', () => {
+    const at = Date.now() - 5_000;
+    const state: DaemonState = {
+      ...initialDaemonState,
+      latestHeartbeat: { at, payload: makeHeartbeatPayload() },
+    };
+    expect(selectHeartbeatStaleness(state)).toBe('fresh');
   });
 });
