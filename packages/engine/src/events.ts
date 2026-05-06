@@ -36,6 +36,7 @@ export {
   ORCHESTRATION_MODES,
   SEVERITY_ORDER,
   isAlwaysYieldedAgentEvent,
+  EforgeEventSchema,
 } from '@eforge-build/client';
 
 // Engine-only types not part of the wire protocol:

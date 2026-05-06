@@ -58,6 +58,10 @@ importers:
         version: 4.4.2
 
   packages/client:
+    dependencies:
+      zod:
+        specifier: ^4.4.2
+        version: 4.4.2
     devDependencies:
       tsup:
         specifier: ^8.5.1

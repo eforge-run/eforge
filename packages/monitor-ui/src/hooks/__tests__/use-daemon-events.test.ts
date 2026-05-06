@@ -47,8 +47,10 @@ function toSseLine(event: object): string {
 // Stub subscribeToDaemonEvents so tests control what events arrive.
 let onEventCallback: ((event: object, meta: { eventId?: string }) => void) | null = null;
 
-vi.mock('@eforge-build/client/browser', () => {
+vi.mock('@eforge-build/client/browser', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@eforge-build/client/browser')>();
   return {
+    ...actual,
     API_ROUTES: {
       runs: '/api/runs',
       queue: '/api/queue',

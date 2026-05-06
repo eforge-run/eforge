@@ -13,6 +13,7 @@ export default defineConfig({
       // --- eforge:region plan-04-monitor-ui ---
       'packages/monitor-ui/src/**/*.test.tsx',
       'packages/monitor-ui/src/**/*.test.ts',
+      'packages/monitor-ui/test/**/*.test.ts',
       // --- eforge:endregion plan-04-monitor-ui ---
       // --- eforge:region plan-04-daemon-events-server ---
       'packages/client/src/__tests__/**/*.test.ts',

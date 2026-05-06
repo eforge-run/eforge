@@ -29,7 +29,6 @@
 - **Plugin skill coverage** — Add skills for common scenarios, e.g. `/eforge:update-docs` with flags like `--architecture`, `--readme`, `--claude-md` for targeted documentation updates
 - **Schema library unification on TypeBox** — Standardize on TypeBox across the codebase. TypeBox schemas are JSON Schema natively (no `z.toJSONSchema()` conversion), already in the dep tree for Pi, and align with Pi's tool API. Prerequisite for shared tool registry.
 - **Shared tool registry** — Factor tool definitions into `@eforge-build/client` so MCP proxy and Pi extension become thin adapters. Eliminates remaining ~400 lines of cross-package tool-definition duplication. Depends on schema library unification.
-- **Typed SSE events in client package** — Extract `EforgeEvent` wire-protocol types from `packages/engine/src/events.ts` into `@eforge-build/client`. Requires decoupling from engine-internal imports.
 - **Pi extension SSE event streaming** — Add SSE subscriber to Pi extension for live build progress via Pi `ExtensionAPI` channel.
 - **TypeScript project references** — Adopt `tsconfig.json` `references` across workspace members for automatic topological ordering.
 

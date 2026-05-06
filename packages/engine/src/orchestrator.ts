@@ -11,7 +11,7 @@ import { promisify } from 'node:util';
 
 const exec = promisify(execFile);
 import type { EforgeEvent, OrchestrationConfig, EforgeState, PlanState, PrdValidationGap } from './events.js';
-import { loadState, saveState, isResumable } from './state.js';
+import { loadState, saveState, isResumable, readEventLogSnapshot } from './state.js';
 import {
   computeWorktreeBase,
   type MergeResolver,
@@ -92,15 +92,31 @@ export interface OrchestratorOptions {
 }
 
 /**
- * Load existing state or create fresh. On resume, resets running→pending
- * and re-evaluates blocked plans. Non-resumable existing states (failed,
- * completed) fall through to fresh state creation instead of returning stale state.
+ * Load existing state or create fresh. Prefers event-log replay over state.json
+ * (the log has a snapshot after every saveState call, so it survives state.json loss).
+ * Falls back to state.json when the event log is unavailable (legacy sessions).
+ *
+ * On resume, resets running→pending and re-evaluates blocked plans.
+ * Non-resumable states (failed, completed) fall through to fresh state creation.
  */
 export function initializeState(
   stateDir: string,
   config: OrchestrationConfig,
   repoRoot: string,
 ): { state: EforgeState; resumed: boolean } {
+  // Prefer event-log snapshot over state.json: the log survives a mid-write crash
+  // or manual deletion of state.json and always carries the most-recent snapshot.
+  const logSnapshot = readEventLogSnapshot(stateDir);
+  if (logSnapshot && logSnapshot.setName === config.name) {
+    if (isResumable(logSnapshot)) {
+      resumeState(logSnapshot);
+      saveState(stateDir, logSnapshot);
+      return { state: logSnapshot, resumed: true };
+    }
+    // Non-resumable snapshot — fall through to fresh state creation
+  }
+
+  // Fall back to state.json (legacy sessions without an event log)
   const existing = loadState(stateDir);
 
   if (existing) {

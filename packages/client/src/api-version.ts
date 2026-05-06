@@ -14,7 +14,7 @@ import type { VersionResponse } from './routes.js';
  * the version. Removing a field, renaming a route, or changing a response's
  * required fields IS breaking and must bump the version.
  */
-export const DAEMON_API_VERSION = 18; // v18: GET /api/daemon-events SSE no longer replays historical events on initial connect (no Last-Event-ID). Instead emits a single `daemon:resync-marker` block (when daemon-event log is non-empty) so the client's `lastEventId` advances to the current tail. Last-Event-ID-present branch unchanged. Old clients relying on initial-connect replay must upgrade.
+export const DAEMON_API_VERSION = 19; // v19: events.schemas.ts introduced as wire-protocol source of truth; EforgeEvent derived via z.infer<typeof EforgeEventSchema>. Added 5 new event variants: plan:status:change, plan:error:set, plan:error:clear, merge:worktree:set, merge:worktree:clear.
 
 /** Per-process cache: maps `${port}:${pid}` to the verified daemon version. */
 const verifiedDaemons = new Map<string, number>();

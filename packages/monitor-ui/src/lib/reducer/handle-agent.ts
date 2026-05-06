@@ -71,6 +71,8 @@ export const handleAgentStart: EventHandler<'agent:start'> = (event, state) => {
     effortOriginal: event.effortOriginal,
     effortSource: event.effortSource,
     thinkingSource: event.thinkingSource,
+    thinkingCoerced: event.thinkingCoerced,
+    thinkingOriginal: event.thinkingOriginal as Record<string, unknown> | undefined,
     tier: event.tier,
     tierSource: event.tierSource,
     perspective: event.perspective,

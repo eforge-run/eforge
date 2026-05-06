@@ -16,7 +16,7 @@ const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
 import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
-import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
+import { API_ROUTES, DAEMON_API_VERSION, EforgeEventSchema } from '@eforge-build/client';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 // --- eforge:region plan-01-fix-recovery-ux ---
@@ -87,31 +87,54 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const UI_DIR = resolve(__dirname, 'monitor-ui');
 
 /**
- * Hydrate timestamp into event JSON for backward compatibility.
- * Legacy events stored without a JSON-embedded timestamp get the DB
- * `timestamp` column injected, avoiding a SQLite migration.
+ * Parse and validate a DB event row into an EforgeEvent.
+ *
+ * Applies backward-compat field patching (injecting timestamp and type from DB
+ * columns when missing from the JSON payload) before Zod validation, preserving
+ * the behavior of the previous hydrateEventData helper.
+ *
+ * Returns the parsed EforgeEvent on success, or null on parse/validation failure.
+ * Failures are logged to stderr with row id, payload prefix, and Zod error path
+ * (log-and-skip — callers must filter nulls).
  */
-function hydrateEventData(eventData: string, dbTimestamp: string, dbType: string): string {
+function parseEventRow(
+  eventData: string,
+  dbTimestamp: string,
+  dbType: string,
+  rowId?: number,
+): EforgeEvent | null {
+  let parsed: Record<string, unknown>;
   try {
-    const parsed = JSON.parse(eventData);
-    let mutated = false;
-    if (!parsed.timestamp) {
-      parsed.timestamp = dbTimestamp;
-      mutated = true;
-    }
-    // Some historical emission sites stringified the payload without the
-    // `type` field (it was only ever on the DB column). The client reads
-    // `.type` off the parsed payload and crashes if it's missing, so merge
-    // the column value in whenever the payload lacks one.
-    if (!parsed.type && dbType) {
-      parsed.type = dbType;
-      mutated = true;
-    }
-    if (mutated) return JSON.stringify(parsed);
+    parsed = JSON.parse(eventData) as Record<string, unknown>;
   } catch {
-    // unparseable — return as-is
+    const prefix = eventData.length > 80 ? eventData.slice(0, 80) + '...' : eventData;
+    process.stderr.write(
+      `[parseEventRow] unparseable JSON${rowId !== undefined ? ` id=${rowId}` : ''}: ${prefix}\n`,
+    );
+    return null;
   }
-  return eventData;
+
+  // Back-compat field patching: legacy rows may lack timestamp or type in the
+  // JSON payload (they were stored only in DB columns). Inject from DB columns
+  // before Zod validation so old rows still parse correctly.
+  if (!parsed.timestamp) {
+    parsed.timestamp = dbTimestamp;
+  }
+  if (!parsed.type && dbType) {
+    parsed.type = dbType;
+  }
+
+  const result = EforgeEventSchema.safeParse(parsed);
+  if (!result.success) {
+    const errorPath = result.error.issues.map((i) => i.path.join('.')).join(', ');
+    const prefix = eventData.length > 80 ? eventData.slice(0, 80) + '...' : eventData;
+    process.stderr.write(
+      `[parseEventRow] invalid event${rowId !== undefined ? ` id=${rowId}` : ''}: ${errorPath} — ${prefix}\n`,
+    );
+    return null;
+  }
+
+  return result.data;
 }
 
 const MIME_TYPES: Record<string, string> = {
@@ -312,8 +335,10 @@ export async function startServer(
     const historicalEvents = db.getEventsBySession(sessionId, lastEventId);
     let lastSeenId = lastEventId ?? 0;
     for (const event of historicalEvents) {
-      const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
-      const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
+      const parsed = parseEventRow(event.data, event.timestamp, event.type, event.id);
+      if (!parsed) continue;
+      const serialized = JSON.stringify(parsed);
+      const dataLines = serialized.split('\n').map((l: string) => `data: ${l}`).join('\n');
       res.write(`id: ${event.id}\n${dataLines}\n\n`);
       if (event.id > lastSeenId) {
         lastSeenId = event.id;
@@ -356,8 +381,10 @@ export async function startServer(
       const historicalEvents = db.getDaemonEventsAfter(lastEventId);
       lastSeenId = lastEventId;
       for (const event of historicalEvents) {
-        const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
-        const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
+        const parsed = parseEventRow(event.data, event.timestamp, event.type, event.id);
+        if (!parsed) continue;
+        const serialized = JSON.stringify(parsed);
+        const dataLines = serialized.split('\n').map((l: string) => `data: ${l}`).join('\n');
         res.write(`id: ${event.id}\n${dataLines}\n\n`);
         if (event.id > lastSeenId) {
           lastSeenId = event.id;
@@ -417,8 +444,10 @@ export async function startServer(
       try {
         const newEvents = db.getEventsBySession(subscriber.sessionId, subscriber.lastSeenId);
         for (const event of newEvents) {
-          const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
-          const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
+          const parsed = parseEventRow(event.data, event.timestamp, event.type, event.id);
+          if (!parsed) continue;
+          const serialized = JSON.stringify(parsed);
+          const dataLines = serialized.split('\n').map((l: string) => `data: ${l}`).join('\n');
           subscriber.res.write(`id: ${event.id}\n${dataLines}\n\n`);
           if (event.id > subscriber.lastSeenId) {
             subscriber.lastSeenId = event.id;
@@ -433,8 +462,10 @@ export async function startServer(
       try {
         const newEvents = db.getDaemonEventsAfter(subscriber.lastSeenId);
         for (const event of newEvents) {
-          const hydrated = hydrateEventData(event.data, event.timestamp, event.type);
-          const dataLines = hydrated.split('\n').map((l: string) => `data: ${l}`).join('\n');
+          const parsed = parseEventRow(event.data, event.timestamp, event.type, event.id);
+          if (!parsed) continue;
+          const serialized = JSON.stringify(parsed);
+          const dataLines = serialized.split('\n').map((l: string) => `data: ${l}`).join('\n');
           subscriber.res.write(`id: ${event.id}\n${dataLines}\n\n`);
           if (event.id > subscriber.lastSeenId) {
             subscriber.lastSeenId = event.id;
@@ -2684,10 +2715,11 @@ export async function startServer(
         'Content-Type': 'application/json',
         'Access-Control-Allow-Origin': '*',
       });
-      const hydratedEvents = events.map((evt) => ({
-        ...evt,
-        data: hydrateEventData(evt.data, evt.timestamp, evt.type),
-      }));
+      const hydratedEvents = events.flatMap((evt) => {
+        const parsed = parseEventRow(evt.data, evt.timestamp, evt.type, evt.id);
+        if (!parsed) return [];
+        return [{ ...evt, data: JSON.stringify(parsed) }];
+      });
       res.end(JSON.stringify({ status, events: hydratedEvents }));
     } else if (url.startsWith(`${PLANS_BASE}/`)) {
       const runId = url.slice(`${PLANS_BASE}/`.length).split('?')[0];

@@ -1,10 +1,10 @@
 /**
  * Plan lifecycle guards - validates status transitions before delegating
- * to the low-level `updatePlanStatus()` mutator in state.ts.
+ * to the single-entry-point `mutateState()` mutator in state.ts.
  */
 
 import type { EforgeState, PlanState } from '../events.js';
-import { updatePlanStatus } from '../state.js';
+import { mutateState } from '../state.js';
 
 type PlanStatus = PlanState['status'];
 
@@ -34,13 +34,6 @@ export interface TransitionMetadata {
 }
 
 /**
- * Transition a plan to a new status, validating the transition is legal.
- * Throws if the transition is not in `VALID_TRANSITIONS`.
- *
- * Delegates to `updatePlanStatus()` from state.ts for the actual mutation
- * and `completedPlans` bookkeeping.
- */
-/**
  * Resume a EforgeState by resetting running plans to pending and
  * re-evaluating blocked plans whose dependencies have resolved.
  */
@@ -48,7 +41,10 @@ export function resumeState(state: EforgeState): EforgeState {
   // Reset running plans to pending for re-execution
   for (const [id, plan] of Object.entries(state.plans)) {
     if (plan.status === 'running') {
-      plan.error = undefined;
+      // Clear any prior error before transitioning back to pending
+      if (plan.error !== undefined) {
+        mutateState(state, { type: 'plan:error:clear', planId: id, timestamp: new Date().toISOString() });
+      }
       transitionPlan(state, id, 'pending');
     }
   }
@@ -67,6 +63,13 @@ export function resumeState(state: EforgeState): EforgeState {
   return state;
 }
 
+/**
+ * Transition a plan to a new status, validating the transition is legal.
+ * Throws if the transition is not in `VALID_TRANSITIONS`.
+ *
+ * Routes all state mutations through `mutateState()` from state.ts —
+ * the single mutation entry point — rather than assigning fields directly.
+ */
 export function transitionPlan(
   state: EforgeState,
   planId: string,
@@ -88,10 +91,22 @@ export function transitionPlan(
     );
   }
 
-  updatePlanStatus(state, planId, to);
+  // Route status change through the single mutation entry point
+  mutateState(state, {
+    type: 'plan:status:change',
+    planId,
+    status: to,
+    timestamp: new Date().toISOString(),
+  });
 
+  // Route error metadata through the single mutation entry point
   if (metadata?.error !== undefined) {
-    plan.error = metadata.error;
+    mutateState(state, {
+      type: 'plan:error:set',
+      planId,
+      error: metadata.error,
+      timestamp: new Date().toISOString(),
+    });
   }
 
   return state;

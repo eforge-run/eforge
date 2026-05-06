@@ -280,12 +280,12 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
         }
 
         // Parse optional agents block
-        let agents: Record<string, { effort?: string; thinking?: boolean | object; rationale?: string; tier?: string }> | undefined;
+        let agents: Record<string, { effort?: string; thinking?: boolean | { [x: string]: unknown }; rationale?: string; tier?: string }> | undefined;
         if (p.agents !== undefined) {
           const agentsValidator = z.record(z.string(), agentTuningSchema);
           const agentsResult = agentsValidator.safeParse(p.agents);
           if (agentsResult.success) {
-            agents = agentsResult.data as Record<string, { effort?: string; thinking?: boolean | object; rationale?: string; tier?: string }>;
+            agents = agentsResult.data as Record<string, { effort?: string; thinking?: boolean | { [x: string]: unknown }; rationale?: string; tier?: string }>;
           } else {
             orchWarnings.push(`[eforge] Plan '${id}': malformed 'agents' block in orchestration config will be ignored`);
           }

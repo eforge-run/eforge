@@ -4,6 +4,7 @@ import type { EforgeEvent, EforgeStatus, OrchestrationConfig, ReviewIssue } from
 import type { EforgeConfig } from '@eforge-build/engine/config';
 import type { QueuedPrd } from '@eforge-build/engine/prd-queue';
 import type { PlaybookListEntry } from '@eforge-build/client';
+import { getEventSummary } from '@eforge-build/client';
 
 // Module-scoped display state
 const spinners = new Map<string, Ora>();
@@ -124,12 +125,8 @@ function elapsed(): string {
  */
 export function renderEvent(event: EforgeEvent): void {
   switch (event.type) {
-    // Lifecycle
-    case 'session:start':
-      break;
-
-    case 'session:end':
-      break;
+    // Lifecycle — session:start and session:end have no CLI output;
+    // handled by registry summary in the default case.
 
     case 'phase:start':
       console.log('');
@@ -619,9 +616,7 @@ export function renderEvent(event: EforgeEvent): void {
       );
       break;
 
-    case 'agent:result':
-      // Tracing-only event — no CLI output needed
-      break;
+    // agent:result — Tracing-only event; handled by registry summary in default.
 
     // User interaction
     case 'approval:needed':
@@ -679,15 +674,10 @@ export function renderEvent(event: EforgeEvent): void {
       console.error(`[eforge] plan warning${event.planId ? ` (${event.planId})` : ''}: ${event.message}`);
       break;
 
-    // Agent lifecycle (consumed by hooks, monitor, tracing — no CLI display)
-    case 'agent:start':
-      break;
-    case 'agent:warning':
-      break;
+    // Agent lifecycle — agent:start, agent:warning, agent:usage have no CLI
+    // output; handled by default case. agent:stop must flush text buffer.
     case 'agent:stop':
       flushAgentBuffer(event.agent, event.planId);
-      break;
-    case 'agent:usage':
       break;
 
     // Merge conflict resolution
@@ -804,14 +794,10 @@ export function renderEvent(event: EforgeEvent): void {
       startSpinner('gap-close', 'Closing PRD validation gaps...');
       break;
 
-    case 'gap_close:plan_ready':
-      break;
+    // gap_close:plan_ready and planning:submission — no CLI output; handled by default.
 
     case 'gap_close:complete':
       succeedSpinner('gap-close', 'Gap closing complete');
-      break;
-
-    case 'planning:submission':
       break;
 
     case 'planning:error':
@@ -834,8 +820,7 @@ export function renderEvent(event: EforgeEvent): void {
       startSpinner('recovery', `Analysing failed build for PRD ${chalk.cyan(event.prdId)}...`);
       break;
 
-    case 'recovery:summary':
-      break;
+    // recovery:summary — no CLI output; handled by default.
 
     case 'recovery:complete':
       succeedSpinner('recovery', `Recovery analysis complete: ${chalk.bold(event.verdict.verdict.toUpperCase())}`);
@@ -845,8 +830,7 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.yellow(`  ⚠ Recovery parse failed — writing manual verdict sidecar: ${event.error}`));
       break;
 
-    case 'recovery:apply:start':
-      break;
+    // recovery:apply:start — no CLI output; handled by default case.
 
     case 'recovery:apply:complete':
       if (!event.noAction) {
@@ -860,35 +844,13 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.red(`  ✗ Recovery apply failed: ${event.message}`));
       break;
 
-    case 'session:profile':
-      // Profile info is informational; no output needed in CLI display
-      break;
+    // session:profile — informational; no CLI output needed; handled by default.
 
     case 'daemon:auto-build:paused':
       console.log(chalk.yellow(`  ⚠ Auto-build paused: ${event.reason}`));
       break;
 
     // --- eforge:region plan-01-types-and-daemon-emission ---
-    // New daemon-scoped event types — minimal CLI display for each.
-    case 'daemon:lifecycle:starting':
-    case 'daemon:lifecycle:ready':
-    case 'daemon:lifecycle:shutdown:start':
-    case 'daemon:lifecycle:shutdown:complete':
-    case 'daemon:heartbeat':
-    case 'daemon:scheduler:dequeued':
-    case 'daemon:scheduler:capacity-blocked':
-    case 'daemon:scheduler:dependency-blocked':
-    case 'daemon:auto-build:enabled':
-    case 'daemon:auto-build:resumed':
-    case 'daemon:auto-build:triggered':
-    case 'daemon:recovery:start':
-    case 'daemon:recovery:run-marked-failed':
-    case 'daemon:recovery:lock-removed':
-    case 'daemon:recovery:complete':
-    case 'daemon:orphan:reaped':
-      // Daemon-internal events — no CLI output needed
-      break;
-
     case 'daemon:warning':
       console.log(chalk.yellow(`  ⚠ Daemon warning [${event.source}]: ${event.message}`));
       break;
@@ -899,8 +861,15 @@ export function renderEvent(event: EforgeEvent): void {
     // --- eforge:endregion plan-01-types-and-daemon-emission ---
 
     default: {
-      const _exhaustive: never = event;
-      console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));
+      // Daemon-internal events, plan lifecycle state events, and any other
+      // events without explicit rich rendering fall here.
+      // The registry is exhaustive over all EforgeEvent types, so this case
+      // is not truly unreachable — it's the intentional home for no-op events.
+      // Events with a registry summary get a dim trace; others are silent.
+      const summary = getEventSummary(event);
+      if (summary) {
+        console.log(chalk.dim(`  ${summary}`));
+      }
     }
   }
 }

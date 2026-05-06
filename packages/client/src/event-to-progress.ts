@@ -1,11 +1,4 @@
 /**
- * This module maps engine-emitted `EforgeEvent`s (defined in
- * `@eforge-build/engine/events`) onto the wire-format `DaemonStreamEvent`
- * (defined in this package) that consumers receive over
- * `/api/events/:session` SSE. The engine event is the source of truth;
- * `DaemonStreamEvent` is its serialized form. When engine events grow a new
- * field, update the mapper and `DaemonStreamEvent` together.
- *
  * Shared event -> progress mapping for `eforge_follow` consumers.
  *
  * The MCP proxy (`packages/eforge/src/cli/mcp-proxy.ts`) and the Pi extension
@@ -14,15 +7,17 @@
  * `notifications/progress`, Pi via the tool's `onUpdate(message)` callback.
  *
  * To prevent the two consumer surfaces from drifting on event messages, the
- * mapping lives here - a single source of truth for which daemon events are
+ * mapping lives here — a single source of truth for which daemon events are
  * high-signal and how they render as human-readable strings.
  *
- * The mapping is intentionally narrow: only `phase:start`, `phase:end`,
- * `build:files_changed`, high/critical `review:issue`, `build:failed`, and
- * `phase:error` produce updates. Everything else - especially the noisy
- * `agent:*` event family - is filtered.
+ * Rich rendering paths (phase labels, counter accumulation, severity filtering)
+ * are kept as explicit cases. EforgeEvent types without a custom case fall
+ * through to the registry summary lookup; legacy DaemonStreamEvent types not
+ * in the registry are filtered (return null).
  */
 import type { DaemonStreamEvent } from './session-stream.js';
+import type { EforgeEvent } from './events.js';
+import { getEventSummary } from './event-registry.js';
 
 /** Running counters accumulated across events in a single follow subscription. */
 export interface FollowCounters {
@@ -86,6 +81,10 @@ export function eventToProgress(
         ?? 'review issue') as string;
       return { message: `Issue (${severity}): ${summary}`, counters };
     }
+    case 'session:end':
+      // Session end is the terminal event — return null to avoid a spurious
+      // progress update. The caller handles session:end as a completion signal.
+      return null;
     case 'plan:build:failed': {
       const planId = (event as { planId?: unknown }).planId as string | undefined;
       const error = (event as { error?: unknown }).error as string | undefined;
@@ -96,7 +95,12 @@ export function eventToProgress(
       const error = (event as { error?: unknown }).error as string | undefined;
       return { message: `Phase error: ${error ?? 'failed'}`, counters };
     }
-    default:
-      return null;
+    default: {
+      // For recognized EforgeEvent types, look up the registry summary.
+      // Legacy DaemonStreamEvent types not in the registry return null.
+      const summary = getEventSummary(event as unknown as EforgeEvent);
+      if (!summary) return null;
+      return { message: summary, counters };
+    }
   }
 }
