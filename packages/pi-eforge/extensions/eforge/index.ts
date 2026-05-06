@@ -1533,7 +1533,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_apply_recovery",
     label: "eforge apply recovery",
     description:
-      "Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon).",
+      "Apply the recovery verdict for a failed build plan. The action is performed in-process by the daemon and completes synchronously — no worker subprocess is spawned. " +
+      "Response shape: { verdict: 'retry' | 'split' | 'abandon' | 'manual', commitSha?: string, successorPrdId?: string, noAction?: boolean }. " +
+      "commitSha is returned for retry, split, and abandon verdicts. " +
+      "successorPrdId is returned only for split (the newly-enqueued successor PRD). " +
+      "noAction: true is returned for manual — no mutation occurs and the call is effectively a no-op.",
     parameters: Type.Object({
       prdId: Type.String({
         description: "The plan ID (prdId) whose recovery verdict to apply",

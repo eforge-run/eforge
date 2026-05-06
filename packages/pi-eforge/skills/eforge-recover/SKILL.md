@@ -76,17 +76,17 @@ Ask the user to confirm the verdict-specific action:
 
 > This verdict requires manual intervention. Review the report above and take action outside of eforge. No automated action is available for the `manual` verdict.
 
-**Stop here** for `manual`. Do not call `eforge_apply_recovery`.
+**Stop here** for `manual`. Do not call `eforge_apply_recovery`. If it were called it would return `{ verdict: 'manual', noAction: true }` — no mutation occurs.
 
 ### Step 5: Apply the Recovery
 
 On confirmation, call `eforge_apply_recovery` with `{ prdId }`.
 
-Report the result:
+The daemon applies the action in-process and returns synchronously. Report the result using the returned response fields:
 
-- **retry**: "PRD `{prdId}` has been re-queued. The daemon will pick it up on the next polling cycle."
-- **split**: "Successor PRD enqueued. The daemon will begin the next build shortly."
-- **abandon**: "PRD `{prdId}` has been archived. The failed PRD and its sidecar have been removed from the queue."
+- **retry**: "PRD `{prdId}` has been re-queued. Commit: `{commitSha}`."
+- **split**: "Successor PRD `{successorPrdId}` enqueued. Commit: `{commitSha}`."
+- **abandon**: "PRD `{prdId}` has been archived. Commit: `{commitSha}`."
 
 ## Error Handling
 
