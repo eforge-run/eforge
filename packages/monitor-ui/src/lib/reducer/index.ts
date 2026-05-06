@@ -53,6 +53,7 @@ import {
   handleEnqueueCommitFailed,
 } from './handle-enqueue';
 import { handleConfigWarning, handlePlanningWarning } from './handle-misc';
+import { handleDaemonAutoBuildPaused } from './handle-daemon';
 import {
   handleValidationStart,
   handleValidationCommandStart,
@@ -127,6 +128,9 @@ export const handlerRegistry = {
   'enqueue:complete': handleEnqueueComplete,
   'enqueue:failed': handleEnqueueFailed,
   'enqueue:commit-failed': handleEnqueueCommitFailed,
+
+  // Daemon internal
+  'daemon:auto-build:paused': handleDaemonAutoBuildPaused,
 
   // Validation lifecycle
   'validation:start': handleValidationStart,

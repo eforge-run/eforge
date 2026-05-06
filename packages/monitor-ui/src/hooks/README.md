@@ -3,7 +3,7 @@
 ## When to use which hook
 
 - `useEforgeEvents(sessionId)` — subscribe to a single session's live event stream. Use for per-session dashboards, pipeline views, timelines.
-- `useAutoBuild(sessionId)` — read/toggle the auto-build state. Combines SWR polling (10s) with SSE-driven cache invalidation on `daemon:auto-build:paused`.
+- `useAutoBuild(sessionId?)` — read/toggle the auto-build state. Uses SWR polling (10s) as the source of truth for the enabled/disabled flag. The `sessionId` parameter is accepted for caller compatibility but is no longer used; auto-build pause notifications are now handled via the `useEforgeEvents` reducer (see `selectAutoBuild` in `lib/reducer.ts`).
 
 ## Fetching non-session data
 
