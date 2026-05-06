@@ -1,0 +1,61 @@
+name: fix-daemon-liveness-pill-on-first-load-remove-redundant-connected-indicator
+description: Eliminate the first-load `daemon offline` flash on the daemon
+  liveness pill (server emits an immediate heartbeat on SSE connect) and remove
+  the redundant per-session `connected/connecting/disconnected` indicator from
+  the header so a single, more informative liveness signal remains.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-fix-liveness-pill-and-drop-connected-indicator
+    name: Fix daemon liveness pill on first load and drop redundant connected
+      indicator
+    depends_on: []
+    branch: fix-daemon-liveness-pill-on-first-load-remove-redundant-connected-indicator/plan-01-fix-liveness-pill-and-drop-connected-indicator
+    build:
+      - implement
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This PRD is a tightly scoped, well-specified bug fix touching
+    exactly three files across two packages (monitor server SSE handler + two
+    monitor-ui components). The change is mechanical: extract a helper, emit one
+    extra SSE frame on connect, and remove a redundant indicator + prop
+    threading. That's classic excursion territory - one planner session can
+    easily enumerate every edit and dependency (server change must land first so
+    the UI behaves correctly, but both ship together). Errand is too thin
+    because the change spans two packages and includes a server-side refactor
+    with end-to-end acceptance criteria (hard reload behavior, daemon
+    kill/restart). Expedition is overkill - there are no independent subsystems
+    requiring delegated module planning. I added plan-review-cycle as a
+    lightweight quality gate because the PRD is precise about exact line numbers
+    and behavioral expectations (e.g. 'no id: line on the heartbeat frame',
+    'subscribers count reflects just-registered client'), so a plan review
+    catches scope drift before build. Build pipeline is implement +
+    review-cycle; no doc-author/doc-sync (no docs touched, no public API
+    changes) and no test stages (PRD explicitly states 'no new test required').
+    Review strategy is single perspective (correctness) at standard strictness
+    with maxRounds=2 - the change is small and low-risk, no security/data
+    surface, but the SSE timing semantics warrant one focused review pass."
