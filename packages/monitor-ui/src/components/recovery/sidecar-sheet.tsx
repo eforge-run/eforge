@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FileText } from 'lucide-react';
 import { Marked } from 'marked';
 import DOMPurify from 'dompurify';
@@ -6,10 +6,9 @@ import { Button } from '@/components/ui/button';
 import { SheetContent } from '@/components/ui/sheet';
 import type { ReadSidecarResponse } from '@eforge-build/client/browser';
 import { applyRecovery, triggerRecover } from '@/lib/api';
+import { fetcher } from '@/lib/swr-fetcher';
 
 interface RecoverySidecarSheetProps {
-  /** The full sidecar response (markdown + JSON). */
-  sidecar: ReadSidecarResponse;
   /** PRD ID shown as the sheet subtitle. */
   prdId: string;
 }
@@ -18,40 +17,61 @@ interface RecoverySidecarSheetProps {
  * A "view report" link that opens a shadcn-styled slide-over Sheet
  * rendering the recovery sidecar markdown plus verdict-specific action buttons.
  *
+ * The full sidecar (markdown body) is fetched lazily on first open via the
+ * existing fetcher. The verdict chip shown in the queue row comes from the
+ * queue payload — this sheet only needs to load the markdown for display.
+ *
  * Uses the `plan-prose` CSS class (already defined in globals.css) for
  * consistent typography with the plan viewer.
  */
-export function RecoverySidecarSheet({ sidecar, prdId }: RecoverySidecarSheetProps) {
+export function RecoverySidecarSheet({ prdId }: RecoverySidecarSheetProps) {
   const [open, setOpen] = useState(false);
+  const [sidecar, setSidecar] = useState<ReadSidecarResponse | null>(null);
   const [html, setHtml] = useState('');
   const [isApplying, setIsApplying] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const hasFetchedRef = useRef(false);
 
+  // Fetch the full sidecar lazily on first open
   useEffect(() => {
-    if (!open || !sidecar.markdown) return;
+    if (!open) return;
+    if (hasFetchedRef.current) return;
+    hasFetchedRef.current = true;
+    fetcher(['sidecar', prdId])
+      .then((data: ReadSidecarResponse | null) => {
+        setSidecar(data);
+      })
+      .catch(() => {
+        // Leave sidecar null — error shown in placeholder
+      });
+  }, [open, prdId]);
+
+  // Render markdown when sidecar is loaded
+  useEffect(() => {
+    if (!open || !sidecar?.markdown) return;
     const marked = new Marked({ gfm: true });
     const raw = marked.parse(sidecar.markdown, { async: false }) as string;
     setHtml(DOMPurify.sanitize(raw));
-  }, [open, sidecar.markdown]);
+  }, [open, sidecar]);
 
   // Reset error state when sheet opens
   useEffect(() => {
     if (open) setActionError(null);
   }, [open]);
 
-  const verdict = sidecar.json.verdict.verdict;
-  const setName = sidecar.json.summary.setName;
+  const verdict = sidecar?.json.verdict.verdict;
+  const setName = sidecar?.json.summary.setName;
 
   async function handleApply() {
     setIsApplying(true);
     setActionError(null);
     try {
       const result = await applyRecovery(prdId);
-      if (result) {
-        setOpen(false);
+      if ('error' in result) {
+        setActionError(result.error);
       } else {
-        setActionError('Recovery action failed. Please try again or check the daemon logs.');
+        setOpen(false);
       }
     } finally {
       setIsApplying(false);
@@ -59,6 +79,7 @@ export function RecoverySidecarSheet({ sidecar, prdId }: RecoverySidecarSheetPro
   }
 
   async function handleRerunAnalysis() {
+    if (!setName) return;
     setIsAnalyzing(true);
     setActionError(null);
     try {
@@ -90,11 +111,17 @@ export function RecoverySidecarSheet({ sidecar, prdId }: RecoverySidecarSheetPro
         description={prdId}
       >
         <div className="flex flex-col h-full">
-          <div
-            className="flex-1 overflow-y-auto p-4 text-xs plan-prose"
-            // eslint-disable-next-line react/no-danger
-            dangerouslySetInnerHTML={{ __html: html }}
-          />
+          {sidecar === null ? (
+            <div className="flex-1 flex items-center justify-center p-4">
+              <p className="text-xs text-text-dim italic">Loading report…</p>
+            </div>
+          ) : (
+            <div
+              className="flex-1 overflow-y-auto p-4 text-xs plan-prose"
+              // eslint-disable-next-line react/no-danger
+              dangerouslySetInnerHTML={{ __html: html }}
+            />
+          )}
           <div className="flex-shrink-0 border-t border-border px-4 py-3 flex flex-col gap-2">
             {actionError && (
               <p className="text-xs text-red-400">{actionError}</p>
@@ -142,7 +169,7 @@ export function RecoverySidecarSheet({ sidecar, prdId }: RecoverySidecarSheetPro
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={isApplying || isAnalyzing}
+                disabled={isApplying || isAnalyzing || !setName}
                 onClick={handleRerunAnalysis}
               >
                 {isAnalyzing ? 'Starting…' : 'Re-run analysis'}

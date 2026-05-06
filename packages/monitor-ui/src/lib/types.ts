@@ -47,6 +47,14 @@ export interface QueueItem {
   priority?: number;
   created?: string;
   dependsOn?: string[];
+  /**
+   * Recovery verdict embedded by the daemon in the queue payload for failed items.
+   * Present when a valid `<prdId>.recovery.json` sidecar exists; absent otherwise.
+   */
+  recoveryVerdict?: {
+    verdict: 'retry' | 'split' | 'abandon' | 'manual';
+    confidence: 'low' | 'medium' | 'high';
+  };
 }
 
 export interface RunInfo {

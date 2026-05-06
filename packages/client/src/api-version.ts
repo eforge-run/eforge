@@ -14,7 +14,7 @@ import type { VersionResponse } from './routes.js';
  * the version. Removing a field, renaming a route, or changing a response's
  * required fields IS breaking and must bump the version.
  */
-export const DAEMON_API_VERSION = 16; // v16: added GET /api/daemon-events SSE endpoint for daemon-wide events.
+export const DAEMON_API_VERSION = 17; // v17: POST /api/recover/apply response reshaped from { sessionId, pid } to { verdict, commitSha?, successorPrdId?, noAction? }; QueueItem gains optional recoveryVerdict field.
 
 /** Per-process cache: maps `${port}:${pid}` to the verified daemon version. */
 const verifiedDaemons = new Map<string, number>();

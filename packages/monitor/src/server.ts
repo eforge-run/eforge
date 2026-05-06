@@ -17,6 +17,15 @@ import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/con
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
+// --- eforge:region plan-01-fix-recovery-ux ---
+import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
+import {
+  applyRecoveryRetry,
+  applyRecoverySplit,
+  applyRecoveryAbandon,
+  applyRecoveryManual,
+} from '@eforge-build/engine/recovery/apply';
+// --- eforge:endregion plan-01-fix-recovery-ux ---
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -670,6 +679,12 @@ export async function startServer(
       priority?: number;
       created?: string;
       dependsOn?: string[];
+      // --- eforge:region plan-01-fix-recovery-ux ---
+      recoveryVerdict?: {
+        verdict: 'retry' | 'split' | 'abandon' | 'manual';
+        confidence: 'low' | 'medium' | 'high';
+      };
+      // --- eforge:endregion plan-01-fix-recovery-ux ---
     };
     const items: QueueItem[] = [];
 
@@ -706,6 +721,25 @@ export async function startServer(
           if (typeof fm.priority === 'number') item.priority = fm.priority;
           if (typeof fm.created === 'string') item.created = fm.created;
           if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
+
+          // --- eforge:region plan-01-fix-recovery-ux ---
+          // For failed items, attempt to embed the recovery verdict from the sidecar JSON.
+          // Any error (missing file, malformed JSON, schema validation failure) silently
+          // omits the field — the UI shows "recovery pending" in that case.
+          if (derivedStatus === 'failed') {
+            try {
+              const sidecarPath = resolve(dir, `${id}.recovery.json`);
+              const sidecarRaw = await readFile(sidecarPath, 'utf-8');
+              const sidecarData = JSON.parse(sidecarRaw) as Record<string, unknown>;
+              if (sidecarData && typeof sidecarData.verdict === 'object' && sidecarData.verdict !== null) {
+                const parsed = recoveryVerdictSchema.parse(sidecarData.verdict);
+                item.recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
+              }
+            } catch {
+              // silently omit — missing or malformed sidecar is normal (recovery pending)
+            }
+          }
+          // --- eforge:endregion plan-01-fix-recovery-ux ---
 
           items.push(item);
         } catch {
@@ -1038,10 +1072,15 @@ export async function startServer(
     }
     // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
-    // --- eforge:region plan-01-backend-apply-recovery ---
+    // --- eforge:region plan-01-fix-recovery-ux ---
     if (req.method === 'POST' && url === API_ROUTES.applyRecovery) {
-      if (!options?.workerTracker) {
+      if (!options?.daemonState) {
         sendJsonError(res, 503, 'Daemon mode not active');
+        return;
+      }
+      const cwd = options?.cwd;
+      if (!cwd) {
+        sendJsonError(res, 503, 'No working directory configured');
         return;
       }
       let body: { prdId?: unknown };
@@ -1059,19 +1098,86 @@ export async function startServer(
         sendJsonError(res, 400, 'Invalid prdId: must not contain path separators or traversal sequences');
         return;
       }
+      const prdId = body.prdId;
+      const queueDir = resolve(cwd, options?.queueDir ?? 'eforge/queue');
+      const failedDir = resolve(queueDir, 'failed');
+      const sidecarJsonPath = resolve(failedDir, `${prdId}.recovery.json`);
+
+      // Read and validate the recovery sidecar
+      let verdictData: ReturnType<typeof recoveryVerdictSchema.parse>;
       try {
-        const result = options.workerTracker.spawnWorker(
-          'apply-recovery',
-          [body.prdId],
-          () => emitMutation(options.daemonState, 'apply-recovery'),
-        );
-        sendJson(res, { sessionId: result.sessionId, pid: result.pid });
+        let sidecarRaw: string;
+        try {
+          sidecarRaw = await readFile(sidecarJsonPath, 'utf-8');
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
+            sendJsonError(res, 404, `No recovery sidecar found for ${prdId}`);
+          } else {
+            sendJsonError(res, 400, `Failed to read recovery sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          return;
+        }
+
+        let sidecarJson: unknown;
+        try {
+          sidecarJson = JSON.parse(sidecarRaw);
+        } catch {
+          sendJsonError(res, 400, `Malformed recovery sidecar JSON for ${prdId}`);
+          return;
+        }
+
+        if (typeof sidecarJson !== 'object' || sidecarJson === null || !('verdict' in sidecarJson)) {
+          sendJsonError(res, 400, `Recovery sidecar for ${prdId} is missing the verdict field`);
+          return;
+        }
+
+        try {
+          verdictData = recoveryVerdictSchema.parse((sidecarJson as Record<string, unknown>).verdict);
+        } catch (err) {
+          sendJsonError(res, 400, `Invalid recovery verdict in sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
+          return;
+        }
       } catch (err) {
-        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to spawn apply-recovery worker');
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Unexpected error reading sidecar');
+        return;
+      }
+
+      const helperOptions = { cwd, prdId, queueDir };
+
+      try {
+        let responseBody: { verdict: string; commitSha?: string; successorPrdId?: string; noAction?: boolean };
+
+        switch (verdictData.verdict) {
+          case 'retry': {
+            const result = await applyRecoveryRetry(helperOptions);
+            responseBody = { verdict: 'retry', commitSha: result.commitSha, noAction: false };
+            break;
+          }
+          case 'split': {
+            const result = await applyRecoverySplit(helperOptions, verdictData);
+            responseBody = { verdict: 'split', commitSha: result.commitSha, successorPrdId: result.successorPrdId, noAction: false };
+            break;
+          }
+          case 'abandon': {
+            const result = await applyRecoveryAbandon(helperOptions);
+            responseBody = { verdict: 'abandon', commitSha: result.commitSha, noAction: false };
+            break;
+          }
+          case 'manual': {
+            const result = await applyRecoveryManual(helperOptions);
+            responseBody = { verdict: 'manual', noAction: result.noAction };
+            break;
+          }
+        }
+
+        emitMutation(options.daemonState, 'apply-recovery');
+        sendJson(res, responseBody);
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to apply recovery verdict');
       }
       return;
     }
-    // --- eforge:endregion plan-01-backend-apply-recovery ---
+    // --- eforge:endregion plan-01-fix-recovery-ux ---
 
     // --- Auto-build API routes ---
     if (req.method === 'POST' && url === API_ROUTES.daemonStop) {

@@ -39,6 +39,15 @@ export interface QueueItem {
   priority?: number;
   created?: string;
   dependsOn?: string[];
+  /**
+   * Recovery verdict for failed items. Populated by the daemon when a
+   * `<prdId>.recovery.json` sidecar exists in the `failed/` directory.
+   * Absent when no sidecar is present or the sidecar is malformed.
+   */
+  recoveryVerdict?: {
+    verdict: 'retry' | 'split' | 'abandon' | 'manual';
+    confidence: 'low' | 'medium' | 'high';
+  };
 }
 
 // GET /api/session-metadata (values in Record<string, SessionMetadata>)

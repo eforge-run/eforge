@@ -77,10 +77,22 @@ export interface ApplyRecoveryRequest {
   prdId: string;
 }
 
-/** Response for POST /api/recover/apply */
+/**
+ * Response for POST /api/recover/apply.
+ *
+ * The route applies the recovery verdict synchronously in-process and returns
+ * the outcome directly. Replaces the old `{ sessionId, pid }` shape (v16) which
+ * returned a detached worker's identifiers before the mutation completed.
+ */
 export interface ApplyRecoveryResponse {
-  sessionId: string;
-  pid: number;
+  /** The verdict that was applied. */
+  verdict: 'retry' | 'split' | 'abandon' | 'manual';
+  /** SHA of the commit produced by the apply operation. Absent for `manual` (no-op). */
+  commitSha?: string;
+  /** ID of the successor PRD enqueued by a `split` verdict. */
+  successorPrdId?: string;
+  /** True when the verdict was `manual` and no git changes were made. */
+  noAction?: boolean;
 }
 
 /**
