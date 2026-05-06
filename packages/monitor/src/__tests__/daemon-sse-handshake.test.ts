@@ -172,8 +172,8 @@ describe('serveDaemonEventsSSE — initial connect (no Last-Event-ID)', () => {
     const now = new Date().toISOString();
     const sessionId = `daemon-sse-${Date.now()}`;
 
-    db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:starting', data: JSON.stringify({ type: 'daemon:lifecycle:starting', timestamp: now }), timestamp: now });
-    db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:ready', data: JSON.stringify({ type: 'daemon:lifecycle:ready', timestamp: now }), timestamp: now });
+    db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:starting', data: JSON.stringify({ type: 'daemon:lifecycle:starting', timestamp: now, pid: 1234, port: 4242, version: '1.0.0', mode: 'test' }), timestamp: now });
+    db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:ready', data: JSON.stringify({ type: 'daemon:lifecycle:ready', timestamp: now, pid: 1234, port: 4242, version: '1.0.0', mode: 'test', recoveryDurationMs: 0 }), timestamp: now });
 
     const expectedMaxId = db.getMaxDaemonEventId();
 
