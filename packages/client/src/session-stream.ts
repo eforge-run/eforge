@@ -1,18 +1,23 @@
 /**
- * Single-session SSE subscriber for the eforge daemon.
+ * SSE stream subscribers for the eforge daemon.
  *
- * The daemon streams every `EforgeEvent` over `GET /api/events/{sessionId}`
- * as Server-Sent Events. `subscribeToSession()` connects to that endpoint,
- * invokes `onEvent` per event (including the terminal `session:end`), and
- * resolves with a `SessionSummary` once `session:end` arrives.
+ * `subscribeToSession()` connects to `GET /api/events/{sessionId}`, invokes
+ * `onEvent` per event (including the terminal `session:end`), and resolves with
+ * a `SessionSummary` once `session:end` arrives.
  *
- * Reconnect/backoff matches the pattern previously embedded in
- * `packages/eforge/src/cli/mcp-proxy.ts`: initial 1s delay, doubling to a
- * 30s cap, with a hard retry cap so unrecoverable failures surface instead
- * of looping forever. `Last-Event-ID` is sent on reconnect so the daemon's
- * historical replay does not redeliver events we have already aggregated.
+ * `subscribeToDaemonEvents()` connects to `GET /api/daemon-events`, invokes
+ * `onEvent` per daemon-wide event (queue, enqueue, session lifecycle), and
+ * rejects when the abort signal fires or reconnects are exhausted.
  *
- * This module is intentionally zero-dep (Node core + `./lockfile.js` only)
+ * Both functions share `subscribeToStream` — the same reconnect/Last-Event-ID/
+ * abort/SSE-parsing core. Only the URL and event-handling semantics differ.
+ *
+ * Reconnect/backoff: initial 1s delay, doubling to a 30s cap, hard retry cap
+ * so unrecoverable failures surface instead of looping forever. `Last-Event-ID`
+ * is sent on reconnect so the daemon's historical replay does not redeliver
+ * events we have already processed.
+ *
+ * This module is intentionally zero-dep (Node core + `./lockfile.js` + `./routes.js`)
  * to preserve the `@eforge-build/client` contract of "no engine deps".
  * Callers that want full `EforgeEvent` typing on the `onEvent` callback
  * parameterize the helper with the engine's `EforgeEvent` type at the call
@@ -34,6 +39,7 @@
  */
 
 import { readLockfile } from './lockfile.js';
+import { API_ROUTES } from './routes.js';
 
 /** Initial reconnect delay, doubled on each failure up to `MAX_RECONNECT_MS`. */
 const INITIAL_RECONNECT_MS = 1000;
@@ -174,45 +180,54 @@ function resolveBaseUrl(opts: { baseUrl?: string; cwd?: string }): string {
   return `http://127.0.0.1:${lock.port}`;
 }
 
+function resolveDaemonEventsBaseUrl(opts: { baseUrl?: string; cwd?: string }): string {
+  if (opts.baseUrl === '') return '';
+  if (opts.baseUrl) return opts.baseUrl.replace(/\/$/, '');
+  if (!opts.cwd) {
+    throw new Error('subscribeToDaemonEvents: either `baseUrl` or `cwd` must be provided');
+  }
+  const lock = readLockfile(opts.cwd);
+  if (!lock) {
+    throw new Error(
+      `subscribeToDaemonEvents: daemon lockfile not found in ${opts.cwd}. Is the daemon running?`,
+    );
+  }
+  return `http://127.0.0.1:${lock.port}`;
+}
+
 /**
- * Subscribe to the daemon's SSE event stream for a single session.
+ * Internal SSE stream subscription core with reconnect/backoff and Last-Event-ID.
  *
- * Resolves with a `SessionSummary` when `session:end` arrives. Rejects if:
- *   - the caller's `AbortSignal` fires (rejects with an `AbortError`),
- *   - the daemon returns a non-2xx status that is not retryable (404/410),
- *   - the reconnect count exceeds `maxReconnects`.
+ * Not exported directly — use `subscribeToSession` or `subscribeToDaemonEvents`.
  *
- * Reconnect policy: the `reconnectCount`/`reconnectDelay` counters are reset
- * only after at least one valid event has been parsed from the stream - not
- * on 2xx response open. This ensures a misbehaving daemon that accepts
- * connections but emits no data cannot escape the `maxReconnects` cap.
- *
- * `onEvent` is invoked for every event received, including `session:end`.
- * The second `meta` argument carries the SSE `id:` value for the message.
+ * Handles SSE parsing, reconnect scheduling, abort signal wiring, and delegates
+ * per-event semantics to the `onParsedEvent` callback. The promise settles when:
+ *   - `settle.resolve(value)` is called inside `onParsedEvent`
+ *   - The abort signal fires → rejects with AbortError
+ *   - Reconnects exhausted → rejects
+ *   - 404/410 response → rejects (terminal, no reconnect)
  */
-export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEvent>(
-  sessionId: string,
-  opts: SubscribeOptions<E>,
-): Promise<SessionSummary> {
+function subscribeToStream<R>(
+  url: string,
+  opts: {
+    signal?: AbortSignal;
+    maxReconnects?: number;
+    onNamedEvent?: (name: string, data: string) => void;
+  },
+  onParsedEvent: (
+    parsed: DaemonStreamEvent,
+    eventId: string | undefined,
+    settle: { resolve: (v: R) => void; reject: (err: Error) => void },
+  ) => void,
+  errorStrings: {
+    abort: string;
+    maxReconnects: (count: number) => string;
+    nonRetryStatus: (status: number) => string;
+  },
+): Promise<R> {
   const maxReconnects = opts.maxReconnects ?? DEFAULT_MAX_RECONNECTS;
 
-  return new Promise<SessionSummary>((resolve, reject) => {
-    let baseUrl: string;
-    try {
-      baseUrl = resolveBaseUrl(opts);
-    } catch (err) {
-      reject(err as Error);
-      return;
-    }
-
-    // Guard: baseUrl: '' is only valid in browser runtimes
-    if (baseUrl === '' && typeof EventSource === 'undefined') {
-      reject(new Error(
-        "subscribeToSession: baseUrl: '' is only supported in browser runtimes",
-      ));
-      return;
-    }
-
+  return new Promise<R>((resolve, reject) => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     let request: any | null = null;
     let browserReader: ReadableStreamDefaultReader<Uint8Array> | null = null;
@@ -222,12 +237,6 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
     let hasReceivedValidEvent = false;
     let lastEventId: string | undefined;
     let settled = false;
-
-    // Aggregates
-    let eventCount = 0;
-    let phaseCount = 0;
-    let filesChanged = 0;
-    let errorCount = 0;
 
     function cleanup(): void {
       if (reconnectTimer) {
@@ -247,24 +256,20 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       }
     }
 
-    function settleResolve(summary: SessionSummary): void {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      try {
-        opts.onEnd?.(summary);
-      } catch {
-        // onEnd must not break resolution
-      }
-      resolve(summary);
-    }
-
-    function settleReject(err: Error): void {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(err);
-    }
+    const settle = {
+      resolve(v: R): void {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        resolve(v);
+      },
+      reject(err: Error): void {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(err);
+      },
+    };
 
     function onAbort(): void {
       const reason = opts.signal?.reason;
@@ -275,11 +280,11 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
         err = reason;
       } else {
         err = Object.assign(
-          new Error('subscribeToSession aborted', reason !== undefined ? { cause: reason } : undefined),
+          new Error(errorStrings.abort, reason !== undefined ? { cause: reason } : undefined),
           { name: 'AbortError' },
         );
       }
-      settleReject(err);
+      settle.reject(err);
     }
 
     if (opts.signal) {
@@ -291,7 +296,7 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       opts.signal.addEventListener('abort', onAbort, { once: true });
     }
 
-    function handleEvent(raw: string, currentEventId?: string): void {
+    function processDataRaw(raw: string, currentEventId: string | undefined): void {
       let parsed: DaemonStreamEvent;
       try {
         parsed = JSON.parse(raw) as DaemonStreamEvent;
@@ -311,42 +316,10 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
         reconnectCount = 0;
       }
 
-      eventCount += 1;
-      if (parsed.type === 'phase:start') {
-        phaseCount += 1;
-      }
-      if (parsed.type === 'plan:build:files_changed') {
-        const files = (parsed as { files?: unknown }).files;
-        if (Array.isArray(files)) {
-          filesChanged += files.length;
-        }
-      }
-      if (parsed.type.endsWith(':error') || parsed.type.endsWith(':failed')) {
-        errorCount += 1;
-      }
-
       try {
-        opts.onEvent(parsed as E, { eventId: currentEventId });
+        onParsedEvent(parsed, currentEventId, settle);
       } catch {
         // Callback exceptions must not disrupt the stream
-      }
-
-      if (parsed.type === 'session:end') {
-        const result = (parsed as { result?: { status?: string; summary?: string } }).result;
-        const status = result?.status === 'completed' || result?.status === 'failed'
-          ? result.status
-          : 'failed';
-        const summary: SessionSummary = {
-          sessionId,
-          status,
-          summary: result?.summary ?? '',
-          monitorUrl: baseUrl,
-          eventCount,
-          phaseCount,
-          filesChanged,
-          errorCount,
-        };
-        settleResolve(summary);
       }
     }
 
@@ -354,9 +327,7 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       if (settled) return;
       reconnectCount += 1;
       if (reconnectCount > maxReconnects) {
-        settleReject(new Error(
-          `subscribeToSession: exceeded max reconnects (${maxReconnects}) for session ${sessionId}`,
-        ));
+        settle.reject(new Error(errorStrings.maxReconnects(maxReconnects)));
         return;
       }
       const delay = reconnectDelay;
@@ -376,7 +347,6 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
      */
     function connectBrowser(): void {
       if (settled) return;
-      const url = `${baseUrl}/api/events/${encodeURIComponent(sessionId)}`;
       const fetchHeaders: Record<string, string> = { accept: 'text/event-stream' };
       if (lastEventId !== undefined) {
         fetchHeaders['last-event-id'] = lastEventId;
@@ -385,11 +355,9 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       fetch(url, { headers: fetchHeaders, signal: opts.signal })
         .then(async (response) => {
           if (!response.ok) {
-            // 404/410 are terminal: the session does not exist or was dropped.
+            // 404/410 are terminal: the stream does not exist or was dropped.
             if (response.status === 404 || response.status === 410) {
-              settleReject(new Error(
-                `subscribeToSession: daemon returned ${response.status} for session ${sessionId}`,
-              ));
+              settle.reject(new Error(errorStrings.nonRetryStatus(response.status)));
               return;
             }
             scheduleReconnect();
@@ -436,7 +404,7 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
                     // Callback exceptions must not disrupt the stream
                   }
                 } else if (block.data !== undefined) {
-                  handleEvent(block.data, lastEventId);
+                  processDataRaw(block.data, lastEventId);
                 }
                 if (settled) return;
               }
@@ -469,7 +437,6 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
       }
 
       // Node path (lazy-loads node:http to avoid bundler errors in browser contexts)
-      const url = `${baseUrl}/api/events/${encodeURIComponent(sessionId)}`;
       const headers: Record<string, string> = { accept: 'text/event-stream' };
       if (lastEventId !== undefined) {
         headers['last-event-id'] = lastEventId;
@@ -481,11 +448,9 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
         const req = http.default.get(url, { headers }, (res: any) => {
           if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
             res.resume();
-            // 404/410 are terminal: the session does not exist or was dropped.
+            // 404/410 are terminal: the stream does not exist or was dropped.
             if (res.statusCode === 404 || res.statusCode === 410) {
-              settleReject(new Error(
-                `subscribeToSession: daemon returned ${res.statusCode} for session ${sessionId}`,
-              ));
+              settle.reject(new Error(errorStrings.nonRetryStatus(res.statusCode)));
               return;
             }
             scheduleReconnect();
@@ -493,8 +458,8 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
           }
 
           // Note: backoff and reconnect counter are intentionally NOT reset on
-          // 2xx open. They are reset inside `handleEvent()` only after at least
-          // one valid event has been parsed - see the JSDoc on this function.
+          // 2xx open. They are reset inside `processDataRaw()` only after at least
+          // one valid event has been parsed.
 
           let buffer = '';
           res.setEncoding('utf8');
@@ -525,7 +490,7 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
                   // Callback exceptions must not disrupt the stream
                 }
               } else if (block.data !== undefined) {
-                handleEvent(block.data, lastEventId);
+                processDataRaw(block.data, lastEventId);
               }
               if (settled) return;
             }
@@ -553,4 +518,162 @@ export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEve
 
     connect();
   });
+}
+
+/**
+ * Subscribe to the daemon's SSE event stream for a single session.
+ *
+ * Resolves with a `SessionSummary` when `session:end` arrives. Rejects if:
+ *   - the caller's `AbortSignal` fires (rejects with an `AbortError`),
+ *   - the daemon returns a non-2xx status that is not retryable (404/410),
+ *   - the reconnect count exceeds `maxReconnects`.
+ *
+ * Reconnect policy: the `reconnectCount`/`reconnectDelay` counters are reset
+ * only after at least one valid event has been parsed from the stream - not
+ * on 2xx response open. This ensures a misbehaving daemon that accepts
+ * connections but emits no data cannot escape the `maxReconnects` cap.
+ *
+ * `onEvent` is invoked for every event received, including `session:end`.
+ * The second `meta` argument carries the SSE `id:` value for the message.
+ */
+export function subscribeToSession<E extends DaemonStreamEvent = DaemonStreamEvent>(
+  sessionId: string,
+  opts: SubscribeOptions<E>,
+): Promise<SessionSummary> {
+  let baseUrl: string;
+  try {
+    baseUrl = resolveBaseUrl(opts);
+  } catch (err) {
+    return Promise.reject(err as Error);
+  }
+
+  // Guard: baseUrl: '' is only valid in browser runtimes
+  if (baseUrl === '' && typeof EventSource === 'undefined') {
+    return Promise.reject(new Error(
+      "subscribeToSession: baseUrl: '' is only supported in browser runtimes",
+    ));
+  }
+
+  const url = `${baseUrl}/api/events/${encodeURIComponent(sessionId)}`;
+
+  // Aggregates for SessionSummary construction
+  let eventCount = 0;
+  let phaseCount = 0;
+  let filesChanged = 0;
+  let errorCount = 0;
+
+  return subscribeToStream<SessionSummary>(
+    url,
+    { signal: opts.signal, maxReconnects: opts.maxReconnects, onNamedEvent: opts.onNamedEvent },
+    (parsed, eventId, settle) => {
+      eventCount += 1;
+      if (parsed.type === 'phase:start') {
+        phaseCount += 1;
+      }
+      if (parsed.type === 'plan:build:files_changed') {
+        const files = (parsed as { files?: unknown }).files;
+        if (Array.isArray(files)) {
+          filesChanged += files.length;
+        }
+      }
+      if (parsed.type.endsWith(':error') || parsed.type.endsWith(':failed')) {
+        errorCount += 1;
+      }
+
+      try {
+        opts.onEvent(parsed as E, { eventId });
+      } catch {
+        // Callback exceptions must not disrupt the stream
+      }
+
+      if (parsed.type === 'session:end') {
+        const result = (parsed as { result?: { status?: string; summary?: string } }).result;
+        const status = result?.status === 'completed' || result?.status === 'failed'
+          ? result.status
+          : 'failed';
+        const summary: SessionSummary = {
+          sessionId,
+          status,
+          summary: result?.summary ?? '',
+          monitorUrl: baseUrl,
+          eventCount,
+          phaseCount,
+          filesChanged,
+          errorCount,
+        };
+        try {
+          opts.onEnd?.(summary);
+        } catch {
+          // onEnd must not break resolution
+        }
+        settle.resolve(summary);
+      }
+    },
+    {
+      abort: 'subscribeToSession aborted',
+      maxReconnects: (count) =>
+        `subscribeToSession: exceeded max reconnects (${count}) for session ${sessionId}`,
+      nonRetryStatus: (status) =>
+        `subscribeToSession: daemon returned ${status} for session ${sessionId}`,
+    },
+  );
+}
+
+/**
+ * Subscribe to the daemon's cross-session SSE event stream `GET /api/daemon-events`.
+ *
+ * Delivers daemon-wide events: `daemon:auto-build:paused`, `queue:*`, `enqueue:*`,
+ * plus session lifecycle (`session:start`, `session:end`). The stream does not carry
+ * per-session build events — use `subscribeToSession` for those.
+ *
+ * Rejects if:
+ *   - the caller's `AbortSignal` fires (rejects with an `AbortError`),
+ *   - the daemon returns a non-retryable status (404/410),
+ *   - the reconnect count exceeds `maxReconnects`.
+ *
+ * The promise never resolves with a value; callers signal termination via
+ * `opts.signal.abort()` and catch the resulting `AbortError`.
+ *
+ * `onEvent` is invoked for every daemon-wide event received.
+ * The second `meta` argument carries the SSE `id:` value.
+ */
+export function subscribeToDaemonEvents(
+  opts: SubscribeOptions<DaemonStreamEvent>,
+): Promise<void> {
+  let baseUrl: string;
+  try {
+    baseUrl = resolveDaemonEventsBaseUrl(opts);
+  } catch (err) {
+    return Promise.reject(err as Error);
+  }
+
+  // Guard: baseUrl: '' is only valid in browser runtimes
+  if (baseUrl === '' && typeof EventSource === 'undefined') {
+    return Promise.reject(new Error(
+      "subscribeToDaemonEvents: baseUrl: '' is only supported in browser runtimes",
+    ));
+  }
+
+  const url = `${baseUrl}${API_ROUTES.daemonEvents}`;
+
+  return subscribeToStream<void>(
+    url,
+    { signal: opts.signal, maxReconnects: opts.maxReconnects, onNamedEvent: opts.onNamedEvent },
+    (parsed, eventId, _settle) => {
+      // Daemon-events stream has no terminal event; the promise only settles via
+      // abort signal, max reconnects, or 404/410. Just forward each event.
+      try {
+        opts.onEvent(parsed, { eventId });
+      } catch {
+        // Callback exceptions must not disrupt the stream
+      }
+    },
+    {
+      abort: 'subscribeToDaemonEvents aborted',
+      maxReconnects: (count) =>
+        `subscribeToDaemonEvents: exceeded max reconnects (${count}) for daemon-events stream`,
+      nonRetryStatus: (status) =>
+        `subscribeToDaemonEvents: daemon returned ${status} for daemon-events stream`,
+    },
+  );
 }

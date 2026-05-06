@@ -58,10 +58,8 @@ export type {
   QueueItem,
   SessionMetadata,
   RunInfo,
-  LatestRunResponse,
   BuildStageSpec,
   ReviewProfileConfig,
-  OrchestrationResponse,
   RunSummary,
   RunState,
   PlanInfo,
@@ -89,7 +87,7 @@ export type {
   ModelListResponse,
 } from './types.js';
 
-export { subscribeToSession, parseSseChunk } from './session-stream.js';
+export { subscribeToSession, subscribeToDaemonEvents, parseSseChunk } from './session-stream.js';
 export type {
   SessionSummary,
   SubscribeOptions,

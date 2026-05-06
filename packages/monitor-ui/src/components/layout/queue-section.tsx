@@ -147,9 +147,13 @@ function RecoveryRow({ item, isChild }: { item: QueueItem; isChild: boolean }) {
   );
 }
 
-export function QueueSection() {
+interface QueueSectionProps {
+  /** Queue items sourced from useDaemonEvents (replaces the SWR poll). */
+  items: QueueItem[];
+}
+
+export function QueueSection({ items }: QueueSectionProps) {
   const [open, setOpen] = useState(true);
-  const { data: items } = useSWR<QueueItem[]>(API_ROUTES.queue, fetcher, { refreshInterval: 5000 });
 
   const pendingItems = useMemo(
     () => (items ?? []).filter((i) => i.status !== 'running'),

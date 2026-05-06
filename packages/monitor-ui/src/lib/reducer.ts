@@ -94,6 +94,8 @@ export interface RunState {
   enqueueTitle: string | null;
   enqueueSource: string | null;
   validationCommands: ValidationCommandSpan[];
+  autoBuildPausedReason: string | null;
+  autoBuildPausedAt: string | null;
 }
 
 export const initialRunState: RunState = {
@@ -121,6 +123,8 @@ export const initialRunState: RunState = {
   enqueueTitle: null,
   enqueueSource: null,
   validationCommands: [],
+  autoBuildPausedReason: null,
+  autoBuildPausedAt: null,
 };
 
 export type RunAction =
@@ -131,7 +135,7 @@ export type RunAction =
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [] };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null };
 
     case 'BATCH_LOAD': {
       // Replay all events through the handler registry, accumulating state.
@@ -172,6 +176,24 @@ export function eforgeReducer(state: RunState, action: RunAction): RunState {
     default:
       return state;
   }
+}
+
+/**
+ * Selector for auto-build pause state derived from the SSE event stream.
+ *
+ * Returns `{ paused: false, reason: null }` when no `daemon:auto-build:paused`
+ * event has been received for the current session. Returns `{ paused: true,
+ * reason: string }` after such an event arrives via the reducer.
+ *
+ * Note: `useDaemonEvents().daemonState.autoBuild` is the authoritative source
+ * for the current enabled/disabled state. This selector provides the pause
+ * reason derived from the per-session SSE stream.
+ */
+export function selectAutoBuild(state: RunState): { paused: boolean; reason: string | null } {
+  return {
+    paused: state.autoBuildPausedReason !== null,
+    reason: state.autoBuildPausedReason,
+  };
 }
 
 export function getSummaryStats(state: RunState): {

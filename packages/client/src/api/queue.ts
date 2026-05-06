@@ -9,12 +9,10 @@ import type {
   CancelResponse,
   QueueItem,
   RunInfo,
-  LatestRunResponse,
   RunSummary,
   RunState,
   PlansResponse,
   DiffResponse,
-  OrchestrationResponse,
   SessionMetadata,
 } from '../types.js';
 import type { EnqueueRequest } from '../routes.js';
@@ -37,14 +35,6 @@ export function apiGetQueue(opts: { cwd: string }) {
 
 export function apiGetRuns(opts: { cwd: string }) {
   return daemonRequest<RunInfo[]>(opts.cwd, 'GET', API_ROUTES.runs);
-}
-
-export function apiGetLatestRun(opts: { cwd: string }) {
-  return daemonRequest<LatestRunResponse>(opts.cwd, 'GET', API_ROUTES.latestRun);
-}
-
-export function apiGetLatestRunIfRunning(opts: { cwd: string }) {
-  return daemonRequestIfRunning<LatestRunResponse>(opts.cwd, 'GET', API_ROUTES.latestRun);
 }
 
 export function apiGetRunSummary(opts: { cwd: string; id: string }) {
@@ -85,14 +75,16 @@ export function apiGetDiff(opts: { cwd: string; sessionId: string; planId: strin
   return daemonRequest<DiffResponse>(opts.cwd, 'GET', path);
 }
 
-export function apiGetOrchestration(opts: { cwd: string; runId: string }) {
-  return daemonRequest<OrchestrationResponse>(
-    opts.cwd,
-    'GET',
-    buildPath(API_ROUTES.orchestration, { runId: opts.runId }),
-  );
-}
-
 export function apiGetSessionMetadata(opts: { cwd: string }) {
   return daemonRequest<Record<string, SessionMetadata>>(opts.cwd, 'GET', API_ROUTES.sessionMetadata);
+}
+
+/**
+ * Fetch the latest run by querying GET /api/runs and returning the first entry.
+ * Runs are sorted by started_at DESC so index 0 is the most recent.
+ * Returns null when no runs exist.
+ */
+export async function apiGetLatestRunFromRuns(opts: { cwd: string }): Promise<RunInfo | null> {
+  const { data } = await daemonRequest<RunInfo[]>(opts.cwd, 'GET', API_ROUTES.runs);
+  return data[0] ?? null;
 }

@@ -864,6 +864,10 @@ export function renderEvent(event: EforgeEvent): void {
       // Profile info is informational; no output needed in CLI display
       break;
 
+    case 'daemon:auto-build:paused':
+      console.log(chalk.yellow(`  ⚠ Auto-build paused: ${event.reason}`));
+      break;
+
     default: {
       const _exhaustive: never = event;
       console.log(chalk.dim(`  Unknown event: ${JSON.stringify(_exhaustive)}`));

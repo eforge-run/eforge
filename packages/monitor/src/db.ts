@@ -64,6 +64,14 @@ export interface MonitorDB {
   getLatestEventTimestamp(): string | undefined;
   /** Returns the highest event row id in the events table, or 0 if empty. */
   getMaxEventId(): number;
+  /**
+   * Returns events from the hardcoded daemon-wide allowlist with `id > afterId`,
+   * ordered by id ascending.
+   *
+   * The allowlist is the source of truth for which event types are "daemon-wide"
+   * (not per-session). Adding a new daemon-wide type requires updating `db.ts`.
+   */
+  getDaemonEventsAfter(afterId: number): EventRecord[];
   close(): void;
 }
 
@@ -119,6 +127,29 @@ const SCHEMA = `
   CREATE INDEX IF NOT EXISTS idx_file_diffs_plan_file ON file_diffs(plan_id, file_path);
   CREATE INDEX IF NOT EXISTS idx_file_diffs_run_id ON file_diffs(run_id);
 `;
+
+/**
+ * Hardcoded allowlist of daemon-wide event types surfaced via GET /api/daemon-events.
+ * Only events whose type appears here are included in the daemon-wide SSE stream.
+ * Adding a new daemon-wide event type requires updating this list.
+ */
+const DAEMON_EVENT_TYPES = [
+  'daemon:auto-build:paused',
+  'queue:start',
+  'queue:prd:start',
+  'queue:prd:discovered',
+  'queue:prd:stale',
+  'queue:prd:skip',
+  'queue:prd:commit-failed',
+  'queue:prd:complete',
+  'queue:complete',
+  'enqueue:start',
+  'enqueue:complete',
+  'enqueue:failed',
+  'enqueue:commit-failed',
+  'session:start',
+  'session:end',
+] as const;
 
 export function openDatabase(dbPath: string): MonitorDB {
   mkdirSync(dirname(dbPath), { recursive: true });
@@ -194,6 +225,9 @@ export function openDatabase(dbPath: string): MonitorDB {
     ),
     getMaxEventId: db.prepare(
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events`,
+    ),
+    getDaemonEventsAfter: db.prepare(
+      `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')}) AND id > ? ORDER BY id`,
     ),
     getRunsBySession: db.prepare(
       `SELECT id, session_id as sessionId, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd, pid FROM runs WHERE session_id = ? ORDER BY started_at`,
@@ -358,6 +392,10 @@ export function openDatabase(dbPath: string): MonitorDB {
     getMaxEventId() {
       const row = stmts.getMaxEventId.get() as unknown as { maxId: number } | undefined;
       return row?.maxId ?? 0;
+    },
+
+    getDaemonEventsAfter(afterId) {
+      return stmts.getDaemonEventsAfter.all(...DAEMON_EVENT_TYPES, afterId) as unknown as EventRecord[];
     },
 
     insertFileDiffs(runId, planId, diffs, timestamp) {

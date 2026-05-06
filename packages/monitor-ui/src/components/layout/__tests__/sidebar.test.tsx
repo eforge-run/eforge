@@ -60,11 +60,14 @@ describe('Sidebar', () => {
     expect(sidebarSourceStripped).not.toMatch(/import\s*\{[^}]*useApi/);
   });
 
-  it('source calls useSWR with API_ROUTES.runs', () => {
-    expect(sidebarSourceStripped).toMatch(/useSWR[^(]*\(API_ROUTES\.runs/);
+  it('source does not call useSWR (runs and metadata sourced from useDaemonEvents props)', () => {
+    expect(sidebarSourceStripped).not.toMatch(/useSWR[^(]*\(API_ROUTES\.runs/);
+    expect(sidebarSourceStripped).not.toMatch(/useSWR[^(]*\(API_ROUTES\.sessionMetadata/);
   });
 
-  it('source calls useSWR with API_ROUTES.sessionMetadata', () => {
-    expect(sidebarSourceStripped).toMatch(/useSWR[^(]*\(API_ROUTES\.sessionMetadata/);
+  it('accepts runs, metadataMap, and queueItems as props', () => {
+    expect(sidebarSourceStripped).toContain('runs: RunInfo[]');
+    expect(sidebarSourceStripped).toContain('metadataMap');
+    expect(sidebarSourceStripped).toContain('queueItems');
   });
 });

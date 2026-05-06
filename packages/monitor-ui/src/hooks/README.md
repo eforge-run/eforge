@@ -1,30 +1,49 @@
 # Hooks
 
+## Two-subscriber architecture
+
+The monitor UI maintains **exactly two SSE connections** at any given time:
+
+| Hook | Stream | Purpose |
+|------|--------|---------|
+| `useEforgeEvents(sessionId)` | `GET /api/events/:sessionId` | Per-session build events (pipeline, agents, plans) |
+| `useDaemonEvents()` | `GET /api/daemon-events` | Daemon-wide events (runs list, queue, auto-build) |
+
+This constraint (PRD requirement) prevents unbounded connection growth and keeps event routing clear.
+
 ## When to use which hook
 
-- `useEforgeEvents(sessionId)` — subscribe to a single session's live event stream. Use for per-session dashboards, pipeline views, timelines.
-- `useAutoBuild(sessionId)` — read/toggle the auto-build state. Combines SWR polling (10s) with SSE-driven cache invalidation on `daemon:auto-build:paused`.
+### `useEforgeEvents(sessionId)`
 
-## Fetching non-session data
+Subscribe to a single session's live event stream. Use for per-session dashboards, pipeline views, and timelines.
 
-For resource endpoints (queue, runs, session metadata, plans, etc.) use `useSWR` directly with the shared `fetcher` from `lib/swr-fetcher.ts` and a key built from `API_ROUTES` / `buildPath`:
+- Performs an initial HTTP GET to `/api/run-state/:id` to batch-load all stored events.
+- Then calls `subscribeToSession` for live SSE updates.
+- Returns `{ runState, connectionStatus, shutdownCountdown }`.
 
-```ts
-import useSWR from 'swr';
-import { fetcher } from '@/lib/swr-fetcher';
-import { API_ROUTES } from '@eforge-build/client/browser';
+### `useDaemonEvents()`
 
-const { data, isLoading, error } = useSWR<RunInfo[]>(API_ROUTES.runs, fetcher, { refreshInterval: 10000 });
-```
+Subscribe to the daemon-wide SSE stream. Owns the runs list, queue, session metadata, and auto-build slices for the whole app. Intended to be called **once** in `AppContent` and passed as props to sub-components.
+
+- Performs one-shot parallel snapshot fetches (`/api/runs`, `/api/queue`, `/api/session-metadata`, `/api/auto-build`) on mount.
+- Then calls `subscribeToDaemonEvents` for live SSE updates.
+- Returns `{ daemonState, connectionStatus, setDaemonAutoBuild }`.
+
+### `useAutoBuild(autoBuildState, onUpdate)`
+
+Writer-only hook for the auto-build toggle. The reader path is `daemonState.autoBuild` from `useDaemonEvents`. This hook only fires the HTTP mutation (`POST /api/auto-build`) and tracks in-flight state to prevent double-clicks.
+
+## Remaining SWR consumers
+
+SWR is reserved for genuinely on-demand reads that are not covered by the two SSE subscribers:
+
+| Location | SWR key | Purpose |
+|----------|---------|---------|
+| `app.tsx` | `API_ROUTES.projectContext` | Project name / git remote (static per daemon session) |
+| `queue-section.tsx` (RecoveryRow) | `['sidecar', item.id]` | Recovery sidecar for individual failed PRDs (on-demand) |
+
+All live event-driven UI updates flow through `useEforgeEvents` or `useDaemonEvents` — SWR cache invalidation on SSE events is no longer used.
 
 ## Transport details
 
-`useEforgeEvents` issues an initial HTTP GET to `/api/run-state/:id` (via
-`API_ROUTES.runState`) to batch-load all stored events for the session. If the
-session is still active, it then calls `subscribeToSession` from
-`@eforge-build/client` with `baseUrl: ''` (same-origin relative URL) to stream
-live events over SSE. `subscribeToSession` handles reconnect with exponential
-backoff, `Last-Event-ID` replay, and abort via `AbortSignal`.
-
-SSE events also drive SWR cache invalidation via the global `mutate()` call —
-see `use-eforge-events.ts` for the event-to-invalidation mapping.
+Both SSE hooks use `subscribeToSession` / `subscribeToDaemonEvents` from `@eforge-build/client/browser` with `baseUrl: ''` (same-origin relative URL). The underlying helper handles reconnect with exponential backoff, `Last-Event-ID` replay, and abort via `AbortSignal`.

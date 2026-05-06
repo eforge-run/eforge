@@ -116,9 +116,7 @@ export const API_ROUTES = {
   queue: '/api/queue',
   sessionMetadata: '/api/session-metadata',
   runs: '/api/runs',
-  latestRun: '/api/latest-run',
   events: '/api/events/:runId',
-  orchestration: '/api/orchestration/:runId',
   runSummary: '/api/run-summary/:id',
   runState: '/api/run-state/:id',
   plans: '/api/plans/:runId',
@@ -144,6 +142,7 @@ export const API_ROUTES = {
   sessionPlanSelectDimensions: '/api/session-plan/select-dimensions',
   sessionPlanReadiness: '/api/session-plan/readiness',
   sessionPlanMigrateLegacy: '/api/session-plan/migrate-legacy',
+  daemonEvents: '/api/daemon-events',
 } as const;
 
 /** Response body for GET /api/version */

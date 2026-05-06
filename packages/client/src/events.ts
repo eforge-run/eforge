@@ -445,6 +445,9 @@ export type EforgeEvent = { sessionId?: string; runId?: string; timestamp: strin
   | { type: 'recovery:apply:complete'; prdId: string; verdict: 'retry' | 'split' | 'abandon' | 'manual'; successorPrdId?: string; noAction: boolean }
   | { type: 'recovery:apply:error'; prdId: string; message: string }
 
+  // Daemon internal
+  | { type: 'daemon:auto-build:paused'; reason: string }
+
   // Queue
   | QueueEvent
 );

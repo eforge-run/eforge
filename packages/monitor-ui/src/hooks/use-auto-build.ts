@@ -1,60 +1,41 @@
-import { useState, useEffect, useCallback } from 'react';
-import useSWR, { mutate } from 'swr';
+import { useState, useCallback } from 'react';
 import { setAutoBuild, type AutoBuildState } from '@/lib/api';
-import { fetcher } from '@/lib/swr-fetcher';
-import { subscribeToSession, API_ROUTES } from '@eforge-build/client/browser';
 
-export function useAutoBuild(sessionId?: string | null): {
-  state: AutoBuildState | null;
+/**
+ * Writer-only hook for the auto-build toggle.
+ *
+ * The reader path — the current enabled/disabled state — is now owned by
+ * `useDaemonEvents().daemonState.autoBuild`. This hook only fires the HTTP
+ * mutation and tracks in-flight state to prevent double-clicks.
+ *
+ * After a successful toggle the caller's `onUpdate` is invoked with the new
+ * state returned by the server, so the daemon-state slice can be updated
+ * immediately without waiting for the next SSE event.
+ */
+export function useAutoBuild(
+  autoBuildState: AutoBuildState | null,
+  onUpdate: (state: AutoBuildState | null) => void,
+): {
   toggling: boolean;
   toggle: () => void;
 } {
   const [toggling, setToggling] = useState(false);
 
-  const { data } = useSWR<AutoBuildState | null>(
-    API_ROUTES.autoBuildGet,
-    fetcher,
-    { refreshInterval: 10000 },
-  );
-  const state = data ?? null;
-
-  // Subscribe to daemon:auto-build:paused events on the provided session so the
-  // toggle flips OFF immediately instead of waiting for the next poll cycle.
-  // The 10 s SWR polling interval above acts as fallback when sessionId is null/absent.
-  useEffect(() => {
-    if (!sessionId) return;
-    const abort = new AbortController();
-
-    void subscribeToSession<{ type: string }>(sessionId, {
-      baseUrl: '',
-      signal: abort.signal,
-      onEvent: (event) => {
-        if (event.type === 'daemon:auto-build:paused') {
-          void mutate(API_ROUTES.autoBuildGet);
-        }
-      },
-    }).catch((err: unknown) => {
-      if (abort.signal.aborted) return;
-      // Swallow connection errors — SWR poll fallback will catch up
-    });
-
-    return () => abort.abort();
-  }, [sessionId]);
-
   const toggle = useCallback(() => {
-    if (!state || toggling) return;
-    const optimisticState: AutoBuildState = { ...state, enabled: !state.enabled };
-    void mutate(API_ROUTES.autoBuildGet, optimisticState, { revalidate: false });
+    if (!autoBuildState || toggling) return;
     setToggling(true);
-    setAutoBuild(!state.enabled)
-      .then(() => {
-        // SWR polling / SSE event will reconcile the actual server value
+    setAutoBuild(!autoBuildState.enabled)
+      .then((newState) => {
+        if (newState) {
+          onUpdate(newState);
+        }
       })
       .catch(() => {
-        void mutate(API_ROUTES.autoBuildGet);
+        // Server error — the daemon state will reflect reality on the next
+        // snapshot or SSE event; no local rollback needed.
       })
       .finally(() => setToggling(false));
-  }, [state, toggling]);
+  }, [autoBuildState, toggling, onUpdate]);
 
-  return { state, toggling, toggle };
+  return { toggling, toggle };
 }

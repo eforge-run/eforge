@@ -17,14 +17,12 @@ export {
   apiCancel,
   apiGetQueue,
   apiGetRuns,
-  apiGetLatestRun,
-  apiGetLatestRunIfRunning,
+  apiGetLatestRunFromRuns,
   apiGetRunSummary,
   apiGetRunSummaryIfRunning,
   apiGetRunState,
   apiGetPlans,
   apiGetDiff,
-  apiGetOrchestration,
   apiGetSessionMetadata,
 } from './api/queue.js';
 
@@ -160,7 +158,7 @@ export { DAEMON_API_VERSION, verifyApiVersion, clearApiVersionCache } from './ap
 
 export { sanitizeProfileName, parseRawConfigLegacy } from './profile-utils.js';
 
-export { subscribeToSession, parseSseChunk } from './session-stream.js';
+export { subscribeToSession, subscribeToDaemonEvents, parseSseChunk } from './session-stream.js';
 export type {
   SessionSummary,
   SubscribeOptions,
@@ -211,10 +209,8 @@ export type {
   QueueItem,
   SessionMetadata,
   RunInfo,
-  LatestRunResponse,
   BuildStageSpec,
   ReviewProfileConfig,
-  OrchestrationResponse,
   RunSummary,
   RunState,
   PlanInfo,

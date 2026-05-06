@@ -32,9 +32,9 @@ describe('fetcher', () => {
   });
 
   it('returns parsed JSON on 200', async () => {
-    const payload = { sessionId: 'abc-123', status: 'running' };
+    const payload = [{ id: 'run-1', planSet: 'my-set', command: 'build', status: 'running', startedAt: '2024-01-01T00:00:00.000Z', cwd: '/project' }];
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(makeFetchResponse(200, payload)));
-    const result = await fetcher(API_ROUTES.latestRun);
+    const result = await fetcher(API_ROUTES.runs);
     expect(result).toEqual(payload);
   });
 
