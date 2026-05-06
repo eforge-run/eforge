@@ -1,0 +1,64 @@
+name: event-source-spine-expedition-lifecycle-events-zod-schemas-metadata-registry-pure-event-reducer
+description: "Make events the single source of truth for eforge runtime state:
+  add lifecycle event variants, Zod schemas at every boundary, a metadata
+  registry, mutateState single mutation entry point, and a pure-event reducer
+  with replay-equivalence acceptance test."
+created: 2026-05-06
+status: draft
+mode: expedition
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+architecture:
+  status: complete
+modules:
+  foundation:
+    description: "Lifecycle events + Zod schemas: add 5 new event variants
+      (plan:status:change, plan:error:set, plan:error:clear, merge:worktree:set,
+      merge:worktree:clear), create events.schemas.ts as wire-protocol source of
+      truth, make EforgeEvent = z.infer<typeof EforgeEventSchema>, bump
+      DAEMON_API_VERSION 18→19, remove the 'Pure TypeScript — no Zod' comment,
+      add the 'Event types and schemas are co-located' convention to AGENTS.md."
+    depends_on: []
+    status: pending
+  mutate-state:
+    description: "Single mutation entry point: add mutateState(state, event) to
+      packages/engine/src/state.ts (folds in updatePlanStatus), route every
+      direct mutation in plan-lifecycle.ts and worktree-manager.ts through it,
+      rewrite orchestrator.initializeState() to prefer event-log replay with
+      state.json fallback, replace hydrateEventData with parseEventRow (Zod
+      log-and-skip, preserves back-compat field-patching), add the 'State
+      mutation is single-entry-point' convention to AGENTS.md, write
+      state.json.bak guard before first overwrite."
+    depends_on:
+      - foundation
+    status: pending
+  registry:
+    description: "Event metadata registry: create
+      packages/client/src/event-registry.ts with one entry per variant declaring
+      {scope, persist, project?, summary?}, add the _Exhaustive type-check gate,
+      derive DAEMON_EVENT_TYPES from registry (replacing the literal at
+      packages/monitor/src/db.ts:149-193), replace the 140-branch switch in CLI
+      display.ts and the eventToProgress summary table with registry summary
+      lookups (rich rendering paths stay), inline the projection logic from
+      packages/monitor-ui/src/lib/daemon-reducer/handle-*.ts into registry
+      project functions."
+    depends_on:
+      - foundation
+    status: pending
+  pure-reducer:
+    description: "Pure-event reducer + acceptance gate: delete inference heuristics
+      from packages/monitor-ui/src/lib/reducer.ts (e.g. plan:build:start ⇒
+      running), delete DAEMON_IGNORED_EVENT_TYPES (line 122) and surrounding
+      filter logic from daemon-reducer/index.ts, delete the now-redundant
+      handle-*.ts files whose logic moved to the registry, add
+      packages/monitor-ui/test/event-replay-equivalence.test.ts (must fail on
+      main, pass after merge — uses multiple recorded sessions including
+      merge/errors/recovery as fixtures), verify agent:start
+      thinkingCoerced/thinkingOriginal reaches the agent-stage hover, remove
+      docs/roadmap.md line 32 ('Typed SSE events in client package')."
+    depends_on:
+      - mutate-state
+      - registry
+    status: pending
