@@ -7,6 +7,8 @@ An open source agentic build system. Detailed plans go in. A planner sizes the w
 
 Drive eforge from Claude Code or Pi. Pipeline stages delegate to either the Claude Agent SDK or pi-agent-core - the interface you drive and the harness that executes are independent. A Claude Max subscription covers the SDK path; an OpenAI Codex subscription covers the Pi path, which also reaches 20+ other providers including local models.
 
+Harness engineering - the discipline of designing everything around an LLM that makes it a reliable system - applies at two levels here: each pipeline stage delegates to a harness for its agent loop, and the pipeline itself is a higher-order harness across planning, building, review, and validation.
+
 The name: **E** from the [Expedition-Excursion-Errand methodology](https://www.markschaake.com/posts/expedition-excursion-errand/) + **forge** - shaping code from plans.
 
 <img src="docs/images/monitor-full-pipeline.png" alt="eforge dashboard - full pipeline" width="800">
@@ -19,13 +21,13 @@ Traditional build systems transform source code into artifacts. An agentic build
 
 The key insight: a single AI agent writing and reviewing its own code will almost always approve it. Quality requires **separation of concerns** - distinct agents for planning, building, reviewing, and evaluating.
 
-An agentic build system applies build-system thinking to this multi-agent pipeline:
+An agentic build system applies build-system thinking to this multi-agent pipeline. Each piece below is either a guide (steering agents before they act) or a sensor (verifying what they produced) - the two control types that organize [harness engineering](https://martinfowler.com/articles/harness-engineering.html).
 
-- **Spec-driven** - Input is a requirement, not a code edit. The system decides *how* to implement it.
-- **Multi-stage pipeline** - Planning, implementation, review, and validation are separate stages with separate agents, not one conversation.
-- **Blind review** - The reviewer operates without builder context (see below).
-- **Dependency-aware orchestration** - Large work decomposes into modules with a dependency graph. Plans build in parallel across isolated git worktrees, merging in topological order.
-- **Adaptive complexity** - The system assesses scope and selects the right workflow: a one-file fix doesn't need architecture review, and a cross-cutting refactor shouldn't skip it.
+- **Spec-driven** (guide) - Input is a requirement, not a code edit. The system decides *how* to implement it.
+- **Multi-stage pipeline** (structure) - Planning, implementation, review, and validation are separate stages with separate agents, not one conversation.
+- **Blind review** (sensor) - The reviewer operates without builder context (see below).
+- **Dependency-aware orchestration** (structure) - Large work decomposes into modules with a dependency graph. Plans build in parallel across isolated git worktrees, merging in topological order.
+- **Adaptive complexity** (guide) - The system assesses scope and selects the right workflow: a one-file fix doesn't need architecture review, and a cross-cutting refactor shouldn't skip it.
 
 ## Use Cases
 
@@ -51,7 +53,7 @@ eforge also runs standalone. By default, `eforge build` enqueues and a daemon pr
 - **Excursion** - Multi-file features. Planner writes a plan, blind review cycle, then build.
 - **Expedition** - Large cross-cutting work. Architecture doc, module decomposition, cohesion review across plans, parallel builds in dependency order.
 
-**Blind review** - Every build gets reviewed by a separate agent with no builder context. Separating generation from evaluation [dramatically improves quality](https://www.anthropic.com/engineering/harness-design-long-running-apps) - solo agents tend to approve their own work regardless. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes. The goal is fidelity to the plan - minimizing drift and slop so the code that lands is what was specified, not a reinterpretation.
+**Blind review** - The reviewer is an inferential sensor: an LLM judging output in a fresh context with no builder knowledge. Separating generation from evaluation [dramatically improves quality](https://www.anthropic.com/engineering/harness-design-long-running-apps) - solo agents tend to approve their own work regardless. A fixer applies suggestions, then an evaluator accepts strict improvements while rejecting intent changes. The goal is fidelity to the plan - minimizing drift and slop so the code that lands is what was specified, not a reinterpretation.
 
 **Parallel orchestration** - Each plan builds in an isolated git worktree. Expeditions run multiple plans in parallel, merging in topological dependency order. Post-merge validation runs with auto-fix.
 
