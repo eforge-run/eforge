@@ -81,6 +81,10 @@ export function eventToProgress(
         ?? 'review issue') as string;
       return { message: `Issue (${severity}): ${summary}`, counters };
     }
+    case 'session:end':
+      // Session end is the terminal event — return null to avoid a spurious
+      // progress update. The caller handles session:end as a completion signal.
+      return null;
     case 'plan:build:failed': {
       const planId = (event as { planId?: unknown }).planId as string | undefined;
       const error = (event as { error?: unknown }).error as string | undefined;

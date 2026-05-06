@@ -233,9 +233,9 @@ describe('serveDaemonEventsSSE — Last-Event-ID present replays missed events',
     const now = new Date().toISOString();
     const sessionId = `daemon-replay-${Date.now()}`;
 
-    db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:starting', data: JSON.stringify({ type: 'daemon:lifecycle:starting', timestamp: now }), timestamp: now });
+    db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:starting', data: JSON.stringify({ type: 'daemon:lifecycle:starting', pid: 1, port: 3000, version: '1.0.0', mode: 'auto', timestamp: now }), timestamp: now });
     const idAfterFirst = db.getMaxDaemonEventId();
-    db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:ready', data: JSON.stringify({ type: 'daemon:lifecycle:ready', timestamp: now }), timestamp: now });
+    db.insertEvent({ runId: sessionId, type: 'daemon:lifecycle:ready', data: JSON.stringify({ type: 'daemon:lifecycle:ready', pid: 1, port: 3000, version: '1.0.0', mode: 'auto', recoveryDurationMs: 5, timestamp: now }), timestamp: now });
     db.insertEvent({ runId: sessionId, type: 'daemon:recovery:complete', data: JSON.stringify({ type: 'daemon:recovery:complete', runsFailed: 0, locksRemoved: 0, durationMs: 1, timestamp: now }), timestamp: now });
 
     const server = await startServer(db, 0, { cwd });

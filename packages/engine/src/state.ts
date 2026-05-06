@@ -152,6 +152,31 @@ export function mutateState(state: EforgeState, event: EforgeEvent): EforgeState
 }
 
 /**
+ * Convenience wrapper that directly sets a plan's status in state, updating
+ * completedPlans when the status is 'completed' or 'merged'.
+ *
+ * Throws if planId is not present in state.plans. All callers must go through
+ * this function rather than assigning plan.status directly.
+ */
+export function updatePlanStatus(
+  state: EforgeState,
+  planId: string,
+  status: EforgeState['plans'][string]['status'],
+): void {
+  const plan = state.plans[planId];
+  if (!plan) {
+    throw new Error(`Unknown plan: ${planId}`);
+  }
+  plan.status = status;
+  if (
+    (status === 'completed' || status === 'merged') &&
+    !state.completedPlans.includes(planId)
+  ) {
+    state.completedPlans.push(planId);
+  }
+}
+
+/**
  * Check if a state is resumable: status is 'running' and at least one plan is not completed/merged.
  */
 export function isResumable(state: EforgeState): boolean {
