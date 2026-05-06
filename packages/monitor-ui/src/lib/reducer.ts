@@ -64,6 +64,8 @@ export interface AgentThread {
   effortOriginal?: string;
   effortSource?: string;
   thinkingSource?: string;
+  thinkingCoerced?: boolean;
+  thinkingOriginal?: Record<string, unknown>;
   tier?: string;
   tierSource?: string;
   perspective?: string;

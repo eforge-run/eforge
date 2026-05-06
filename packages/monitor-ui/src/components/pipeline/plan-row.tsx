@@ -2,7 +2,7 @@ import { memo, useMemo } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/button';
 import { usePlanPreview } from '@/components/preview';
-import { formatDuration, formatNumber } from '@/lib/format';
+import { formatDuration, formatNumber, formatThinking } from '@/lib/format';
 import type { AgentThread, StoredEvent } from '@/lib/reducer';
 import type { AgentRole, PipelineStage, ReviewIssue, BuildStageSpec, ValidationCommandSpan } from '@/lib/types';
 import {
@@ -282,7 +282,11 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                       )}
                     </div>
                     <div className={thread.thinkingSource === 'plan' ? 'text-blue-400 font-medium text-[10px]' : 'opacity-50 text-[10px]'}>
-                      thinking: {thread.thinking ?? 'unset'}
+                      thinking: {thread.thinking
+                        ? (thread.thinkingCoerced && thread.thinkingOriginal
+                          ? `${thread.thinking} (coerced from ${formatThinking(thread.thinkingOriginal) ?? 'unknown'})`
+                          : thread.thinking)
+                        : 'unset'}
                       {thread.thinkingSource && (
                         <span> ({thread.thinkingSource})</span>
                       )}
