@@ -1,0 +1,130 @@
+name: daemon-activity-events-monitor-ui-status-surface
+description: Add a structured daemon:* event family (lifecycle, scheduler
+  decisions, recovery, orphan reaping, auto-build, errors) plus a live-only
+  heartbeat, and surface them in the monitor UI via a header status pill and
+  slide-out drawer so users can answer "is the daemon alive?" and "what is it
+  doing?" at a glance.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-types-and-daemon-emission
+    name: Daemon event types + monitor emission + heartbeat transport
+    depends_on: []
+    branch: daemon-activity-events-monitor-ui-status-surface/types-and-daemon-emission
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: "Multi-file change spanning client wire types, monitor persistence,
+          monitor transport (SSE bypass timer), and emission across many call
+          sites in server-main.ts including a structural refactor of
+          reconcileOrphanedState. SSE replay invariant for the heartbeat (id: 0
+          / no id) is a subtle correctness concern."
+      reviewer:
+        effort: high
+        rationale: SSE replay correctness, daemon session id/FK-off invariant, and
+          recovery emission ordering are non-trivial.
+  - id: plan-02-scheduler-emission
+    name: Scheduler decision events with dedup
+    depends_on:
+      - plan-01-types-and-daemon-emission
+    branch: daemon-activity-events-monitor-ui-status-surface/scheduler-emission
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: "Dedup logic at two granularities (per-tick total for capacity,
+          per-(prdId)-per-tick for dependency) requires careful state tracking
+          and is the named risk #2 in the PRD."
+  - id: plan-03-monitor-ui-surface
+    name: "Monitor UI: daemon status pill and activity drawer"
+    depends_on:
+      - plan-01-types-and-daemon-emission
+    branch: daemon-activity-events-monitor-ui-status-surface/monitor-ui-surface
+    build:
+      - implement
+      - test-cycle
+      - - doc-sync
+        - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Two new shadcn-based components, reducer extensions across multiple
+          new event types, ring-buffer state management, and the compile-time
+          exhaustiveness check in daemon-reducer/index.ts requires every new
+          daemon variant to be either handled or explicitly ignored.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - correctness
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "The PRD itself explicitly recommends Excursion and the heuristics
+    agree: bounded, additive observability work that touches 4 packages (client
+    types, monitor persistence/transport/emission, engine scheduler emission,
+    monitor-ui reducer/components) but with no new module boundaries, no new
+    transports, and no architectural restructuring. A single planner session can
+    comfortably enumerate all the call sites, file edits, and cross-package
+    dependencies (the PRD already does most of that enumeration), so delegated
+    module planning is not required - this rules out expedition. Sequential
+    coupling between layers (types must land before persistence before emission
+    before UI) also points away from expedition's parallel-module pattern.
+    Compile uses planner + plan-review-cycle because the change has many
+    coordinated emission points (lifecycle, recovery, orphan watcher,
+    auto-build, scheduler dedup) plus tricky invariants (heartbeat replay
+    safety, scheduler dedup keys, recovery emission ordering) where a
+    plan-quality gate before build pays off. Build pipeline runs implement in
+    parallel with doc-author (the README needs a small daemon status pill /
+    drawer mention, and the PRD calls out several inline JSDoc requirements that
+    doc-author can scaffold), then doc-sync after implement to catch any stale
+    references in existing docs from the renamed/added event types and
+    refactored reconcileOrphanedState, then review-cycle for the iterative
+    quality pass. test-write is omitted because the PRD already itemizes a
+    precise vitest matrix (events roundtrip, allowlist behavior, scheduler
+    dedup, recovery ordering, reducer transitions) that the implementer should
+    write inline rather than have a separate test-writer agent re-derive. Review
+    uses single strategy with a correctness perspective, 2 rounds, standard
+    strictness: this is internal observability plumbing, not security/data, and
+    the main risks (heartbeat replay invariant, scheduler spam dedup, recovery
+    ordering) are correctness-shaped rather than benefiting from parallel
+    perspectives."
