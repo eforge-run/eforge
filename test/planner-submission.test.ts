@@ -15,16 +15,12 @@ import { runPlanner } from '@eforge-build/engine/agents/planner';
 
 function validPlanSetPayload(): PlanSetSubmission {
   return {
-    name: 'test-plan',
     description: 'A test plan set',
-    mode: 'excursion',
-    baseBranch: 'main',
     plans: [
       {
         frontmatter: {
           id: 'plan-01-widgets',
           name: 'Widget Feature',
-          branch: 'test-plan/widgets',
         },
         body: '# Widget Feature\n\n## Implementation\n\nAdd widget support.',
       },
@@ -34,9 +30,7 @@ function validPlanSetPayload(): PlanSetSubmission {
       plans: [
         {
           id: 'plan-01-widgets',
-          name: 'Widget Feature',
           dependsOn: [],
-          branch: 'test-plan/widgets',
         },
       ],
     },
@@ -111,7 +105,7 @@ describe('Planner submission tool: plan set', () => {
     expect(content).toContain('id: plan-01-widgets');
     expect(content).toContain('name: Widget Feature');
     expect(content).not.toContain('depends_on:');
-    expect(content).toContain('branch: test-plan/widgets');
+    expect(content).toContain('branch: build-widgets/plan-01-widgets');
     expect(content).toContain('# Widget Feature');
 
     // Should have passed customTools to the backend

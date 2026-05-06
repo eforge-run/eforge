@@ -711,10 +711,12 @@ export interface WritePlanSetOptions {
   outputDir: string;
   planSetName: string;
   payload: import('./schemas.js').PlanSetSubmission;
+  baseBranch: string;
+  mode: 'errand' | 'excursion' | 'expedition';
 }
 
 export async function writePlanSet(options: WritePlanSetOptions): Promise<void> {
-  const { cwd, outputDir, planSetName, payload } = options;
+  const { cwd, outputDir, planSetName, payload, baseBranch, mode } = options;
   const planDir = resolve(cwd, outputDir, planSetName);
   await mkdir(planDir, { recursive: true });
 
@@ -723,7 +725,7 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
     const frontmatter: Record<string, unknown> = {
       id: plan.frontmatter.id,
       name: plan.frontmatter.name,
-      branch: plan.frontmatter.branch,
+      branch: `${planSetName}/${plan.frontmatter.id}`,
     };
     if (plan.frontmatter.migrations && plan.frontmatter.migrations.length > 0) {
       frontmatter.migrations = plan.frontmatter.migrations;
@@ -737,18 +739,18 @@ export async function writePlanSet(options: WritePlanSetOptions): Promise<void> 
 
   // Write orchestration.yaml
   const orchConfig: Record<string, unknown> = {
-    name: payload.name,
+    name: planSetName,
     description: payload.description,
-    base_branch: payload.baseBranch,
-    mode: payload.mode,
+    base_branch: baseBranch,
+    mode,
     validate: payload.orchestration.validate ?? [],
     plans: payload.orchestration.plans.map(p => {
       const planData = payload.plans.find(pd => pd.frontmatter.id === p.id);
       return {
         id: p.id,
-        name: p.name,
+        name: planData?.frontmatter.name ?? p.id,
         depends_on: p.dependsOn,
-        branch: p.branch,
+        branch: `${planSetName}/${p.id}`,
         ...(p.build ? { build: p.build } : {}),
         ...(p.review ? { review: p.review } : {}),
         ...(planData?.frontmatter.agents ? { agents: planData.frontmatter.agents } : {}),

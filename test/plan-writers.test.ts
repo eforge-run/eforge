@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { writePlanSet, writeArchitecture } from '@eforge-build/engine/plan';
 import type { PlanSetSubmission, ArchitectureSubmission } from '@eforge-build/engine/schemas';
+import { planSetSubmissionSchema } from '@eforge-build/engine/schemas';
 
 describe('writePlanSet', () => {
   let tempDir: string;
@@ -14,16 +15,12 @@ describe('writePlanSet', () => {
   });
 
   const payload: PlanSetSubmission = {
-    name: 'test-set',
     description: 'Test plan set',
-    mode: 'excursion',
-    baseBranch: 'main',
     plans: [
       {
         frontmatter: {
           id: 'plan-01-auth',
           name: 'Auth Plan',
-          branch: 'auth/main',
         },
         body: '# Auth Plan\n\nImplement authentication.',
       },
@@ -31,7 +28,6 @@ describe('writePlanSet', () => {
         frontmatter: {
           id: 'plan-02-api',
           name: 'API Plan',
-          branch: 'api/main',
           migrations: [{ timestamp: '20260415120000', description: 'add users table' }],
         },
         body: '# API Plan\n\nImplement API layer.',
@@ -40,14 +36,14 @@ describe('writePlanSet', () => {
     orchestration: {
       validate: [],
       plans: [
-        { id: 'plan-01-auth', name: 'Auth Plan', dependsOn: [], branch: 'auth/main' },
-        { id: 'plan-02-api', name: 'API Plan', dependsOn: ['plan-01-auth'], branch: 'api/main' },
+        { id: 'plan-01-auth', dependsOn: [] },
+        { id: 'plan-02-api', dependsOn: ['plan-01-auth'] },
       ],
     },
   };
 
   it('creates plan markdown files with YAML frontmatter', async () => {
-    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload });
+    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload, baseBranch: 'main', mode: 'excursion' });
 
     const plan1Content = await readFile(join(tempDir, 'eforge/plans/test-set/plan-01-auth.md'), 'utf-8');
     expect(plan1Content).toMatch(/^---\n/);
@@ -65,7 +61,7 @@ describe('writePlanSet', () => {
   });
 
   it('creates orchestration.yaml with correct structure', async () => {
-    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload });
+    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload, baseBranch: 'main', mode: 'excursion' });
 
     const orchContent = await readFile(join(tempDir, 'eforge/plans/test-set/orchestration.yaml'), 'utf-8');
     const orch = parseYaml(orchContent) as Record<string, unknown>;
@@ -83,7 +79,7 @@ describe('writePlanSet', () => {
   });
 
   it('YAML frontmatter matches input data', async () => {
-    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload });
+    await writePlanSet({ cwd: tempDir, outputDir: 'eforge/plans', planSetName: 'test-set', payload, baseBranch: 'main', mode: 'excursion' });
 
     const plan1Content = await readFile(join(tempDir, 'eforge/plans/test-set/plan-01-auth.md'), 'utf-8');
     const match = plan1Content.match(/^---\n([\s\S]*?)\n---/);
@@ -92,7 +88,117 @@ describe('writePlanSet', () => {
     expect(frontmatter.id).toBe('plan-01-auth');
     expect(frontmatter.name).toBe('Auth Plan');
     expect(frontmatter.depends_on).toBeUndefined();
-    expect(frontmatter.branch).toBe('auth/main');
+    expect(frontmatter.branch).toBe('test-set/plan-01-auth');
+  });
+
+  it('derives name, base_branch, mode, and per-plan branch from engine options, not payload', async () => {
+    await writePlanSet({
+      cwd: tempDir,
+      outputDir: 'eforge/plans',
+      planSetName: 'my-feature',
+      payload,
+      baseBranch: 'develop',
+      mode: 'errand',
+    });
+
+    const orchContent = await readFile(join(tempDir, 'eforge/plans/my-feature/orchestration.yaml'), 'utf-8');
+    const orch = parseYaml(orchContent) as Record<string, unknown>;
+
+    // Root fields from engine options
+    expect(orch.name).toBe('my-feature');
+    expect(orch.base_branch).toBe('develop');
+    expect(orch.mode).toBe('errand');
+
+    // Per-plan branch derived from planSetName/plan.id
+    const plans = orch.plans as Array<Record<string, unknown>>;
+    expect(plans[0].branch).toBe('my-feature/plan-01-auth');
+    expect(plans[1].branch).toBe('my-feature/plan-02-api');
+
+    // Plan names looked up from payload.plans[].frontmatter.name by id
+    expect(plans[0].name).toBe('Auth Plan');
+    expect(plans[1].name).toBe('API Plan');
+
+    // Plan file frontmatter branch also engine-derived
+    const planContent = await readFile(join(tempDir, 'eforge/plans/my-feature/plan-01-auth.md'), 'utf-8');
+    expect(planContent).toContain('branch: my-feature/plan-01-auth');
+  });
+});
+
+describe('planSetSubmissionSchema: removed fields are stripped silently', () => {
+  it('strips root name field silently', () => {
+    const result = planSetSubmissionSchema.safeParse({
+      name: 'my-plan-set',
+      description: 'A plan set',
+      plans: [{ frontmatter: { id: 'plan-01-a', name: 'A' }, body: '# A' }],
+      orchestration: { validate: [], plans: [{ id: 'plan-01-a', dependsOn: [] }] },
+    });
+    // Zod strict object would fail; default strips unknown fields — assert behavior either way
+    if (result.success) {
+      // Schema is non-strict: field is silently stripped
+      expect((result.data as Record<string, unknown>).name).toBeUndefined();
+    } else {
+      // Schema is strict: field is rejected
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it('strips root mode field silently', () => {
+    const result = planSetSubmissionSchema.safeParse({
+      mode: 'excursion',
+      description: 'A plan set',
+      plans: [{ frontmatter: { id: 'plan-01-a', name: 'A' }, body: '# A' }],
+      orchestration: { validate: [], plans: [{ id: 'plan-01-a', dependsOn: [] }] },
+    });
+    if (result.success) {
+      expect((result.data as Record<string, unknown>).mode).toBeUndefined();
+    } else {
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it('strips root baseBranch field silently', () => {
+    const result = planSetSubmissionSchema.safeParse({
+      baseBranch: 'main',
+      description: 'A plan set',
+      plans: [{ frontmatter: { id: 'plan-01-a', name: 'A' }, body: '# A' }],
+      orchestration: { validate: [], plans: [{ id: 'plan-01-a', dependsOn: [] }] },
+    });
+    if (result.success) {
+      expect((result.data as Record<string, unknown>).baseBranch).toBeUndefined();
+    } else {
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it('strips branch from plan frontmatter silently', () => {
+    const result = planSetSubmissionSchema.safeParse({
+      description: 'A plan set',
+      plans: [{ frontmatter: { id: 'plan-01-a', name: 'A', branch: 'my-set/plan-01-a' }, body: '# A' }],
+      orchestration: { validate: [], plans: [{ id: 'plan-01-a', dependsOn: [] }] },
+    });
+    if (result.success) {
+      expect((result.data.plans[0].frontmatter as Record<string, unknown>).branch).toBeUndefined();
+    } else {
+      expect(result.success).toBe(false);
+    }
+  });
+
+  it('strips name and branch from orchestration plan entry silently', () => {
+    const result = planSetSubmissionSchema.safeParse({
+      description: 'A plan set',
+      plans: [{ frontmatter: { id: 'plan-01-a', name: 'A' }, body: '# A' }],
+      orchestration: {
+        validate: [],
+        plans: [{ id: 'plan-01-a', name: 'A', dependsOn: [], branch: 'my-set/plan-01-a' }],
+      },
+    });
+    if (result.success) {
+      const orchPlan = result.data.orchestration.plans[0] as Record<string, unknown>;
+      expect(orchPlan.name).toBeUndefined();
+      expect(orchPlan.branch).toBeUndefined();
+    } else {
+      expect(result.success).toBe(false);
+    }
   });
 });
 

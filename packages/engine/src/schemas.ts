@@ -467,7 +467,6 @@ const planSetSubmissionPlanSchema = z.object({
   frontmatter: z.object({
     id: z.string().min(1).describe('Plan identifier (e.g., plan-01-auth)'),
     name: z.string().min(1).describe('Human-readable plan name'),
-    branch: z.string().min(1).describe('Git branch name for this plan'),
     migrations: z.array(z.object({
       timestamp: z.string().regex(/^\d{14}$/, 'Migration timestamp must be 14 digits (YYYYMMDDHHmmss)').describe('Migration timestamp in YYYYMMDDHHmmss format'),
       description: z.string().min(1).describe('Migration description'),
@@ -479,18 +478,13 @@ const planSetSubmissionPlanSchema = z.object({
 
 const orchestrationPlanSchema = z.object({
   id: z.string().min(1).describe('Plan ID matching a submitted plan'),
-  name: z.string().min(1).describe('Human-readable plan name'),
   dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
-  branch: z.string().min(1).describe('Git branch name'),
   build: z.array(pipelineBuildStageSpecSchema).optional().describe('Per-plan build stage pipeline; if omitted, the composer\'s defaultBuild is used as a backfill'),
   review: pipelineReviewProfileConfigSchema.optional().describe('Per-plan review configuration; if omitted, the composer\'s defaultReview is used as a backfill'),
 });
 
 export const planSetSubmissionSchema = z.object({
-  name: z.string().min(1).describe('Plan set name (kebab-case)'),
   description: z.string().min(1).describe('Plan set description'),
-  mode: z.enum(['errand', 'excursion', 'expedition']).describe('Orchestration mode'),
-  baseBranch: z.string().min(1).describe('Base git branch'),
   plans: z.array(planSetSubmissionPlanSchema).min(1).describe('Plan files to write'),
   orchestration: z.object({
     validate: z.array(z.string()).describe('Validation commands to run'),
