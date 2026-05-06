@@ -62,6 +62,7 @@ export const AGENT_ROLE_DEFAULTS: Partial<Record<AgentRole, { maxTurns?: number 
   builder: { maxTurns: 80 },
   planner: { maxTurns: 80 },
   tester: { maxTurns: 40 },
+  reviewer: { maxTurns: 60 },
   'module-planner': { maxTurns: 20 },
   'doc-author': { maxTurns: 20 },
   'doc-syncer': { maxTurns: 20 },

@@ -1123,6 +1123,15 @@ describe('resolveAgentConfig per-plan override', () => {
     expect(result.effortSource).toBe('tier');
     expect(result.thinkingSource).toBe('tier');
   });
+
+  it('uses a 60-turn built-in default for reviewer agents', () => {
+    const config = makeConfig({ maxTurns: 30 });
+
+    const result = resolveAgentConfig('reviewer', config);
+
+    expect(AGENT_ROLE_DEFAULTS.reviewer?.maxTurns).toBe(60);
+    expect(result.maxTurns).toBe(60);
+  });
 });
 
 // --- Per-role effort defaults ---
