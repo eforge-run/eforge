@@ -21,6 +21,7 @@ import type {
   DaemonStreamEvent,
   SessionSummary,
   FollowCounters,
+  VersionResponse,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
 
@@ -333,15 +334,30 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_status
   createDaemonTool(server, cwd, {
     name: 'eforge_status',
-    description: 'Get the current run status including plan progress, session state, and event summary.',
+    description: 'Get the current run status including plan progress, session state, event summary, and the daemon vs CLI version.',
     schema: {},
     handler: async (_args, { cwd: toolCwd }) => {
+      // Always include version info — diagnostic for "is the running daemon
+      // stale relative to the CLI on $PATH?". Resolved best-effort: a missing
+      // eforgeVersion means we're talking to a pre-version-aware daemon.
+      const { data: versionData } = await daemonRequest<VersionResponse>(toolCwd, 'GET', API_ROUTES.version);
+      const daemonVersion = versionData.eforgeVersion ?? 'unknown (pre-version-aware daemon)';
+      const cliVersion = EFORGE_VERSION;
+      const versionMismatch = versionData.eforgeVersion !== undefined && daemonVersion !== cliVersion;
+      const versions = {
+        daemonVersion,
+        cliVersion,
+        ...(versionMismatch && {
+          versionMismatch: 'Daemon was built from a different commit than the CLI on $PATH. Restart the daemon (`eforge daemon restart`) to pick up the latest build.',
+        }),
+      };
+
       const { data: latestRun } = await daemonRequest<LatestRunResponse>(toolCwd, 'GET', API_ROUTES.latestRun);
       if (!latestRun?.sessionId) {
-        return { status: 'idle', message: 'No active eforge sessions.' };
+        return { status: 'idle', message: 'No active eforge sessions.', ...versions };
       }
       const { data: summary } = await daemonRequest<RunSummary>(toolCwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
-      return summary;
+      return { ...summary, ...versions };
     },
   });
 

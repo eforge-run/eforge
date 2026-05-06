@@ -18,6 +18,9 @@ import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION } from '@eforge-build/client';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 
+/** Replaced at build time by tsup `define` with the daemon bundle's package version. */
+declare const EFORGE_VERSION: string;
+
 // Derived prefix constants for parameterised routes (used in startsWith checks)
 const CANCEL_BASE = API_ROUTES.cancel.slice(0, API_ROUTES.cancel.indexOf('/:'));
 const PROFILE_BASE = API_ROUTES.profileDelete.slice(0, API_ROUTES.profileDelete.indexOf('/:'));
@@ -2211,7 +2214,7 @@ export async function startServer(
     } else if (url === API_ROUTES.health) {
       serveHealth(req, res);
     } else if (req.method === 'GET' && url === API_ROUTES.version) {
-      sendJson(res, { version: DAEMON_API_VERSION });
+      sendJson(res, { version: DAEMON_API_VERSION, eforgeVersion: EFORGE_VERSION });
     } else if (url === API_ROUTES.configShow || (req.method === 'GET' && url.startsWith(`${API_ROUTES.configShow}?`))) {
       try {
         const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';

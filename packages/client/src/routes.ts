@@ -148,7 +148,15 @@ export const API_ROUTES = {
 
 /** Response body for GET /api/version */
 export interface VersionResponse {
+  /** Daemon HTTP API protocol version (DAEMON_API_VERSION). Bumps on breaking changes. */
   version: number;
+  /**
+   * eforge package version baked into the daemon bundle at build time
+   * (`{semver}{-dirty?} ({sha})`). Compare against the CLI/proxy's own
+   * EFORGE_VERSION to detect a stale daemon (rebuilt without restart).
+   * Optional for backward compatibility with older daemons.
+   */
+  eforgeVersion?: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -11,8 +11,26 @@ import { Container, Markdown, type SelectItem, SelectList, Text } from "@marioze
 import { Type } from "@sinclair/typebox";
 import { StringEnum } from "@mariozechner/pi-ai";
 import { readFileSync, accessSync, mkdirSync, writeFileSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { join, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+
+/**
+ * Extension's own package version. Read at module load time from this
+ * package's package.json. Surfaced via eforge_status alongside the daemon's
+ * baked version so the user can spot a stale daemon vs the installed Pi
+ * extension.
+ */
+const PI_EFORGE_VERSION: string = (() => {
+  try {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const pkgPath = join(here, '..', '..', 'package.json');
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8')) as { version?: string };
+    return pkg.version ?? 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
 
 import {
   readLockfile,
@@ -41,6 +59,7 @@ import type {
   DaemonStreamEvent,
   SessionSummary,
   FollowCounters,
+  VersionResponse,
 } from '@eforge-build/client';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
@@ -442,9 +461,28 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_status",
     label: "eforge status",
     description:
-      "Get the current run status including plan progress, session state, and event summary.",
+      "Get the current run status including plan progress, session state, event summary, and the daemon vs Pi-extension version.",
     parameters: Type.Object({}),
     async execute(_toolCallId, _params, signal, _onUpdate, ctx) {
+      // Always include version info — diagnostic for "is the running daemon
+      // stale relative to the Pi extension I have installed?". Best-effort:
+      // a daemon with no eforgeVersion is pre-version-aware.
+      const { data: versionData } = await daemonRequest<VersionResponse>(
+        ctx.cwd,
+        "GET",
+        API_ROUTES.version,
+      );
+      const daemonVersion = versionData.eforgeVersion ?? 'unknown (pre-version-aware daemon)';
+      const piExtensionVersion = PI_EFORGE_VERSION;
+      const versionMismatch = versionData.eforgeVersion !== undefined && daemonVersion !== piExtensionVersion;
+      const versions = {
+        daemonVersion,
+        piExtensionVersion,
+        ...(versionMismatch && {
+          versionMismatch: 'Daemon was built from a different version than the installed Pi extension. Restart the daemon (or update the Pi extension) so they match.',
+        }),
+      };
+
       const { data: latestRun } = await daemonRequest<LatestRunResponse>(
         ctx.cwd,
         "GET",
@@ -454,6 +492,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         return jsonResult({
           status: "idle",
           message: "No active eforge sessions.",
+          ...versions,
         });
       }
       const { data: summary } = await daemonRequest<RunSummary>(
@@ -461,7 +500,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         "GET",
         buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }),
       );
-      return jsonResult(summary);
+      return jsonResult({ ...summary, ...versions });
     },
 
     renderCall(_args, theme) {
