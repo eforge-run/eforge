@@ -222,6 +222,18 @@ describe('EforgeEventSchema.safeParse — rejection of invalid payloads', () => 
     });
     expect(result.success).toBe(false);
   });
+
+  it('rejects enqueue:complete missing planSet (required typed field)', () => {
+    const result = EforgeEventSchema.safeParse({
+      type: 'enqueue:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      id: 'x',
+      filePath: 'y',
+      title: 'z',
+      // planSet intentionally omitted
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------

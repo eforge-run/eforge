@@ -105,7 +105,7 @@ export async function* withRecording(
     }
 
     if (event.type === 'enqueue:complete' && enqueueRunId) {
-      db.updateRunPlanSet(enqueueRunId, event.title);
+      db.updateRunPlanSet(enqueueRunId, event.planSet);
       db.updateRunStatus(enqueueRunId, 'completed', new Date().toISOString());
     }
 

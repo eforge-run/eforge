@@ -28,6 +28,7 @@ describe('handle-enqueue', () => {
       id: 'prd-001',
       filePath: '.eforge/queue/prd-001.md',
       title: 'My Feature',
+      planSet: 'My Feature',
     });
     const delta = handleEnqueueComplete(event, initialRunState);
     expect(delta?.enqueueStatus).toBe('complete');
@@ -59,8 +60,22 @@ describe('handle-enqueue', () => {
       id: 'prd-999',
       filePath: '.eforge/queue/prd-999.md',
       title: 'Directly typed title',
+      planSet: 'Directly typed plan set',
     });
     const delta = handleEnqueueComplete(event, initialRunState);
     expect(delta?.enqueueTitle).toBe('Directly typed title');
+  });
+
+  it('enqueue:complete event carries required planSet field', () => {
+    const event = makeEvent('enqueue:complete', {
+      id: 'prd-100',
+      filePath: '.eforge/queue/prd-100.md',
+      title: 'Display Title',
+      planSet: 'Canonical Plan Set',
+    });
+    // planSet is accessible from the typed event (required field per schema)
+    expect(event.planSet).toBe('Canonical Plan Set');
+    // title is still present for display purposes
+    expect(event.title).toBe('Display Title');
   });
 });

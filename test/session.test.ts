@@ -219,7 +219,7 @@ describe('runSession', () => {
       { type: 'enqueue:start', source: 'my-feature.md' },
       { type: 'agent:start', agentId: 'a1', agent: 'formatter', timestamp: '2024-01-01T00:00:00Z' },
       { type: 'agent:stop', agentId: 'a1', agent: 'formatter', timestamp: '2024-01-01T00:00:10Z' },
-      { type: 'enqueue:complete', id: 'prd-001', filePath: '/queue/prd-001.md', title: 'My Great Feature' },
+      { type: 'enqueue:complete', id: 'prd-001', filePath: '/queue/prd-001.md', title: 'My Great Feature', planSet: 'My Great Feature' },
     ];
 
     const result = await collect(runSession(asyncIterableFrom(events), 'session-enqueue'));
@@ -253,7 +253,7 @@ describe('runSession', () => {
   it('emits exactly one session:start and one session:end for full three-phase completion', async () => {
     const events: EforgeEvent[] = [
       { type: 'enqueue:start', source: 'test-prd.md' },
-      { type: 'enqueue:complete', id: 'prd-1', filePath: '/queue/test.md', title: 'Test PRD' },
+      { type: 'enqueue:complete', id: 'prd-1', filePath: '/queue/test.md', title: 'Test PRD', planSet: 'Test PRD' },
       { type: 'phase:start', runId: 'run-1', planSet: 'test', command: 'compile', timestamp: '2024-01-01T00:00:00Z' },
       { type: 'phase:end', runId: 'run-1', result: { status: 'completed', summary: 'plan done' }, timestamp: '2024-01-01T00:01:00Z' },
       { type: 'phase:start', runId: 'run-2', planSet: 'test', command: 'build', timestamp: '2024-01-01T00:02:00Z' },

@@ -469,6 +469,7 @@ export class EforgeEngine {
         id: enqueueResult.id,
         filePath: enqueueResult.filePath,
         title,
+        planSet: title,
       };
     } catch (err) {
       yield { timestamp: new Date().toISOString(), type: 'enqueue:failed', error: err instanceof Error ? err.message : String(err) };

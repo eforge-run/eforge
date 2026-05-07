@@ -850,6 +850,7 @@ const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
     id: z.string(),
     filePath: z.string(),
     title: z.string(),
+    planSet: z.string(),
   }),
   z.object({ type: z.literal('enqueue:failed'), error: z.string() }),
   z.object({ type: z.literal('enqueue:commit-failed'), error: z.string() }),

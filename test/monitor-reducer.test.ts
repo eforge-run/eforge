@@ -367,7 +367,7 @@ describe('enqueue events in reducer', () => {
     });
     state = eforgeReducer(state, {
       type: 'ADD_EVENT',
-      event: { type: 'enqueue:complete', id: 'prd-001', filePath: '/tmp/queue/prd-001.md', title: 'My Feature' } as unknown as EforgeEvent,
+      event: { type: 'enqueue:complete', id: 'prd-001', filePath: '/tmp/queue/prd-001.md', title: 'My Feature', planSet: 'My Feature' } as unknown as EforgeEvent,
       eventId: 'eq-2',
     });
     expect(state.enqueueStatus).toBe('complete');
@@ -1297,5 +1297,51 @@ describe('effort/thinking fields on AgentThread', () => {
     expect(thread).toBeDefined();
     expect(thread!.thinking).toBe('adaptive');
     expect(thread!.thinkingSource).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// event-registry enqueue:complete projection — reads event.planSet not event.title
+// ---------------------------------------------------------------------------
+
+describe('event-registry enqueue:complete projection uses event.planSet', () => {
+  it('projects event.planSet onto state.runs[].planSet (not event.title)', async () => {
+    const { eventRegistry } = await import('@eforge-build/client');
+
+    const registryEntry = eventRegistry['enqueue:complete'];
+    expect(registryEntry.project).toBeDefined();
+
+    const runId = 'run-enqueue-001';
+    const state = {
+      runs: [
+        {
+          id: runId,
+          planSet: '',
+          command: 'enqueue',
+          status: 'running',
+          startedAt: '2025-01-01T00:00:00.000Z',
+          cwd: '/tmp/project',
+        },
+      ],
+      queue: [],
+      autoBuild: null,
+      latestHeartbeat: null,
+    };
+
+    // title and planSet intentionally differ to prove projection uses planSet
+    const event = {
+      type: 'enqueue:complete' as const,
+      timestamp: '2025-01-01T00:01:00.000Z',
+      runId,
+      id: 'prd-abc',
+      filePath: '/queue/prd-abc.md',
+      title: 'Display Title (not planSet)',
+      planSet: 'Canonical Plan Set Name',
+    };
+
+    const delta = registryEntry.project!(event as Parameters<typeof registryEntry.project>[0], state);
+    expect(delta).toBeDefined();
+    expect(delta!.runs![0].planSet).toBe('Canonical Plan Set Name');
+    expect(delta!.runs![0].planSet).not.toBe('Display Title (not planSet)');
   });
 });

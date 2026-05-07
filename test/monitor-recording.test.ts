@@ -97,7 +97,7 @@ describe('enqueue recording', () => {
       { type: 'agent:start', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent,
       { type: 'agent:result', agent: 'formatter', result: { durationMs: 100, durationApiMs: 80, numTurns: 1, totalCostUsd: 0.01, usage: { input: 100, output: 50, total: 150 }, modelUsage: {} } , timestamp: now } as unknown as EforgeEvent,
       { type: 'agent:stop', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent,
-      { type: 'enqueue:complete', id: 'prd-001', filePath: '/tmp/queue/prd-001.md', title: 'My Great Feature' , timestamp: now } as unknown as EforgeEvent,
+      { type: 'enqueue:complete', id: 'prd-001', filePath: '/tmp/queue/prd-001.md', title: 'My Great Feature', planSet: 'My Great Feature', timestamp: now } as unknown as EforgeEvent,
       { type: 'session:end', sessionId, result: { status: 'completed', summary: 'Enqueued' }, timestamp: now } as unknown as EforgeEvent,
     ];
 
@@ -124,6 +124,45 @@ describe('enqueue recording', () => {
     // All 7 events should be stored (session:start is buffered then flushed)
     const dbEvents = db.getEvents(enqueueRun!.id);
     expect(dbEvents).toHaveLength(7);
+
+    db.close();
+  });
+});
+
+describe('enqueue recording — planSet typed field', () => {
+  const makeTempDir = useTempDir();
+
+  it('recorder writes event.planSet (not event.title) into runs.plan_set', async () => {
+    const cwd = makeTempDir();
+    mkdirSync(resolve(cwd, '.eforge'), { recursive: true });
+    const dbPath = resolve(cwd, '.eforge', 'monitor.db');
+    const db = openDatabase(dbPath);
+
+    const sessionId = 'test-session-planset';
+    const now = new Date().toISOString();
+
+    // planSet and title intentionally differ to prove the recorder uses planSet
+    const events: EforgeEvent[] = [
+      { type: 'session:start', sessionId, timestamp: now } as unknown as EforgeEvent,
+      { type: 'enqueue:start', source: '/tmp/my-prd.md', timestamp: now } as unknown as EforgeEvent,
+      { type: 'enqueue:complete', id: 'prd-typed', filePath: '/tmp/queue/prd-typed.md', title: 'Display Title Only', planSet: 'Typed Plan Set Name', timestamp: now } as unknown as EforgeEvent,
+      { type: 'session:end', sessionId, result: { status: 'completed', summary: 'Enqueued' }, timestamp: now } as unknown as EforgeEvent,
+    ];
+
+    async function* fakeEvents(): AsyncGenerator<EforgeEvent> {
+      for (const e of events) yield e;
+    }
+
+    const { withRecording } = await import('@eforge-build/monitor/recorder');
+    const wrapped = withRecording(fakeEvents(), db, cwd);
+    for await (const _ of wrapped) { /* drain */ }
+
+    const runs = db.getRuns();
+    const enqueueRun = runs.find((r) => r.command === 'enqueue');
+    expect(enqueueRun).toBeDefined();
+    // planSet must come from event.planSet, not event.title
+    expect(enqueueRun!.planSet).toBe('Typed Plan Set Name');
+    expect(enqueueRun!.planSet).not.toBe('Display Title Only');
 
     db.close();
   });
@@ -189,7 +228,7 @@ describe('enqueue-only session via runSession + withRecording', () => {
       yield { type: 'enqueue:start', source: '/tmp/my-prd.md' , timestamp: now } as unknown as EforgeEvent;
       yield { type: 'agent:start', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent;
       yield { type: 'agent:stop', agentId: 'a1', agent: 'formatter', timestamp: now } as unknown as EforgeEvent;
-      yield { type: 'enqueue:complete', id: 'prd-002', filePath: '/tmp/queue/prd-002.md', title: 'Enqueue Only Feature' , timestamp: now } as unknown as EforgeEvent;
+      yield { type: 'enqueue:complete', id: 'prd-002', filePath: '/tmp/queue/prd-002.md', title: 'Enqueue Only Feature', planSet: 'Enqueue Only Feature', timestamp: now } as unknown as EforgeEvent;
     }
 
     // Wrap with runSession (which should detect enqueue:complete as success)
