@@ -70,6 +70,8 @@ export interface MonitorDB {
   getRuns(): RunInfo[];
   getRunningRuns(): RunInfo[];
   getRun(runId: string): RunInfo | undefined;
+  /** Returns the run with the given id, or undefined if not found. Alias for getRun. */
+  getRunById(runId: string): RunInfo | undefined;
   getEvents(runId: string, afterId?: number): EventRecord[];
   getEventsByType(runId: string, type: string): EventRecord[];
   getLatestRunId(): string | undefined;
@@ -324,6 +326,11 @@ export function openDatabase(dbPath: string): MonitorDB {
     },
 
     getRun(runId) {
+      const row = stmts.getRun.get(runId) as unknown as RunRow | undefined;
+      return row !== undefined ? rowToRunInfo(row) : undefined;
+    },
+
+    getRunById(runId) {
       const row = stmts.getRun.get(runId) as unknown as RunRow | undefined;
       return row !== undefined ? rowToRunInfo(row) : undefined;
     },

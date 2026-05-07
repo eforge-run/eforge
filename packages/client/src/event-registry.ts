@@ -104,48 +104,19 @@ const eventRegistry = {
     scope: 'daemon',
     persist: true,
     summary: 'Session started',
-    project(event, state) {
-      const sessionId = event.sessionId;
-      const existingIdx = state.runs.findIndex(
-        (r) => r.sessionId === sessionId || r.id === sessionId,
-      );
-      if (existingIdx !== -1) {
-        const updated = [...state.runs];
-        updated[existingIdx] = { ...updated[existingIdx], status: 'running' };
-        return { runs: updated };
-      }
-      const newRun: RunInfo = {
-        id: sessionId,
-        sessionId,
-        planSet: '',
-        command: 'build',
-        status: 'running',
-        startedAt: event.timestamp,
-        cwd: '',
-      };
-      return { runs: [newRun, ...state.runs] };
-    },
+    // daemon:run:upsert is now the authoritative source for DaemonState.runs.
+    // The old run-synthesis branch is removed — it produced untitled/unknown
+    // run rows during enqueue-only sessions that had no phase:start.
+    project: () => undefined,
   },
 
   'session:end': {
     scope: 'daemon',
     persist: true,
     summary: (e) => `Session ended: ${e.result.status}`,
-    project(event, state) {
-      const sessionId = event.sessionId;
-      const idx = state.runs.findIndex(
-        (r) => r.sessionId === sessionId || r.id === sessionId,
-      );
-      if (idx === -1) return undefined;
-      const result = event.result;
-      const status: string =
-        result?.status === 'completed' || result?.status === 'failed'
-          ? result.status
-          : 'completed';
-      const updated = [...state.runs];
-      updated[idx] = { ...updated[idx], status, completedAt: event.timestamp };
-      return { runs: updated };
-    },
+    // Run termination is now reflected via daemon:run:upsert emitted by the
+    // recorder when session:end triggers updateRunStatus for enqueue failures.
+    project: () => undefined,
   },
 
   'session:profile': {
@@ -921,64 +892,25 @@ const eventRegistry = {
     scope: 'daemon',
     persist: true,
     summary: (e) => `Enqueueing from ${e.source}`,
-    project(event, state) {
-      const runId = event.runId;
-      if (!runId) return undefined;
-      const existingIdx = state.runs.findIndex((r) => r.id === runId);
-      if (existingIdx !== -1) {
-        const updated = [...state.runs];
-        updated[existingIdx] = { ...updated[existingIdx], status: 'running' };
-        return { runs: updated };
-      }
-      const newRun: RunInfo = {
-        id: runId,
-        planSet: '',
-        command: 'enqueue',
-        status: 'running',
-        startedAt: event.timestamp,
-        cwd: '',
-      };
-      return { runs: [newRun, ...state.runs] };
-    },
+    // daemon:run:upsert is now the single source of truth for DaemonState.runs;
+    // the project function is intentionally absent. The activity-feed summary
+    // is preserved for the ring buffer.
   },
 
   'enqueue:complete': {
     scope: 'daemon',
     persist: true,
     summary: (e) => `Enqueued: ${e.title}`,
-    project(event, state) {
-      const runId = event.runId;
-      if (!runId) return undefined;
-      const idx = state.runs.findIndex((r) => r.id === runId);
-      if (idx === -1) return undefined;
-      const updated = [...state.runs];
-      updated[idx] = {
-        ...updated[idx],
-        planSet: event.planSet,
-        status: 'completed',
-        completedAt: event.timestamp,
-      };
-      return { runs: updated };
-    },
+    // daemon:run:upsert is now the single source of truth for DaemonState.runs;
+    // the project function is intentionally absent.
   },
 
   'enqueue:failed': {
     scope: 'daemon',
     persist: true,
     summary: (e) => `Enqueue failed: ${e.error}`,
-    project(event, state) {
-      const runId = event.runId;
-      if (!runId) return undefined;
-      const idx = state.runs.findIndex((r) => r.id === runId);
-      if (idx === -1) return undefined;
-      const updated = [...state.runs];
-      updated[idx] = {
-        ...updated[idx],
-        status: 'failed',
-        completedAt: event.timestamp,
-      };
-      return { runs: updated };
-    },
+    // daemon:run:upsert is now the single source of truth for DaemonState.runs;
+    // the project function is intentionally absent.
   },
 
   'enqueue:commit-failed': {
@@ -1032,6 +964,36 @@ const eventRegistry = {
     scope: 'session',
     persist: false,
     summary: (e) => `Recovery apply failed: ${e.message}`,
+  },
+
+  // -------------------------------------------------------------------------
+  // Daemon run-state upsert
+  // -------------------------------------------------------------------------
+
+  /**
+   * daemon:run:upsert is the authoritative source of truth for DaemonState.runs.
+   * Emitted by the recorder immediately after every insertRun / updateRunStatus /
+   * updateRunPlanSet call. The payload is a full RunInfo re-read from the DB,
+   * so it is always equivalent to what db.getRuns() would return.
+   *
+   * Projection: finds the existing run by id and replaces it in-place (preserving
+   * startedAt DESC ordering), or prepends the run if it is new.
+   */
+  'daemon:run:upsert': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) => `Run ${e.run.id}: ${e.run.command} → ${e.run.status}`,
+    project(event, state) {
+      const idx = state.runs.findIndex((r) => r.id === event.run.id);
+      if (idx !== -1) {
+        const updated = [...state.runs];
+        updated[idx] = event.run;
+        return { runs: updated };
+      }
+      // Prepend new run — caller has already inserted it into the DB with
+      // startedAt set, so it will be first in the startedAt DESC ordering.
+      return { runs: [event.run, ...state.runs] };
+    },
   },
 
   // -------------------------------------------------------------------------
@@ -1252,7 +1214,16 @@ const eventRegistry = {
   'queue:prd:stale': {
     scope: 'daemon',
     persist: true,
-    summary: (e) => `PRD staleness: ${e.verdict} — ${e.justification}`,
+    summary: (e) => `PRD staleness (${e.prdId}): ${e.verdict} — ${e.justification}`,
+    project(event, state) {
+      // 'proceed' verdict: queue file remains pending — no state change needed.
+      if (event.verdict === 'proceed') return undefined;
+      // 'revise' or 'obsolete': file is moved/removed by the engine.
+      // Remove the item from the live queue state to match loadQueueItemsSync.
+      const filtered = state.queue.filter((item) => item.id !== event.prdId);
+      if (filtered.length === state.queue.length) return undefined;
+      return { queue: filtered };
+    },
   },
 
   'queue:prd:skip': {
@@ -1270,6 +1241,13 @@ const eventRegistry = {
     scope: 'daemon',
     persist: true,
     summary: (e) => `PRD ${e.prdId} commit failed: ${e.error}`,
+    project(event, state) {
+      const idx = state.queue.findIndex((item) => item.id === event.prdId);
+      if (idx === -1) return undefined;
+      const updated = [...state.queue];
+      updated[idx] = { ...updated[idx], status: 'failed' };
+      return { queue: updated };
+    },
   },
 
   'queue:prd:complete': {

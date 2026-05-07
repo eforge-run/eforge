@@ -885,6 +885,8 @@ export class EforgeEngine {
         prdContent: prd.content,
         diffSummary,
         cwd,
+        prdId: prd.id,
+        title: prd.frontmatter.title,
         verbose,
         abortController,
         harness: this.agentRuntimes.forRole('staleness-assessor'),
@@ -917,6 +919,7 @@ export class EforgeEngine {
               timestamp: new Date().toISOString(),
               type: 'queue:prd:commit-failed',
               prdId: prd.id,
+              title: prd.frontmatter.title,
               error: err instanceof Error ? err.message : String(err),
             };
           }

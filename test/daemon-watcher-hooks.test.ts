@@ -81,8 +81,9 @@ describe('wrapWatcherEvents', () => {
         collected.push(event);
       }
 
-      // All events should pass through unchanged
-      expect(collected).toHaveLength(4);
+      // withRecording emits 2 daemon:run:upsert events (one after insertRun,
+      // one after updateRunStatus), so total is 4 original + 2 upserts = 6.
+      expect(collected).toHaveLength(6);
       expect(collected[0].type).toBe('session:start');
       expect(collected[1].type).toBe('phase:start');
 
@@ -132,10 +133,16 @@ describe('wrapWatcherEvents', () => {
         collected.push(event);
       }
 
-      expect(collected).toHaveLength(4);
-      expect(collected.map((e) => e.type)).toEqual([
+      // The recorder now emits daemon:run:upsert events after phase:start (insertRun)
+      // and phase:end (updateRunStatus). Filter those synthetic events to check the
+      // original session event types.
+      const sessionEvents = collected.filter((e) => e.type !== 'daemon:run:upsert');
+      expect(sessionEvents).toHaveLength(4);
+      expect(sessionEvents.map((e) => e.type)).toEqual([
         'session:start', 'phase:start', 'phase:end', 'session:end',
       ]);
+      // 2 synthetic upserts are also present (after phase:start and phase:end)
+      expect(collected.filter((e) => e.type === 'daemon:run:upsert')).toHaveLength(2);
 
       // DB recording still runs even with empty hooks
       const run = db.getRun(runId);
@@ -182,7 +189,10 @@ describe('wrapWatcherEvents', () => {
         collected.push(event);
       }
 
-      expect(collected).toHaveLength(4);
+      // The recorder now emits daemon:run:upsert after phase:start and phase:end;
+      // only the 4 original session events flow through for hook matching.
+      const sessionEvents2 = collected.filter((e) => e.type !== 'daemon:run:upsert');
+      expect(sessionEvents2).toHaveLength(4);
 
       // Hook fired for phase:end
       const hookContent = await readFile(hookOrderFile, 'utf-8');

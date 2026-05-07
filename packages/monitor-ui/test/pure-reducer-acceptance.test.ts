@@ -282,20 +282,20 @@ describe('AC #5b — daemonHandlerRegistry derived from eventRegistry project fu
     expect(Object.keys(daemonHandlerRegistry).length).toBeGreaterThan(0);
   });
 
-  it('session:start handler creates a new run entry in daemon state', () => {
+  it('session:start handler returns undefined (run synthesis removed; daemon:run:upsert is authoritative)', () => {
+    // Since v25, session:start no longer synthesizes a run row. daemon:run:upsert
+    // emitted by the recorder is the single source of truth for DaemonState.runs.
+    // The session:start projector intentionally returns undefined.
     const handler = daemonHandlerRegistry['session:start'];
+    // session:start still has a project function (returns undefined), so it
+    // appears in daemonHandlerRegistry
     expect(handler).toBeDefined();
 
     const event = makeEvent('session:start', { sessionId: 'sess-registry-test' });
-    const delta = handler!(event as never, initialDaemonState) as {
-      runs?: Array<{ id: string; sessionId?: string; status: string }>;
-    } | undefined;
+    const delta = handler!(event as never, initialDaemonState);
 
-    expect(delta?.runs).toBeDefined();
-    expect(delta?.runs?.length).toBeGreaterThan(0);
-    const run = delta?.runs?.find((r) => r.sessionId === 'sess-registry-test');
-    expect(run).toBeDefined();
-    expect(run?.status).toBe('running');
+    // No runs created — delta is undefined
+    expect(delta).toBeUndefined();
   });
 
   it('daemon:heartbeat handler updates latestHeartbeat payload', () => {

@@ -12,6 +12,7 @@
 
 export type {
   EforgeEvent,
+  DaemonRunUpsertEvent,
   AgentRole,
   AgentResultData,
   EforgeResult,

@@ -17,6 +17,10 @@ export interface StalenessAssessorOptions extends SdkPassthroughConfig {
   diffSummary: string;
   /** Working directory */
   cwd: string;
+  /** PRD identifier — included in the emitted queue:prd:stale event. */
+  prdId: string;
+  /** PRD title — included in the emitted queue:prd:stale event. */
+  title: string;
   /** Whether to emit verbose agent-level events */
   verbose?: boolean;
   /** AbortController for cancellation */
@@ -37,7 +41,7 @@ export interface StalenessAssessorOptions extends SdkPassthroughConfig {
 export async function* runStalenessAssessor(
   options: StalenessAssessorOptions,
 ): AsyncGenerator<EforgeEvent> {
-  const { harness, prdContent, diffSummary, cwd, verbose, abortController } = options;
+  const { harness, prdContent, diffSummary, cwd, prdId, title, verbose, abortController } = options;
 
   const prompt = await loadPrompt('staleness-assessor', {
     prdContent,
@@ -68,6 +72,8 @@ export async function* runStalenessAssessor(
     yield {
       timestamp: new Date().toISOString(),
       type: 'queue:prd:stale',
+      prdId,
+      title,
       verdict: staleness.verdict,
       justification: staleness.justification,
       revision: staleness.revision,
