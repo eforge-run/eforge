@@ -125,7 +125,7 @@ afterEach(async () => {
 
 describe('DAEMON_API_VERSION', () => {
   it('is 23', () => {
-    expect(DAEMON_API_VERSION).toBe(23);
+    expect(DAEMON_API_VERSION).toBe(24);
   });
 });
 
