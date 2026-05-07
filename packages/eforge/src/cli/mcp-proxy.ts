@@ -919,7 +919,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_session_plan
   createDaemonTool(server, cwd, {
     name: 'eforge_session_plan',
-    description: 'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape.',
+    description: 'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
     schema: {
       action: z.enum([
         'list-active',
@@ -940,8 +940,9 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       status: z.enum(['planning', 'ready', 'abandoned', 'submitted']).optional().describe('New status (required for "set-status")'),
       planning_type: z.enum(['bugfix', 'feature', 'refactor', 'architecture', 'docs', 'maintenance', 'unknown']).optional().describe('Planning work type (optional for "create" and "select-dimensions")'),
       planning_depth: z.enum(['quick', 'focused', 'deep']).optional().describe('Planning depth (optional for "create" and "select-dimensions")'),
+      open: z.boolean().optional().describe('When true, best-effort opens the resulting session plan file in the user\'s default application. Used by the /eforge:plan skill on create and on show after a session is selected.'),
     },
-    handler: async ({ action, session, topic, dimension, content, reason, status, planning_type, planning_depth }, { cwd: toolCwd }) => {
+    handler: async ({ action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open }, { cwd: toolCwd }) => {
       if (action === 'list-active') {
         const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.sessionPlanList);
         return data;
@@ -950,6 +951,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       if (action === 'show') {
         if (!session) throw new Error('"session" is required when action is "show"');
         const { data } = await daemonRequest(toolCwd, 'GET', `${API_ROUTES.sessionPlanShow}?session=${encodeURIComponent(session)}`);
+        if (open === true && typeof (data as Record<string, unknown>).path === 'string') {
+          const { openSessionPlanFile } = await import('./open-session-plan.js');
+          const openStatus = openSessionPlanFile({ path: (data as Record<string, unknown>).path as string, cwd: toolCwd });
+          return { ...(data as Record<string, unknown>), open: openStatus };
+        }
         return data;
       }
 
@@ -960,6 +966,11 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (planning_type !== undefined) body.planning_type = planning_type;
         if (planning_depth !== undefined) body.planning_depth = planning_depth;
         const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.sessionPlanCreate, body);
+        if (open === true && typeof (data as Record<string, unknown>).path === 'string') {
+          const { openSessionPlanFile } = await import('./open-session-plan.js');
+          const openStatus = openSessionPlanFile({ path: (data as Record<string, unknown>).path as string, cwd: toolCwd });
+          return { ...(data as Record<string, unknown>), open: openStatus };
+        }
         return data;
       }
 
