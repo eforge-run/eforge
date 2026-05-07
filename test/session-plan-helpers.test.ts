@@ -309,6 +309,7 @@ describe('setSessionPlanDimensions', () => {
     const updated = setSessionPlanDimensions(plan, { planningType: 'bugfix', planningDepth: 'focused' });
     expect(updated.required_dimensions).toContain('problem-statement');
     expect(updated.required_dimensions).toContain('acceptance-criteria');
+    expect(updated.required_dimensions).toContain('assumptions-and-validation');
   });
 
   it('is a no-op on dimension lists when explicit lists exist and overwrite is not set', () => {
@@ -336,6 +337,7 @@ describe('setSessionPlanDimensions', () => {
       overwrite: true,
     });
     expect(updated.required_dimensions).toContain('problem-statement');
+    expect(updated.required_dimensions).toContain('assumptions-and-validation');
     expect(updated.required_dimensions).not.toContain('scope');
   });
 

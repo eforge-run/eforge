@@ -275,6 +275,7 @@ profile: null
     expect(dims.required).toContain('scope');
     expect(dims.required).toContain('code-impact');
     expect(dims.required).toContain('acceptance-criteria');
+    expect(dims.required).toContain('assumptions-and-validation');
   });
 
   it('trims required dimensions for quick depth', () => {
@@ -297,8 +298,10 @@ profile: null
     const dims = selectDimensions(plan);
 
     // Quick depth: at most problem-statement/scope + 1 type-specific + acceptance-criteria
-    expect(dims.required.length).toBeLessThanOrEqual(3);
+    // + assumptions-and-validation.
+    expect(dims.required.length).toBeLessThanOrEqual(4);
     expect(dims.required).toContain('acceptance-criteria');
+    expect(dims.required).toContain('assumptions-and-validation');
   });
 
   it('includes optional dimensions for deep depth', () => {
@@ -360,6 +363,7 @@ profile: null
     expect(dims.required).toContain('documentation-impact');
     expect(dims.required).toContain('risks');
     expect(dims.required).toContain('acceptance-criteria');
+    expect(dims.required).toContain('assumptions-and-validation');
   });
 });
 
@@ -502,6 +506,7 @@ Old design decisions content.
     expect(migrated.required_dimensions).toContain('documentation-impact');
     expect(migrated.required_dimensions).toContain('risks');
     expect(migrated.required_dimensions).toContain('acceptance-criteria');
+    expect(migrated.required_dimensions).toContain('assumptions-and-validation');
     expect(migrated.optional_dimensions).toEqual([]);
   });
 
@@ -541,6 +546,7 @@ Scope has content.
     expect(result.ready).toBe(false);
     expect(result.missingDimensions).not.toContain('scope');
     expect(result.missingDimensions).toContain('code-impact');
+    expect(result.missingDimensions).toContain('assumptions-and-validation');
   });
 });
 

@@ -262,29 +262,37 @@ interface DimensionSpec {
   optional: string[];
 }
 
+/**
+ * Dimensions that anchor every plan regardless of type or depth.
+ * `acceptance-criteria` defines done; `assumptions-and-validation` surfaces
+ * planning risk. Both appear in every `DIMENSION_MAP` required list and are
+ * preserved when `quick` depth trims type-specific dimensions.
+ */
+const ALWAYS_REQUIRED_DIMENSIONS = ['acceptance-criteria', 'assumptions-and-validation'] as const;
+
 const DIMENSION_MAP: Record<PlanningType, DimensionSpec> = {
   bugfix: {
-    required: ['problem-statement', 'reproduction-steps', 'root-cause', 'acceptance-criteria'],
+    required: ['problem-statement', 'reproduction-steps', 'root-cause', 'acceptance-criteria', 'assumptions-and-validation'],
     optional: ['code-impact', 'risks'],
   },
   feature: {
-    required: ['problem-statement', 'scope', 'acceptance-criteria', 'code-impact', 'design-decisions'],
+    required: ['problem-statement', 'scope', 'acceptance-criteria', 'code-impact', 'design-decisions', 'assumptions-and-validation'],
     optional: ['architecture-impact', 'documentation-impact', 'risks'],
   },
   refactor: {
-    required: ['scope', 'code-impact', 'acceptance-criteria'],
+    required: ['scope', 'code-impact', 'acceptance-criteria', 'assumptions-and-validation'],
     optional: ['design-decisions', 'risks'],
   },
   architecture: {
-    required: ['scope', 'architecture-impact', 'design-decisions', 'acceptance-criteria'],
+    required: ['scope', 'architecture-impact', 'design-decisions', 'acceptance-criteria', 'assumptions-and-validation'],
     optional: ['code-impact', 'documentation-impact', 'risks'],
   },
   docs: {
-    required: ['scope', 'documentation-impact', 'acceptance-criteria'],
+    required: ['scope', 'documentation-impact', 'acceptance-criteria', 'assumptions-and-validation'],
     optional: ['code-impact'],
   },
   maintenance: {
-    required: ['scope', 'code-impact', 'acceptance-criteria'],
+    required: ['scope', 'code-impact', 'acceptance-criteria', 'assumptions-and-validation'],
     optional: ['risks'],
   },
   unknown: {
@@ -296,6 +304,7 @@ const DIMENSION_MAP: Record<PlanningType, DimensionSpec> = {
       'documentation-impact',
       'risks',
       'acceptance-criteria',
+      'assumptions-and-validation',
     ],
     optional: [],
   },
@@ -311,12 +320,13 @@ function getDimensionsForType(planningType: PlanningType, planningDepth: Plannin
 
   if (planningDepth === 'quick') {
     // Keep the first required dimension (anchor: problem-statement or scope),
-    // up to one additional type-specific required dimension, and acceptance-criteria.
+    // up to one additional type-specific required dimension, plus the
+    // always-required dimensions so even quick plans surface planning risk.
     const anchor = base.required[0] ?? 'scope';
     const typeSpecific = base.required
-      .filter((d) => d !== anchor && d !== 'acceptance-criteria')
+      .filter((d) => d !== anchor && !ALWAYS_REQUIRED_DIMENSIONS.includes(d as typeof ALWAYS_REQUIRED_DIMENSIONS[number]))
       .slice(0, 1);
-    const required = [...new Set([anchor, ...typeSpecific, 'acceptance-criteria'])];
+    const required = [...new Set([anchor, ...typeSpecific, ...ALWAYS_REQUIRED_DIMENSIONS])];
     return { required, optional: base.optional };
   }
 
@@ -333,7 +343,7 @@ function getDimensionsForType(planningType: PlanningType, planningDepth: Plannin
 // Legacy migration constants
 // ---------------------------------------------------------------------------
 
-/** All six legacy dimension names plus acceptance-criteria. */
+/** Eight dimensions: the six legacy ones plus the always-required pair. */
 const LEGACY_DIMENSIONS = [
   'scope',
   'code-impact',
@@ -341,7 +351,7 @@ const LEGACY_DIMENSIONS = [
   'design-decisions',
   'documentation-impact',
   'risks',
-  'acceptance-criteria',
+  ...ALWAYS_REQUIRED_DIMENSIONS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -869,7 +879,7 @@ export async function writeSessionPlan(opts: WriteSessionPlanOpts): Promise<void
  *
  * Migration rules (per the planning skill):
  * - Set `planning_type` to `'unknown'` (the legacy fallback type).
- * - All six legacy dimensions plus `acceptance-criteria` become `required_dimensions`.
+ * - All six legacy dimensions plus `acceptance-criteria` and `assumptions-and-validation` become `required_dimensions`.
  * - Dimensions that were `true` in the legacy map are assumed to have body
  *   content already — they remain in `required_dimensions` and will pass the
  *   body-content check in `checkReadiness`.
