@@ -482,11 +482,14 @@ const orchestrationPlanSchema = z.object({
   dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
   build: z.array(pipelineBuildStageSpecSchema).optional().describe('Per-plan build stage pipeline; if omitted, the composer\'s defaultBuild is used as a backfill'),
   review: pipelineReviewProfileConfigSchema.optional().describe('Per-plan review configuration; if omitted, the composer\'s defaultReview is used as a backfill'),
+  buildRationale: z.string().optional().describe('Why this plan\'s build stages differ from the default, or confirmation that the default is appropriate'),
+  reviewRationale: z.string().optional().describe('Why this plan\'s review profile differs from the default, or confirmation that the default is appropriate'),
 });
 
 export const planSetSubmissionSchema = z.object({
   description: z.string().min(1).describe('Plan set description'),
   plans: z.array(planSetSubmissionPlanSchema).min(1).describe('Plan files to write'),
+  planSetShapeRationale: z.string().optional().describe('Why the work is split into this number of plans and ordered this way (omit for single-plan submissions)'),
   orchestration: z.object({
     validate: z.array(z.string()).describe('Validation commands to run'),
     plans: z.array(orchestrationPlanSchema).min(1).describe('Orchestration plan entries'),

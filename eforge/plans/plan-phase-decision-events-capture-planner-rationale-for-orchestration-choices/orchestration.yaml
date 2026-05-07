@@ -1,0 +1,65 @@
+name: plan-phase-decision-events-capture-planner-rationale-for-orchestration-choices
+description: Add planning:decision event variant capturing planner rationale for
+  per-plan build/review overrides, plan-set shape, and per-role agent-tier
+  tuning, surfacing those decisions in the monitor UI alongside existing
+  build-phase decisions.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-planning-decision-events
+    name: "Planning decision events: wire, engine, and UI"
+    depends_on: []
+    branch: plan-phase-decision-events-capture-planner-rationale-for-orchestration-choices/plan-01-planning-decision-events
+    build:
+      - implement
+      - - test-cycle
+        - review-cycle
+    review:
+      strategy: auto
+      perspectives:
+        - code
+        - api
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "The PRD itself declares 'Excursion' in the Profile Signal section: a
+    single planner can enumerate the ~12 file changeset across 3 packages
+    (client, engine, monitor-ui) tightly coupled around one wire contract. The
+    four decision kinds are siblings, not delegated modules, and there are
+    sequential type-level dependencies (schema -> emitter -> consumer) that rule
+    out expedition-style parallel module planning. plan-review-cycle is added
+    because the PRD explicitly notes 'Plan review adds value because the schema
+    design has real choices' (kind discriminator granularity, sentinel-key
+    reducer convention, diff-field placement). For build, doc-author runs in
+    parallel with implement to update prompts/planner.md and the API version
+    changelog one-liner (AC-2, AC-8), and doc-sync runs after implement to catch
+    any stale references to the decisions slice/event-registry surface.
+    review-cycle (with maxRounds=2) provides iterative quality gating across the
+    cross-package wire-contract changes. Parallel review perspectives 'code'
+    (correctness of reducer/handler/schema wiring), 'api' (DAEMON_API_VERSION
+    bump and discriminated-union shape are public wire-protocol surface), and
+    'test' (multiple new test files + grep-gate extension are core to the AC)
+    match the risk profile. Standard strictness is appropriate: this is internal
+    eforge plumbing, not security/data sensitive, but is wire-protocol so not
+    lenient either."

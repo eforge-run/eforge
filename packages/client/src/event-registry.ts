@@ -594,6 +594,15 @@ const eventRegistry = {
     summary: (e) => `Plan ${e.planId}: decision (${e.decision.kind})`,
   },
 
+  'planning:decision': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      e.planId
+        ? `Planning decision (${e.decision.kind}) for plan ${e.planId}`
+        : `Planning decision (${e.decision.kind})`,
+  },
+
   'plan:merge:resolve:start': {
     scope: 'session',
     persist: false,

@@ -1,10 +1,13 @@
 /**
- * Grep-gate: enforces that all `plan:build:decision` event construction goes
- * through `emitBuildDecision` or `emitBuildDecisionForPlan` in
- * `packages/engine/src/decisions.ts`.
+ * Grep-gate: enforces that all `plan:build:decision` and `planning:decision`
+ * event construction goes through helpers in `packages/engine/src/decisions.ts`.
  *
- * Direct yields of `{ type: 'plan:build:decision', ... }` outside that file
- * are forbidden — this test fails if any source file contains the raw literal.
+ * - `plan:build:decision`: must use `emitBuildDecision` or `emitBuildDecisionForPlan`
+ * - `planning:decision`: must use `emitPlanningDecision`
+ *
+ * Direct yields of `{ type: 'plan:build:decision', ... }` or
+ * `{ type: 'planning:decision', ... }` outside that file are forbidden —
+ * this test fails if any source file contains the raw literals.
  *
  * Mirrors the pattern of the `mutateState` enforcement discipline.
  */
@@ -31,17 +34,19 @@ function collectTypeScriptFiles(dir: string, files: string[] = []): string[] {
   return files;
 }
 
-/** The only file permitted to contain `type: 'plan:build:decision'`. */
+/** The only file permitted to contain raw decision type literals. */
 const ALLOWED_FILE = 'packages/engine/src/decisions.ts';
 
 /** Literals that identify a raw decision event construction. */
 const FORBIDDEN_PATTERNS = [
   "type: 'plan:build:decision'",
   'type: "plan:build:decision"',
+  "type: 'planning:decision'",
+  'type: "planning:decision"',
 ];
 
-describe('emitBuildDecision discipline (grep gate)', () => {
-  it('only decisions.ts constructs plan:build:decision events directly', () => {
+describe('decision discipline (grep gate)', () => {
+  it('only decisions.ts constructs plan:build:decision and planning:decision events directly', () => {
     const searchDirs = [
       join(repoRoot, 'packages'),
       join(repoRoot, 'test'),
@@ -93,8 +98,8 @@ describe('emitBuildDecision discipline (grep gate)', () => {
 
     if (violations.length > 0) {
       const message = [
-        'Forbidden raw plan:build:decision construction found.',
-        'All callers must use emitBuildDecision() or emitBuildDecisionForPlan() from packages/engine/src/decisions.ts.',
+        'Forbidden raw decision event construction found.',
+        'All callers must use emitBuildDecision(), emitBuildDecisionForPlan(), or emitPlanningDecision() from packages/engine/src/decisions.ts.',
         '',
         ...violations.map((v) => `  ${v.file}:${v.line}  ${v.text}`),
       ].join('\n');

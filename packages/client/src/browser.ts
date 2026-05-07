@@ -147,6 +147,8 @@ export type {
   ShardScope,
   PipelineComposition,
   BuildDecision,
+  PlanningDecision,
+  PlanningDecisionEvent,
 } from './events.js';
 
-export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES } from './events.js';
+export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES, PlanningDecisionSchema } from './events.js';

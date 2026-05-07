@@ -5,7 +5,7 @@ import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber, formatThinking } from '@/lib/format';
 import type { AgentThread, StoredEvent } from '@/lib/reducer';
 import type { AgentRole, PipelineStage, ReviewIssue, BuildStageSpec, ValidationCommandSpan } from '@/lib/types';
-import type { BuildDecision } from '@eforge-build/client/browser';
+import type { Decision } from '@/lib/reducer';
 import { DecisionTimeline } from './decision-timeline';
 import {
   EMPTY_EVENTS,
@@ -45,7 +45,7 @@ interface PlanRowProps {
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Array<{ perspective: string; error: string; timestamp: string }>;
   issuesByPerspective?: Record<string, ReviewIssue[]>;
-  decisions?: BuildDecision[];
+  decisions?: Decision[];
 }
 
 export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {

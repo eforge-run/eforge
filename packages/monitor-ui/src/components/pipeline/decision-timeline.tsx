@@ -1,14 +1,24 @@
 import { useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SheetContent } from '@/components/ui/sheet';
-import type { BuildDecision } from '@eforge-build/client/browser';
+import type { Decision } from '@/lib/reducer';
 
 // ---------------------------------------------------------------------------
 // Color families by decision kind
 // ---------------------------------------------------------------------------
 
-function getPipClass(kind: BuildDecision['kind']): string {
+function getPipClass(kind: Decision['kind']): string {
   switch (kind) {
+    // Planning-phase kinds — teal/green family
+    case 'scope-selected':
+      return 'bg-teal-500 border-teal-400';
+    case 'build-pipeline-chosen':
+      return 'bg-green-500 border-green-400';
+    case 'review-profile-chosen':
+      return 'bg-emerald-500 border-emerald-400';
+    case 'plan-set-shape':
+      return 'bg-cyan-500 border-cyan-400';
+    // Build-phase kinds — blue/amber/red/purple family
     case 'review-strategy':
     case 'perspectives-inferred':
     case 'perspectives-respawned':
@@ -29,8 +39,18 @@ function getPipClass(kind: BuildDecision['kind']): string {
 // Tooltip summary — kind-specific key fields
 // ---------------------------------------------------------------------------
 
-function decisionSummary(decision: BuildDecision): string {
+function decisionSummary(decision: Decision): string {
   switch (decision.kind) {
+    // Planning-phase summaries
+    case 'scope-selected':
+      return `${decision.scope} (via ${decision.source})`;
+    case 'build-pipeline-chosen':
+      return `${decision.defaultBuild.length} stage(s)`;
+    case 'review-profile-chosen':
+      return `${decision.strategy} — ${decision.perspectives.join(', ')} — ${decision.maxRounds} round(s)`;
+    case 'plan-set-shape':
+      return `${decision.planCount} plan(s): ${decision.planIds.join(', ')}`;
+    // Build-phase summaries
     case 'review-strategy':
       return decision.auto
         ? `${decision.strategy} — auto-threshold (${decision.auto.files} files, ${decision.auto.lines} lines)`
@@ -61,11 +81,11 @@ function decisionSummary(decision: BuildDecision): string {
 // ---------------------------------------------------------------------------
 
 interface DecisionTimelineProps {
-  decisions: BuildDecision[];
+  decisions: Decision[];
 }
 
 export function DecisionTimeline({ decisions }: DecisionTimelineProps) {
-  const [selectedDecision, setSelectedDecision] = useState<BuildDecision | null>(null);
+  const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
 
   if (decisions.length === 0) return null;
 

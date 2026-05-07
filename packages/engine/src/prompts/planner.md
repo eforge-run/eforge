@@ -463,6 +463,49 @@ Each plan entry in orchestration.yaml carries its own `build` and `review` field
 
 Tailor build and review config to each plan's complexity. A simple plan may need only `[implement, review-cycle]` with `maxRounds: 1`, while a complex plan may warrant parallel perspectives and multiple rounds.
 
+### Rationale Fields (optional, surfaced in monitor UI)
+
+When your build or review choices differ from the pipeline-composer defaults, or when the plan-set split needs explanation, record the reasoning in these optional fields:
+
+**`planSetShapeRationale`** (top-level, multi-plan only) — why the work is split into N plans and ordered this way. Omit for single-plan submissions.
+
+**`buildRationale`** (per orchestration plan entry) — why this plan's `build` stages differ from the composer's `defaultBuild`, or a brief confirmation that the default was kept and why.
+
+**`reviewRationale`** (per orchestration plan entry) — why this plan's `review` profile differs from the composer's `defaultReview`, or why the default was appropriate.
+
+Example with rationale fields:
+
+```yaml
+description: Add webhook delivery with retry logic
+planSetShapeRationale: Schema changes must land first so the builder in plan-02 can reference the new columns without a migration dependency in its own worktree.
+orchestration:
+  validate:
+    - pnpm type-check
+  plans:
+    - id: plan-01-schema
+      depends_on: []
+      build: [implement, review-cycle]
+      review:
+        strategy: single
+        perspectives: [code]
+        maxRounds: 1
+        evaluatorStrictness: standard
+      buildRationale: Schema-only plan; no doc or test stages needed.
+      reviewRationale: Single code perspective is sufficient for a migration-only plan.
+    - id: plan-02-delivery
+      depends_on: [plan-01-schema]
+      build: [implement, test-cycle, review-cycle]
+      review:
+        strategy: parallel
+        perspectives: [code, security]
+        maxRounds: 2
+        evaluatorStrictness: strict
+      buildRationale: Webhook delivery logic requires test coverage and a strict parallel review.
+      reviewRationale: Security perspective added because outbound HTTP requests and secret handling are in scope.
+```
+
+These fields are optional. When you use the pipeline-composer defaults unchanged, you may omit them entirely.
+
 ### Validation Commands
 
 The `validate` section lists shell commands that verify the implementation is correct after all plans merge and is required. Derive these from the codebase:

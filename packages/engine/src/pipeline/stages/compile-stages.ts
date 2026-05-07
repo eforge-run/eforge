@@ -59,6 +59,8 @@ async function* runPlannerAttempt(
       scope: ctx.pipeline.scope,
       outputDir: ctx.config.plan.outputDir,
       baseBranch: ctx.baseBranch,
+      defaultBuild: ctx.pipeline.defaultBuild,
+      defaultReview: ctx.pipeline.defaultReview,
       ...agentConfig,
       ...(input.plannerOptions.continuationContext && { continuationContext: input.plannerOptions.continuationContext }),
       harness: ctx.agentRuntimes.forRole('planner'),

@@ -39,6 +39,8 @@ export type {
   ShardScope,
   PipelineComposition,
   BuildDecision,
+  PlanningDecision,
+  PlanningDecisionEvent,
 } from './events.schemas.js';
 
 export {
@@ -47,6 +49,7 @@ export {
   isAlwaysYieldedAgentEvent,
   REVIEW_PERSPECTIVES,
   BuildDecisionSchema,
+  PlanningDecisionSchema,
 } from './events.schemas.js';
 
 export { EforgeEventSchema } from './events.schemas.js';

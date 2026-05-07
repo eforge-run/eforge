@@ -365,6 +365,50 @@ const agentStartFields = {
  * Inner discriminated union for build-phase orchestrator decisions.
  * Consumed by the `plan:build:decision` event variant.
  */
+/**
+ * Inner discriminated union for plan-phase (planner) decisions.
+ * Consumed by the `planning:decision` event variant.
+ */
+export const PlanningDecisionSchema = z.discriminatedUnion('kind', [
+  // Scope / orchestration mode selection
+  z.object({
+    kind: z.literal('scope-selected'),
+    rationale: z.string(),
+    scope: z.enum(['errand', 'excursion', 'expedition']),
+    source: z.enum(['pipeline-composer', 'planner']),
+  }),
+  // Default build pipeline chosen for the plan set
+  z.object({
+    kind: z.literal('build-pipeline-chosen'),
+    rationale: z.string(),
+    defaultBuild: z.array(BuildStageSpecSchema).min(1),
+  }),
+  // Default review profile chosen for the plan set
+  z.object({
+    kind: z.literal('review-profile-chosen'),
+    rationale: z.string(),
+    strategy: z.enum(['auto', 'single', 'parallel']),
+    perspectives: z.array(ReviewPerspectiveSchema).min(1),
+    maxRounds: z.number().int().positive(),
+    evaluatorStrictness: z.enum(['strict', 'standard', 'lenient']),
+  }),
+  // Plan set shape: how many plans and why they are split that way
+  z.object({
+    kind: z.literal('plan-set-shape'),
+    rationale: z.string(),
+    planCount: z.number().int().positive(),
+    planIds: z.array(z.string()).min(1),
+  }),
+]);
+
+export type PlanningDecision = z.infer<typeof PlanningDecisionSchema>;
+
+export const PlanningDecisionEventSchema = z.object({
+  type: z.literal('planning:decision'),
+  planId: z.string().optional(),
+  decision: PlanningDecisionSchema,
+});
+
 export const BuildDecisionSchema = z.discriminatedUnion('kind', [
   // Review strategy selection
   z.object({
@@ -1096,6 +1140,9 @@ const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
     planId: z.string(),
     decision: BuildDecisionSchema,
   }),
+
+  // Plan-phase (planner) decision events
+  PlanningDecisionEventSchema,
 ]);
 
 // ---------------------------------------------------------------------------
@@ -1135,6 +1182,7 @@ export type PlanSummaryEntry = z.infer<typeof PlanSummaryEntrySchema>;
 export type FailingPlanEntry = z.infer<typeof FailingPlanEntrySchema>;
 export type BuildFailureSummary = z.infer<typeof BuildFailureSummarySchema>;
 export type QueueEvent = z.infer<typeof QueueEventSchema>;
+export type PlanningDecisionEvent = z.infer<typeof PlanningDecisionEventSchema>;
 
 // ---------------------------------------------------------------------------
 // Re-export constants and utilities
