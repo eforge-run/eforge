@@ -1,0 +1,86 @@
+name: w4-single-source-the-runinfo-row-api-ui-types-after-w3-lands
+description: Single-source the RunInfo / QueueItem / SessionMetadata /
+  AutoBuildState wire shapes through @eforge-build/client and named projection
+  helpers, eliminating duplicate type definitions in monitor/db.ts,
+  monitor/server.ts, and monitor-ui/lib/types.ts. After W3 (already landed), the
+  daemon stream:hello snapshot must use the same canonical helpers as the REST
+  endpoints.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-single-source-wire-shapes
+    name: Single-source RunInfo / QueueItem / SessionMetadata / AutoBuildState
+    depends_on: []
+    branch: w4-single-source-the-runinfo-row-api-ui-types-after-w3-lands/plan-01-single-source-wire-shapes
+    build:
+      - implement
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: "Cross-package type refactor with type-check enforcement: removing
+          RunRecord and inline aliases requires updating every run read path in
+          monitor/db.ts, both queue snapshot builders in server.ts, and the
+          monitor-ui re-exports, all without changing public JSON shapes."
+      reviewer:
+        effort: high
+        rationale: Daemon HTTP/SSE boundary work — reviewer must verify REST and
+          stream:hello produce identical wire shapes and that no parallel
+          object-shaping code remains.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - docs
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "This is a bounded multi-file refactor across packages/client,
+    packages/monitor (db + server), and packages/monitor-ui that single-sources
+    daemon wire shapes (RunInfo, QueueItem, SessionMetadata, AutoBuildState).
+    The PRD itself recommends the Excursion profile and explicitly notes it is
+    one cohesive boundary cleanup with no independent subsystems. A single
+    planner can enumerate all file changes and cross-package dependencies
+    (type-refactor where changing a definition affects all consumers is a
+    classic excursion negative-signal for expedition), so excursion is correct.
+    plan-review-cycle is included because the PRD has 15 specific acceptance
+    criteria including subtle conditional ones (W3 snapshot parity,
+    DAEMON_API_VERSION rules, grep-style regression checks) that benefit from a
+    planning quality gate. For build: implement runs in parallel with doc-author
+    since the PRD requires updating AGENTS.md with a new convention (no
+    predecessors needed for doc-author). doc-sync follows to catch any other
+    stale doc references after the type changes. review-cycle covers
+    code/api/test/docs perspectives because this change crosses the HTTP/SSE
+    wire-protocol boundary and needs API correctness review plus docs
+    verification (AGENTS.md). test-cycle is included because the PRD explicitly
+    mandates new tests (run round-trip test and W3 snapshot parity test) and
+    requires pnpm test to pass; iterative test-evaluate ensures those tests
+    actually exercise the canonical projections. Standard strictness fits a
+    refactor with no public shape changes; parallel perspectives let
+    api/code/test/docs reviewers each focus on their domain since the change
+    touches all four."
