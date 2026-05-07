@@ -38,6 +38,7 @@ export type {
   AgentTerminalSubtype,
   ShardScope,
   PipelineComposition,
+  BuildDecision,
 } from './events.schemas.js';
 
 export {
@@ -45,6 +46,7 @@ export {
   SEVERITY_ORDER,
   isAlwaysYieldedAgentEvent,
   REVIEW_PERSPECTIVES,
+  BuildDecisionSchema,
 } from './events.schemas.js';
 
 export { EforgeEventSchema } from './events.schemas.js';

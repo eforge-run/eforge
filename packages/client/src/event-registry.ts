@@ -588,6 +588,12 @@ const eventRegistry = {
     summary: (e) => `Plan ${e.planId} merged`,
   },
 
+  'plan:build:decision': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Plan ${e.planId}: decision (${e.decision.kind})`,
+  },
+
   'plan:merge:resolve:start': {
     scope: 'session',
     persist: false,

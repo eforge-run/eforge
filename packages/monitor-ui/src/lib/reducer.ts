@@ -29,6 +29,7 @@
  * when the hook is cleaning up.
  */
 import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, SessionProfile, ReviewIssue, ValidationCommandSpan } from './types';
+import type { BuildDecision } from '@eforge-build/client/browser';
 import type { PipelineStage } from './types';
 import { formatDuration } from './format';
 import { handlerRegistry } from './reducer/index';
@@ -100,6 +101,7 @@ export interface RunState {
   autoBuildPausedAt: string | null;
   perspectiveErrors: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
   reviewIssuesByPerspective: Record<string, Record<string, ReviewIssue[]>>;
+  decisions: Record<string, BuildDecision[]>;
 }
 
 export const initialRunState: RunState = {
@@ -131,6 +133,7 @@ export const initialRunState: RunState = {
   autoBuildPausedAt: null,
   perspectiveErrors: {},
   reviewIssuesByPerspective: {},
+  decisions: {},
 };
 
 export type RunAction =
@@ -141,7 +144,7 @@ export type RunAction =
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {} };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {}, decisions: {} };
 
     case 'BATCH_LOAD': {
       // Replay all events through the handler registry, accumulating state.

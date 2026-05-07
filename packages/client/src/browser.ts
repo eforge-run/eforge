@@ -146,6 +146,7 @@ export type {
   AgentTerminalSubtype,
   ShardScope,
   PipelineComposition,
+  BuildDecision,
 } from './events.js';
 
 export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, REVIEW_PERSPECTIVES } from './events.js';
