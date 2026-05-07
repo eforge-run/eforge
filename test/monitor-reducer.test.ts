@@ -1301,15 +1301,22 @@ describe('effort/thinking fields on AgentThread', () => {
 });
 
 // ---------------------------------------------------------------------------
-// event-registry enqueue:complete projection — reads event.planSet not event.title
+// event-registry run projection — daemon:run:upsert is authoritative for runs
 // ---------------------------------------------------------------------------
 
-describe('event-registry enqueue:complete projection uses event.planSet', () => {
-  it('projects event.planSet onto state.runs[].planSet (not event.title)', async () => {
+describe('event-registry run projection via daemon:run:upsert', () => {
+  it('daemon:run:upsert has a project function and enqueue:complete does not', async () => {
     const { eventRegistry } = await import('@eforge-build/client');
 
-    const registryEntry = eventRegistry['enqueue:complete'];
-    expect(registryEntry.project).toBeDefined();
+    // enqueue:start / enqueue:complete / enqueue:failed no longer have project
+    // functions — daemon:run:upsert is the single source of truth for
+    // DaemonState.runs.
+    expect(eventRegistry['enqueue:start'].project).toBeUndefined();
+    expect(eventRegistry['enqueue:complete'].project).toBeUndefined();
+    expect(eventRegistry['enqueue:failed'].project).toBeUndefined();
+
+    // daemon:run:upsert has the project function and updates state.runs
+    expect(eventRegistry['daemon:run:upsert'].project).toBeDefined();
 
     const runId = 'run-enqueue-001';
     const state = {
@@ -1317,8 +1324,8 @@ describe('event-registry enqueue:complete projection uses event.planSet', () => 
         {
           id: runId,
           planSet: '',
-          command: 'enqueue',
-          status: 'running',
+          command: 'enqueue' as const,
+          status: 'running' as const,
           startedAt: '2025-01-01T00:00:00.000Z',
           cwd: '/tmp/project',
         },
@@ -1328,20 +1335,23 @@ describe('event-registry enqueue:complete projection uses event.planSet', () => 
       latestHeartbeat: null,
     };
 
-    // title and planSet intentionally differ to prove projection uses planSet
-    const event = {
-      type: 'enqueue:complete' as const,
+    const upsertEvent = {
+      type: 'daemon:run:upsert' as const,
       timestamp: '2025-01-01T00:01:00.000Z',
-      runId,
-      id: 'prd-abc',
-      filePath: '/queue/prd-abc.md',
-      title: 'Display Title (not planSet)',
-      planSet: 'Canonical Plan Set Name',
+      run: {
+        id: runId,
+        planSet: 'Canonical Plan Set Name',
+        command: 'enqueue' as const,
+        status: 'completed' as const,
+        startedAt: '2025-01-01T00:00:00.000Z',
+        cwd: '/tmp/project',
+      },
     };
 
-    const delta = registryEntry.project!(event as Parameters<typeof registryEntry.project>[0], state);
+    const upsertEntry = eventRegistry['daemon:run:upsert'];
+    const delta = upsertEntry.project!(upsertEvent as Parameters<typeof upsertEntry.project>[0], state);
     expect(delta).toBeDefined();
     expect(delta!.runs![0].planSet).toBe('Canonical Plan Set Name');
-    expect(delta!.runs![0].planSet).not.toBe('Display Title (not planSet)');
+    expect(delta!.runs![0].status).toBe('completed');
   });
 });

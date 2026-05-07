@@ -272,6 +272,12 @@ export const IGNORED_EVENT_TYPES = [
   'daemon:warning',
   'daemon:error',
   // --- eforge:endregion plan-01-types-and-daemon-emission ---
+  // --- eforge:region plan-01-daemon-run-state-events ---
+  // daemon:run:upsert is a daemon-scoped event handled by the daemonReducer,
+  // not the per-session eforgeReducer. Added to the ignore list so the
+  // exhaustiveness check passes.
+  'daemon:run:upsert',
+  // --- eforge:endregion plan-01-daemon-run-state-events ---
 ] as const;
 
 // ---------------------------------------------------------------------------

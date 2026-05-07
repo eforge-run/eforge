@@ -58,9 +58,14 @@ describe('ensureMonitor with noServer', () => {
       collected.push(event);
     }
 
-    expect(collected).toHaveLength(2);
+    // withRecording emits 2 daemon:run:upsert events (one per DB mutation):
+    // phase:start → insertRun, phase:end → updateRunStatus
+    // So total is 2 original + 2 daemon:run:upsert = 4
+    expect(collected).toHaveLength(4);
     expect(collected[0].type).toBe('phase:start');
-    expect(collected[1].type).toBe('phase:end');
+    expect(collected[1].type).toBe('daemon:run:upsert');
+    expect(collected[2].type).toBe('phase:end');
+    expect(collected[3].type).toBe('daemon:run:upsert');
 
     // Verify events were inserted into the DB
     const dbPath = resolve(cwd, '.eforge', 'monitor.db');
@@ -71,8 +76,9 @@ describe('ensureMonitor with noServer', () => {
     expect(run).toBeDefined();
     expect(run!.status).toBe('completed');
 
+    // 4 events in DB: phase:start, daemon:run:upsert(running), phase:end, daemon:run:upsert(completed)
     const events = db.getEvents(runId);
-    expect(events).toHaveLength(2);
+    expect(events).toHaveLength(4);
 
     db.close();
     monitor.stop();
@@ -112,7 +118,11 @@ describe('enqueue recording', () => {
       collected.push(event);
     }
 
-    expect(collected).toHaveLength(7);
+    // Input: 7 events. withRecording emits 2 daemon:run:upsert events:
+    //   enqueue:start → insertRun → upsert(running)
+    //   enqueue:complete → updateRunPlanSet + updateRunStatus → upsert(completed)
+    // Total collected: 7 + 2 = 9
+    expect(collected).toHaveLength(9);
 
     // Find the enqueue run
     const runs = db.getRuns();
@@ -121,9 +131,9 @@ describe('enqueue recording', () => {
     expect(enqueueRun!.status).toBe('completed');
     expect(enqueueRun!.planSet).toBe('My Great Feature');
 
-    // All 7 events should be stored (session:start is buffered then flushed)
+    // DB events: 7 original + 2 daemon:run:upsert = 9
     const dbEvents = db.getEvents(enqueueRun!.id);
-    expect(dbEvents).toHaveLength(7);
+    expect(dbEvents).toHaveLength(9);
 
     db.close();
   });
@@ -200,7 +210,13 @@ describe('enqueue:failed recording', () => {
       collected.push(event);
     }
 
-    expect(collected).toHaveLength(6);
+    // Input: 6 events. withRecording emits 2 daemon:run:upsert events:
+    //   enqueue:start → insertRun → upsert(running)
+    //   enqueue:failed → updateRunStatus(failed) → upsert(failed)
+    //     (enqueueRunId is cleared after enqueue:failed to prevent double-fire)
+    //   session:end(failed): enqueueRunId is already cleared, no additional upsert
+    // Total collected: 6 + 2 = 8
+    expect(collected).toHaveLength(8);
 
     // Find the enqueue run
     const runs = db.getRuns();
@@ -244,8 +260,12 @@ describe('enqueue-only session via runSession + withRecording', () => {
       collected.push(event);
     }
 
-    // Should have session:start + 4 inner events + session:end = 6
-    expect(collected).toHaveLength(6);
+    // Input: session:start + 4 inner events + session:end = 6
+    // withRecording emits 2 daemon:run:upsert events:
+    //   enqueue:start → insertRun → upsert(running)
+    //   enqueue:complete → updateRunPlanSet + updateRunStatus → upsert(completed)
+    // Total collected: 6 + 2 = 8
+    expect(collected).toHaveLength(8);
 
     // session:end should report completed
     const sessionEnd = collected.find((e) => e.type === 'session:end');
@@ -299,7 +319,13 @@ describe('queue cycle event scoping', () => {
       collected.push(event);
     }
 
-    expect(collected).toHaveLength(10);
+    // Input: 10 events. withRecording emits 4 daemon:run:upsert events:
+    //   phase:start(run-1) → insertRun → upsert(running)
+    //   phase:end(run-1) → updateRunStatus → upsert(completed)
+    //   phase:start(run-2) → insertRun → upsert(running)
+    //   phase:end(run-2) → updateRunStatus → upsert(completed)
+    // Total: 10 + 4 = 14
+    expect(collected).toHaveLength(14);
 
     // Both runs should exist
     const runs = db.getRuns();
@@ -361,7 +387,11 @@ describe('multi-phase session recording with withRunId', () => {
       collected.push(event);
     }
 
-    expect(collected).toHaveLength(9);
+    // Input: 9 events. withRecording emits 4 daemon:run:upsert events:
+    //   phase:start(compile) → insertRun → upsert, phase:end(compile) → updateRunStatus → upsert
+    //   phase:start(build) → insertRun → upsert, phase:end(build) → updateRunStatus → upsert
+    // Total: 9 + 4 = 13
+    expect(collected).toHaveLength(13);
 
     // Both runs should exist
     const runs = db.getRuns();

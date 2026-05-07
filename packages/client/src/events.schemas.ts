@@ -308,12 +308,14 @@ const QueueEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('queue:prd:discovered'), prdId: z.string(), title: z.string() }),
   z.object({
     type: z.literal('queue:prd:stale'),
+    prdId: z.string(),
+    title: z.string(),
     verdict: StalenessVerdictSchema,
     justification: z.string(),
     revision: z.string().optional(),
   }),
   z.object({ type: z.literal('queue:prd:skip'), prdId: z.string(), reason: z.string() }),
-  z.object({ type: z.literal('queue:prd:commit-failed'), prdId: z.string(), error: z.string() }),
+  z.object({ type: z.literal('queue:prd:commit-failed'), prdId: z.string(), title: z.string(), error: z.string() }),
   z.object({
     type: z.literal('queue:prd:complete'),
     prdId: z.string(),
@@ -887,6 +889,24 @@ const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
   }),
   z.object({ type: z.literal('recovery:apply:error'), prdId: z.string(), message: z.string() }),
 
+  // Daemon run-state upsert — authoritative source for DaemonState.runs
+  // Emitted by the recorder immediately after every insertRun / updateRunStatus /
+  // updateRunPlanSet call. Payload is the full RunInfo re-read from the DB.
+  z.object({
+    type: z.literal('daemon:run:upsert'),
+    run: z.object({
+      id: z.string(),
+      sessionId: z.string().optional(),
+      planSet: z.string(),
+      command: z.string(),
+      status: z.string(),
+      startedAt: z.string(),
+      completedAt: z.string().optional(),
+      cwd: z.string(),
+      pid: z.number().optional(),
+    }),
+  }),
+
   // Daemon internal
   z.object({ type: z.literal('daemon:auto-build:paused'), reason: z.string() }),
 
@@ -1010,6 +1030,7 @@ export const EforgeEventSchema = EventEnvelopeSchema.and(EforgeEventVariantsSche
 // ---------------------------------------------------------------------------
 
 export type EforgeEvent = z.infer<typeof EforgeEventSchema>;
+export type DaemonRunUpsertEvent = Extract<EforgeEvent, { type: 'daemon:run:upsert' }>;
 export type AgentRole = z.infer<typeof AgentRoleSchema>;
 export type AgentTerminalSubtype = z.infer<typeof AgentTerminalSubtypeSchema>;
 export type ReviewPerspective = z.infer<typeof ReviewPerspectiveSchema>;

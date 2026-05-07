@@ -20,7 +20,9 @@ import { join } from 'node:path';
 import http from 'node:http';
 import { openDatabase } from '../db.js';
 import { startServer } from '../server.js';
+import { withRecording } from '../recorder.js';
 import type { MonitorServer, DaemonState } from '../server.js';
+import type { EforgeEvent } from '@eforge-build/engine/events';
 
 function makeTmpCwd(): string {
   const dir = mkdtempSync(join(tmpdir(), 'eforge-hello-parity-'));
@@ -103,6 +105,14 @@ afterEach(async () => {
   }
   servers.length = 0;
 });
+
+async function* asGenerator(events: EforgeEvent[]): AsyncGenerator<EforgeEvent> {
+  for (const event of events) yield event;
+}
+
+async function drainRecording(gen: AsyncGenerator<EforgeEvent>): Promise<void> {
+  for await (const _e of gen) { /* drain */ }
+}
 
 describe('stream:hello snapshot parity with REST endpoints', () => {
   it('stream:hello runs/queue/sessionMetadata/autoBuild equal the corresponding REST payloads', async () => {
@@ -236,6 +246,102 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     expect(helloData.queue).toEqual(restQueue);
     expect(helloData.sessionMetadata).toEqual(restSessionMetadata);
     expect(helloData.autoBuild).toEqual(restAutoBuild);
+
+    await server.stop();
+    db.close();
+  });
+
+  it('live daemon:run:upsert projection equals stream:hello snapshot runs after reconnect', async () => {
+    const cwd = makeTmpCwd();
+    const db = openDatabase(join(cwd, '.eforge', 'monitor.db'));
+    const ts = new Date().toISOString();
+
+    // Drive withRecording with a synthetic enqueue sequence.
+    // This causes the recorder to insert runs and daemon:run:upsert events.
+    const enqueueEvents: EforgeEvent[] = [
+      { type: 'session:start', sessionId: 'sess-live-enq', timestamp: ts },
+      { type: 'enqueue:start', source: 'api', timestamp: ts },
+      {
+        type: 'enqueue:complete',
+        id: 'prd-live',
+        filePath: '/queue/prd-live.md',
+        title: 'Live Feature',
+        planSet: 'live-feature',
+        timestamp: ts,
+      },
+      { type: 'session:end', sessionId: 'sess-live-enq', result: { status: 'completed', summary: 'done' }, timestamp: ts },
+    ];
+    await drainRecording(withRecording(asGenerator(enqueueEvents), db, cwd));
+
+    // Also add a phase-driven compile run
+    const compileTs = new Date().toISOString();
+    const compileRunId = `run-compile-${Date.now()}`;
+    const compileSessionId = `sess-compile-${Date.now()}`;
+    const phaseEvents: EforgeEvent[] = [
+      { type: 'session:start', sessionId: compileSessionId, timestamp: compileTs },
+      { type: 'phase:start', runId: compileRunId, sessionId: compileSessionId, planSet: 'live-feature', command: 'compile', timestamp: compileTs },
+      { type: 'phase:end', runId: compileRunId, result: { status: 'completed', summary: 'done' }, timestamp: compileTs },
+      { type: 'session:end', sessionId: compileSessionId, result: { status: 'completed', summary: 'done' }, timestamp: compileTs },
+    ];
+    await drainRecording(withRecording(asGenerator(phaseEvents), db, cwd));
+
+    // Start server
+    const server = await startServer(db, 0, { cwd });
+    servers.push(server);
+    const base = `http://127.0.0.1:${server.port}`;
+
+    // --- Fetch stream:hello snapshot ---
+    const raw = await fetchSseFirstChunk(`${base}/api/daemon-events`, 1, 2000);
+    const blocks = raw.trim().split(/\r?\n\r?\n/).filter(Boolean);
+    const helloBlock = blocks.find((b) => b.includes('event: stream:hello'));
+    expect(helloBlock).toBeDefined();
+    const helloDataLine = helloBlock!.split('\n').find((l) => l.startsWith('data:'));
+    expect(helloDataLine).toBeDefined();
+    const helloData = JSON.parse(helloDataLine!.slice('data: '.length)) as {
+      runs: unknown[];
+    };
+
+    // --- Fetch REST /api/runs for ground truth ---
+    const restRuns = await fetchJson(`${base}/api/runs`) as unknown[];
+
+    expect(restRuns.length).toBeGreaterThanOrEqual(2);
+
+    // Parity: stream:hello runs === REST /api/runs
+    expect(helloData.runs).toEqual(restRuns);
+
+    // --- Apply daemon:run:upsert events from DB to verify live projection parity ---
+    // Collect all daemon:run:upsert events persisted by withRecording and build
+    // a live runs array by applying each upsert in order. This simulates what
+    // the daemonReducer does when receiving daemon:run:upsert via SSE.
+    const daemonEvents = db.getDaemonEventsAfter(0);
+    const liveRuns = new Map<string, Record<string, unknown>>();
+    for (const dbEvent of daemonEvents) {
+      if (dbEvent.type !== 'daemon:run:upsert') continue;
+      let parsed: { run: Record<string, unknown> };
+      try {
+        parsed = JSON.parse(dbEvent.data) as { run: Record<string, unknown> };
+      } catch {
+        continue;
+      }
+      if (parsed.run?.id && typeof parsed.run.id === 'string') {
+        liveRuns.set(parsed.run.id as string, parsed.run);
+      }
+    }
+
+    // The live-applied run IDs must match the REST /api/runs IDs
+    const liveRunIds = new Set(liveRuns.keys());
+    const restRunIds = new Set((restRuns as { id: string }[]).map((r) => r.id));
+    expect(liveRunIds).toEqual(restRunIds);
+
+    // Stronger parity: the live-projected RunInfo for each id must deep-equal
+    // the REST /api/runs row. ID-set parity alone would still pass if statuses
+    // or other fields drifted between live deltas and the snapshot.
+    for (const restRun of restRuns as Record<string, unknown>[]) {
+      const id = restRun.id as string;
+      const liveRun = liveRuns.get(id);
+      expect(liveRun, `live run for id=${id}`).toBeDefined();
+      expect(liveRun).toEqual(restRun);
+    }
 
     await server.stop();
     db.close();

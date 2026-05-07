@@ -219,38 +219,49 @@ describe('daemonReducer', () => {
 
   // ---------------------------------------------------------------------------
   // session:start
+  //
+  // Since v25: session:start no longer synthesizes run rows. daemon:run:upsert
+  // is the authoritative source of DaemonState.runs. The projector returns
+  // undefined for all session:start events, so runs remain unchanged.
   // ---------------------------------------------------------------------------
   describe('ADD_EVENT: session:start', () => {
-    it('prepends a new run entry for an unknown sessionId', () => {
+    it('does NOT create a new run entry (daemon:run:upsert is authoritative)', () => {
       const existing = makeRun({ id: 'old-run', sessionId: 'old-session' });
       const state: DaemonState = { ...initialDaemonState, runs: [existing] };
       const event = makeEvent('session:start', { sessionId: 'new-session' });
 
       const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
 
-      expect(next.runs).toHaveLength(2);
-      expect(next.runs[0].sessionId).toBe('new-session');
-      expect(next.runs[0].status).toBe('running');
-      expect(next.runs[1]).toEqual(existing);
+      // Runs must be unchanged — no synthetic run created
+      expect(next.runs).toHaveLength(1);
+      expect(next.runs[0]).toEqual(existing);
+      // Activity entry must still be appended
+      expect(next.daemonActivity).toHaveLength(1);
+      expect(next.daemonActivity[0].id).toBe('e1');
     });
 
-    it('updates an existing run to running', () => {
+    it('does NOT update an existing run status (daemon:run:upsert is authoritative)', () => {
       const existing = makeRun({ status: 'completed' });
       const state: DaemonState = { ...initialDaemonState, runs: [existing] };
       const event = makeEvent('session:start', { sessionId: 'session-1' });
 
       const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
 
+      // Status must remain unchanged
       expect(next.runs).toHaveLength(1);
-      expect(next.runs[0].status).toBe('running');
+      expect(next.runs[0].status).toBe('completed');
     });
   });
 
   // ---------------------------------------------------------------------------
   // session:end
+  //
+  // Since v25: session:end no longer updates run status. Run termination is
+  // reflected via daemon:run:upsert emitted by the recorder.
+  // The projector returns undefined so runs remain unchanged.
   // ---------------------------------------------------------------------------
   describe('ADD_EVENT: session:end', () => {
-    it('marks the matching run as completed', () => {
+    it('does NOT update run status to completed (daemon:run:upsert is authoritative)', () => {
       const state: DaemonState = { ...initialDaemonState, runs: [makeRun()] };
       const event = makeEvent('session:end', {
         sessionId: 'session-1',
@@ -259,11 +270,12 @@ describe('daemonReducer', () => {
 
       const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
 
-      expect(next.runs[0].status).toBe('completed');
-      expect(next.runs[0].completedAt).toBe('2024-01-15T10:00:00.000Z');
+      // Status must remain 'running' (unchanged) — daemon:run:upsert handles completion
+      expect(next.runs[0].status).toBe('running');
+      expect(next.runs[0].completedAt).toBeUndefined();
     });
 
-    it('marks the matching run as failed', () => {
+    it('does NOT update run status to failed (daemon:run:upsert is authoritative)', () => {
       const state: DaemonState = { ...initialDaemonState, runs: [makeRun()] };
       const event = makeEvent('session:end', {
         sessionId: 'session-1',
@@ -272,7 +284,8 @@ describe('daemonReducer', () => {
 
       const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
 
-      expect(next.runs[0].status).toBe('failed');
+      // Status must remain 'running' (unchanged)
+      expect(next.runs[0].status).toBe('running');
     });
 
     it('leaves runs unchanged when sessionId is not found but still appends to activity', () => {

@@ -178,16 +178,30 @@ describe('useDaemonEvents', () => {
     });
     await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
 
-    // Simulate a new session starting via SSE event frame
+    // Simulate a new run appearing via daemon:run:upsert (the authoritative source
+    // for DaemonState.runs — session:start no longer synthesizes a run row).
     act(() => {
       pushFrame({
         kind: 'event',
-        event: { type: 'session:start', sessionId: 'new-session', timestamp: '2024-01-15T11:00:00.000Z' },
+        event: {
+          type: 'daemon:run:upsert',
+          timestamp: '2024-01-15T11:00:00.000Z',
+          run: {
+            id: 'run-new',
+            sessionId: 'new-session',
+            planSet: 'some-set',
+            command: 'build',
+            status: 'running',
+            startedAt: '2024-01-15T11:00:00.000Z',
+            cwd: '/project',
+          },
+        },
         eventId: '100',
       });
     });
 
     await waitFor(() => {
+      // daemon:run:upsert prepends the new run, so it becomes runs[0]
       expect(result.current.daemonState.runs[0].sessionId).toBe('new-session');
     });
   });

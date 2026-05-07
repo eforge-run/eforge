@@ -14,6 +14,8 @@ describe('runStalenessAssessor wiring', () => {
       prdContent: '# Add auth\n\nImplement user authentication.',
       diffSummary: 'src/utils.ts | 5 ++',
       cwd: '/tmp',
+      prdId: 'prd-add-auth',
+      title: 'Add auth',
     }));
 
     const stale = findEvent(events, 'queue:prd:stale');
@@ -33,6 +35,8 @@ describe('runStalenessAssessor wiring', () => {
       prdContent: '# Old feature\n\nOutdated content.',
       diffSummary: 'src/api.ts | 50 +++---',
       cwd: '/tmp',
+      prdId: 'prd-old-feature',
+      title: 'Old feature',
     }));
 
     const stale = findEvent(events, 'queue:prd:stale');
@@ -52,6 +56,8 @@ describe('runStalenessAssessor wiring', () => {
       prdContent: '# Feature X\n\nBuild feature X.',
       diffSummary: 'src/feature-x.ts | 200 ++++++',
       cwd: '/tmp',
+      prdId: 'prd-feature-x',
+      title: 'Feature X',
     }));
 
     const stale = findEvent(events, 'queue:prd:stale');
@@ -70,6 +76,8 @@ describe('runStalenessAssessor wiring', () => {
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
       cwd: '/tmp',
+      prdId: 'prd-feature',
+      title: 'Feature',
     }));
 
     const stale = findEvent(events, 'queue:prd:stale');
@@ -89,6 +97,8 @@ describe('runStalenessAssessor wiring', () => {
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
       cwd: '/tmp',
+      prdId: 'prd-feature',
+      title: 'Feature',
       verbose: false,
     }));
 
@@ -108,6 +118,8 @@ describe('runStalenessAssessor wiring', () => {
       prdContent: '# Feature\n\nContent.',
       diffSummary: '',
       cwd: '/tmp',
+      prdId: 'prd-feature',
+      title: 'Feature',
       verbose: true,
     }));
 
