@@ -124,13 +124,17 @@ Work through `required_dimensions` in order, then any `optional_dimensions` for 
 
 ### Step 6: Profile Signal
 
-Based on everything explored, recommend an eforge profile:
+Based on everything explored, recommend an eforge profile. Profile selection is about **planning complexity**, not just number of files or breadth of code touched.
 
 | Profile | When |
 |---------|------|
-| **Errand** | Trivial, mechanical — typo, config tweak, single obvious fix |
-| **Excursion** | Most feature work, multi-file refactors, bug fixes spanning multiple files |
-| **Expedition** | 4+ independent subsystems, cross-cutting architectural changes |
+| **Errand** | Trivial, mechanical — typo, config tweak, single obvious fix where plan review would add little value |
+| **Excursion** | Default for most feature work, multi-file refactors, and bug fixes. Use when one planner session can enumerate all plans, file changes, and cross-plan dependencies with quality |
+| **Expedition** | Use only when the work requires delegated module planning: a single planner session cannot fully plan all modules/subsystems with quality, and the build needs architecture planning plus subplan cohesion review |
+
+When deciding between **Excursion** and **Expedition**, ask: "Can a single cohesive plan cover the work without deferring detailed planning to module planners?" If yes, choose **Excursion**. Choose **Expedition** only when multiple independently planned subplans are genuinely needed.
+
+Do **not** choose Expedition merely because a change is cross-cutting, touches many files, or has a shared foundation layer. Type/interface refactors, sequential dependency chains, and broad-but-cohesive engine changes are usually Excursion.
 
 Write the recommendation and rationale to `## Profile Signal` in the session file. Update `profile` in frontmatter.
 
