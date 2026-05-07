@@ -1,9 +1,10 @@
 name: w6-async-daemon-mutation-sweep
-description: Audit all 23 mutating HTTP routes in the daemon and replace the
-  recorder's post-hoc enqueue:complete.title plan_set derivation with a typed
-  event payload field. Produces a tracked audit document, hardens any route
-  returning misleading success, and brings the enqueue:complete
-  schema/registry/engine/recorder/tests into consistent alignment.
+description: Audit all 23 mutating HTTP routes in the daemon
+  (`packages/monitor/src/server.ts`) and harden any returning misleading success
+  responses; replace the recorder's post-hoc `enqueue:complete.title ->
+  runs.plan_set` derivation with a typed `planSet` payload field rippled through
+  schema, registry, engine emit site, recorder, UI consumers, and tests; produce
+  a tracked audit at `docs/daemon-mutation-audit.md`.
 base_branch: main
 mode: excursion
 validate:
@@ -15,30 +16,36 @@ plans:
     depends_on: []
     branch: w6-async-daemon-mutation-sweep/plan-01-mutation-sweep
     build:
-      - implement
+      - - implement
+        - doc-author
       - doc-sync
-      - - test-cycle
-        - review-cycle
+      - test-cycle
+      - review-cycle
     review:
       strategy: parallel
       perspectives:
         - code
         - api
         - verify
+        - docs
       maxRounds: 2
       evaluatorStrictness: standard
     agents:
       builder:
         effort: high
-        rationale: Builder must enumerate 23 routes, classify each, decide per-route
-          result-channel semantics, and ripple a typed schema field through 4+
-          producer/consumer sites. The typed-field rename has multiple consumers
-          and the audit requires careful classification - high effort fits.
+        rationale: Builder must enumerate 23 routes, classify each with a documented
+          result channel, and ripple a new required Zod field through engine
+          emit, recorder, registry projection, UI reducers, timeline rendering,
+          and 6+ test fixtures. The typed-field change is type-cohesive
+          (omitting `planSet` anywhere fails type-check) and the audit requires
+          careful per-route reasoning. High effort fits.
       reviewer:
         effort: high
-        rationale: Reviewer must verify every one of the 23 routes is in the audit,
-          classification is accurate, and no consumer of enqueue:complete still
-          references event.title for the planSet derivation.
+        rationale: Reviewer must verify (a) every one of 23 routes appears in
+          `docs/daemon-mutation-audit.md` with classification + result channel,
+          (b) no consumer of `enqueue:complete` still derives plan-set semantics
+          from `event.title`, (c) the schema rejects events missing `planSet`.
+          Cross-file consistency check across 5 packages.
 pipeline:
   scope: excursion
   compile:
@@ -56,32 +63,32 @@ pipeline:
       - code
       - api
       - test
-      - docs
       - verify
     maxRounds: 2
     autoAcceptBelow: suggestion
     evaluatorStrictness: standard
-  rationale: "The PRD explicitly recommends an Excursion profile and describes a
-    bounded maintenance sweep (audit ~23 mutating routes, replace one post-hoc
-    derivation with a typed event field). It spans daemon routes, event
-    schemas/registry, engine emit sites, recorder behavior, and tests, but a
-    single planner session can enumerate all plan slices, file changes, and
-    dependencies — so excursion is correct (none of the expedition signals: 4+
-    independent subsystems, delegated module planning, parallel verticals).
-    Compile uses planner + plan-review-cycle because plan quality matters for a
-    cross-cutting audit that touches schemas, registry, recorder, and 23 routes;
-    the review cycle catches scope creep (the PRD warns against scheduler/queue
-    redesign) and ensures completeness of the route classification. Build runs
-    implement in parallel with doc-author because the PRD names a new tracked
-    artifact (`docs/daemon-mutation-audit.md`) that can be authored alongside
-    code; doc-sync follows because schema/registry/event-payload changes can
-    stale-out existing docs/comments referencing `enqueue:complete.title`.
-    review-cycle (parallel perspectives across code/api/test/docs/verify) gives
-    strong gating on the typed schema change, the route-result semantics, and
-    the audit artifact; api and verify perspectives explicitly catch
-    misleading-success-response regressions. test-cycle is included because
-    acceptance criteria #8 and #10 require new tests around `enqueue:complete`
-    schema, recorder behavior, and any changed route semantics, plus passing
-    `pnpm type-check` and targeted vitest suites. Standard strictness fits a
-    maintenance refactor with clear acceptance criteria; 2 rounds balances
-    thoroughness against cost for a non-security, non-data-mutation change."
+  rationale: "The PRD itself signals 'Excursion' as the recommended profile - it's
+    a bounded maintenance/focused sweep across daemon routes, event
+    schemas/registry, engine emit sites, recorder behavior, and tests. The work
+    is broader than a single-file errand but does not have 4+ genuinely
+    independent subsystems requiring delegated module planning; it has a
+    sequential dependency chain (schema -> engine emit -> recorder consumer ->
+    registry projection -> route audit -> tests) that a single planner session
+    can comfortably enumerate. Compile uses planner + plan-review-cycle because
+    plan quality matters for an audit-style task that touches typed event
+    payloads spanning multiple packages and must catch scope creep (PRD
+    explicitly warns against queue/scheduler redesign). Build runs implement in
+    parallel with doc-author because the PRD requires a tracked audit artifact
+    (docs/daemon-mutation-audit.md) that can be drafted alongside code changes;
+    doc-sync follows to catch any stale references after implementation.
+    review-cycle is appropriate for quality-critical wire-protocol/event-schema
+    work, and test-cycle is included because the PRD has explicit test
+    requirements (enqueue:complete schema tests, recorder behavior tests,
+    route-audit regression tests) and asks for type-check + vitest verification.
+    Review perspectives target code (typed payload correctness and route audit
+    logic), api (HTTP mutation surface and result-channel semantics), test
+    (coverage of new schema field and recorder path), and verify
+    (acceptance-criteria gates including grep checks for spawn(/detached: and
+    the planSet derivation removal). Standard strictness with 2 rounds matches a
+    maintenance sweep where correctness matters but the surface area is
+    bounded."
