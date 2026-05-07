@@ -954,7 +954,7 @@ const eventRegistry = {
       const updated = [...state.runs];
       updated[idx] = {
         ...updated[idx],
-        planSet: event.title,
+        planSet: event.planSet,
         status: 'completed',
         completedAt: event.timestamp,
       };

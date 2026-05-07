@@ -212,7 +212,7 @@ describe('GET /api/daemon-events SSE endpoint', () => {
 
     const id1 = insertEvent(db, runId, 'session:start', { sessionId: runId });
     const id2 = insertEvent(db, runId, 'queue:prd:start', { prdId: 'prd-1', title: 'PRD 1' });
-    const id3 = insertEvent(db, runId, 'enqueue:complete', { id: 'prd-2', filePath: '/queue/prd-2.md', title: 'PRD 2' });
+    const id3 = insertEvent(db, runId, 'enqueue:complete', { id: 'prd-2', filePath: '/queue/prd-2.md', title: 'PRD 2', planSet: 'PRD 2' });
 
     server = await startServer(db, 0);
     const daemonEventsUrl = `http://127.0.0.1:${server.port}${API_ROUTES.daemonEvents}`;
@@ -275,7 +275,7 @@ describe('GET /api/daemon-events SSE endpoint', () => {
     await new Promise((r) => setTimeout(r, 150));
     insertEvent(db, runId, 'queue:start', { prdCount: 1, dir: '/tmp/queue' });
     await new Promise((r) => setTimeout(r, 150));
-    insertEvent(db, runId, 'enqueue:complete', { id: 'new-prd', filePath: '/queue/new-prd.md', title: 'New PRD' });
+    insertEvent(db, runId, 'enqueue:complete', { id: 'new-prd', filePath: '/queue/new-prd.md', title: 'New PRD', planSet: 'New PRD' });
 
     const events = await collectPromise;
     expect(events.length).toBeGreaterThanOrEqual(2);
