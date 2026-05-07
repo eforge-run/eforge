@@ -59,7 +59,7 @@ export function useEforgeEvents(sessionId: string | null): UseEforgeEventsResult
 
     const abort = new AbortController();
     setConnectionStatus('connecting');
-    const url = buildPath(API_ROUTES.events, { id: sessionId });
+    const url = buildPath(API_ROUTES.events, { runId: sessionId });
 
     (async () => {
       for await (const frame of subscribeWithSnapshot<SessionStreamSnapshot, EforgeEvent>(

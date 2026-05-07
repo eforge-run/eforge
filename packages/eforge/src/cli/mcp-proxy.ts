@@ -275,7 +275,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const lock = readLockfile(toolCwd);
         if (!lock) throw new Error('Daemon not running — lockfile not found');
         const monitorUrl = `http://127.0.0.1:${lock.port}`;
-        const url = `${monitorUrl}${buildPath(API_ROUTES.events, { id: sessionId })}`;
+        const url = `${monitorUrl}${buildPath(API_ROUTES.events, { runId: sessionId })}`;
 
         for await (const frame of subscribeWithSnapshot<SessionStreamSnapshot, DaemonStreamEvent>(
           url,

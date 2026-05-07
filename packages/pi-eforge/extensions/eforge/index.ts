@@ -323,7 +323,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const lock = readLockfile(ctx.cwd);
         if (!lock) throw new Error("Daemon not running — lockfile not found");
         const monitorUrl = `http://127.0.0.1:${lock.port}`;
-        const url = `${monitorUrl}${buildPath(API_ROUTES.events, { id: params.sessionId })}`;
+        const url = `${monitorUrl}${buildPath(API_ROUTES.events, { runId: params.sessionId })}`;
 
         for await (const frame of subscribeWithSnapshot<SessionStreamSnapshot, DaemonStreamEvent>(
           url,
