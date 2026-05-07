@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { BuildDecisionSchema } from '@eforge-build/client';
 import type { BuildDecision } from '@eforge-build/client';
-import { emitBuildDecision } from '@eforge-build/engine/decisions';
+import { emitBuildDecision, emitBuildDecisionForPlan } from '@eforge-build/engine/decisions';
 import type { BuildStageContext } from '@eforge-build/engine/pipeline';
 
 // ---------------------------------------------------------------------------
@@ -207,10 +207,13 @@ describe('emitBuildDecision', () => {
     expect(event.planId).toBe('plan-42');
   });
 
-  it('attaches a timestamp string', () => {
+  it('attaches an ISO 8601 timestamp string', () => {
     const event = emitBuildDecision(makeCtx('plan-01'), validDecision);
     expect(typeof event.timestamp).toBe('string');
-    expect(event.timestamp.length).toBeGreaterThan(0);
+    // Must round-trip through Date — guards against empty strings or non-ISO formats
+    const parsed = new Date(event.timestamp);
+    expect(Number.isFinite(parsed.getTime())).toBe(true);
+    expect(parsed.toISOString()).toBe(event.timestamp);
   });
 
   it('decision round-trips through BuildDecisionSchema.parse', () => {
@@ -223,5 +226,57 @@ describe('emitBuildDecision', () => {
     const malformed = { kind: 'review-strategy', strategy: 'single', source: 'config' } as unknown as BuildDecision;
     // missing rationale
     expect(() => emitBuildDecision(makeCtx('plan-01'), malformed)).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// emitBuildDecisionForPlan helper
+// ---------------------------------------------------------------------------
+
+describe('emitBuildDecisionForPlan', () => {
+  const validDecision: BuildDecision = {
+    kind: 'recovery-verdict',
+    rationale: 'Retry approved',
+    verdict: 'retry',
+  };
+
+  it('returns an event with type === plan:build:decision', () => {
+    const event = emitBuildDecisionForPlan('plan-01', validDecision);
+    expect(event.type).toBe('plan:build:decision');
+  });
+
+  it('attaches planId from the bare string argument', () => {
+    const event = emitBuildDecisionForPlan('plan-99', validDecision);
+    expect(event.planId).toBe('plan-99');
+  });
+
+  it('attaches an ISO 8601 timestamp string', () => {
+    const event = emitBuildDecisionForPlan('plan-01', validDecision);
+    expect(typeof event.timestamp).toBe('string');
+    // Must round-trip through Date — guards against empty strings or non-ISO formats
+    const parsed = new Date(event.timestamp);
+    expect(Number.isFinite(parsed.getTime())).toBe(true);
+    expect(parsed.toISOString()).toBe(event.timestamp);
+  });
+
+  it('decision round-trips through BuildDecisionSchema.parse', () => {
+    const event = emitBuildDecisionForPlan('plan-01', validDecision);
+    const parsed = BuildDecisionSchema.parse(event.decision);
+    expect(parsed.kind).toBe(validDecision.kind);
+  });
+
+  it('throws ZodError when called with a malformed decision', () => {
+    const malformed = { kind: 'recovery-verdict', verdict: 'retry' } as unknown as BuildDecision;
+    // missing rationale
+    expect(() => emitBuildDecisionForPlan('plan-01', malformed)).toThrow();
+  });
+
+  it('produces the same event shape as emitBuildDecision for the same inputs', () => {
+    const a = emitBuildDecision(makeCtx('plan-01'), validDecision);
+    const b = emitBuildDecisionForPlan('plan-01', validDecision);
+    // timestamps differ (Date.now), so compare structural fields only
+    expect(b.type).toBe(a.type);
+    expect(b.planId).toBe(a.planId);
+    expect(b.decision).toEqual(a.decision);
   });
 });

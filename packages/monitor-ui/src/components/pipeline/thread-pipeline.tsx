@@ -2,6 +2,7 @@ import { memo, useMemo, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import type { AgentThread, StoredEvent } from '@/lib/reducer';
 import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/types';
+import type { BuildDecision } from '@eforge-build/client/browser';
 import { EMPTY_THREADS } from './pipeline-colors';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
 import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
@@ -21,9 +22,10 @@ interface ThreadPipelineProps {
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
   reviewIssuesByPerspective?: Record<string, Record<string, ReviewIssue[]>>;
+  decisions?: Record<string, BuildDecision[]>;
 }
 
-function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective }: ThreadPipelineProps) {
+function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const entries = Object.entries(planStatuses);
 
@@ -191,6 +193,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 depth={depthMap.get(planId) ?? 0}
                 perspectiveErrors={perspectiveErrors?.[planId]}
                 issuesByPerspective={reviewIssuesByPerspective?.[planId]}
+                decisions={decisions?.[planId]}
               />
             ))}
           </div>

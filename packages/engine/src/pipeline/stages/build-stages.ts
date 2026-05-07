@@ -7,6 +7,8 @@ import { promisify } from 'node:util';
 
 import type { EforgeEvent } from '../../events.js';
 import type { BuildStageSpec, ShardScope } from '../../config.js';
+import { emitBuildDecision } from '../../decisions.js';
+import { computeReviewThresholdSnapshot } from '../../agents/parallel-reviewer.js';
 import {
   withRetry,
   DEFAULT_RETRY_POLICIES,
@@ -128,6 +130,30 @@ async function* reviewStageInner(
 ): AsyncGenerator<EforgeEvent> {
   const strategy = overrides?.strategy ?? ctx.review.strategy;
   const perspectives = overrides?.perspectives ?? (ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined);
+
+  // Emit review-strategy decision before dispatching to the reviewer
+  if (strategy === 'auto') {
+    const snapshot = await computeReviewThresholdSnapshot(ctx.worktreePath, ctx.orchConfig.baseBranch);
+    yield emitBuildDecision(ctx, {
+      kind: 'review-strategy',
+      rationale: `Auto-threshold: ${snapshot.changedFiles.length} files, ${snapshot.changedLines} changed lines (threshold: ${snapshot.threshold.files} files or ${snapshot.threshold.lines} lines)`,
+      strategy: snapshot.willParallelize ? 'parallel' : 'single',
+      source: 'auto-threshold',
+      auto: {
+        files: snapshot.changedFiles.length,
+        lines: snapshot.changedLines,
+        threshold: snapshot.threshold,
+      },
+    });
+  } else {
+    yield emitBuildDecision(ctx, {
+      kind: 'review-strategy',
+      rationale: `Strategy set by config: ${strategy}`,
+      strategy: strategy === 'parallel' ? 'parallel' : 'single',
+      source: 'config',
+    });
+  }
+
   const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.planFile);
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
@@ -163,6 +189,19 @@ async function* evaluateStageInner(
 ): AsyncGenerator<EforgeEvent> {
   if (!(await hasUnstagedChanges(ctx.worktreePath))) return;
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
+
+  // Emit evaluator-strictness decision at the start of every evaluator run
+  // source is 'default' when the value is 'standard' and no explicit override was provided,
+  // otherwise 'config' (user-configured or stage-level override)
+  const strictnessSource: 'config' | 'default' =
+    overrides?.strictness === undefined && strictness === 'standard' ? 'default' : 'config';
+  yield emitBuildDecision(ctx, {
+    kind: 'evaluator-strictness',
+    rationale: `Evaluator strictness: ${strictness} (${strictnessSource})`,
+    strictness,
+    source: strictnessSource,
+  });
+
   const evalAgentConfig = resolveAgentConfig('evaluator', ctx.config, ctx.planFile);
   const initialInput: EvaluatorContinuationInput = {
     worktreePath: ctx.worktreePath,
@@ -563,11 +602,48 @@ registerBuildStage({
   const perspectives = ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined;
   const strictness = ctx.review.evaluatorStrictness;
 
+  let terminationReason: 'no-issues' | 'max-rounds' | null = null;
+
   for (let round = 0; round < maxRounds; round++) {
+    // Emit perspectives-respawned at the start of each review round
+    yield emitBuildDecision(ctx, {
+      kind: 'perspectives-respawned',
+      rationale: `Starting review round ${round + 1} of ${maxRounds}`,
+      round,
+      perspectives: perspectives ?? [],
+      dropped: [],
+    });
+
     yield* reviewStageInner(ctx, { strategy, perspectives });
-    if (ctx.reviewIssues.length === 0) break;
+
+    if (ctx.reviewIssues.length === 0) {
+      yield emitBuildDecision(ctx, {
+        kind: 'cycle-terminated',
+        rationale: `Review cycle terminated after round ${round + 1}: no issues found`,
+        round,
+        reason: 'no-issues',
+        issuesRemaining: 0,
+      });
+      terminationReason = 'no-issues';
+      break;
+    }
+
     yield* reviewFixStageInner(ctx);
     yield* evaluateStageInner(ctx, { strictness });
+  }
+
+  // If all rounds exhausted without finding no-issues, emit max-rounds termination.
+  // Guard with `maxRounds > 0`: when maxRounds=0 the loop never ran, there's no
+  // cycle to terminate, and `round: maxRounds - 1` would be `-1`, failing
+  // BuildDecisionSchema's `nonnegative()` check and crashing the build.
+  if (terminationReason === null && maxRounds > 0) {
+    yield emitBuildDecision(ctx, {
+      kind: 'cycle-terminated',
+      rationale: `Review cycle exhausted ${maxRounds} round(s) with ${ctx.reviewIssues.length} issue(s) remaining`,
+      round: maxRounds - 1,
+      reason: 'max-rounds',
+      issuesRemaining: ctx.reviewIssues.length,
+    });
   }
 });
 

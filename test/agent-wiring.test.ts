@@ -1521,6 +1521,104 @@ describe('AgentRuntimeRegistry dual-stub dispatch', () => {
   });
 });
 
+// --- Parallel Reviewer: decision events ---
+
+describe('runParallelReview decision events', () => {
+  // Use a per-test tmpdir (auto-cleaned) instead of `/tmp`. The tests below rely
+  // on `computeReviewThresholdSnapshot()` finding no git repo so changedFiles
+  // defaults to []. A unique tmpdir guarantees isolation from any system state
+  // that might happen to live under /tmp.
+  const makeTempDir = useTempDir('eforge-decision-test-');
+
+  it('emits perspectives-inferred when strategy is parallel and no perspectives override', async () => {
+    // Use strategy: 'parallel' (forced) to bypass threshold check without needing a real git repo.
+    // Without a perspectives override, the reviewer must infer perspectives from changed files.
+    // With a non-git tmpdir, changedFiles defaults to [] → categories all empty → no perspectives inferred.
+    // The perspectives-inferred decision is still emitted (documenting that inference ran with empty result).
+    const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nDo the thing.',
+        baseBranch: 'main',
+        planId: 'plan-decision-test',
+        cwd,
+        strategy: 'parallel',
+        // no perspectives override — inference runs
+      }),
+    );
+
+    // perspectives-inferred must be emitted (even with empty result when no files detected)
+    const perspectivesInferred = events.find(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        e.type === 'plan:build:decision' && (e as Extract<EforgeEvent, { type: 'plan:build:decision' }>).decision.kind === 'perspectives-inferred',
+    );
+    expect(perspectivesInferred).toBeDefined();
+    expect(perspectivesInferred!.decision.kind).toBe('perspectives-inferred');
+
+    // planId must be attributed to the correct plan
+    expect(perspectivesInferred!.planId).toBe('plan-decision-test');
+  });
+
+  it('does NOT emit perspectives-inferred when perspectives override is supplied', async () => {
+    const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan\n\nDo the thing.',
+        baseBranch: 'main',
+        planId: 'plan-explicit-perspectives',
+        cwd,
+        strategy: 'parallel',
+        perspectives: ['code', 'security'], // explicit override — no inference
+      }),
+    );
+
+    const perspectivesInferred = events.find(
+      (e) => e.type === 'plan:build:decision' && (e as Extract<EforgeEvent, { type: 'plan:build:decision' }>).decision.kind === 'perspectives-inferred',
+    );
+    expect(perspectivesInferred).toBeUndefined();
+  });
+
+  it('perspectives-inferred shape is BuildDecisionSchema-valid (empty-categories edge case)', async () => {
+    // With strategy: 'parallel' (forced) and a non-git tmpdir, changedFiles defaults to [].
+    // categorizeFiles([]) returns all empty buckets → determineApplicableReviewsWithRules
+    // returns { perspectives: [], rules: [] }. The decision is still emitted with empty
+    // arrays. We assert empty arrays here — `Array.isArray` alone would pass vacuously.
+    const backend = new StubHarness([{ text: '<review-issues></review-issues>' }]);
+    const cwd = makeTempDir();
+
+    const events = await collectEvents(
+      runParallelReview({
+        harness: backend,
+        planContent: '# Plan',
+        baseBranch: 'main',
+        planId: 'plan-schema-check',
+        cwd,
+        strategy: 'parallel',
+        // no perspectives override
+      }),
+    );
+
+    const perspectivesInferred = events.find(
+      (e): e is Extract<EforgeEvent, { type: 'plan:build:decision' }> =>
+        e.type === 'plan:build:decision' && (e as Extract<EforgeEvent, { type: 'plan:build:decision' }>).decision.kind === 'perspectives-inferred',
+    );
+
+    expect(perspectivesInferred).toBeDefined();
+    expect(perspectivesInferred!.decision.kind).toBe('perspectives-inferred');
+    // With no files detected, categories/rules/perspectives are all empty arrays
+    const d = perspectivesInferred!.decision as unknown as { kind: string; perspectives: unknown[]; categories: unknown[]; rules: unknown[] };
+    expect(d.categories).toEqual([]);
+    expect(d.rules).toEqual([]);
+    expect(d.perspectives).toEqual([]);
+  });
+});
+
 // --- Parallel Reviewer: verify perspective ---
 
 describe('runParallelReview verify perspective', () => {

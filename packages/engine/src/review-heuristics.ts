@@ -19,8 +19,8 @@ export interface DiffStats {
 }
 
 /** Parallelization threshold: 10+ files OR 500+ changed lines */
-const FILE_COUNT_THRESHOLD = 10;
-const LINE_COUNT_THRESHOLD = 500;
+export const FILE_COUNT_THRESHOLD = 10;
+export const LINE_COUNT_THRESHOLD = 500;
 
 /**
  * Categorize a list of changed file paths into buckets.
@@ -98,6 +98,47 @@ export function determineApplicableReviews(categories: FileCategories): ReviewPe
  */
 export function shouldParallelizeReview(files: string[], stats: DiffStats): boolean {
   return files.length >= FILE_COUNT_THRESHOLD || stats.lines >= LINE_COUNT_THRESHOLD;
+}
+
+/**
+ * Given file categories, determine which review perspectives apply and which
+ * rules fired. Same logic as `determineApplicableReviews` but also returns
+ * rule attribution strings for decision event metadata.
+ */
+export function determineApplicableReviewsWithRules(categories: FileCategories): {
+  perspectives: ReviewPerspective[];
+  rules: string[];
+} {
+  const perspectives = new Set<ReviewPerspective>();
+  const rules: string[] = [];
+
+  if (categories.code.length > 0) {
+    perspectives.add('code');
+    perspectives.add('security');
+    rules.push('code-files → code+security');
+  }
+
+  if (categories.api.length > 0) {
+    perspectives.add('api');
+    rules.push('api-files → api');
+  }
+
+  if (categories.docs.length > 0) {
+    perspectives.add('docs');
+    rules.push('docs-files → docs');
+  }
+
+  if (categories.test.length > 0) {
+    perspectives.add('test');
+    rules.push('test-files → test');
+  }
+
+  if (categories.deps.length > 0) {
+    perspectives.add('security');
+    rules.push('dep-files → security');
+  }
+
+  return { perspectives: Array.from(perspectives), rules };
 }
 
 // --- Pattern matchers ---

@@ -10,7 +10,8 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions } from '../harness.js';
 import { SEVERITY_ORDER, isAlwaysYieldedAgentEvent, type EforgeEvent, type ReviewIssue } from '../events.js';
 import type { ReviewPerspective } from '../review-heuristics.js';
-import { categorizeFiles, determineApplicableReviews, shouldParallelizeReview } from '../review-heuristics.js';
+import { categorizeFiles, determineApplicableReviewsWithRules, shouldParallelizeReview, FILE_COUNT_THRESHOLD, LINE_COUNT_THRESHOLD } from '../review-heuristics.js';
+import { emitBuildDecisionForPlan } from '../decisions.js';
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { loadPrompt } from '../prompts.js';
 import { runReview, parseReviewIssues } from './reviewer.js';
@@ -24,6 +25,49 @@ import {
 } from '../schemas.js';
 
 const exec = promisify(execFile);
+
+/**
+ * Compute the changeset metrics used by the auto-threshold parallelization
+ * heuristic. Returns file count, changed-line count, and the threshold values
+ * so callers can populate the `auto` block of a `review-strategy` decision.
+ */
+export async function computeReviewThresholdSnapshot(
+  cwd: string,
+  baseBranch: string,
+): Promise<{
+  changedFiles: string[];
+  changedLines: number;
+  willParallelize: boolean;
+  threshold: { files: number; lines: number };
+}> {
+  let changedFiles: string[] = [];
+  let changedLines = 0;
+
+  try {
+    const { stdout } = await exec('git', ['diff', `${baseBranch}...HEAD`, '--name-only'], { cwd });
+    changedFiles = stdout.trim().split('\n').filter(Boolean);
+  } catch {
+    // Non-git directory or git unavailable — default to empty
+  }
+
+  try {
+    const { stdout } = await exec('git', ['diff', `${baseBranch}...HEAD`, '--stat'], { cwd });
+    const statLine = stdout.trim().split('\n').pop() ?? '';
+    const insertMatch = statLine.match(/(\d+)\s+insertion/);
+    const deleteMatch = statLine.match(/(\d+)\s+deletion/);
+    changedLines = (insertMatch ? parseInt(insertMatch[1], 10) : 0) +
+      (deleteMatch ? parseInt(deleteMatch[1], 10) : 0);
+  } catch {
+    // Non-critical — default to 0
+  }
+
+  return {
+    changedFiles,
+    changedLines,
+    willParallelize: shouldParallelizeReview(changedFiles, { lines: changedLines }),
+    threshold: { files: FILE_COUNT_THRESHOLD, lines: LINE_COUNT_THRESHOLD },
+  };
+}
 
 export interface ParallelReviewerOptions extends SdkPassthroughConfig {
   /** Harness for running agents */
@@ -93,28 +137,10 @@ export async function* runParallelReview(
     return;
   }
 
-  // Get changed files
-  let changedFiles: string[];
-  try {
-    const { stdout } = await exec('git', ['diff', `${baseBranch}...HEAD`, '--name-only'], { cwd });
-    changedFiles = stdout.trim().split('\n').filter(Boolean);
-  } catch {
-    changedFiles = [];
-  }
-
-  // Get diff stats (total changed lines)
-  let changedLines = 0;
-  try {
-    const { stdout } = await exec('git', ['diff', `${baseBranch}...HEAD`, '--stat'], { cwd });
-    // Last line of --stat output: " N files changed, X insertions(+), Y deletions(-)"
-    const statLine = stdout.trim().split('\n').pop() ?? '';
-    const insertMatch = statLine.match(/(\d+)\s+insertion/);
-    const deleteMatch = statLine.match(/(\d+)\s+deletion/);
-    changedLines = (insertMatch ? parseInt(insertMatch[1], 10) : 0) +
-      (deleteMatch ? parseInt(deleteMatch[1], 10) : 0);
-  } catch {
-    // Non-critical - default to 0
-  }
+  // Get changeset metrics (delegates to shared helper to avoid duplication)
+  const snapshot = await computeReviewThresholdSnapshot(cwd, baseBranch);
+  const changedFiles = snapshot.changedFiles;
+  const changedLines = snapshot.changedLines;
 
   // Check threshold: strategy 'parallel' skips the heuristic, 'auto' (default) uses it
   if (strategy !== 'parallel' && !shouldParallelizeReview(changedFiles, { lines: changedLines })) {
@@ -139,7 +165,20 @@ export async function* runParallelReview(
     perspectives = perspectivesOverride as ReviewPerspective[];
   } else {
     const categories = categorizeFiles(changedFiles);
-    perspectives = determineApplicableReviews(categories);
+    const { perspectives: inferred, rules } = determineApplicableReviewsWithRules(categories);
+    perspectives = inferred;
+
+    // Emit perspectives-inferred decision — only when inference ran (no override supplied)
+    const activeCategories = Object.entries(categories)
+      .filter(([, files]) => files.length > 0)
+      .map(([cat]) => cat);
+    yield emitBuildDecisionForPlan(planId, {
+      kind: 'perspectives-inferred',
+      rationale: `Perspectives inferred from ${changedFiles.length} changed files: ${inferred.length > 0 ? inferred.join(', ') : 'none (falling back to single reviewer)'}`,
+      perspectives: inferred,
+      categories: activeCategories,
+      rules,
+    });
   }
 
   if (perspectives.length === 0) {
