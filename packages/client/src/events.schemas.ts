@@ -357,6 +357,79 @@ const agentStartFields = {
   perspective: z.string().optional(),
 };
 
+// ---------------------------------------------------------------------------
+// Build-phase orchestrator decision schema
+// ---------------------------------------------------------------------------
+
+/**
+ * Inner discriminated union for build-phase orchestrator decisions.
+ * Consumed by the `plan:build:decision` event variant.
+ */
+export const BuildDecisionSchema = z.discriminatedUnion('kind', [
+  // Review strategy selection
+  z.object({
+    kind: z.literal('review-strategy'),
+    rationale: z.string(),
+    strategy: z.enum(['single', 'parallel']),
+    source: z.enum(['config', 'auto-threshold']),
+    auto: z.object({
+      files: z.number().int().nonnegative(),
+      lines: z.number().int().nonnegative(),
+      threshold: z.object({
+        files: z.number().int().nonnegative(),
+        lines: z.number().int().nonnegative(),
+      }),
+    }).optional(),
+  }),
+  // Perspectives inferred for parallel review
+  z.object({
+    kind: z.literal('perspectives-inferred'),
+    rationale: z.string(),
+    perspectives: z.array(ReviewPerspectiveSchema),
+    categories: z.array(z.string()),
+    rules: z.array(z.string()),
+  }),
+  // Review cycle terminated
+  z.object({
+    kind: z.literal('cycle-terminated'),
+    rationale: z.string(),
+    round: z.number().int().nonnegative(),
+    reason: z.enum(['no-issues', 'max-rounds']),
+    issuesRemaining: z.number().int().nonnegative(),
+  }),
+  // Perspectives respawned for next review round
+  z.object({
+    kind: z.literal('perspectives-respawned'),
+    rationale: z.string(),
+    round: z.number().int().nonnegative(),
+    perspectives: z.array(ReviewPerspectiveSchema),
+    dropped: z.array(ReviewPerspectiveSchema),
+  }),
+  // Evaluator strictness selection
+  z.object({
+    kind: z.literal('evaluator-strictness'),
+    rationale: z.string(),
+    strictness: z.enum(['strict', 'standard', 'lenient']),
+    source: z.enum(['config', 'default']),
+  }),
+  // Recovery verdict applied
+  z.object({
+    kind: z.literal('recovery-verdict'),
+    rationale: z.string(),
+    verdict: z.enum(['retry', 'split', 'abandon', 'manual']),
+    successorPrdId: z.string().optional(),
+  }),
+  // Merge conflict resolution strategy
+  z.object({
+    kind: z.literal('merge-conflict-resolution'),
+    rationale: z.string(),
+    strategy: z.string(),
+    files: z.array(z.string()),
+  }),
+]);
+
+export type BuildDecision = z.infer<typeof BuildDecisionSchema>;
+
 const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
   // Session lifecycle
   z.object({ type: z.literal('session:start'), sessionId: z.string() }),
@@ -1016,6 +1089,13 @@ const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
 
   // Queue events
   ...QueueEventSchema.options,
+
+  // Build-phase orchestrator decision events
+  z.object({
+    type: z.literal('plan:build:decision'),
+    planId: z.string(),
+    decision: BuildDecisionSchema,
+  }),
 ]);
 
 // ---------------------------------------------------------------------------

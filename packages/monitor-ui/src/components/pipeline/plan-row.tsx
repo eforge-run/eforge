@@ -5,6 +5,8 @@ import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber, formatThinking } from '@/lib/format';
 import type { AgentThread, StoredEvent } from '@/lib/reducer';
 import type { AgentRole, PipelineStage, ReviewIssue, BuildStageSpec, ValidationCommandSpan } from '@/lib/types';
+import type { BuildDecision } from '@eforge-build/client/browser';
+import { DecisionTimeline } from './decision-timeline';
 import {
   EMPTY_EVENTS,
   EMPTY_SET,
@@ -43,6 +45,7 @@ interface PlanRowProps {
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Array<{ perspective: string; error: string; timestamp: string }>;
   issuesByPerspective?: Record<string, ReviewIssue[]>;
+  decisions?: BuildDecision[];
 }
 
 export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -77,7 +80,7 @@ export function DepthBars({ depth }: { depth: number }) {
   );
 }
 
-function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective }: PlanRowProps) {
+function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -219,6 +222,9 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
           )}
           {!disablePreview && (
             <BuildStageProgress buildStages={buildStages} currentStage={currentStage} hoveredStage={hoveredStage} onStageHover={onStageHover} threads={threads} />
+          )}
+          {decisions && decisions.length > 0 && (
+            <DecisionTimeline decisions={decisions} />
           )}
         <div className="flex-1 bg-bg-tertiary rounded-sm overflow-x-clip flex flex-col gap-px py-px min-h-4">
           {sortedThreads.map((thread) => {

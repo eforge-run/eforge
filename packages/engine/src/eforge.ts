@@ -32,6 +32,7 @@ import { writeRecoverySidecar } from './recovery/sidecar.js';
 import { applyRecoveryRetry, applyRecoverySplit, applyRecoveryAbandon, applyRecoveryManual } from './recovery/apply.js';
 import { recoveryVerdictSchema } from './schemas.js';
 import type { ApplyRecoveryOptions, ApplyRecoveryResult } from './schemas.js';
+import { emitBuildDecisionForPlan } from './decisions.js';
 import { runFormatter } from './agents/formatter.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
 import type { EforgeConfig, PluginConfig, ReviewProfileConfig, BuildStageSpec } from './config.js';
@@ -1848,8 +1849,9 @@ export class EforgeEngine {
         throw new Error(`Recovery sidecar not found for ${prdId}; run recover() first`);
       }
 
-      // Parse and validate the verdict
-      const parsed = JSON.parse(rawJson) as { verdict?: unknown };
+      // Parse and validate the verdict; also extract failing plan ID for decision attribution
+      const parsed = JSON.parse(rawJson) as { verdict?: unknown; summary?: { failingPlan?: { planId?: string } } };
+      const failingPlanId = parsed.summary?.failingPlan?.planId ?? prdId;
       const verdictResult = recoveryVerdictSchema.safeParse(parsed.verdict);
       if (!verdictResult.success) {
         throw new Error(
@@ -1898,6 +1900,14 @@ export class EforgeEngine {
         successorPrdId: result.successorPrdId,
         noAction: result.noAction,
       };
+
+      // Emit recovery-verdict decision attributed to the failing plan
+      yield emitBuildDecisionForPlan(failingPlanId, {
+        kind: 'recovery-verdict',
+        verdict: result.verdict,
+        successorPrdId: result.successorPrdId,
+        rationale: verdict.rationale,
+      });
 
       return result;
     } catch (err) {

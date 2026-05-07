@@ -3,6 +3,7 @@ import { pickSdkOptions } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent } from '../events.js';
 import type { MergeConflictInfo } from '../worktree-ops.js';
 import { loadPrompt } from '../prompts.js';
+import { emitBuildDecisionForPlan } from '../decisions.js';
 
 export interface MergeConflictResolverOptions extends SdkPassthroughConfig {
   harness: AgentHarness;
@@ -58,4 +59,12 @@ export async function* runMergeConflictResolver(
   }
 
   yield { timestamp: new Date().toISOString(), type: 'plan:merge:resolve:complete', planId: options.conflict.branch, resolved: true };
+
+  // Emit merge-conflict-resolution decision alongside the resolution success
+  yield emitBuildDecisionForPlan(options.conflict.branch, {
+    kind: 'merge-conflict-resolution',
+    strategy: 'agent-resolved',
+    files: options.conflict.conflictedFiles,
+    rationale: `Merge conflict resolver agent resolved ${options.conflict.conflictedFiles.length} conflicted file(s)`,
+  });
 }

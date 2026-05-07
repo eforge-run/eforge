@@ -56,6 +56,7 @@ import {
 } from './handle-enqueue';
 import { handleConfigWarning, handlePlanningWarning } from './handle-misc';
 import { handleDaemonAutoBuildPaused } from './handle-daemon';
+import { handlePlanBuildDecision } from './handle-decisions';
 import {
   handlePlanStatusChange,
   handlePlanErrorSet,
@@ -122,6 +123,9 @@ export const handlerRegistry = {
   'plan:build:review:parallel:perspective:error': handlePlanBuildReviewPerspectiveError,
   'plan:build:review:parallel:perspective:complete': handlePlanBuildReviewPerspectiveComplete,
   'plan:merge:complete': handlePlanMergeComplete,
+
+  // Build-phase decision events
+  'plan:build:decision': handlePlanBuildDecision,
 
   // Agent lifecycle
   'agent:start': handleAgentStart,
