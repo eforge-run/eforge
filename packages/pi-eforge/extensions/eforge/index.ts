@@ -43,7 +43,7 @@ import {
   subscribeWithSnapshot,
   aggregateSessionSummary,
   eventToProgress,
-  apiGetLatestRunFromRuns,
+  apiGetRuns,
   LOCKFILE_POLL_INTERVAL_MS,
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
@@ -53,6 +53,7 @@ import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   EnqueueResponse,
   RunSummary,
+  RunInfo,
   ConfigValidateResponse,
   QueueItem,
   AutoBuildState,
@@ -91,16 +92,90 @@ function withMonitorUrl(
   return { ...data, monitorUrl: `http://localhost:${port}` };
 }
 
+function truncateStatusPart(value: string, max = 36): string {
+  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
+}
+
+function formatDuration(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  if (mins < 60) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const remMins = mins % 60;
+  return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
+}
+
+function formatBuildFooter(summary: RunSummary): string {
+  const parts: string[] = ['eforge build: running'];
+
+  const activityParts = [summary.currentPhase, summary.currentAgent]
+    .filter((part): part is string => Boolean(part));
+  let activity = activityParts.join(' › ');
+  if (!activity) {
+    const runningPlan = summary.plans.find((plan) => plan.status === 'running');
+    const runningRun = summary.runs.find((run) => run.status === 'running');
+    activity = runningPlan?.id ?? runningRun?.command ?? '';
+  }
+  if (activity) parts.push(truncateStatusPart(activity));
+
+  if (summary.plans.length > 0) {
+    const complete = summary.plans.filter((plan) => plan.status === 'completed').length;
+    parts.push(`${complete}/${summary.plans.length} plans`);
+  }
+
+  if (summary.eventCounts.errors > 0) {
+    parts.push(`${summary.eventCounts.errors} errors`);
+  }
+
+  if (summary.duration.seconds != null) {
+    parts.push(formatDuration(summary.duration.seconds));
+  }
+
+  return parts.join(' - ');
+}
+
+function formatQueueFooter(queueItems: QueueItem[], hasRunningBuild: boolean): string | undefined {
+  const visibleItems = hasRunningBuild
+    ? queueItems.filter((item) => item.status !== 'running')
+    : queueItems;
+  if (visibleItems.length === 0) return undefined;
+
+  const counts = new Map<string, number>();
+  for (const item of visibleItems) {
+    counts.set(item.status, (counts.get(item.status) ?? 0) + 1);
+  }
+
+  const preferredOrder = ['running', 'pending', 'waiting', 'failed', 'skipped'];
+  const parts: string[] = [];
+  for (const status of preferredOrder) {
+    const count = counts.get(status);
+    if (count) parts.push(`${count} ${status}`);
+  }
+  for (const [status, count] of counts) {
+    if (!preferredOrder.includes(status)) parts.push(`${count} ${status}`);
+  }
+
+  return `eforge queue: ${parts.join(', ')}`;
+}
+
+async function getPreferredRun(cwd: string): Promise<RunInfo | null> {
+  const { data: runs } = await apiGetRuns({ cwd });
+  return runs.find((run) => run.status === 'running' && run.sessionId)
+    ?? runs.find((run) => run.sessionId)
+    ?? null;
+}
+
 async function checkActiveBuilds(
   cwd: string,
 ): Promise<string | null> {
   try {
-    const latestRun = await apiGetLatestRunFromRuns({ cwd });
-    if (!latestRun?.sessionId) return null;
+    const run = await getPreferredRun(cwd);
+    if (!run?.sessionId) return null;
     const { data: summary } = await daemonRequest<RunSummary>(
       cwd,
       "GET",
-      buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }),
+      buildPath(API_ROUTES.runSummary, { id: run.sessionId }),
     );
     if (summary?.status === "running") {
       return "An eforge build is currently active. Use force: true to stop anyway.";
@@ -181,66 +256,98 @@ function ensureGitignoreEntries(cwd: string, entries: string[]): void {
 // ---------------------------------------------------------------------------
 
 export default function eforgeExtension(pi: ExtensionAPI) {
-  // Module-scope context for refreshing status after harness changes
+  // Module-scope context for refreshing footer status after harness/queue/build changes.
   let _latestCtx: UIContext | null = null;
+  let _statusPollTimer: ReturnType<typeof setInterval> | null = null;
+  let _statusRefreshInFlight = false;
 
-  /** Refresh the Pi footer status with the active harness profile. Best-effort. */
+  function clearFooterStatus(ctx: { ui: { setStatus(key: string, text: string | undefined): void } }): void {
+    ctx.ui.setStatus('eforge', undefined);
+    ctx.ui.setStatus('eforge-build', undefined);
+    ctx.ui.setStatus('eforge-queue', undefined);
+  }
+
+  /** Refresh the Pi footer status with active profile, build progress, and queue state. Best-effort. */
   async function refreshStatus(ctx: { cwd: string; ui: { setStatus(key: string, text: string | undefined): void } }): Promise<void> {
+    if (_statusRefreshInFlight) return;
+    _statusRefreshInFlight = true;
     try {
-      const { data } = await daemonRequest<{
-        active: string | null;
-        source: string;
-        resolved: { harness?: string; name?: string } | null;
-      }>(ctx.cwd, 'GET', API_ROUTES.profileShow);
-      if (data.active && data.resolved?.harness) {
-        ctx.ui.setStatus('eforge', `eforge: ${data.active} (harness: ${data.resolved.harness})`);
-      } else {
+      try {
+        const { data } = await daemonRequest<{
+          active: string | null;
+          source: string;
+          resolved: { harness?: string; name?: string } | null;
+        }>(ctx.cwd, 'GET', API_ROUTES.profileShow);
+        if (data.active && data.resolved?.harness) {
+          ctx.ui.setStatus('eforge', `eforge: ${data.active} (${data.resolved.harness})`);
+        } else {
+          ctx.ui.setStatus('eforge', undefined);
+        }
+      } catch {
         ctx.ui.setStatus('eforge', undefined);
       }
-    } catch {
-      ctx.ui.setStatus('eforge', undefined);
-    }
 
-    // Queue status
-    try {
-      const { data: queueItems } = await daemonRequest<QueueItem[]>(ctx.cwd, 'GET', API_ROUTES.queue);
-      if (queueItems.length > 0) {
-        ctx.ui.setStatus('eforge-queue', `queue: ${queueItems.length}`);
-      } else {
-        ctx.ui.setStatus('eforge-queue', undefined);
+      let queueItems: QueueItem[] = [];
+      try {
+        const { data } = await daemonRequest<QueueItem[]>(ctx.cwd, 'GET', API_ROUTES.queue);
+        queueItems = data;
+      } catch {
+        queueItems = [];
       }
-    } catch {
-      ctx.ui.setStatus('eforge-queue', undefined);
-    }
 
-    // Build status
-    try {
-      const latestRun = await apiGetLatestRunFromRuns({ cwd: ctx.cwd });
-      if (latestRun?.sessionId) {
-        const { data: summary } = await daemonRequest<RunSummary>(
-          ctx.cwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId })
-        );
-        if (summary?.status === 'running') {
-          const parts: string[] = ['build: running'];
-          if (summary.currentPhase) parts.push(summary.currentPhase);
-          if (summary.currentAgent) parts.push(summary.currentAgent);
-          ctx.ui.setStatus('eforge-build', parts.join(' - '));
+      let hasRunningBuild = false;
+      try {
+        const run = await getPreferredRun(ctx.cwd);
+        if (run?.sessionId) {
+          const { data: summary } = await daemonRequest<RunSummary>(
+            ctx.cwd,
+            'GET',
+            buildPath(API_ROUTES.runSummary, { id: run.sessionId }),
+          );
+          if (summary?.status === 'running') {
+            hasRunningBuild = true;
+            ctx.ui.setStatus('eforge-build', formatBuildFooter(summary));
+          } else {
+            ctx.ui.setStatus('eforge-build', undefined);
+          }
         } else {
           ctx.ui.setStatus('eforge-build', undefined);
         }
-      } else {
+      } catch {
         ctx.ui.setStatus('eforge-build', undefined);
       }
-    } catch {
-      ctx.ui.setStatus('eforge-build', undefined);
+
+      ctx.ui.setStatus('eforge-queue', formatQueueFooter(queueItems, hasRunningBuild));
+    } finally {
+      _statusRefreshInFlight = false;
     }
   }
 
-  // Register session_start listener for Pi footer status
+  function startStatusPolling(ctx: UIContext): void {
+    _latestCtx = ctx;
+    if (_statusPollTimer) clearInterval(_statusPollTimer);
+    void refreshStatus(ctx);
+    _statusPollTimer = setInterval(() => {
+      if (_latestCtx) void refreshStatus(_latestCtx);
+    }, 5_000);
+    _statusPollTimer.unref?.();
+  }
+
+  function stopStatusPolling(): void {
+    if (_statusPollTimer) {
+      clearInterval(_statusPollTimer);
+      _statusPollTimer = null;
+    }
+    if (_latestCtx) clearFooterStatus(_latestCtx);
+    _latestCtx = null;
+  }
+
+  // Register session lifecycle listeners for Pi footer status.
   pi.on('session_start', async (_ev: unknown, ctx: unknown) => {
-    const typedCtx = ctx as UIContext;
-    _latestCtx = typedCtx;
-    await refreshStatus(typedCtx);
+    startStatusPolling(ctx as UIContext);
+  });
+  pi.on('session_shutdown', async () => {
+    stopStatusPolling();
   });
   // ------------------------------------------------------------------
   // Tool: eforge_build
@@ -263,6 +370,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         API_ROUTES.enqueue,
         { source: params.source },
       );
+      if (_latestCtx) void refreshStatus(_latestCtx);
       return jsonResult(withMonitorUrl(data, port));
     },
   });
@@ -510,8 +618,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }),
       };
 
-      const latestRun = await apiGetLatestRunFromRuns({ cwd: ctx.cwd });
-      if (!latestRun?.sessionId) {
+      const run = await getPreferredRun(ctx.cwd);
+      if (!run?.sessionId) {
         return jsonResult({
           status: "idle",
           message: "No active eforge sessions.",
@@ -521,7 +629,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       const { data: summary } = await daemonRequest<RunSummary>(
         ctx.cwd,
         "GET",
-        buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }),
+        buildPath(API_ROUTES.runSummary, { id: run.sessionId }),
       );
       return jsonResult({ ...summary, ...versions });
     },
