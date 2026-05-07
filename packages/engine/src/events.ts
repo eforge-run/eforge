@@ -64,4 +64,6 @@ export interface EnqueueOptions {
   verbose?: boolean;
   auto?: boolean;
   abortController?: AbortController;
+  /** Override profile name to persist in PRD frontmatter for per-build profile binding. */
+  profile?: string;
 }

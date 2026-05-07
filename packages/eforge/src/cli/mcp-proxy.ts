@@ -207,9 +207,15 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       source: z
         .string()
         .describe('PRD file path or inline description to enqueue for building'),
+      profile: z
+        .string()
+        .optional()
+        .describe('Run this build on the named profile instead of the active profile'),
     },
-    handler: async ({ source }, { cwd: toolCwd }) => {
-      const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, { source });
+    handler: async ({ source, profile }, { cwd: toolCwd }) => {
+      const body: { source: string; profile?: string } = { source };
+      if (profile) body.profile = profile;
+      const { data, port } = await daemonRequest<EnqueueResponse>(toolCwd, 'POST', API_ROUTES.enqueue, body);
       return { ...data, monitorUrl: `http://localhost:${port}` };
     },
   });

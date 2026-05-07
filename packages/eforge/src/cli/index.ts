@@ -137,6 +137,7 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--name <name>', 'Override the inferred PRD title')
     .option('--verbose', 'Stream agent output')
     .option('--no-plugins', 'Disable plugin loading')
+    .option('--profile <name>', 'Override active profile for this enqueue + build')
     .action(
       async (
         source: string,
@@ -144,6 +145,7 @@ export function createProgram(abortController?: AbortController): Command {
           name?: string;
           verbose?: boolean;
           plugins?: boolean;
+          profile?: string;
         },
       ) => {
         initDisplay({ verbose: options.verbose });
@@ -152,6 +154,7 @@ export function createProgram(abortController?: AbortController): Command {
 
         const engine = await EforgeEngine.create({
           ...(configOverrides && { config: configOverrides }),
+          ...(options.profile && { profileOverride: options.profile }),
         });
 
         await withMonitor(true /* noServer */, async (monitor) => {
@@ -161,6 +164,7 @@ export function createProgram(abortController?: AbortController): Command {
             name: options.name,
             verbose: options.verbose,
             abortController,
+            ...(options.profile && { profile: options.profile }),
           });
 
           await consumeEvents(
@@ -392,6 +396,7 @@ export function createProgram(abortController?: AbortController): Command {
     .option('--no-monitor', 'Disable web monitor')
     .option('--no-plugins', 'Disable plugin loading')
     .option('--session-id <uuid>', 'Session ID injected by parent scheduler (skips child session:start emission)')
+    .option('--profile <name>', 'Override active profile for this build')
     .action(
       async (
         prdId: string,
@@ -401,6 +406,7 @@ export function createProgram(abortController?: AbortController): Command {
           monitor?: boolean;
           plugins?: boolean;
           sessionId?: string;
+          profile?: string;
         },
       ) => {
         process.title = `eforge-build:${prdId}`;
@@ -412,7 +418,11 @@ export function createProgram(abortController?: AbortController): Command {
           onClarification: createClarificationHandler(options.auto ?? false),
           onApproval: createApprovalHandler(options.auto ?? false),
           ...(configOverrides && { config: configOverrides }),
-        });
+          ...(options.profile && { profileOverride: options.profile }),
+        }).catch((err: unknown) => {
+          console.error(chalk.red(`Error: ${err instanceof Error ? err.message : String(err)}`));
+          process.exit(QueueExecExitCode.Failed);
+        }) as EforgeEngine;
 
         const { loadQueue } = await import('@eforge-build/engine/prd-queue');
         const prds = await loadQueue(engine.resolvedConfig.prdQueue.dir, process.cwd());

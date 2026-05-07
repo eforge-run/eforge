@@ -560,7 +560,9 @@ describe('Remaining 6 commands still forward to skills (plan-02-native-pi-ux)', 
   const skillCommandsEnd = source.indexOf('];', skillCommandsStart);
   const skillCommandsBlock = source.slice(skillCommandsStart, skillCommandsEnd);
 
-  for (const cmd of ['eforge:build', 'eforge:status', 'eforge:init', 'eforge:plan', 'eforge:restart', 'eforge:update']) {
+  // eforge:build is now a dedicated native command (plan-01-per-build-profile-override)
+  // and is no longer in the skillCommands array.
+  for (const cmd of ['eforge:status', 'eforge:init', 'eforge:plan', 'eforge:restart', 'eforge:update']) {
     it(`${cmd} remains in the skillCommands array`, () => {
       expect(skillCommandsBlock).toContain(`"${cmd}"`);
     });

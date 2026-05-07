@@ -7,6 +7,8 @@
 export interface EnqueueRequest {
   source: string;
   flags?: string[];
+  /** Override the active profile for this build (profile name, validated at enqueue time). */
+  profile?: string;
 }
 
 /** POST /api/auto-build */

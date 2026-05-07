@@ -80,6 +80,8 @@ export interface EforgeEngineOptions {
   onClarification?: (questions: ClarificationQuestion[]) => Promise<Record<string, string>>;
   /** Approval callback for build gates */
   onApproval?: (action: string, details: string) => Promise<boolean>;
+  /** Override the active profile for this engine instance. Takes precedence over marker-chain resolution. */
+  profileOverride?: string;
 }
 
 export interface QueueOptions {
@@ -152,9 +154,9 @@ export class EforgeEngine {
   /** Config warnings collected during loadConfig — emitted as config:warning events. */
   private readonly configWarnings: string[];
   /** Profile data collected during loadConfig — emitted as session:profile event. */
-  private readonly configProfile: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none'; scope: 'local' | 'project' | 'user' | null; config: unknown | null };
+  private readonly configProfile: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null };
 
-  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }) {
+  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }) {
     this.config = config;
     this.configWarnings = configWarnings;
     this.configProfile = configProfile ?? { name: null, source: 'none', scope: null, config: null };
@@ -176,7 +178,7 @@ export class EforgeEngine {
    */
   static async create(options: EforgeEngineOptions = {}): Promise<EforgeEngine> {
     const cwd = options.cwd ?? process.cwd();
-    const { config: loadedConfig, warnings: configWarnings, profile: configProfile } = await loadConfig(cwd);
+    const { config: loadedConfig, warnings: configWarnings, profile: configProfile } = await loadConfig(cwd, { profileOverride: options.profileOverride });
     let config = loadedConfig;
 
     if (options.config) {
@@ -424,6 +426,7 @@ export class EforgeEngine {
         queueDir: this.config.prdQueue.dir,
         cwd,
         depends_on: dependsOn,
+        ...(options.profile !== undefined && { profile: options.profile }),
       });
 
       // Commit the enqueued PRD
@@ -1039,6 +1042,7 @@ export class EforgeEngine {
     prd: import('./prd-queue.js').QueuedPrd,
     options: QueueOptions,
     prdSessionId: string,
+    pushEvent: (event: EforgeEvent) => void,
   ): Promise<'completed' | 'failed' | 'skipped'> {
     const cwd = this.cwd;
     const agentRuntimes = this.agentRuntimes; // captured for inline recovery
@@ -1048,11 +1052,51 @@ export class EforgeEngine {
     const abortController = options.abortController;
 
     return new Promise((resolvePromise) => {
-      const args = ['queue', 'exec', prdId];
-      if (options.auto) args.push('--auto');
-      if (options.verbose) args.push('--verbose');
-      args.push('--no-monitor');
-      args.push('--session-id', prdSessionId);
+      // Pre-flight: when the PRD has a profile override in its frontmatter,
+      // validate it before spawning the worker. On miss, hard-fail the PRD.
+      const preflightAndSpawn = async (): Promise<void> => {
+        if (prd.frontmatter.profile) {
+          const overrideName = prd.frontmatter.profile;
+          const { getConfigDir, getConventionalConfigDir, loadProfile: loadProfileFn } = await import('./config.js');
+          const discoveredConfigDir = await getConfigDir(cwd);
+          const configDir = discoveredConfigDir ?? getConventionalConfigDir(cwd);
+          const profileResult = await loadProfileFn(configDir, overrideName, cwd);
+          if (!profileResult) {
+            // Profile not found — fail the PRD without spawning a worker.
+            const errMessage = `Profile override '${overrideName}' not found in any scope (searched: project-local <.eforge/profiles/>, project-team <eforge/profiles/>, user <~/.config/eforge/profiles/>)`;
+            pushEvent({
+              type: 'plan:status:change',
+              planId: prdId,
+              status: 'failed',
+            } as EforgeEvent);
+            pushEvent({
+              type: 'plan:error:set',
+              planId: prdId,
+              error: errMessage,
+            } as EforgeEvent);
+            try {
+              await releasePrd(prdId, cwd);
+            } catch { /* best-effort */ }
+            try {
+              await movePrdToSubdir(filePath, 'failed', cwd);
+            } catch { /* best-effort */ }
+            resolvePromise('failed');
+            return;
+          }
+        }
+
+        const args = ['queue', 'exec', prdId];
+        if (options.auto) args.push('--auto');
+        if (options.verbose) args.push('--verbose');
+        args.push('--no-monitor');
+        args.push('--session-id', prdSessionId);
+        if (prd.frontmatter.profile) {
+          args.push('--profile', prd.frontmatter.profile);
+        }
+        doSpawn(args);
+      };
+
+      const doSpawn = (args: string[]): void => {
 
       // Use the current Node binary + the CLI entrypoint so the child is
       // guaranteed to be the same build as the parent. Spawning bare `eforge`
@@ -1234,6 +1278,11 @@ export class EforgeEngine {
       child.on('error', () => {
         void finalize(QueueExecExitCode.Failed, null);
       });
+      };
+
+      void preflightAndSpawn().catch(() => {
+        resolvePromise('failed');
+      });
     });
   }
 
@@ -1380,7 +1429,7 @@ export class EforgeEngine {
             await semaphore.acquire();
             acquired = true;
 
-            status = await this.spawnPrdChild(prd, options, prdSessionId);
+            status = await this.spawnPrdChild(prd, options, prdSessionId, (event) => eventQueue.push(event));
 
             eventQueue.push({
               timestamp: new Date().toISOString(),
@@ -1539,7 +1588,7 @@ export class EforgeEngine {
       parallelism: this.config.maxConcurrentBuilds,
       abortController,
       eventQueue,
-      spawnPrdChild: (prd, opts, sessionId) => this.spawnPrdChild(prd, opts, sessionId),
+      spawnPrdChild: (prd, opts, sessionId) => this.spawnPrdChild(prd, opts, sessionId, (event) => eventQueue.push(event)),
       options,
       initialPrds: orderedPrds,
     });

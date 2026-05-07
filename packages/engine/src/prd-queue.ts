@@ -30,6 +30,7 @@ const prdFrontmatterSchema = z.object({
   priority: z.number().int().optional(),
   depends_on: z.array(z.string()).optional(),
   skip_reason: z.string().optional(),
+  profile: z.string().optional(),
 });
 
 export type PrdFrontmatter = z.output<typeof prdFrontmatterSchema>;
@@ -553,6 +554,8 @@ export interface EnqueuePrdOptions {
   intoWaiting?: boolean;
   /** Commands to run after the build merges (forwarded from playbook frontmatter) */
   postMerge?: string[];
+  /** Override profile name to persist in frontmatter for per-build profile binding. */
+  profile?: string;
 }
 
 export interface EnqueuePrdResult {
@@ -588,7 +591,7 @@ function slugify(title: string): string {
  * - Optional `intoWaiting` flag to write to the waiting/ subdirectory
  */
 export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrdResult> {
-  const { body, title, queueDir, cwd, priority, depends_on, intoWaiting, postMerge } = options;
+  const { body, title, queueDir, cwd, priority, depends_on, intoWaiting, postMerge, profile } = options;
 
   // Use waiting/ subdirectory when the PRD has unsatisfied upstream deps
   const targetSubdir = intoWaiting ? 'waiting' : undefined;
@@ -640,6 +643,9 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
   }
   if (postMerge !== undefined && postMerge.length > 0) {
     fmLines.push(`postMerge:\n${postMerge.map((cmd) => `  - ${cmd}`).join('\n')}`);
+  }
+  if (profile !== undefined) {
+    fmLines.push(`profile: ${profile}`);
   }
 
   const fileContent = `---\n${fmLines.join('\n')}\n---\n\n${body}\n`;
