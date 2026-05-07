@@ -132,6 +132,19 @@ export const handlePlanBuildReviewPerspectiveError: EventHandler<'plan:build:rev
   };
 };
 
+export const handlePlanBuildReviewPerspectiveComplete: EventHandler<'plan:build:review:parallel:perspective:complete'> = (event, state) => {
+  const { planId, perspective, issues } = event;
+  return {
+    reviewIssuesByPerspective: {
+      ...state.reviewIssuesByPerspective,
+      [planId]: {
+        ...(state.reviewIssuesByPerspective[planId] ?? {}),
+        [perspective]: issues,
+      },
+    },
+  };
+};
+
 // ---------------------------------------------------------------------------
 // Merge
 // ---------------------------------------------------------------------------

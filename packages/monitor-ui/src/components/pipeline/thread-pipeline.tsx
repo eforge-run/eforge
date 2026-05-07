@@ -20,9 +20,10 @@ interface ThreadPipelineProps {
   planArtifacts?: Array<{ id: string; name: string; body: string }>;
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
+  reviewIssuesByPerspective?: Record<string, Record<string, ReviewIssue[]>>;
 }
 
-function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors }: ThreadPipelineProps) {
+function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
   const entries = Object.entries(planStatuses);
 
@@ -189,6 +190,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 dependsOn={dependsByPlan.get(planId)}
                 depth={depthMap.get(planId) ?? 0}
                 perspectiveErrors={perspectiveErrors?.[planId]}
+                issuesByPerspective={reviewIssuesByPerspective?.[planId]}
               />
             ))}
           </div>

@@ -34,6 +34,7 @@ import {
   handlePlanBuildFailed,
   handlePlanBuildFilesChanged,
   handlePlanBuildReviewPerspectiveError,
+  handlePlanBuildReviewPerspectiveComplete,
   handlePlanMergeComplete,
 } from './handle-plan-build';
 import {
@@ -119,6 +120,7 @@ export const handlerRegistry = {
   'plan:build:failed': handlePlanBuildFailed,
   'plan:build:files_changed': handlePlanBuildFilesChanged,
   'plan:build:review:parallel:perspective:error': handlePlanBuildReviewPerspectiveError,
+  'plan:build:review:parallel:perspective:complete': handlePlanBuildReviewPerspectiveComplete,
   'plan:merge:complete': handlePlanMergeComplete,
 
   // Agent lifecycle
@@ -199,7 +201,6 @@ export const IGNORED_EVENT_TYPES = [
   'plan:build:implement:continuation',
   'plan:build:review:parallel:start',
   'plan:build:review:parallel:perspective:start',
-  'plan:build:review:parallel:perspective:complete',
   'plan:build:review:fix:start',
   'plan:build:review:fix:complete',
   'plan:build:evaluate:continuation',

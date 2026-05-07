@@ -99,6 +99,7 @@ export interface RunState {
   autoBuildPausedReason: string | null;
   autoBuildPausedAt: string | null;
   perspectiveErrors: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
+  reviewIssuesByPerspective: Record<string, Record<string, ReviewIssue[]>>;
 }
 
 export const initialRunState: RunState = {
@@ -129,6 +130,7 @@ export const initialRunState: RunState = {
   autoBuildPausedReason: null,
   autoBuildPausedAt: null,
   perspectiveErrors: {},
+  reviewIssuesByPerspective: {},
 };
 
 export type RunAction =
@@ -139,7 +141,7 @@ export type RunAction =
 export function eforgeReducer(state: RunState, action: RunAction): RunState {
   switch (action.type) {
     case 'RESET':
-      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {} };
+      return { ...initialRunState, fileChanges: new Map(), reviewIssues: {}, agentThreads: [], expeditionModules: [], moduleStatuses: {}, earlyOrchestration: null, profile: null, mergeCommits: {}, liveAgentUsage: {}, enqueueStatus: null as 'running' | 'complete' | 'failed' | null, enqueueTitle: null, enqueueSource: null, validationCommands: [], autoBuildPausedReason: null, autoBuildPausedAt: null, perspectiveErrors: {}, reviewIssuesByPerspective: {} };
 
     case 'BATCH_LOAD': {
       // Replay all events through the handler registry, accumulating state.

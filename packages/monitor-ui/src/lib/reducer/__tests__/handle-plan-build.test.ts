@@ -18,6 +18,7 @@ import {
   handlePlanBuildFailed,
   handlePlanBuildFilesChanged,
   handlePlanBuildReviewPerspectiveError,
+  handlePlanBuildReviewPerspectiveComplete,
   handlePlanMergeComplete,
 } from '../handle-plan-build';
 import { initialRunState } from '../../reducer';
@@ -267,5 +268,52 @@ describe('handle-plan-build — stage advancement rules', () => {
     const delta = handlePlanMergeComplete(event, state);
     expect(delta?.planStatuses).toBeUndefined();
     expect(delta?.mergeCommits?.[PLAN_ID]).toBe('sha1');
+  });
+
+  // ---------------------------------------------------------------------------
+  // plan:build:review:parallel:perspective:complete — reviewIssuesByPerspective
+  // ---------------------------------------------------------------------------
+  it("'plan:build:review:parallel:perspective:complete' stores issues keyed by (planId, perspective)", () => {
+    const PLAN2 = 'p2';
+
+    const eventA = makeEvent('plan:build:review:parallel:perspective:complete', {
+      planId: PLAN_ID,
+      perspective: 'code',
+      issues: [{ severity: 'critical', category: 'bug', file: 'a.ts', description: 'critical issue' }],
+    });
+    const eventB = makeEvent('plan:build:review:parallel:perspective:complete', {
+      planId: PLAN_ID,
+      perspective: 'security',
+      issues: [{ severity: 'warning', category: 'security', file: 'b.ts', description: 'warning issue' }],
+    });
+    const eventC = makeEvent('plan:build:review:parallel:perspective:complete', {
+      planId: PLAN2,
+      perspective: 'code',
+      issues: [{ severity: 'suggestion', category: 'style', file: 'c.ts', description: 'suggestion issue' }],
+    });
+
+    const deltaA = handlePlanBuildReviewPerspectiveComplete(eventA, initialRunState);
+    const stateA = { ...initialRunState, ...deltaA };
+
+    const deltaB = handlePlanBuildReviewPerspectiveComplete(eventB, stateA);
+    const stateB = { ...stateA, ...deltaB };
+
+    const deltaC = handlePlanBuildReviewPerspectiveComplete(eventC, stateB);
+    const stateC = { ...stateB, ...deltaC };
+
+    // (a) p1.code is populated
+    expect(stateC.reviewIssuesByPerspective[PLAN_ID]?.['code']).toHaveLength(1);
+    expect(stateC.reviewIssuesByPerspective[PLAN_ID]?.['code']?.[0]).toMatchObject({ severity: 'critical', description: 'critical issue' });
+
+    // (b) p1.security is populated
+    expect(stateC.reviewIssuesByPerspective[PLAN_ID]?.['security']).toHaveLength(1);
+    expect(stateC.reviewIssuesByPerspective[PLAN_ID]?.['security']?.[0]).toMatchObject({ severity: 'warning', description: 'warning issue' });
+
+    // (c) p2.code is populated
+    expect(stateC.reviewIssuesByPerspective[PLAN2]?.['code']).toHaveLength(1);
+    expect(stateC.reviewIssuesByPerspective[PLAN2]?.['code']?.[0]).toMatchObject({ severity: 'suggestion', description: 'suggestion issue' });
+
+    // p1.code survives after p1.security write
+    expect(stateC.reviewIssuesByPerspective[PLAN_ID]?.['code']).toHaveLength(1);
   });
 });

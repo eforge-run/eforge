@@ -42,6 +42,7 @@ interface PlanRowProps {
   compileCompletedStages?: Set<string>;
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Array<{ perspective: string; error: string; timestamp: string }>;
+  issuesByPerspective?: Record<string, ReviewIssue[]>;
 }
 
 export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -76,7 +77,7 @@ export function DepthBars({ depth }: { depth: number }) {
   );
 }
 
-function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors }: PlanRowProps) {
+function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -318,9 +319,13 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                     {thread.costUsd != null && thread.costUsd > 0 && (
                       <div className="opacity-70">${thread.costUsd.toFixed(4)}</div>
                     )}
-                    {REVIEW_AGENTS.has(thread.agent) && issues && issues.length > 0 && (
-                      <IssuesSummary issues={issues} />
-                    )}
+                    {REVIEW_AGENTS.has(thread.agent) && (() => {
+                      if (thread.perspective) {
+                        const resolvedIssues = issuesByPerspective?.[thread.perspective] ?? [];
+                        return resolvedIssues.length > 0 ? <IssuesSummary issues={resolvedIssues} /> : null;
+                      }
+                      return issues && issues.length > 0 ? <IssuesSummary issues={issues} /> : null;
+                    })()}
                   </TooltipContent>
                 </Tooltip>
               </div>

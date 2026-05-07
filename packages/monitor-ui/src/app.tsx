@@ -262,7 +262,7 @@ function AppContent() {
             ) : (
               <>
                 <SummaryCards {...stats} isComplete={runState.resultStatus === 'completed'} isFailed={runState.resultStatus === 'failed'} profile={runState.profile} />
-                <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} events={runState.events} orchestration={effectiveOrchestration} prdSource={prdSource} planArtifacts={planArtifacts} validationCommands={runState.validationCommands} perspectiveErrors={runState.perspectiveErrors} />
+                <ThreadPipeline agentThreads={runState.agentThreads} startTime={runState.startTime} endTime={runState.endTime} planStatuses={runState.planStatuses} reviewIssues={runState.reviewIssues} events={runState.events} orchestration={effectiveOrchestration} prdSource={prdSource} planArtifacts={planArtifacts} validationCommands={runState.validationCommands} perspectiveErrors={runState.perspectiveErrors} reviewIssuesByPerspective={runState.reviewIssuesByPerspective} />
                 <FailureBanner failures={buildFailures} phaseSummary={phaseSummary} />
               </>
             )}
