@@ -8,7 +8,7 @@ import { execFile, spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
-import { readFile, readdir, mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { readFile, readdir, mkdir, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
@@ -51,7 +51,6 @@ import { Orchestrator, type ValidationFixer, type PrdValidator, type GapCloser }
 import type { MergeResolver } from './worktree-ops.js';
 import { computeWorktreeBase, createMergeWorktree } from './worktree-ops.js';
 import { deriveNameFromSource, parseOrchestrationConfig, parsePlanFile, validatePlanSet, validatePlanSetName } from './plan.js';
-import { loadState, saveState as saveEforgeState } from './state.js';
 import { runCompilePipeline, runBuildPipeline, createToolTracker, resolveAgentConfig, type PipelineContext, type BuildStageContext } from './pipeline.js';
 import { forgeCommit, retryOnLock } from './git.js';
 import { ModelTracker, composeCommitMessage } from './model-tracker.js';
@@ -325,27 +324,6 @@ export class EforgeEngine {
         }
       }
 
-      // Persist merge worktree path to state for the build phase to pick up.
-      // Save a preliminary state with just the merge worktree path — the orchestrator's
-      // initializeState() will create the full state with plans during build.
-      const preState = loadState(cwd);
-      if (preState) {
-        preState.mergeWorktreePath = mergeWorktreePath;
-        saveEforgeState(cwd, preState);
-      } else {
-        // No existing state — create a minimal one to carry mergeWorktreePath
-        saveEforgeState(cwd, {
-          setName: planSetName,
-          status: 'running',
-          startedAt: new Date().toISOString(),
-          baseBranch,
-          featureBranch,
-          worktreeBase,
-          mergeWorktreePath,
-          plans: {},
-          completedPlans: [],
-        });
-      }
     } catch (err) {
       status = 'failed';
       summary = (err as Error).message;
@@ -411,14 +389,9 @@ export class EforgeEngine {
             scopeSummary: p.content.slice(0, 500),
           }));
 
-        const state = loadState(cwd);
+        // In CLI-only mode, running builds are not tracked via state.json.
+        // Daemon-mode dependency detection consults monitor data separately.
         const runningBuilds: RunningBuildSummary[] = [];
-        if (state && state.status === 'running') {
-          runningBuilds.push({
-            planSetName: state.setName,
-            planTitles: Object.keys(state.plans),
-          });
-        }
 
         if (queueItems.length > 0 || runningBuilds.length > 0) {
           const depDetectorConfig = resolveAgentConfig('dependency-detector', this.config);
@@ -511,13 +484,11 @@ export class EforgeEngine {
 
       tracing.setInput({ planSet });
       // Validate plan set
-      // Load mergeWorktreePath from state (persisted during compile)
-      const existingState = loadState(cwd);
-      const mergeWorktreePath = existingState?.mergeWorktreePath;
+      // Compute mergeWorktreePath deterministically — the same path compile() created.
+      const mergeWorktreePath = join(computeWorktreeBase(cwd, planSet), '__merge__');
 
       // Plan files live in the merge worktree (committed there during compile).
-      // Fall back to repoRoot for backwards compatibility with pre-worktree builds.
-      const planBaseCwd = mergeWorktreePath ?? cwd;
+      const planBaseCwd = mergeWorktreePath;
       const configPath = resolve(planBaseCwd, this.config.plan.outputDir, planSet, 'orchestration.yaml');
       if (!existsSync(configPath)) {
         status = 'failed';
@@ -791,7 +762,6 @@ export class EforgeEngine {
       const signal = abortController?.signal;
       const shouldCleanup = options.cleanup ?? this.config.build.cleanupPlanFiles;
       const orchestrator = new Orchestrator({
-        stateDir: cwd,
         repoRoot: cwd,
         planRunner,
         signal,
@@ -848,12 +818,6 @@ export class EforgeEngine {
       status = 'failed';
       summary = (err as Error).message;
     } finally {
-      // Clean up state file on success. On failure, defer cleanup to the queue
-      // parent's finalize handler so recovery can read state.json before removal.
-      if (status !== 'failed') {
-        try { await rm(resolve(cwd, '.eforge', 'state.json')); } catch {}
-      }
-
       tracing?.setOutput({ status, summary });
       yield {
         type: 'phase:end',
@@ -1154,10 +1118,8 @@ export class EforgeEngine {
             try { await releasePrd(prdId, cwd); } catch { /* best-effort */ }
           }
           if (moveTo === 'failed') {
-            // Run recovery inline against the still-present state.json, then
-            // commit the PRD move + both sidecar files atomically.
-            const state = loadState(cwd);
-            const setName = state?.setName ?? prdId;
+            // Run recovery inline, synthesizing from monitor DB and git.
+            const setName = prdId;
             const dbPath = resolve(cwd, '.eforge', 'monitor.db');
 
             // Build failure summary (tolerates missing state.json)
@@ -1248,9 +1210,6 @@ export class EforgeEngine {
               // Fallback: plain move without sidecars
               try { await movePrdToSubdir(filePath, 'failed', cwd); } catch { /* best-effort */ }
             }
-
-            // Best-effort cleanup state.json after the failure commit lands
-            try { await rm(resolve(cwd, '.eforge', 'state.json')); } catch { /* ignore ENOENT */ }
 
           } else if (moveTo) {
             try {
@@ -1951,28 +1910,14 @@ export class EforgeEngine {
   }
 
   /**
-   * Status: synchronous state file read.
+   * Status: returns idle shape. Active build state lives in memory only;
+   * daemon-mode running-build signal comes from the monitor REST API.
    */
   status(): EforgeStatus {
-    const state = loadState(this.cwd);
-    if (!state) {
-      return {
-        running: false,
-        plans: {},
-        completedPlans: [],
-      };
-    }
-
-    const plans: Record<string, EforgeStatus['plans'][string]> = {};
-    for (const [id, planState] of Object.entries(state.plans)) {
-      plans[id] = planState.status;
-    }
-
     return {
-      running: state.status === 'running',
-      setName: state.setName,
-      plans,
-      completedPlans: state.completedPlans,
+      running: false,
+      plans: {},
+      completedPlans: [],
     };
   }
 }

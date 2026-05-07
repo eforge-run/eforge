@@ -10,7 +10,6 @@ import { promisify } from 'node:util';
 const exec = promisify(execFile);
 
 import type { EforgeEvent, OrchestrationConfig, EforgeState } from '../events.js';
-import { saveState } from '../state.js';
 import { transitionPlan } from './plan-lifecycle.js';
 import { WorktreeManager } from '../worktree-manager.js';
 import { Semaphore, AsyncEventQueue } from '../concurrency.js';
@@ -28,7 +27,6 @@ import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
 export interface PhaseContext {
   state: EforgeState;
   config: OrchestrationConfig;
-  stateDir: string;
   repoRoot: string;
   planRunner: PlanRunner;
   parallelism: number;
@@ -52,8 +50,6 @@ export interface PhaseContext {
   recentlyMergedIds: string[];
   /** Whether the feature branch was successfully merged to baseBranch */
   featureBranchMerged: boolean;
-  /** Whether this execution is resuming from a prior interrupted run */
-  resumed: boolean;
   /** Accumulates model IDs from agent:start events across all phases. Used for the final merge commit's Models-Used: trailer. */
   modelTracker: ModelTracker;
   /** Whether to run cleanup on the feature branch before the final merge. */
@@ -199,17 +195,8 @@ export function computeMaxConcurrency(
  * Yields schedule, build, and merge events.
  */
 export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
-  const { state, config, stateDir, planRunner, signal } = ctx;
+  const { state, config, planRunner, signal } = ctx;
   const planMap = new Map(config.plans.map((p) => [p.id, p]));
-
-  // On resume, reconcile persisted state with actual filesystem/git state
-  if (ctx.resumed) {
-    yield { timestamp: new Date().toISOString(), type: 'reconciliation:start' };
-    const { report, events: reconcileEvents } = await ctx.worktreeManager.reconcile(state);
-    saveState(stateDir, state);
-    yield { timestamp: new Date().toISOString(), type: 'reconciliation:complete', report };
-    for (const e of reconcileEvents) yield e;
-  }
 
   // Determine if plan worktrees are needed based on dependency graph concurrency
   const maxConcurrency = computeMaxConcurrency(config.plans);
@@ -262,7 +249,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
 
         state.plans[planId].worktreePath = worktreePath;
         for (const e of transitionPlan(state, planId, 'running')) eventQueue.push(e);
-        saveState(stateDir, state);
 
         // Delegate to injected plan runner
         let buildFailedError: string | undefined;
@@ -280,25 +266,20 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
 
         if (buildFailedError !== undefined) {
           for (const e of transitionPlan(state, planId, 'failed', { error: buildFailedError })) eventQueue.push(e);
-          saveState(stateDir, state);
 
           const failureEvents = propagateFailure(state, planId, config.plans);
-          saveState(stateDir, state);
           for (const e of failureEvents) eventQueue.push(e);
         } else {
           for (const e of transitionPlan(state, planId, 'completed')) eventQueue.push(e);
-          saveState(stateDir, state);
         }
       } catch (err) {
         // Handle all failures (worktree creation, plan runner, etc.)
         if (state.plans[planId].status !== 'failed') {
           for (const e of transitionPlan(state, planId, 'failed', { error: (err as Error).message })) eventQueue.push(e);
-          saveState(stateDir, state);
         }
 
         // Propagate failure to transitive dependents
         const failureEvents = propagateFailure(state, planId, config.plans);
-        saveState(stateDir, state);
         for (const e of failureEvents) eventQueue.push(e);
       } finally {
         semaphore.release();
@@ -350,7 +331,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
   try {
     for await (const event of eventQueue) {
       if (signal?.aborted) {
-        saveState(stateDir, state);
         break;
       }
 
@@ -383,11 +363,9 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
         if (skipReason) {
           ctx.failedMerges.add(planId);
           yield* transitionPlan(state, planId, 'failed', { error: skipReason });
-          saveState(stateDir, state);
           yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId, error: skipReason };
 
           const failureEvents = propagateFailure(state, planId, config.plans);
-          saveState(stateDir, state);
           for (const e of failureEvents) yield e;
           continue;
         }
@@ -408,13 +386,11 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
           yield* transitionPlan(state, planId, 'merged');
           planState.merged = true;
           ctx.recentlyMergedIds.push(planId);
-          saveState(stateDir, state);
 
           yield { timestamp: new Date().toISOString(), type: 'plan:merge:complete', planId, commitSha };
         } catch (err) {
           ctx.failedMerges.add(planId);
           yield* transitionPlan(state, planId, 'failed', { error: `Merge failed: ${(err as Error).message}` });
-          saveState(stateDir, state);
 
           yield {
             timestamp: new Date().toISOString(),
@@ -425,7 +401,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
 
           // Propagate to transitive dependents
           const failureEvents = propagateFailure(state, planId, config.plans);
-          saveState(stateDir, state);
           for (const e of failureEvents) yield e;
         }
       }
@@ -455,7 +430,6 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
   if (anyTerminalFailure && (state.status as string) !== 'failed') {
     state.status = 'failed';
     state.completedAt = new Date().toISOString();
-    saveState(stateDir, state);
   }
 }
 
@@ -465,7 +439,7 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
  * if validation fails after all retries.
  */
 export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
-  const { state, stateDir, signal, mergeWorktreePath } = ctx;
+  const { state, signal, mergeWorktreePath } = ctx;
   const allMerged = Object.values(state.plans).every((p) => p.status === 'merged');
   const { validateCommands, validationFixer } = ctx;
   const maxRetries = ctx.maxValidationRetries;
@@ -559,7 +533,6 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
     yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch: ctx.featureBranch, baseBranch: ctx.config.baseBranch, reason: 'Validation failed' };
     state.status = 'failed';
     state.completedAt = new Date().toISOString();
-    saveState(stateDir, state);
   }
 }
 
@@ -569,7 +542,7 @@ export async function* validate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
  * Validator errors fail the build — a crashed validator cannot certify passing.
  */
 export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
-  const { state, stateDir, prdValidator } = ctx;
+  const { state, prdValidator } = ctx;
 
   if (!prdValidator) return;
   if ((state.status as string) === 'failed') return;
@@ -588,7 +561,6 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
           yield { timestamp: new Date().toISOString(), type: 'planning:progress', message: `PRD completion ${event.completionPercent}% is below viability threshold (${ctx.minCompletionPercent}%) - skipping gap closing` };
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
-          saveState(stateDir, state);
         } else if (ctx.gapCloser && !ctx.gapClosePerformed) {
           try {
             for await (const gapEvent of ctx.gapCloser(ctx.mergeWorktreePath, event.gaps, event.completionPercent)) {
@@ -601,12 +573,10 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
             // Gap closer errors are non-fatal — fall through to fail
             state.status = 'failed';
             state.completedAt = new Date().toISOString();
-            saveState(stateDir, state);
           }
         } else {
           state.status = 'failed';
           state.completedAt = new Date().toISOString();
-          saveState(stateDir, state);
         }
       }
     }
@@ -630,7 +600,6 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
     }
     state.status = 'failed';
     state.completedAt = new Date().toISOString();
-    saveState(stateDir, state);
   }
 }
 
@@ -639,7 +608,7 @@ export async function* prdValidate(ctx: PhaseContext): AsyncGenerator<EforgeEven
  * Yields merge:finalize events.
  */
 export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> {
-  const { state, config, stateDir, signal, featureBranch } = ctx;
+  const { state, config, signal, featureBranch } = ctx;
   const allMerged = Object.values(state.plans).every((p) => p.status === 'merged');
 
   if (allMerged && !signal?.aborted) {
@@ -699,7 +668,6 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
       yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason: `Final merge failed: ${(err as Error).message}` };
       state.status = 'failed';
       state.completedAt = new Date().toISOString();
-      saveState(stateDir, state);
       return;
     }
   } else if (!allMerged) {
@@ -713,5 +681,4 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
   // Determine final status — only completed if feature branch was merged to baseBranch
   state.status = ctx.featureBranchMerged ? 'completed' : 'failed';
   state.completedAt = new Date().toISOString();
-  saveState(stateDir, state);
 }

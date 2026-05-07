@@ -1,11 +1,12 @@
 import { describe, it, expect } from 'vitest';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { propagateFailure, shouldSkipMerge, computeMaxConcurrency, executePlans, finalize } from '@eforge-build/engine/orchestrator/phases';
 import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager } from '@eforge-build/engine/worktree-manager';
-import { resumeState } from '@eforge-build/engine/orchestrator/plan-lifecycle';
-import { initializeState } from '@eforge-build/engine/orchestrator';
+import { initializeState, Orchestrator } from '@eforge-build/engine/orchestrator';
 import type { PlanRunner } from '@eforge-build/engine/orchestrator';
-import { saveState } from '@eforge-build/engine/state';
 import type { EforgeState, EforgeEvent, OrchestrationConfig, PlanState } from '@eforge-build/engine/events';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
@@ -195,87 +196,6 @@ describe('propagateFailure', () => {
   });
 });
 
-describe('resumeState', () => {
-  it('resets running plans to pending', () => {
-    const state = makeState({
-      a: { status: 'running' },
-      b: { status: 'pending' },
-    });
-
-    resumeState(state);
-
-    expect(state.plans['a'].status).toBe('pending');
-    expect(state.plans['b'].status).toBe('pending');
-  });
-
-  it('leaves completed plans untouched', () => {
-    const state = makeState({
-      a: { status: 'completed' },
-    });
-
-    resumeState(state);
-
-    expect(state.plans['a'].status).toBe('completed');
-  });
-
-  it('leaves failed plans untouched', () => {
-    const state = makeState({
-      a: { status: 'failed' },
-    });
-
-    resumeState(state);
-
-    expect(state.plans['a'].status).toBe('failed');
-  });
-
-  it('unblocks plan when all deps are resolved', () => {
-    const state = makeState({
-      a: { status: 'completed' },
-      b: { status: 'blocked', dependsOn: ['a'] },
-    });
-
-    resumeState(state);
-
-    expect(state.plans['b'].status).toBe('pending');
-  });
-
-  it('keeps plan blocked when deps are not resolved', () => {
-    const state = makeState({
-      a: { status: 'failed' },
-      b: { status: 'blocked', dependsOn: ['a'] },
-    });
-
-    resumeState(state);
-
-    expect(state.plans['b'].status).toBe('blocked');
-  });
-
-  it('keeps plan blocked with partial dep resolution', () => {
-    const state = makeState({
-      a: { status: 'merged', merged: true },
-      b: { status: 'failed' },
-      c: { status: 'blocked', dependsOn: ['a', 'b'] },
-    });
-
-    resumeState(state);
-
-    expect(state.plans['c'].status).toBe('blocked');
-  });
-
-  it('leaves completed-but-unmerged plans as completed for re-merge on resume', () => {
-    const state = makeState({
-      a: { status: 'merged', merged: true },
-      b: { status: 'completed', dependsOn: [] },
-      c: { status: 'running', dependsOn: ['a', 'b'] },
-    });
-
-    resumeState(state);
-
-    expect(state.plans['b'].status).toBe('completed');
-    expect(state.plans['c'].status).toBe('pending');
-  });
-});
-
 describe('shouldSkipMerge', () => {
   it('returns null when no dependencies failed', () => {
     const plans = makePlans([{ id: 'a' }, { id: 'b', dependsOn: ['a'] }]);
@@ -386,7 +306,6 @@ describe('executePlans - build:failed handling', () => {
   const makeTempDir = useTempDir();
 
   it('marks plan as failed and blocks dependents when build:failed is yielded', async () => {
-    const stateDir = makeTempDir();
     const config = makeConfig({
       plans: [
         { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
@@ -394,7 +313,7 @@ describe('executePlans - build:failed handling', () => {
       ],
     });
 
-    const state = initializeState(stateDir, config, '/tmp/repo').state;
+    const state = initializeState(config, '/tmp/repo').state;
 
     // Stub PlanRunner: plan-a yields build:failed, plan-b yields nothing
     const planRunner: PlanRunner = async function* (planId) {
@@ -414,7 +333,6 @@ describe('executePlans - build:failed handling', () => {
     const ctx: PhaseContext = {
       state,
       config,
-      stateDir,
       repoRoot: '/tmp/repo',
       planRunner,
       parallelism: 1,
@@ -429,7 +347,6 @@ describe('executePlans - build:failed handling', () => {
       failedMerges: new Set(),
       recentlyMergedIds: [],
       featureBranchMerged: false,
-      resumed: false,
       modelTracker: new ModelTracker(),
     };
 
@@ -458,14 +375,13 @@ describe('executePlans - build:failed handling', () => {
     // Regression: after the throw->stream switch for build:failed, executePlans
     // must itself mark state.status='failed' so prdValidate/validate guards in
     // orchestrator.ts short-circuit before finalize runs.
-    const stateDir = makeTempDir();
     const config = makeConfig({
       plans: [
         { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
       ],
     });
 
-    const state = initializeState(stateDir, config, '/tmp/repo').state;
+    const state = initializeState(config, '/tmp/repo').state;
 
     const planRunner: PlanRunner = async function* () {
       yield { type: 'plan:build:failed', planId: 'plan-a', error: 'max turns', timestamp: new Date().toISOString() } as EforgeEvent;
@@ -481,7 +397,6 @@ describe('executePlans - build:failed handling', () => {
     const ctx: PhaseContext = {
       state,
       config,
-      stateDir,
       repoRoot: '/tmp/repo',
       planRunner,
       parallelism: 1,
@@ -496,7 +411,6 @@ describe('executePlans - build:failed handling', () => {
       failedMerges: new Set(),
       recentlyMergedIds: [],
       featureBranchMerged: false,
-      resumed: false,
       modelTracker: new ModelTracker(),
     };
 
@@ -539,12 +453,9 @@ function makeConfig(
 }
 
 describe('initializeState', () => {
-  const makeTempDir = useTempDir();
-
   it('creates fresh state when no existing state', () => {
-    const stateDir = makeTempDir();
     const config = makeConfig();
-    const { state } = initializeState(stateDir, config, '/tmp/repo');
+    const { state } = initializeState(config, '/tmp/repo');
 
     expect(state.status).toBe('running');
     expect(state.setName).toBe('test-set');
@@ -553,113 +464,25 @@ describe('initializeState', () => {
   });
 
   it('initializes featureBranch from config name', () => {
-    const stateDir = makeTempDir();
     const config = makeConfig({ name: 'my-feature' });
-    const { state } = initializeState(stateDir, config, '/tmp/repo');
+    const { state } = initializeState(config, '/tmp/repo');
 
     expect(state.featureBranch).toBe('eforge/my-feature');
   });
 
-  it('creates fresh state when existing is failed', () => {
-    const stateDir = makeTempDir();
+  it('always creates fresh state regardless of prior invocations', () => {
     const config = makeConfig();
 
-    // Seed a failed state
-    const failedState: EforgeState = {
-      setName: 'test-set',
-      status: 'failed',
-      startedAt: '2026-01-01T00:00:00Z',
-      baseBranch: 'main',
-      worktreeBase: '/old/worktrees',
-      plans: {
-        'plan-a': { status: 'failed', branch: 'feature/plan-a', dependsOn: [], merged: false, error: 'boom' },
-        'plan-b': { status: 'blocked', branch: 'feature/plan-b', dependsOn: ['plan-a'], merged: false },
-      },
-      completedPlans: [],
-    };
-    saveState(stateDir, failedState);
+    // First invocation
+    const { state: state1 } = initializeState(config, '/tmp/repo');
+    expect(state1.status).toBe('running');
 
-    const { state } = initializeState(stateDir, config, '/tmp/repo');
+    // Second invocation returns independent fresh state
+    const { state: state2 } = initializeState(config, '/tmp/repo');
+    expect(state2.status).toBe('running');
 
-    expect(state.status).toBe('running');
-    expect(state.plans['plan-a'].status).toBe('pending');
-    expect(state.plans['plan-b'].status).toBe('pending');
-  });
-
-  it('creates fresh state when existing is completed', () => {
-    const stateDir = makeTempDir();
-    const config = makeConfig();
-
-    // Seed a completed state
-    const completedState: EforgeState = {
-      setName: 'test-set',
-      status: 'completed',
-      startedAt: '2026-01-01T00:00:00Z',
-      completedAt: '2026-01-01T01:00:00Z',
-      baseBranch: 'main',
-      worktreeBase: '/old/worktrees',
-      plans: {
-        'plan-a': { status: 'merged', branch: 'feature/plan-a', dependsOn: [], merged: true },
-        'plan-b': { status: 'merged', branch: 'feature/plan-b', dependsOn: ['plan-a'], merged: true },
-      },
-      completedPlans: ['plan-a', 'plan-b'],
-    };
-    saveState(stateDir, completedState);
-
-    const { state } = initializeState(stateDir, config, '/tmp/repo');
-
-    expect(state.status).toBe('running');
-    expect(state.plans['plan-a'].status).toBe('pending');
-    expect(state.plans['plan-b'].status).toBe('pending');
-  });
-
-  it('resumes when existing state is resumable', () => {
-    const stateDir = makeTempDir();
-    const config = makeConfig();
-
-    // Seed a resumable state (running with incomplete plans)
-    const resumableState: EforgeState = {
-      setName: 'test-set',
-      status: 'running',
-      startedAt: '2026-01-01T00:00:00Z',
-      baseBranch: 'main',
-      worktreeBase: '/old/worktrees',
-      plans: {
-        'plan-a': { status: 'completed', branch: 'feature/plan-a', dependsOn: [], merged: false },
-        'plan-b': { status: 'pending', branch: 'feature/plan-b', dependsOn: ['plan-a'], merged: false },
-      },
-      completedPlans: ['plan-a'],
-    };
-    saveState(stateDir, resumableState);
-
-    const { state } = initializeState(stateDir, config, '/tmp/repo');
-
-    expect(state.status).toBe('running');
-    expect(state.plans['plan-a'].status).toBe('completed');
-    expect(state.plans['plan-b'].status).toBe('pending');
-  });
-
-  it('throws when persisted setName does not match config', () => {
-    const stateDir = makeTempDir();
-    const config = makeConfig({ name: 'new-set' });
-
-    // Seed state with different setName
-    const oldState: EforgeState = {
-      setName: 'old-set',
-      status: 'running',
-      startedAt: '2026-01-01T00:00:00Z',
-      baseBranch: 'main',
-      worktreeBase: '/old/worktrees',
-      plans: {
-        'plan-a': { status: 'completed', branch: 'feature/plan-a', dependsOn: [], merged: false },
-      },
-      completedPlans: ['plan-a'],
-    };
-    saveState(stateDir, oldState);
-
-    expect(() => initializeState(stateDir, config, '/tmp/repo')).toThrow(/old-set/);
-    expect(() => initializeState(stateDir, config, '/tmp/repo')).toThrow(/new-set/);
-    expect(() => initializeState(stateDir, config, '/tmp/repo')).toThrow(/\.eforge\/state\.json/);
+    // States are independent objects
+    expect(state1).not.toBe(state2);
   });
 });
 
@@ -667,14 +490,13 @@ describe('executePlans - ModelTracker recording', () => {
   const makeTempDir = useTempDir();
 
   it('records agent:start models from planRunner stream into ctx.modelTracker', async () => {
-    const stateDir = makeTempDir();
     const config = makeConfig({
       plans: [
         { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
       ],
     });
 
-    const state = initializeState(stateDir, config, '/tmp/repo').state;
+    const state = initializeState(config, '/tmp/repo').state;
 
     // PlanRunner that emits three agent:start events: A, B, A (A is duplicated)
     const planRunner: PlanRunner = async function* () {
@@ -694,7 +516,6 @@ describe('executePlans - ModelTracker recording', () => {
     const ctx: PhaseContext = {
       state,
       config,
-      stateDir,
       repoRoot: '/tmp/repo',
       planRunner,
       parallelism: 1,
@@ -709,7 +530,6 @@ describe('executePlans - ModelTracker recording', () => {
       failedMerges: new Set(),
       recentlyMergedIds: [],
       featureBranchMerged: false,
-      resumed: false,
       modelTracker,
     };
 
@@ -723,7 +543,6 @@ describe('executePlans - ModelTracker recording', () => {
   });
 
   it('isolates per-plan trackers across multiple plans', async () => {
-    const stateDir = makeTempDir();
     const config = makeConfig({
       plans: [
         { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
@@ -731,7 +550,7 @@ describe('executePlans - ModelTracker recording', () => {
       ],
     });
 
-    const state = initializeState(stateDir, config, '/tmp/repo').state;
+    const state = initializeState(config, '/tmp/repo').state;
 
     // plan-a uses model X, plan-b uses model Y — each plan should have its own tracker
     const mergedPlanTrackers: Record<string, ModelTracker | undefined> = {};
@@ -755,7 +574,6 @@ describe('executePlans - ModelTracker recording', () => {
     const ctx: PhaseContext = {
       state,
       config,
-      stateDir,
       repoRoot: '/tmp/repo',
       planRunner,
       parallelism: 1,
@@ -770,7 +588,6 @@ describe('executePlans - ModelTracker recording', () => {
       failedMerges: new Set(),
       recentlyMergedIds: [],
       featureBranchMerged: false,
-      resumed: false,
       modelTracker,
     };
 
@@ -794,3 +611,88 @@ describe('executePlans - ModelTracker recording', () => {
   });
 });
 
+describe('initializeState — concurrent execution isolation', () => {
+  const makeTempDir = useTempDir();
+
+  it('two concurrent plan sets produce independent in-memory state without throwing', async () => {
+    const repoRoot = makeTempDir();
+
+    const configA = makeConfig({
+      name: 'set-a',
+      plans: [
+        { id: 'plan-a1', name: 'Plan A1', dependsOn: [], branch: 'feature/plan-a1', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+    const configB = makeConfig({
+      name: 'set-b',
+      plans: [
+        { id: 'plan-b1', name: 'Plan B1', dependsOn: [], branch: 'feature/plan-b1', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+
+    // Both calls should succeed without throwing (no setName-mismatch error)
+    const [resultA, resultB] = await Promise.all([
+      Promise.resolve(initializeState(configA, repoRoot)),
+      Promise.resolve(initializeState(configB, repoRoot)),
+    ]);
+
+    // Each should have its own setName
+    expect(resultA.state.setName).toBe('set-a');
+    expect(resultB.state.setName).toBe('set-b');
+
+    // States are independent in-memory objects
+    expect(resultA.state).not.toBe(resultB.state);
+    expect(resultA.state.featureBranch).toBe('eforge/set-a');
+    expect(resultB.state.featureBranch).toBe('eforge/set-b');
+
+    // Neither singleton file should have been written to disk — both were
+    // removed as part of this plan, not just state.json.
+    expect(existsSync(join(repoRoot, '.eforge', 'state.json'))).toBe(false);
+    expect(existsSync(join(repoRoot, '.eforge', 'event-log.jsonl'))).toBe(false);
+  });
+
+  it('two concurrent Orchestrator.execute() calls produce independent events without writing singleton files', async () => {
+    const repoRoot = makeTempDir();
+
+    // Set up a minimal git repo with the feature branches both orchestrators need
+    const gitOpts = { cwd: repoRoot };
+    execFileSync('git', ['init', '-b', 'main'], gitOpts);
+    execFileSync('git', ['config', 'user.email', 'test@test.com'], gitOpts);
+    execFileSync('git', ['config', 'user.name', 'Test'], gitOpts);
+    execFileSync('git', ['commit', '--allow-empty', '-m', 'init'], gitOpts);
+    execFileSync('git', ['checkout', '-b', 'eforge/set-a'], gitOpts);
+    execFileSync('git', ['checkout', 'main'], gitOpts);
+    execFileSync('git', ['checkout', '-b', 'eforge/set-b'], gitOpts);
+    execFileSync('git', ['checkout', 'main'], gitOpts);
+
+    // Pre-abort the signal so validate/finalize skip git merge operations
+    const ac = new AbortController();
+    ac.abort();
+
+    const stubPlanRunner: PlanRunner = async function* () {};
+
+    // Empty plan lists so executePlans terminates immediately without worktree ops
+    const configA = makeConfig({ name: 'set-a', plans: [] });
+    const configB = makeConfig({ name: 'set-b', plans: [] });
+
+    const orchA = new Orchestrator({ repoRoot, planRunner: stubPlanRunner, signal: ac.signal, mergeWorktreePath: join(repoRoot, 'merge-a') });
+    const orchB = new Orchestrator({ repoRoot, planRunner: stubPlanRunner, signal: ac.signal, mergeWorktreePath: join(repoRoot, 'merge-b') });
+
+    const eventsA: EforgeEvent[] = [];
+    const eventsB: EforgeEvent[] = [];
+
+    await Promise.all([
+      (async () => { for await (const e of orchA.execute(configA)) eventsA.push(e); })(),
+      (async () => { for await (const e of orchB.execute(configB)) eventsB.push(e); })(),
+    ]);
+
+    // Singleton files must not have been written — the execute() finally block
+    // must not re-introduce saveState() or event-log writes
+    expect(existsSync(join(repoRoot, '.eforge', 'state.json'))).toBe(false);
+    expect(existsSync(join(repoRoot, '.eforge', 'event-log.jsonl'))).toBe(false);
+
+    // Each run should have emitted its own schedule:start event
+    expect(eventsA.some((e) => e.type === 'schedule:start')).toBe(true);
+    expect(eventsB.some((e) => e.type === 'schedule:start')).toBe(true);
+  });
+});

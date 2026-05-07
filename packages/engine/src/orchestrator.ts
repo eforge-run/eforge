@@ -1,24 +1,26 @@
 /**
  * Orchestrator — greedy dependency-driven parallel execution,
- * git worktree lifecycle, and persistent state tracking.
+ * git worktree lifecycle, and in-memory state tracking.
  *
  * Yields EforgeEvents (schedule:start, schedule:ready, merge:start, merge:complete, build:*)
  * as an AsyncGenerator. Agent execution is injected via PlanRunner callbacks.
+ *
+ * Active build state lives in memory only — no singleton state.json is written.
+ * Compile→build handoff uses deterministic path computation from planSet name.
  */
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { join } from 'node:path';
 
 const exec = promisify(execFile);
-import type { EforgeEvent, OrchestrationConfig, EforgeState, PlanState, PrdValidationGap } from './events.js';
-import { loadState, saveState, isResumable, readEventLogSnapshot } from './state.js';
+import type { EforgeEvent, OrchestrationConfig, EforgeState, PlanState } from './events.js';
 import {
   computeWorktreeBase,
   type MergeResolver,
 } from './worktree-ops.js';
 import { WorktreeManager } from './worktree-manager.js';
 import { executePlans, validate, prdValidate, finalize, type PhaseContext } from './orchestrator/phases.js';
-import { resumeState } from './orchestrator/plan-lifecycle.js';
 import { ModelTracker } from './model-tracker.js';
 
 /**
@@ -60,12 +62,11 @@ export type PrdValidator = (
  */
 export type GapCloser = (
   cwd: string,
-  gaps: PrdValidationGap[],
+  gaps: import('./events.js').PrdValidationGap[],
   completionPercent?: number,
 ) => AsyncGenerator<EforgeEvent>;
 
 export interface OrchestratorOptions {
-  stateDir: string;
   repoRoot: string;
   planRunner: PlanRunner;
   signal?: AbortSignal;
@@ -79,7 +80,7 @@ export interface OrchestratorOptions {
   gapCloser?: GapCloser;
   /** Minimum PRD completion percentage (0-100) required to attempt gap closing. Defaults to 75. */
   minCompletionPercent?: number;
-  /** Path to the merge worktree (created during compile, loaded from state during build). */
+  /** Path to the merge worktree (created during compile, computed deterministically during build). */
   mergeWorktreePath?: string;
   /** Whether to run cleanup on the feature branch before the final merge. */
   shouldCleanup?: boolean;
@@ -92,49 +93,19 @@ export interface OrchestratorOptions {
 }
 
 /**
- * Load existing state or create fresh. Prefers event-log replay over state.json
- * (the log has a snapshot after every saveState call, so it survives state.json loss).
- * Falls back to state.json when the event log is unavailable (legacy sessions).
+ * Create fresh in-memory state for a plan set.
  *
- * On resume, resets running→pending and re-evaluates blocked plans.
- * Non-resumable states (failed, completed) fall through to fresh state creation.
+ * Always creates a new, clean state — there is no resume path.
+ * Active build orchestration state lives in memory only; no state.json is written.
+ * The featureBranch and worktreeBase are computed deterministically from the
+ * config name and repoRoot, so compile→build handoff does not require a JSON file.
  *
- * Returns `resumeEvents` — the lifecycle events produced by resumeState that
- * should be yielded on the SSE stream by the orchestrator's execute() method.
+ * Returns `{ state }` — the fresh EforgeState for this build session.
  */
 export function initializeState(
-  stateDir: string,
   config: OrchestrationConfig,
   repoRoot: string,
-): { state: EforgeState; resumed: boolean; resumeEvents: readonly EforgeEvent[] } {
-  // Prefer event-log snapshot over state.json: the log survives a mid-write crash
-  // or manual deletion of state.json and always carries the most-recent snapshot.
-  const logSnapshot = readEventLogSnapshot(stateDir);
-  if (logSnapshot && logSnapshot.setName === config.name) {
-    if (isResumable(logSnapshot)) {
-      const resumeEvents = resumeState(logSnapshot);
-      saveState(stateDir, logSnapshot);
-      return { state: logSnapshot, resumed: true, resumeEvents };
-    }
-    // Non-resumable snapshot — fall through to fresh state creation
-  }
-
-  // Fall back to state.json (legacy sessions without an event log)
-  const existing = loadState(stateDir);
-
-  if (existing) {
-    if (existing.setName !== config.name) {
-      throw new Error(`Persisted setName "${existing.setName}" does not match config setName "${config.name}" — delete or update .eforge/state.json to start a new plan set.`);
-    }
-    if (isResumable(existing)) {
-      const resumeEvents = resumeState(existing);
-      saveState(stateDir, existing);
-      return { state: existing, resumed: true, resumeEvents };
-    }
-    // Non-resumable (failed/completed) — fall through to fresh state creation
-  }
-
-  // Create fresh state
+): { state: EforgeState } {
   const worktreeBase = computeWorktreeBase(repoRoot, config.name);
 
   const plans: Record<string, PlanState> = {};
@@ -154,14 +125,11 @@ export function initializeState(
     baseBranch: config.baseBranch,
     featureBranch: `eforge/${config.name}`,
     worktreeBase,
-    // Preserve mergeWorktreePath from preliminary state created during compile
-    mergeWorktreePath: existing?.mergeWorktreePath,
     plans,
     completedPlans: [],
   };
 
-  saveState(stateDir, state);
-  return { state, resumed: false, resumeEvents: [] };
+  return { state };
 }
 
 export class Orchestrator {
@@ -172,33 +140,28 @@ export class Orchestrator {
   }
 
   async *execute(config: OrchestrationConfig): AsyncGenerator<EforgeEvent> {
-    const { stateDir, repoRoot, signal } = this.options;
-    const { state, resumed, resumeEvents } = initializeState(stateDir, config, repoRoot);
-    if (state.status !== 'running') {
-      yield { type: 'phase:end', runId: '', result: { status: 'failed', summary: `Non-resumable state: ${state.status}` }, timestamp: new Date().toISOString() };
-      return;
-    }
-    const featureBranch = state.featureBranch ?? `eforge/${config.name}`;
-    const mergeWorktreePath = this.options.mergeWorktreePath ?? state.mergeWorktreePath;
-    if (!mergeWorktreePath) throw new Error('mergeWorktreePath is required — it should have been created during compile and persisted in state');
+    const { repoRoot, signal } = this.options;
+    const { state } = initializeState(config, repoRoot);
+    const featureBranch = `eforge/${config.name}`;
+    // Compute mergeWorktreePath deterministically; options.mergeWorktreePath overrides for testing
+    const mergeWorktreePath = this.options.mergeWorktreePath ?? join(computeWorktreeBase(repoRoot, config.name), '__merge__');
     try { await exec('git', ['rev-parse', '--verify', featureBranch], { cwd: repoRoot }); } catch { throw new Error(`Feature branch '${featureBranch}' not found — it should have been created during compile`); }
     const wm = new WorktreeManager({ repoRoot, worktreeBase: state.worktreeBase, featureBranch, mergeWorktreePath });
     const planMap = new Map(config.plans.map((p) => [p.id, p]));
     const ctx: PhaseContext = {
-      state, config, stateDir, repoRoot, featureBranch, mergeWorktreePath,
+      state, config, repoRoot, featureBranch, mergeWorktreePath,
       planRunner: this.options.planRunner, parallelism: config.plans.length || 1,
       signal, postMergeCommands: this.options.postMergeCommands, validateCommands: this.options.validateCommands,
       postMergeCommandTimeoutMs: this.options.postMergeCommandTimeoutMs,
       validationFixer: this.options.validationFixer, maxValidationRetries: this.options.maxValidationRetries ?? 2,
       mergeResolver: this.options.mergeResolver, prdValidator: this.options.prdValidator, gapCloser: this.options.gapCloser,
       minCompletionPercent: this.options.minCompletionPercent ?? 75, worktreeManager: wm,
-      failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, resumed, gapClosePerformed: false,
+      failedMerges: new Set<string>(), recentlyMergedIds: [], featureBranchMerged: false, gapClosePerformed: false,
       modelTracker: new ModelTracker(),
       shouldCleanup: this.options.shouldCleanup, cleanupPlanSet: this.options.cleanupPlanSet,
       cleanupOutputDir: this.options.cleanupOutputDir, cleanupPrdFilePath: this.options.cleanupPrdFilePath,
     };
     try {
-      for (const e of resumeEvents) yield e;
       yield* executePlans(ctx);
       if ((state.status as string) !== 'failed') yield* validate(ctx);
       if ((state.status as string) !== 'failed') yield* prdValidate(ctx);
@@ -208,7 +171,6 @@ export class Orchestrator {
       await wm.cleanupAll();
       for (const [, plan] of planMap) { try { await exec('git', ['branch', '-D', plan.branch], { cwd: repoRoot }); } catch { /* best-effort */ } }
       if (ctx.featureBranchMerged) { try { await exec('git', ['branch', '-D', featureBranch], { cwd: repoRoot }); } catch { /* best-effort */ } }
-      saveState(stateDir, state);
     }
   }
 }

@@ -1,12 +1,16 @@
 /**
- * Assembles a BuildFailureSummary from state.json + git on the surviving
- * feature branch. When state.json is missing, falls back to a partial
- * summary synthesized from monitor.db events and git history.
+ * Assembles a BuildFailureSummary from monitor.db events and git history
+ * on the surviving feature branch. There is no state.json path — active
+ * build state lives in memory only. All recovery synthesis is via
+ * monitor DB event history + git log/diff.
+ *
+ * When monitor DB events are found for the setName, returns a summary
+ * with `partial` omitted (full synthesis succeeded). When no monitor DB
+ * events are available, returns a summary with `partial: true`.
  */
 
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { loadState } from '../state.js';
 import { synthesizeFromEvents } from './event-history.js';
 import type { BuildFailureSummary, LandedCommit, PlanSummaryEntry, FailingPlanEntry } from '../events.js';
 
@@ -33,13 +37,29 @@ function parseModelsFromLog(logBody: string): string[] {
 }
 
 /**
+ * Derive the base branch from git remote tracking info.
+ * Tries `git symbolic-ref refs/remotes/origin/HEAD --short`, falls back to `main`.
+ */
+async function deriveBaseBranch(cwd: string): Promise<string> {
+  try {
+    const { stdout } = await exec('git', ['symbolic-ref', 'refs/remotes/origin/HEAD', '--short'], { cwd });
+    const ref = stdout.trim();
+    // Strip "origin/" prefix (e.g., "origin/main" → "main")
+    return ref.replace(/^origin\//, '') || 'main';
+  } catch {
+    return 'main';
+  }
+}
+
+/**
  * Build a failure summary for a PRD that failed during an eforge build session.
  *
- * When `state.json` is present, reads from it to produce a full summary.
- * When `state.json` is missing, synthesizes a partial summary from:
+ * Always synthesizes from:
  * - monitor.db event history (via `synthesizeFromEvents`, when `dbPath` supplied)
  * - git log/diff against `eforge/<setName>` (when the branch exists)
- * Returns `partial: true` for the synthesized path.
+ *
+ * Returns `partial: true` when no monitor DB events are found for the setName.
+ * Returns with `partial` omitted when monitor DB synthesis succeeded.
  *
  * Never throws — callers can rely on always receiving a summary.
  *
@@ -56,107 +76,10 @@ export async function buildFailureSummary({ setName, prdId, cwd, dbPath, prdCont
   dbPath?: string;
   prdContent?: string;
 }): Promise<BuildFailureSummary> {
-  const state = loadState(cwd);
-  if (!state) {
-    // Partial path: state.json is missing — synthesize from available sources
-    return buildPartialSummary({ setName, prdId, cwd, dbPath, prdContent });
-  }
-
-  const baseBranch = state.baseBranch;
-  const featureBranch = state.featureBranch ?? `eforge/${state.setName}`;
-
-  // Summarise all plans from state
-  const plans: PlanSummaryEntry[] = Object.entries(state.plans).map(([planId, planState]) => {
-    const entry: PlanSummaryEntry = {
-      planId,
-      status: planState.status,
-    };
-    if (planState.error !== undefined) entry.error = planState.error;
-    return entry;
-  });
-
-  // Identify the failing plan (first plan with status === 'failed')
-  const failingEntry = Object.entries(state.plans).find(([, planState]) => planState.status === 'failed');
-  const failingPlan: FailingPlanEntry = failingEntry
-    ? { planId: failingEntry[0], errorMessage: failingEntry[1].error }
-    : { planId: 'unknown' };
-
-  // --- git log: landed commits on feature branch beyond base ---
-  let landedCommits: LandedCommit[] = [];
-  try {
-    const { stdout } = await exec(
-      'git',
-      ['log', `--format=%H%x00%s%x00%an%x00%aI`, `${baseBranch}..${featureBranch}`],
-      { cwd },
-    );
-    landedCommits = stdout.trim().split('\n').filter(Boolean).map(line => {
-      const parts = line.split('\x00');
-      return {
-        sha: parts[0] ?? '',
-        subject: parts[1] ?? '',
-        author: parts[2] ?? '',
-        date: parts[3] ?? '',
-      };
-    });
-  } catch {
-    // Feature branch may not exist or have no commits beyond base — leave empty
-  }
-
-  // --- git diff --stat: overall change summary ---
-  let diffStat = '';
-  try {
-    const { stdout } = await exec(
-      'git',
-      ['diff', '--stat', `${baseBranch}...${featureBranch}`],
-      { cwd },
-    );
-    diffStat = stdout.trim();
-  } catch {
-    // Ignore — diff stat is informational
-  }
-
-  // --- models used: parse Models-Used: trailers from commit bodies ---
-  let modelsUsed: string[] = [];
-  try {
-    const { stdout } = await exec(
-      'git',
-      ['log', '--format=%B', `${baseBranch}..${featureBranch}`],
-      { cwd },
-    );
-    modelsUsed = parseModelsFromLog(stdout);
-  } catch {
-    // Ignore
-  }
-
-  return {
-    prdId,
-    setName: state.setName,
-    featureBranch,
-    baseBranch,
-    plans,
-    failingPlan,
-    landedCommits,
-    diffStat,
-    modelsUsed,
-    failedAt: state.completedAt ?? state.startedAt,
-  };
-}
-
-/**
- * Build a partial failure summary when state.json is not available.
- * Synthesizes from monitor.db events and git history on the feature branch.
- * Returns `partial: true` always.
- */
-async function buildPartialSummary({ setName, prdId, cwd, dbPath, prdContent }: {
-  setName: string;
-  prdId: string;
-  cwd: string;
-  dbPath?: string;
-  prdContent?: string;
-}): Promise<BuildFailureSummary> {
   const featureBranch = `eforge/${setName}`;
+  const baseBranch = await deriveBaseBranch(cwd);
 
-  // Try event-history synthesis
+  // Try event-history synthesis from monitor DB
   const eventFragment = synthesizeFromEvents({ setName, prdId, dbPath });
 
   // Try git log/diff against feature branch if it exists
@@ -167,7 +90,7 @@ async function buildPartialSummary({ setName, prdId, cwd, dbPath, prdContent }: 
   try {
     const { stdout } = await exec(
       'git',
-      ['log', `--format=%H%x00%s%x00%an%x00%aI`, `main..${featureBranch}`],
+      ['log', `--format=%H%x00%s%x00%an%x00%aI`, `${baseBranch}..${featureBranch}`],
       { cwd },
     );
     if (stdout.trim()) {
@@ -188,7 +111,7 @@ async function buildPartialSummary({ setName, prdId, cwd, dbPath, prdContent }: 
   try {
     const { stdout } = await exec(
       'git',
-      ['diff', '--stat', `main...${featureBranch}`],
+      ['diff', '--stat', `${baseBranch}...${featureBranch}`],
       { cwd },
     );
     diffStat = stdout.trim();
@@ -200,7 +123,7 @@ async function buildPartialSummary({ setName, prdId, cwd, dbPath, prdContent }: 
     try {
       const { stdout } = await exec(
         'git',
-        ['log', '--format=%B', `main..${featureBranch}`],
+        ['log', '--format=%B', `${baseBranch}..${featureBranch}`],
         { cwd },
       );
       modelsUsed = parseModelsFromLog(stdout);
@@ -209,7 +132,7 @@ async function buildPartialSummary({ setName, prdId, cwd, dbPath, prdContent }: 
     }
   }
 
-  // Merge event-history models
+  // Merge event-history models with git-derived models
   if (eventFragment?.modelsUsed && eventFragment.modelsUsed.length > 0) {
     const merged = new Set([...modelsUsed, ...eventFragment.modelsUsed]);
     modelsUsed = [...merged].sort();
@@ -217,20 +140,39 @@ async function buildPartialSummary({ setName, prdId, cwd, dbPath, prdContent }: 
 
   const failingPlan: FailingPlanEntry = eventFragment?.failingPlan ?? { planId: 'unknown' };
   const plans: PlanSummaryEntry[] = eventFragment?.plans ?? [];
-  const failedAt = eventFragment?.failedAt ?? new Date().toISOString();
 
-  return {
+  // failedAt derivation (Decision #11):
+  // - If monitor DB has events → use the event timestamp
+  // - Else if landed commits exist → use the most recent commit's date
+  // - Else use current time
+  let failedAt: string;
+  if (eventFragment?.failedAt) {
+    failedAt = eventFragment.failedAt;
+  } else if (landedCommits.length > 0) {
+    // landedCommits are ordered newest-first (git log default)
+    failedAt = landedCommits[0].date;
+  } else {
+    failedAt = new Date().toISOString();
+  }
+
+  const result: BuildFailureSummary = {
     prdId,
     setName,
     featureBranch,
-    baseBranch: 'main',
+    baseBranch,
     plans,
     failingPlan,
     landedCommits,
     diffStat,
     modelsUsed,
     failedAt,
-    partial: true,
     ...(prdContent !== undefined ? { prdContent } : {}),
   };
+
+  // Only set partial: true when no monitor DB events were found
+  if (!eventFragment) {
+    result.partial = true;
+  }
+
+  return result;
 }

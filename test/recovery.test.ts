@@ -10,6 +10,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
+import { mkdirSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import type { EforgeEvent, BuildFailureSummary } from '@eforge-build/engine/events';
@@ -19,6 +20,7 @@ import { runRecoveryAnalyst } from '@eforge-build/engine/agents/recovery-analyst
 import { writeRecoverySidecar } from '@eforge-build/engine/recovery/sidecar';
 import { buildFailureSummary } from '@eforge-build/engine/recovery/failure-summary';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { openDatabase } from '@eforge-build/monitor/db';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -415,22 +417,61 @@ describe('buildFailureSummary', () => {
     execFileSync('git', ['checkout', 'main'], gitOpts);
   }
 
-  it('returns correct failingPlan.planId from state.json', async () => {
+  /**
+   * Seed a monitor DB with a build run for test-recovery-set that has a
+   * plan:build:failed event for plan-02-api.
+   */
+  function seedMonitorDb(dir: string): string {
+    const dbDir = join(dir, '.eforge');
+    mkdirSync(dbDir, { recursive: true });
+    const dbPath = join(dbDir, 'monitor.db');
+    const db = openDatabase(dbPath);
+    db.insertRun({
+      id: 'run-recovery-01',
+      sessionId: 'session-recovery-01',
+      planSet: 'test-recovery-set',
+      command: 'build',
+      status: 'failed',
+      startedAt: new Date('2024-01-15T10:00:00.000Z').toISOString(),
+      cwd: dir,
+      pid: 99999,
+    });
+    db.insertEvent({
+      runId: 'run-recovery-01',
+      type: 'plan:build:failed',
+      planId: 'plan-02-api',
+      data: JSON.stringify({ type: 'plan:build:failed', planId: 'plan-02-api', error: 'Build failed: type error in src/api.ts line 42' }),
+      timestamp: new Date('2024-01-15T10:45:00.000Z').toISOString(),
+    });
+    db.insertEvent({
+      runId: 'run-recovery-01',
+      type: 'agent:start',
+      data: JSON.stringify({ type: 'agent:start', model: 'claude-sonnet-4-6', agent: 'builder' }),
+      timestamp: new Date('2024-01-15T10:10:00.000Z').toISOString(),
+    });
+    // A second agent:start with a model that does NOT appear in any commit
+    // trailer — used to verify modelsUsed merges DB-only models with git-only
+    // models rather than relying on a single source.
+    db.insertEvent({
+      runId: 'run-recovery-01',
+      type: 'agent:start',
+      data: JSON.stringify({ type: 'agent:start', model: 'claude-opus-db-only', agent: 'reviewer' }),
+      timestamp: new Date('2024-01-15T10:20:00.000Z').toISOString(),
+    });
+    db.close();
+    return dbPath;
+  }
+
+  it('returns correct failingPlan.planId from monitor DB events', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
-
-    // Write state.json
-    await mkdir(join(dir, '.eforge'), { recursive: true });
-    const stateFixture = await readFile(
-      new URL('./fixtures/recovery/state.json', import.meta.url).pathname,
-      'utf-8',
-    );
-    await writeFile(join(dir, '.eforge', 'state.json'), stateFixture, 'utf-8');
+    const dbPath = seedMonitorDb(dir);
 
     const summary = await buildFailureSummary({
       setName: 'test-recovery-set',
       prdId: 'test-prd',
       cwd: dir,
+      dbPath,
     });
 
     expect(summary.failingPlan.planId).toBe('plan-02-api');
@@ -440,18 +481,13 @@ describe('buildFailureSummary', () => {
   it('returns landedCommits with length matching commits on feature branch', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
-
-    await mkdir(join(dir, '.eforge'), { recursive: true });
-    const stateFixture = await readFile(
-      new URL('./fixtures/recovery/state.json', import.meta.url).pathname,
-      'utf-8',
-    );
-    await writeFile(join(dir, '.eforge', 'state.json'), stateFixture, 'utf-8');
+    const dbPath = seedMonitorDb(dir);
 
     const summary = await buildFailureSummary({
       setName: 'test-recovery-set',
       prdId: 'test-prd',
       cwd: dir,
+      dbPath,
     });
 
     // The feature branch has 2 commits beyond main
@@ -460,55 +496,81 @@ describe('buildFailureSummary', () => {
     expect(summary.landedCommits[0].subject.length).toBeGreaterThan(0);
   });
 
-  it('parses modelsUsed from commit trailers', async () => {
+  it('parses modelsUsed from commit trailers and merges with monitor DB models', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
-
-    await mkdir(join(dir, '.eforge'), { recursive: true });
-    const stateFixture = await readFile(
-      new URL('./fixtures/recovery/state.json', import.meta.url).pathname,
-      'utf-8',
-    );
-    await writeFile(join(dir, '.eforge', 'state.json'), stateFixture, 'utf-8');
+    const dbPath = seedMonitorDb(dir);
 
     const summary = await buildFailureSummary({
       setName: 'test-recovery-set',
       prdId: 'test-prd',
       cwd: dir,
+      dbPath,
     });
 
+    // 'claude-sonnet-4-6' is the model from the git commit trailer
     expect(summary.modelsUsed).toContain('claude-sonnet-4-6');
+    // 'claude-opus-db-only' appears only in the monitor DB, never in commit
+    // trailers — proves the two sources are actually merged
+    expect(summary.modelsUsed).toContain('claude-opus-db-only');
   });
 
-  it('returns setName, baseBranch, featureBranch from state', async () => {
+  it('returns setName, baseBranch (git-derived), featureBranch, prdId from params + git', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
-
-    await mkdir(join(dir, '.eforge'), { recursive: true });
-    const stateFixture = await readFile(
-      new URL('./fixtures/recovery/state.json', import.meta.url).pathname,
-      'utf-8',
-    );
-    await writeFile(join(dir, '.eforge', 'state.json'), stateFixture, 'utf-8');
+    const dbPath = seedMonitorDb(dir);
 
     const summary = await buildFailureSummary({
       setName: 'test-recovery-set',
       prdId: 'test-prd',
       cwd: dir,
+      dbPath,
     });
 
     expect(summary.setName).toBe('test-recovery-set');
-    expect(summary.baseBranch).toBe('main');
+    expect(summary.baseBranch).toBe('main'); // falls back to main (no remote tracking)
     expect(summary.featureBranch).toBe('eforge/test-recovery-set');
     expect(summary.prdId).toBe('test-prd');
+    // Monitor DB had events, so partial should not be true
+    expect(summary.partial).toBeUndefined();
   });
 
-  it('returns partial summary when state.json is missing', async () => {
+  it('returns partial summary when no monitor DB events exist', async () => {
     const dir = makeTempDir();
     const summary = await buildFailureSummary({ setName: 'x', prdId: 'y', cwd: dir });
     expect(summary.partial).toBe(true);
     expect(summary.prdId).toBe('y');
     expect(summary.setName).toBe('x');
+    // Documented partial-fallback shape (Decision #10): unknown failingPlan,
+    // empty plans/landedCommits/modelsUsed, baseBranch falls back to main,
+    // failedAt is a non-empty ISO string (current time per Decision #11).
+    expect(summary.failingPlan.planId).toBe('unknown');
+    expect(summary.plans).toEqual([]);
+    expect(summary.landedCommits).toEqual([]);
+    expect(summary.modelsUsed).toEqual([]);
+    expect(summary.featureBranch).toBe('eforge/x');
+    expect(summary.baseBranch).toBe('main');
+    expect(typeof summary.failedAt).toBe('string');
+    expect(summary.failedAt.length).toBeGreaterThan(0);
+  });
+
+  it('derives failedAt from latest commit date when no monitor DB exists but feature branch has commits', async () => {
+    const dir = makeTempDir();
+    seedGitRepo(dir);
+
+    // No dbPath supplied — eventFragment is null, partial path used
+    const summary = await buildFailureSummary({
+      setName: 'test-recovery-set',
+      prdId: 'test-prd',
+      cwd: dir,
+    });
+
+    expect(summary.partial).toBe(true);
+    // Decision #11 middle case: failedAt comes from the most recent landed
+    // commit's date, not from `new Date().toISOString()`.
+    expect(summary.landedCommits.length).toBeGreaterThan(0);
+    expect(summary.failedAt).toBe(summary.landedCommits[0].date);
+    expect(summary.failedAt.length).toBeGreaterThan(0);
   });
 });
 
@@ -766,14 +828,6 @@ describe('EforgeEngine.recover', () => {
   }
 
   async function seedFixtures(dir: string): Promise<void> {
-    // Write state.json
-    await mkdir(join(dir, '.eforge'), { recursive: true });
-    const stateFixture = await readFile(
-      new URL('./fixtures/recovery/state.json', import.meta.url).pathname,
-      'utf-8',
-    );
-    await writeFile(join(dir, '.eforge', 'state.json'), stateFixture, 'utf-8');
-
     // Write PRD file in failed dir
     const failedDir = join(dir, 'eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
@@ -799,12 +853,6 @@ describe('EforgeEngine.recover', () => {
   it('writes degraded sidecar when PRD file does not exist (no throw)', async () => {
     const dir = makeTempDir();
     seedGitRepo(dir);
-    await mkdir(join(dir, '.eforge'), { recursive: true });
-    const stateFixture = await readFile(
-      new URL('./fixtures/recovery/state.json', import.meta.url).pathname,
-      'utf-8',
-    );
-    await writeFile(join(dir, '.eforge', 'state.json'), stateFixture, 'utf-8');
     // PRD file intentionally absent
 
     const backend = new StubHarness([{ text: SPLIT_OUTPUT }]);
@@ -956,9 +1004,5 @@ describe('EforgeEngine.recover', () => {
     // PRD file unchanged
     const prdContentAfter = await readFile(prdPath, 'utf-8');
     expect(prdContentAfter).toBe(prdContentBefore);
-
-    // state.json unchanged
-    const stateAfter = await readFile(join(dir, '.eforge', 'state.json'), 'utf-8');
-    expect(stateAfter).toContain('"status": "failed"');
   });
 });

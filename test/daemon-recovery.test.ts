@@ -205,7 +205,7 @@ describe('GET /api/recovery/sidecar', () => {
     const v2Sidecar = {
       schemaVersion: 2,
       summary: { prdId: 'test-prd', setName: 'test-set', partial: true },
-      verdict: { verdict: 'manual', confidence: 'low', rationale: 'Missing context', completedWork: [], remainingWork: [], risks: [], partial: true, recoveryError: 'state.json was missing' },
+      verdict: { verdict: 'manual', confidence: 'low', rationale: 'Missing context', completedWork: [], remainingWork: [], risks: [], partial: true, recoveryError: 'context was incomplete' },
       generatedAt: new Date().toISOString(),
     };
     await writeFile(join(failedDir, 'test-prd.recovery.md'), '# Recovery Analysis: test-prd\n\nPartial summary.');
@@ -387,23 +387,10 @@ describe('recovery analyst parse error -> manual-verdict sidecar', () => {
     const dir = makeTestDir();
     initGitRepo(dir);
 
-    // Create failed PRD
+    // Create failed PRD (no state.json — synthesis uses monitor DB and git)
     const failedDir = join(dir, 'eforge', 'queue', 'failed');
     await mkdir(failedDir, { recursive: true });
     await writeFile(join(failedDir, 'test-prd.md'), '# Test PRD\n\nDo a thing.', 'utf-8');
-
-    // Create state.json so buildFailureSummary has something to work with
-    await mkdir(join(dir, '.eforge'), { recursive: true });
-    const state = {
-      setName: 'test-set',
-      status: 'failed',
-      baseBranch: 'main',
-      featureBranch: 'eforge/test-set',
-      startedAt: new Date().toISOString(),
-      plans: { 'plan-01': { status: 'failed', error: 'type error' } },
-      completedPlans: [],
-    };
-    await writeFile(join(dir, '.eforge', 'state.json'), JSON.stringify(state, null, 2), 'utf-8');
 
     // Stub that returns unparseable garbage
     const stub = new StubHarness([{ text: 'This is unparseable garbage with no XML block.' }]);
@@ -486,7 +473,8 @@ describe('EforgeEngine.recover() with no state.json + populated event db', () =>
     expect(complete!.sidecarJsonPath).toBeDefined();
 
     const sidecarContent = JSON.parse(await readFile(complete!.sidecarJsonPath!, 'utf-8'));
-    expect(sidecarContent.summary.partial).toBe(true);
+    // Monitor DB had events, so partial should NOT be true
+    expect(sidecarContent.summary.partial).toBeUndefined();
     // failingPlan should come from the event DB event
     expect(sidecarContent.summary.failingPlan.planId).toBe('plan-01-foundation');
     expect(sidecarContent.schemaVersion).toBe(2);

@@ -13,7 +13,7 @@
  * orchestration-logic.test.ts pattern.
  */
 import { describe, it, expect } from 'vitest';
-import { transitionPlan, resumeState } from '@eforge-build/engine/orchestrator/plan-lifecycle';
+import { transitionPlan } from '@eforge-build/engine/orchestrator/plan-lifecycle';
 import { executePlans } from '@eforge-build/engine/orchestrator/phases';
 import { WorktreeManager } from '@eforge-build/engine/worktree-manager';
 import { initializeState } from '@eforge-build/engine/orchestrator';
@@ -23,7 +23,6 @@ import type { PhaseContext } from '@eforge-build/engine/orchestrator/phases';
 import type { WorktreeManager as WorktreeManagerType } from '@eforge-build/engine/worktree-manager';
 import type { PlanRunner } from '@eforge-build/engine/orchestrator';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
-import { useTempDir } from './test-tmpdir.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -123,44 +122,6 @@ describe('transitionPlan — lifecycle event emission', () => {
 });
 
 // ---------------------------------------------------------------------------
-// resumeState — plan:error:clear and plan:status:change(pending)
-// ---------------------------------------------------------------------------
-
-describe('resumeState — lifecycle event emission', () => {
-  it('emits plan:error:clear when resetting a running plan that had an error', () => {
-    const state = makeState({ p1: { status: 'running' } });
-    state.plans['p1'].error = 'prior error';
-    const events = resumeState(state);
-    expect(events.some((e) => e.type === 'plan:error:clear' && e.planId === 'p1')).toBe(true);
-  });
-
-  it('emits plan:status:change(pending) when resetting running plans', () => {
-    const state = makeState({ p1: { status: 'running' } });
-    const events = resumeState(state);
-    expect(events.some((e) => e.type === 'plan:status:change' && e.planId === 'p1' && e.status === 'pending')).toBe(true);
-  });
-
-  it('emits plan:error:clear before plan:status:change(pending) for errored running plan', () => {
-    const state = makeState({ p1: { status: 'running' } });
-    state.plans['p1'].error = 'crash';
-    const events = resumeState(state);
-    const clearIdx = events.findIndex((e) => e.type === 'plan:error:clear');
-    const changeIdx = events.findIndex((e) => e.type === 'plan:status:change' && e.status === 'pending');
-    expect(clearIdx).toBeGreaterThanOrEqual(0);
-    expect(changeIdx).toBeGreaterThan(clearIdx);
-  });
-
-  it('emits plan:status:change(pending) for blocked plans that become unblocked on resume', () => {
-    const state = makeState({
-      dep: { status: 'completed' },
-      p1: { status: 'blocked', dependsOn: ['dep'] },
-    });
-    const events = resumeState(state);
-    expect(events.some((e) => e.type === 'plan:status:change' && e.planId === 'p1' && e.status === 'pending')).toBe(true);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // WorktreeManager.reconcile — merge:worktree:clear and plan:status:change
 // ---------------------------------------------------------------------------
 
@@ -210,16 +171,13 @@ describe('WorktreeManager.reconcile — lifecycle event emission', () => {
 // ---------------------------------------------------------------------------
 
 describe('executePlans — lifecycle event emission', () => {
-  const makeTempDir = useTempDir();
-
   it('emits plan:status:change(running), plan:status:change(completed), plan:status:change(merged) for a successful plan', async () => {
-    const stateDir = makeTempDir();
     const config = makeConfig({
       plans: [
         { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
       ],
     });
-    const state = initializeState(stateDir, config, '/tmp/repo').state;
+    const state = initializeState(config, '/tmp/repo').state;
 
     // Plan runner: completes successfully (no plan:build:failed yielded)
     const planRunner: PlanRunner = async function* () { /* no events — clean exit */ };
@@ -232,7 +190,7 @@ describe('executePlans — lifecycle event emission', () => {
     } as unknown as WorktreeManagerType;
 
     const ctx: PhaseContext = {
-      state, config, stateDir,
+      state, config,
       repoRoot: '/tmp/repo',
       planRunner,
       parallelism: 1,
@@ -247,7 +205,6 @@ describe('executePlans — lifecycle event emission', () => {
       failedMerges: new Set(),
       recentlyMergedIds: [],
       featureBranchMerged: false,
-      resumed: false,
       modelTracker: new ModelTracker(),
     };
 
@@ -261,13 +218,12 @@ describe('executePlans — lifecycle event emission', () => {
   });
 
   it('emits plan:status:change(failed) and plan:error:set when plan yields build:failed', async () => {
-    const stateDir = makeTempDir();
     const config = makeConfig({
       plans: [
         { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
       ],
     });
-    const state = initializeState(stateDir, config, '/tmp/repo').state;
+    const state = initializeState(config, '/tmp/repo').state;
 
     const planRunner: PlanRunner = async function* () {
       yield {
@@ -286,7 +242,7 @@ describe('executePlans — lifecycle event emission', () => {
     } as unknown as WorktreeManagerType;
 
     const ctx: PhaseContext = {
-      state, config, stateDir,
+      state, config,
       repoRoot: '/tmp/repo',
       planRunner,
       parallelism: 1,
@@ -301,7 +257,6 @@ describe('executePlans — lifecycle event emission', () => {
       failedMerges: new Set(),
       recentlyMergedIds: [],
       featureBranchMerged: false,
-      resumed: false,
       modelTracker: new ModelTracker(),
     };
 
