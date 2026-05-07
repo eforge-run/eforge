@@ -205,7 +205,7 @@ export function Sidebar({
   const showMoreButton = !isSearching && remainingCount > 0;
 
   return (
-    <aside className="bg-card border-r border-border overflow-y-auto px-3 py-3">
+    <aside className="h-full bg-card border-r border-border overflow-y-auto px-3 py-3">
       <EnqueueSection
         groups={enqueueGroups}
         currentSessionId={currentSessionId}
