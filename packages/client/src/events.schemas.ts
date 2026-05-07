@@ -403,6 +403,12 @@ export const PlanningDecisionSchema = z.discriminatedUnion('kind', [
 
 export type PlanningDecision = z.infer<typeof PlanningDecisionSchema>;
 
+export const PlanningDecisionEventSchema = z.object({
+  type: z.literal('planning:decision'),
+  planId: z.string().optional(),
+  decision: PlanningDecisionSchema,
+});
+
 export const BuildDecisionSchema = z.discriminatedUnion('kind', [
   // Review strategy selection
   z.object({
@@ -1136,11 +1142,7 @@ const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
   }),
 
   // Plan-phase (planner) decision events
-  z.object({
-    type: z.literal('planning:decision'),
-    planId: z.string().optional(),
-    decision: PlanningDecisionSchema,
-  }),
+  PlanningDecisionEventSchema,
 ]);
 
 // ---------------------------------------------------------------------------
@@ -1180,7 +1182,7 @@ export type PlanSummaryEntry = z.infer<typeof PlanSummaryEntrySchema>;
 export type FailingPlanEntry = z.infer<typeof FailingPlanEntrySchema>;
 export type BuildFailureSummary = z.infer<typeof BuildFailureSummarySchema>;
 export type QueueEvent = z.infer<typeof QueueEventSchema>;
-export type PlanningDecisionEvent = Extract<EforgeEvent, { type: 'planning:decision' }>;
+export type PlanningDecisionEvent = z.infer<typeof PlanningDecisionEventSchema>;
 
 // ---------------------------------------------------------------------------
 // Re-export constants and utilities
