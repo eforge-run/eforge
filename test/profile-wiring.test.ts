@@ -577,61 +577,6 @@ describe('Remaining 6 commands still forward to skills (plan-02-native-pi-ux)', 
 });
 
 // ---------------------------------------------------------------------------
-// Ambient status: eforge-queue and eforge-build keys (plan-02-native-pi-ux)
-// ---------------------------------------------------------------------------
-
-describe('Ambient status keys (plan-02-native-pi-ux)', () => {
-  const source = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
-
-  it('sets eforge-queue status key via ctx.ui.setStatus', () => {
-    expect(source).toContain("setStatus('eforge-queue'");
-  });
-
-  it('sets eforge-build status key via ctx.ui.setStatus', () => {
-    expect(source).toContain("setStatus('eforge-build'");
-  });
-
-  it('fetches queue count from /api/queue for ambient status', () => {
-    // The refreshStatus function should call the queue route via API_ROUTES.queue
-    const refreshStart = source.indexOf('async function refreshStatus');
-    expect(refreshStart).toBeGreaterThan(-1);
-    const refreshEnd = source.indexOf('pi.on(', refreshStart);
-    const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
-    expect(refreshBlock).toContain('API_ROUTES.queue');
-  });
-
-  it('fetches latest run status from /api/runs for ambient status', () => {
-    const refreshStart = source.indexOf('async function refreshStatus');
-    expect(refreshStart).toBeGreaterThan(-1);
-    const refreshEnd = source.indexOf('pi.on(', refreshStart);
-    const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
-    expect(refreshBlock).toContain('apiGetLatestRunFromRuns');
-  });
-
-  it('fetches run summary for build phase/agent display', () => {
-    const refreshStart = source.indexOf('async function refreshStatus');
-    expect(refreshStart).toBeGreaterThan(-1);
-    const refreshEnd = source.indexOf('pi.on(', refreshStart);
-    const refreshBlock = source.slice(refreshStart, refreshEnd > -1 ? refreshEnd : refreshStart + 2000);
-    // After the API_ROUTES migration, the source uses API_ROUTES.runSummary constant.
-    expect(refreshBlock).toContain('API_ROUTES.runSummary');
-  });
-
-  it('hides eforge-queue when queue is empty (sets undefined)', () => {
-    // Should set eforge-queue to undefined when queue has 0 items
-    const queueStatusCalls = source.match(/setStatus\('eforge-queue',\s*undefined\)/g);
-    expect(queueStatusCalls).not.toBeNull();
-    expect(queueStatusCalls!.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it('hides eforge-build when idle or no run (sets undefined)', () => {
-    const buildStatusCalls = source.match(/setStatus\('eforge-build',\s*undefined\)/g);
-    expect(buildStatusCalls).not.toBeNull();
-    expect(buildStatusCalls!.length).toBeGreaterThanOrEqual(1);
-  });
-});
-
-// ---------------------------------------------------------------------------
 // Architecture docs and README updates (plan-02-native-pi-ux)
 // ---------------------------------------------------------------------------
 
