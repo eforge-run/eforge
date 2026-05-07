@@ -1,5 +1,69 @@
 # Changelog
 
+## [0.7.11] - 2026-05-06
+
+### Features
+
+- **core**: Add a structured daemon:* event family (lifecycle, scheduler decisions, recovery, orphan reaping, auto-build, errors) plus a live-only heartbeat, and surface them in the monitor UI via a header status pill and activity drawer
+- **core**: Auto-build slice in useEforgeEvents reducer
+- **core**: Close spine AC shortfalls — lifecycle events, thinking format, regression gate
+- **core**: Daemon event types + monitor emission + heartbeat transport
+- **core**: Daemon run-state events for monitor live/snapshot parity
+- **core**: Daemon SSE skip-history + UI re-seed on reconnect
+- **core**: Daemon-events SSE endpoint and client primitive
+- **core**: Delete invalidateOnEvent SSE-to-SWR bridge
+- **core**: earlyOrchestration as the sole orchestration source
+- **core**: Engine-owned structural fields in orchestration.yaml
+- **core**: Event metadata registry
+- **core**: Fix daemon liveness pill on first load and drop redundant connected indicator
+- **core**: Fix Re-queue PRD no-op and post-restart sidecar regression
+- **core**: Lifecycle events + Zod schemas
+- **core**: Make events the single source of truth for eforge runtime state
+- **core**: Migrate consumers to subscribeWithSnapshot and retire v18 mechanisms
+- **core**: Monitor UI: daemon status pill and activity drawer
+- **core**: Monitor UI: pipeline render-gate fix and validation-command timeline bars
+- **core**: PRD Gap Close
+- **core**: Pure-event reducer + acceptance gate
+- **core**: Remove singleton state.json/event-log.jsonl persistence and make compile/build handoff deterministic
+- **core**: Replace fs.watch with event-driven QueueScheduler
+- **core**: Replace v18 daemon:resync-marker and on-connect heartbeat with a designed-in stream:hello SSE handshake primitive used uniformly by every SSE consumer (per-session and daemon-wide)
+- **core**: Scheduler decision events with dedup
+- **core**: Simplify the monitor UI's event-consumption architecture to two SSE subscribers (one per concern) backed by reducers, eliminating the SSE-to-SWR bridge that has been the source of recurring swimlane and orchestration bugs
+- **core**: Single mutation entry point
+- **core**: Single-source RunInfo / QueueItem / SessionMetadata / AutoBuildState
+- **core**: Surface build-config validation failures and inject valid perspectives into planner prompts
+- **core**: Synthesize earlyOrchestration on planning:complete and event-driven SWR revalidation
+- **core**: Tighten review-perspective schema and surface parallel-reviewer failures
+- **core**: useDaemonEvents hook + UI consumer migration
+- **core**: W6 daemon mutation sweep and enqueue:complete typed-field cleanup
+- **monitor-ui**: pack validation spans into shared lanes
+- **status**: surface daemon vs CLI version mismatch in eforge_status
+
+### Bug Fixes
+
+- **core**: Remove auto-clear useEffect from monitor UI app.tsx
+- **core**: resolve validation failures
+- **core**: supply required schema fields in daemon-sse-handshake test
+- **core**: update DAEMON_API_VERSION test expectation to v18
+- **engine**: raise reviewer turn budget
+
+### Documentation
+
+- **core**: sync documentation with implementation
+- **docs**: frame pipeline through harness engineering
+
+### Maintenance
+
+- **core**: drop stale plan-02 wiring tests that grep source-text rather than verify behavior
+- **monitor-ui**: add gap-proof tests for orchestration data drop on planning:complete
+- **queue**: revise stale PRDs for w6 mutation sweep, SSE replay, and re-queue regression
+
+### Other
+
+- **core**: improve pi extension status line
+- **core**: make sidebar full vertical height
+- **core**: update planning skills
+
 ## [0.7.10] - 2026-05-04
 
 ### Features
@@ -339,40 +403,6 @@ Maintenance release
 ### Maintenance
 
 - bump pi packages, claude-agent-sdk, and marked
-
-## [0.5.9] - 2026-04-17
-
-### Features
-
-- Opus 4.7 Per-Role Effort Defaults, Capability Split, and Thinking Coercion
-- Fix consumer-facing docs drift around Pi thinking levels and effort levels, then implement native Pi command UX for backend, backend:new, and config flows with module extraction, ambient status, and architecture docs updates.
-- PRD Gap Close
-- Native Pi command UX, module extraction, and ambient status
-- Fix consumer-facing docs and skills enum drift
-- Effort and Thinking Provenance Tracking
-- Backend profile overhaul: schema, resolver, init handlers, Pi footer, docs, and tests
-- Widen effort schema to include xhigh for Opus 4.7, fix Pi backend mappings to cover full range, add data-driven model-capability map with clamping, enable planner to emit per-plan effort/thinking overrides in plan frontmatter, integrate overrides into resolveAgentConfig with precedence and clamping, enrich agent:start events with resolved effort/thinking/source, and surface all runtime decisions in the monitor UI tooltip.
-- Monitor UI - Surface Effort/Thinking in Stage Hover
-- Runtime Per-Plan Override + Clamping + Event Enrichment + Planner Prompt
-- Schema Widening + Backend Mappings + Model Capability Map
-
-### Bug Fixes
-
-- guard against daemon auto-spawn inside agent worktrees
-- isolate user-scope config in backend profile tests
-
-### Maintenance
-
-- add tests for native Pi UX, monitor UI, and schema capabilities
-- include git sha and dirty flag in build version
-- post-parallel-group auto-commit for schema handlers tests
-
-### Other
-
-- update readme
-- migrate config
-- re-enqueue failed build
-- remove project backends in favor of user scoped
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
