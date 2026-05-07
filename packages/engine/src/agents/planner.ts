@@ -11,7 +11,8 @@ import {
   planSetSubmissionSchema, architectureSubmissionSchema,
   type PlanSetSubmission, type ArchitectureSubmission,
 } from '../schemas.js';
-import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
+import { REVIEW_PERSPECTIVES, type BuildStageSpec, type ReviewProfileConfig } from '@eforge-build/client';
+import { emitPlanningDecision } from '../decisions.js';
 
 export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   harness: AgentHarness;
@@ -26,6 +27,10 @@ export interface PlannerOptions extends CompileOptions, SdkPassthroughConfig {
   outputDir?: string;
   /** The actual base branch from the repo (engine-supplied). Used to write orchestration.yaml. */
   baseBranch?: string;
+  /** Default build pipeline from the pipeline composer, used as context for decision emission. */
+  defaultBuild?: BuildStageSpec[];
+  /** Default review profile from the pipeline composer, used as context for decision emission. */
+  defaultReview?: ReviewProfileConfig;
 }
 
 /**
@@ -337,6 +342,46 @@ ${existingPlans}`;
         ...(p.build !== undefined && { build: p.build }),
         ...(p.review !== undefined && { review: p.review }),
       }));
+
+    // Emit planning-phase decision events before planning:complete
+    // 1. Plan-set shape decision (multi-plan submissions only)
+    if (planSetPayload.plans.length > 1 && planSetPayload.planSetShapeRationale) {
+      yield emitPlanningDecision({
+        kind: 'plan-set-shape',
+        rationale: planSetPayload.planSetShapeRationale,
+        planCount: planSetPayload.plans.length,
+        planIds: planSetPayload.plans.map(p => p.frontmatter.id),
+      });
+    }
+    // 2. Build-pipeline decision (using defaultBuild from pipeline composer context)
+    if (options.defaultBuild && options.defaultBuild.length > 0) {
+      const buildRationales = planSetPayload.orchestration.plans
+        .filter(p => p.buildRationale)
+        .map(p => `${p.id}: ${p.buildRationale}`)
+        .join('; ');
+      const rationale = buildRationales || 'Using pipeline-composer default build stages';
+      yield emitPlanningDecision({
+        kind: 'build-pipeline-chosen',
+        rationale,
+        defaultBuild: options.defaultBuild,
+      });
+    }
+    // 3. Review-profile decision (using defaultReview from pipeline composer context)
+    if (options.defaultReview) {
+      const reviewRationales = planSetPayload.orchestration.plans
+        .filter(p => p.reviewRationale)
+        .map(p => `${p.id}: ${p.reviewRationale}`)
+        .join('; ');
+      const rationale = reviewRationales || 'Using pipeline-composer default review profile';
+      yield emitPlanningDecision({
+        kind: 'review-profile-chosen',
+        rationale,
+        strategy: options.defaultReview.strategy,
+        perspectives: options.defaultReview.perspectives,
+        maxRounds: options.defaultReview.maxRounds,
+        evaluatorStrictness: options.defaultReview.evaluatorStrictness,
+      });
+    }
 
     yield {
       timestamp: new Date().toISOString(),

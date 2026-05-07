@@ -217,9 +217,11 @@ export type {
   ShardScope,
   PipelineComposition,
   BuildDecision,
+  PlanningDecision,
+  PlanningDecisionEvent,
 } from './events.js';
 
-export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema } from './events.js';
+export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema, PlanningDecisionSchema } from './events.js';
 
 export type {
   HealthResponse,

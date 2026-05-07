@@ -56,7 +56,7 @@ import {
 } from './handle-enqueue';
 import { handleConfigWarning, handlePlanningWarning } from './handle-misc';
 import { handleDaemonAutoBuildPaused } from './handle-daemon';
-import { handlePlanBuildDecision } from './handle-decisions';
+import { handlePlanBuildDecision, handlePlanningDecision } from './handle-decisions';
 import {
   handlePlanStatusChange,
   handlePlanErrorSet,
@@ -126,6 +126,9 @@ export const handlerRegistry = {
 
   // Build-phase decision events
   'plan:build:decision': handlePlanBuildDecision,
+
+  // Plan-phase decision events
+  'planning:decision': handlePlanningDecision,
 
   // Agent lifecycle
   'agent:start': handleAgentStart,

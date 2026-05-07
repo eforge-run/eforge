@@ -1,9 +1,9 @@
 import { memo, useMemo, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import type { AgentThread, StoredEvent } from '@/lib/reducer';
+import type { AgentThread, StoredEvent, Decision } from '@/lib/reducer';
 import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/types';
-import type { BuildDecision } from '@eforge-build/client/browser';
 import { EMPTY_THREADS } from './pipeline-colors';
+import { DecisionTimeline } from './decision-timeline';
 import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
 import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
 import { computeDepthMap } from './compute-depth-map';
@@ -22,7 +22,7 @@ interface ThreadPipelineProps {
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
   reviewIssuesByPerspective?: Record<string, Record<string, ReviewIssue[]>>;
-  decisions?: Record<string, BuildDecision[]>;
+  decisions?: Record<string, Decision[]>;
 }
 
 function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions }: ThreadPipelineProps) {
@@ -151,6 +151,13 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
           <span className="w-1.5 h-1.5 rounded-full bg-blue" />
           Pipeline
         </h3>
+
+        {decisions?.['__run__'] && decisions['__run__'].length > 0 && (
+          <div className="mb-2">
+            <div className="text-[10px] text-text-dim mb-0.5 uppercase tracking-wider">Planning decisions</div>
+            <DecisionTimeline decisions={decisions['__run__']} />
+          </div>
+        )}
 
         {!hasThreadContent ? (
           <div className="text-[11px] text-text-dim italic">Waiting for agent activity...</div>

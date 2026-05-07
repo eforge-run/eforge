@@ -29,8 +29,11 @@
  * when the hook is cleaning up.
  */
 import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, SessionProfile, ReviewIssue, ValidationCommandSpan } from './types';
-import type { BuildDecision } from '@eforge-build/client/browser';
+import type { BuildDecision, PlanningDecision } from '@eforge-build/client/browser';
 import type { PipelineStage } from './types';
+
+/** Union of all decision kinds that can appear in the decisions timeline. */
+export type Decision = BuildDecision | PlanningDecision;
 import { formatDuration } from './format';
 import { handlerRegistry } from './reducer/index';
 
@@ -101,7 +104,15 @@ export interface RunState {
   autoBuildPausedAt: string | null;
   perspectiveErrors: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
   reviewIssuesByPerspective: Record<string, Record<string, ReviewIssue[]>>;
-  decisions: Record<string, BuildDecision[]>;
+  /**
+   * Decisions keyed by planId (for build-phase decisions) or by the sentinel
+   * `'__run__'` for session-level planning-phase decisions not tied to a specific plan.
+   *
+   * The `'__run__'` sentinel collects `planning:decision` events that arrive
+   * without a planId (e.g. scope-selected, build-pipeline-chosen,
+   * review-profile-chosen, plan-set-shape decisions emitted during the compile phase).
+   */
+  decisions: Record<string, Decision[]>;
 }
 
 export const initialRunState: RunState = {

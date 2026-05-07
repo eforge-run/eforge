@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { BuildDecisionSchema } from '@eforge-build/client';
-import type { BuildDecision } from '@eforge-build/client';
-import { emitBuildDecision, emitBuildDecisionForPlan } from '@eforge-build/engine/decisions';
+import { BuildDecisionSchema, PlanningDecisionSchema } from '@eforge-build/client';
+import type { BuildDecision, PlanningDecision } from '@eforge-build/client';
+import { emitBuildDecision, emitBuildDecisionForPlan, emitPlanningDecision } from '@eforge-build/engine/decisions';
 import type { BuildStageContext } from '@eforge-build/engine/pipeline';
 
 // ---------------------------------------------------------------------------
@@ -182,6 +182,168 @@ describe('BuildDecisionSchema — invalid inputs', () => {
         source: 'config',
       }),
     ).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PlanningDecisionSchema — valid kinds
+// ---------------------------------------------------------------------------
+
+describe('PlanningDecisionSchema — valid kinds', () => {
+  it('parses scope-selected (pipeline-composer source)', () => {
+    const result = PlanningDecisionSchema.parse({
+      kind: 'scope-selected',
+      rationale: 'Three independent subsystems each requiring dedicated exploration',
+      scope: 'expedition',
+      source: 'pipeline-composer',
+    });
+    expect(result.kind).toBe('scope-selected');
+    expect(result.scope).toBe('expedition');
+    expect(result.source).toBe('pipeline-composer');
+  });
+
+  it('parses scope-selected (planner source)', () => {
+    const result = PlanningDecisionSchema.parse({
+      kind: 'scope-selected',
+      rationale: 'Simple single-file typo fix',
+      scope: 'errand',
+      source: 'planner',
+    });
+    expect(result.kind).toBe('scope-selected');
+    expect(result.scope).toBe('errand');
+  });
+
+  it('parses build-pipeline-chosen', () => {
+    const result = PlanningDecisionSchema.parse({
+      kind: 'build-pipeline-chosen',
+      rationale: 'Standard implementation with review cycle for this excursion',
+      defaultBuild: ['implement', 'review-cycle'],
+    });
+    expect(result.kind).toBe('build-pipeline-chosen');
+    expect(result.defaultBuild).toEqual(['implement', 'review-cycle']);
+  });
+
+  it('parses build-pipeline-chosen with parallel stages', () => {
+    const result = PlanningDecisionSchema.parse({
+      kind: 'build-pipeline-chosen',
+      rationale: 'Parallel doc-author with implement for faster iteration',
+      defaultBuild: [['implement', 'doc-author'], 'review-cycle'],
+    });
+    expect(result.kind).toBe('build-pipeline-chosen');
+    expect(result.defaultBuild[0]).toEqual(['implement', 'doc-author']);
+  });
+
+  it('parses review-profile-chosen', () => {
+    const result = PlanningDecisionSchema.parse({
+      kind: 'review-profile-chosen',
+      rationale: 'Security changes warrant parallel code+security review',
+      strategy: 'parallel',
+      perspectives: ['code', 'security'],
+      maxRounds: 2,
+      evaluatorStrictness: 'strict',
+    });
+    expect(result.kind).toBe('review-profile-chosen');
+    expect(result.strategy).toBe('parallel');
+    expect(result.perspectives).toEqual(['code', 'security']);
+    expect(result.maxRounds).toBe(2);
+    expect(result.evaluatorStrictness).toBe('strict');
+  });
+
+  it('parses plan-set-shape', () => {
+    const result = PlanningDecisionSchema.parse({
+      kind: 'plan-set-shape',
+      rationale: 'Schema migration must land before builder can reference new columns',
+      planCount: 2,
+      planIds: ['plan-01-schema', 'plan-02-delivery'],
+    });
+    expect(result.kind).toBe('plan-set-shape');
+    expect(result.planCount).toBe(2);
+    expect(result.planIds).toEqual(['plan-01-schema', 'plan-02-delivery']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PlanningDecisionSchema — invalid inputs
+// ---------------------------------------------------------------------------
+
+describe('PlanningDecisionSchema — invalid inputs', () => {
+  it('throws on unknown kind', () => {
+    expect(() =>
+      PlanningDecisionSchema.parse({ kind: 'unknown-planning-kind', rationale: 'test' }),
+    ).toThrow();
+  });
+
+  it('throws on missing rationale', () => {
+    expect(() =>
+      PlanningDecisionSchema.parse({ kind: 'scope-selected', scope: 'excursion', source: 'planner' }),
+    ).toThrow();
+  });
+
+  it('throws on invalid scope value', () => {
+    expect(() =>
+      PlanningDecisionSchema.parse({ kind: 'scope-selected', rationale: 'test', scope: 'invalid', source: 'planner' }),
+    ).toThrow();
+  });
+
+  it('throws on invalid evaluatorStrictness for review-profile-chosen', () => {
+    expect(() =>
+      PlanningDecisionSchema.parse({
+        kind: 'review-profile-chosen',
+        rationale: 'test',
+        strategy: 'single',
+        perspectives: ['code'],
+        maxRounds: 1,
+        evaluatorStrictness: 'ultra-strict',
+      }),
+    ).toThrow();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// emitPlanningDecision helper
+// ---------------------------------------------------------------------------
+
+describe('emitPlanningDecision', () => {
+  const validDecision: PlanningDecision = {
+    kind: 'scope-selected',
+    rationale: 'Multiple independent subsystems',
+    scope: 'excursion',
+    source: 'pipeline-composer',
+  };
+
+  it('returns an event with type === planning:decision', () => {
+    const event = emitPlanningDecision(validDecision);
+    expect(event.type).toBe('planning:decision');
+  });
+
+  it('omits planId when not provided', () => {
+    const event = emitPlanningDecision(validDecision);
+    expect('planId' in event).toBe(false);
+  });
+
+  it('attaches planId when provided', () => {
+    const event = emitPlanningDecision(validDecision, 'plan-01');
+    expect(event.planId).toBe('plan-01');
+  });
+
+  it('attaches an ISO 8601 timestamp string', () => {
+    const event = emitPlanningDecision(validDecision);
+    expect(typeof event.timestamp).toBe('string');
+    const parsed = new Date(event.timestamp);
+    expect(Number.isFinite(parsed.getTime())).toBe(true);
+    expect(parsed.toISOString()).toBe(event.timestamp);
+  });
+
+  it('decision round-trips through PlanningDecisionSchema.parse', () => {
+    const event = emitPlanningDecision(validDecision);
+    const parsed = PlanningDecisionSchema.parse(event.decision);
+    expect(parsed.kind).toBe(validDecision.kind);
+  });
+
+  it('throws ZodError when called with a malformed decision', () => {
+    const malformed = { kind: 'scope-selected', scope: 'excursion', source: 'planner' } as unknown as PlanningDecision;
+    // missing rationale
+    expect(() => emitPlanningDecision(malformed)).toThrow();
   });
 });
 

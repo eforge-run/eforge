@@ -1,17 +1,21 @@
 /**
- * Build-phase decision emission helper.
+ * Build-phase and plan-phase decision emission helpers.
  *
  * Convention: All engine code that emits `plan:build:decision` events must
  * call `emitBuildDecision(ctx, decision)` or `emitBuildDecisionForPlan(planId, decision)`
  * from this file. Direct yields of `{ type: 'plan:build:decision', ... }` outside this
  * file are forbidden — a grep gate (added in plan-02 alongside the emission sites)
  * enforces zero hits.
+ *
+ * Similarly, all engine code that emits `planning:decision` events must call
+ * `emitPlanningDecision(decision, planId?)` from this file.
  */
-import { BuildDecisionSchema } from '@eforge-build/client';
-import type { EforgeEvent, BuildDecision } from '@eforge-build/client';
+import { BuildDecisionSchema, PlanningDecisionSchema } from '@eforge-build/client';
+import type { EforgeEvent, BuildDecision, PlanningDecision } from '@eforge-build/client';
 import type { BuildStageContext } from './pipeline/types.js';
 
 export type { BuildDecision };
+export type { PlanningDecision };
 
 /** Narrowed event shape returned by `emitBuildDecision` — preserves field-level type info for callers. */
 export type BuildDecisionEvent = Extract<EforgeEvent, { type: 'plan:build:decision' }>;
@@ -56,6 +60,30 @@ export function emitBuildDecisionForPlan(planId: string, decision: BuildDecision
     timestamp: new Date().toISOString(),
     type: 'plan:build:decision',
     planId,
+    decision: validated,
+  };
+}
+
+/** Narrowed event shape returned by `emitPlanningDecision`. */
+export type PlanningDecisionEvent = Extract<EforgeEvent, { type: 'planning:decision' }>;
+
+/**
+ * Constructs a fully-formed `planning:decision` event.
+ *
+ * Validates the `decision` payload through `PlanningDecisionSchema.parse` so
+ * production code throws on malformed payloads.
+ *
+ * @param decision - The typed inner planning decision payload.
+ * @param planId - Optional plan identifier to scope the decision to a specific plan.
+ * @returns A narrowed `planning:decision` event.
+ */
+export function emitPlanningDecision(decision: PlanningDecision, planId?: string): PlanningDecisionEvent {
+  // Validate the inner payload — throws ZodError if malformed
+  const validated = PlanningDecisionSchema.parse(decision);
+  return {
+    timestamp: new Date().toISOString(),
+    type: 'planning:decision',
+    ...(planId !== undefined && { planId }),
     decision: validated,
   };
 }
