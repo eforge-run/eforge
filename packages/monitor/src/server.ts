@@ -1043,14 +1043,12 @@ export async function startServer(
       }
     }
 
-    await Promise.all([
-      loadFromDir(queueDir, 'pending'),
-      loadFromDir(resolve(queueDir, 'failed'), 'failed'),
-      loadFromDir(resolve(queueDir, 'skipped'), 'skipped'),
-      // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
-      loadFromDir(resolve(queueDir, 'waiting'), 'waiting'),
-      // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
-    ]);
+    await loadFromDir(queueDir, 'pending');
+    await loadFromDir(resolve(queueDir, 'failed'), 'failed');
+    await loadFromDir(resolve(queueDir, 'skipped'), 'skipped');
+    // --- eforge:region plan-05-piggyback-and-queue-scheduling ---
+    await loadFromDir(resolve(queueDir, 'waiting'), 'waiting');
+    // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
 
     postProcessQueueDependsOn(items);
     return items;
