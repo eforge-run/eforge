@@ -1,0 +1,96 @@
+name: fix-monitor-live-updates-so-enqueue-sessions-appear-under-enqueuing-queued-prds-appear-without-refresh-and-newly-running-builds-appear-automatically-after-enqueue-completes
+description: Make monitor sidebar live SSE state provably equivalent to the
+  stream:hello snapshot for runs and queue, by introducing explicit
+  daemon-scoped run-state events emitted from the recorder, completing queue
+  lifecycle projector coverage, and adding parity/reconnect/concurrent
+  regression tests.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-daemon-run-state-events
+    name: Daemon run-state events for monitor live/snapshot parity
+    depends_on: []
+    branch: fix-monitor-live-updates-so-enqueue-sessions-appear-under-enqueuing-queued-prds-appear-without-refresh-and-newly-running-builds-appear-automatically-after-enqueue-completes/plan-01-daemon-run-state-events
+    build:
+      - implement
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Cross-package wire contract change (new daemon-scoped event type,
+          schema, registry projector, recorder integration) plus
+          parity/concurrency test design. The PRD provides clear direction so
+          xhigh is unnecessary, but high is warranted because mistakes silently
+          re-create the live/snapshot drift that this plan is fixing.
+      reviewer:
+        effort: high
+        rationale: Reviewer must verify projector idempotence, snapshot/delta parity,
+          persist:true allowlist correctness, and reconnect replay semantics —
+          all easy to get subtly wrong.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+      - verify
+    maxRounds: 2
+    autoAcceptBelow: suggestion
+    evaluatorStrictness: standard
+  rationale: "The PRD explicitly recommends Excursion and self-describes as a
+    cohesive bugfix with a confirmed root-cause family that crosses the shared
+    client event schema/registry, monitor recorder/server, monitor UI
+    reducer/sidebar projection, and parity tests — but does not require
+    independent module planning across separate subsystems. A single planner
+    session can enumerate the design choice (enrich events vs explicit run-state
+    events vs promoting lifecycle events vs centralized projection), the
+    affected files, and the dependency order, so expedition is unwarranted; the
+    negative signals apply (shared schema/contract changes ripple to all
+    consumers, sequential dependency chain from schema -> recorder -> server
+    snapshot -> client projector -> UI reducer). plan-review-cycle is included
+    because the Approach section presents four genuinely different live-state
+    models with non-trivial tradeoffs, and a quality gate on plan selection
+    prevents the planner from defaulting to a narrow runId patch instead of a
+    parity-equivalent design. The build pipeline runs implement first (the fix
+    touches multiple packages with type-level coupling), then test-write to
+    satisfy the PRD's heavy test focus (snapshot/delta parity, reconnect replay,
+    concurrent enqueue/build sequences, and full queue/phase/enqueue lifecycle
+    coverage that explicitly extends existing parity tests in
+    stream-hello-parity.test.ts and event-replay-equivalence.test.ts), then
+    review-cycle (which conflicts with standalone review and cannot be
+    parallelized) for iterative quality enforcement. test-write cannot run in
+    parallel with implement because it declares implement as a predecessor, and
+    review-cycle is non-parallelizable, so the sequential ordering is required
+    by the parallel-group rule. No doc stages: this is a monitor/daemon
+    consistency bugfix with no user-facing API or documentation surface called
+    out in scope. Review uses parallel strategy with code/test/verify
+    perspectives — code catches projection-vs-snapshot drift and event-payload
+    identity issues, test ensures the new parity/concurrency tests actually
+    exercise the live SSE delta path (not just the snapshot path), and verify
+    confirms the acceptance criteria around live equivalence with stream:hello
+    after reconnect. Security/api/docs perspectives are not relevant for an
+    internal SSE wire-shape fix. maxRounds: 2 with standard strictness balances
+    catching regressions in shared @eforge-build/client schemas (which ripple to
+    CLI, MCP, Pi, and monitor-ui consumers) against the bounded scope of a
+    single bugfix; autoAcceptBelow suggestion keeps trivial style nits from
+    looping."
