@@ -457,7 +457,6 @@ const pipelineReviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.obje
   perspectives: z.array(z.enum(REVIEW_PERSPECTIVES)).nonempty()
     .describe(`Review perspective names. Valid: ${REVIEW_PERSPECTIVES.join(', ')}`),
   maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles'),
-  autoAcceptBelow: z.enum(['suggestion', 'warning']).optional().describe('Auto-accept issues at or below this severity'),
   evaluatorStrictness: z.enum(['strict', 'standard', 'lenient']).describe('How strictly the evaluator judges fixes'),
 });
 

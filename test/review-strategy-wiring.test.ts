@@ -1,58 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import type { ReviewIssue } from '@eforge-build/engine/events';
 import { STRICTNESS_BLOCKS } from '@eforge-build/engine/agents/builder';
-import { filterIssuesBySeverity } from '@eforge-build/engine/pipeline';
-
-function makeIssue(severity: ReviewIssue['severity'], desc = `${severity} issue`): ReviewIssue {
-  return {
-    severity,
-    category: 'test',
-    file: 'test.ts',
-    description: desc,
-  };
-}
-
-// --- Issue severity filtering ---
-
-describe('filterIssuesBySeverity', () => {
-  it('returns all issues when autoAcceptBelow is undefined', () => {
-    const issues = [makeIssue('critical'), makeIssue('warning'), makeIssue('suggestion')];
-    const { filtered, autoAccepted } = filterIssuesBySeverity(issues, undefined);
-    expect(filtered).toEqual(issues);
-    expect(autoAccepted).toEqual([]);
-  });
-
-  it('auto-accepts suggestion issues when autoAcceptBelow is "suggestion"', () => {
-    const critical = makeIssue('critical');
-    const warning = makeIssue('warning');
-    const suggestion = makeIssue('suggestion');
-    const { filtered, autoAccepted } = filterIssuesBySeverity(
-      [critical, warning, suggestion],
-      'suggestion',
-    );
-    expect(filtered).toEqual([critical, warning]);
-    expect(autoAccepted).toEqual([suggestion]);
-  });
-
-  it('auto-accepts warning and suggestion issues when autoAcceptBelow is "warning"', () => {
-    const critical = makeIssue('critical');
-    const warning = makeIssue('warning');
-    const suggestion = makeIssue('suggestion');
-    const { filtered, autoAccepted } = filterIssuesBySeverity(
-      [critical, warning, suggestion],
-      'warning',
-    );
-    expect(filtered).toEqual([critical]);
-    expect(autoAccepted).toEqual([warning, suggestion]);
-  });
-
-  it('returns empty filtered array when all issues are below threshold', () => {
-    const suggestion = makeIssue('suggestion');
-    const { filtered, autoAccepted } = filterIssuesBySeverity([suggestion], 'suggestion');
-    expect(filtered).toEqual([]);
-    expect(autoAccepted).toEqual([suggestion]);
-  });
-});
 
 // --- Evaluator strictness blocks ---
 

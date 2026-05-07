@@ -1,11 +1,9 @@
 /**
- * Misc pipeline utilities — PRD metadata extraction, issue filtering, dependency backfill.
+ * Misc pipeline utilities — PRD metadata extraction.
  */
 
 import { parse as parseYaml } from 'yaml';
 
-import { SEVERITY_ORDER } from '../events.js';
-import type { ReviewIssue } from '../events.js';
 import { extractPlanTitle } from '../plan.js';
 
 /** Convert kebab-case name to a human-readable title. */
@@ -46,22 +44,3 @@ export function extractPrdMetadata(
   // Fall back to humanized planSetName
   return { title: humanizeName(fallbackName), body: content };
 }
-
-/**
- * Filter review issues by severity threshold.
- * `autoAcceptBelow: 'warning'` means issues at warning and below (warning, suggestion)
- * are auto-accepted. Only critical issues reach the fixer.
- * `autoAcceptBelow: 'suggestion'` means only suggestion-severity issues are auto-accepted.
- * Critical and warning reach the fixer.
- */
-export function filterIssuesBySeverity(
-  issues: ReviewIssue[],
-  autoAcceptBelow?: 'suggestion' | 'warning',
-): { filtered: ReviewIssue[]; autoAccepted: ReviewIssue[] } {
-  if (!autoAcceptBelow) return { filtered: issues, autoAccepted: [] };
-  const threshold = SEVERITY_ORDER[autoAcceptBelow];
-  const filtered = issues.filter(i => SEVERITY_ORDER[i.severity] < threshold);
-  const autoAccepted = issues.filter(i => SEVERITY_ORDER[i.severity] >= threshold);
-  return { filtered, autoAccepted };
-}
-

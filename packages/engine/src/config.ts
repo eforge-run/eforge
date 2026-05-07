@@ -101,7 +101,6 @@ export const sdkPassthroughConfigSchema = z.object({
 
 const STRATEGIES = ['auto', 'single', 'parallel'] as const;
 const STRICTNESS = ['strict', 'standard', 'lenient'] as const;
-const AUTO_ACCEPT = ['suggestion', 'warning'] as const;
 
 // Bound to `z.ZodType<ReviewProfileConfig>` so a drift between this schema and
 // the shared TypeScript type in `@eforge-build/client` produces a compile error.
@@ -110,7 +109,6 @@ export const reviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.objec
   perspectives: z.array(z.enum(REVIEW_PERSPECTIVES)).nonempty()
     .describe(`Review perspective names. Valid: ${REVIEW_PERSPECTIVES.join(', ')}. Example: ["code", "security", "api"]`),
   maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles (default 1)'),
-  autoAcceptBelow: z.enum(AUTO_ACCEPT).optional().describe('Auto-accept issues at or below this severity'),
   evaluatorStrictness: z.enum(STRICTNESS).describe('How strictly the evaluator judges fixes: "strict", "standard", or "lenient"'),
 });
 
