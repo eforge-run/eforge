@@ -2,17 +2,38 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DAEMON_EVENT_TYPES } from '@eforge-build/client';
+import type { RunInfo, SessionMetadata } from '@eforge-build/client';
 
-export interface RunRecord {
+/** Raw DB row shape for the `runs` table — snake_case columns as returned by SQLite. */
+interface RunRow {
   id: string;
-  sessionId?: string;
-  planSet: string;
+  session_id: string | null;
+  plan_set: string;
   command: string;
   status: string;
-  startedAt: string;
-  completedAt?: string;
+  started_at: string;
+  completed_at: string | null;
   cwd: string;
-  pid?: number;
+  pid: number | null;
+}
+
+/**
+ * Map a raw `runs` DB row to the canonical `RunInfo` wire shape.
+ * Explicit field mapping ensures a new required `RunInfo` field causes a
+ * `pnpm type-check` failure here rather than silently producing bad JSON.
+ */
+function rowToRunInfo(row: RunRow): RunInfo {
+  return {
+    id: row.id,
+    sessionId: row.session_id ?? undefined,
+    planSet: row.plan_set,
+    command: row.command,
+    status: row.status,
+    startedAt: row.started_at,
+    completedAt: row.completed_at ?? undefined,
+    cwd: row.cwd,
+    pid: row.pid ?? undefined,
+  };
 }
 
 export interface EventRecord {
@@ -46,17 +67,17 @@ export interface MonitorDB {
   }): number;
   updateRunStatus(runId: string, status: string, completedAt?: string): void;
   updateRunPlanSet(runId: string, planSet: string): void;
-  getRuns(): RunRecord[];
-  getRunningRuns(): RunRecord[];
-  getRun(runId: string): RunRecord | undefined;
+  getRuns(): RunInfo[];
+  getRunningRuns(): RunInfo[];
+  getRun(runId: string): RunInfo | undefined;
   getEvents(runId: string, afterId?: number): EventRecord[];
   getEventsByType(runId: string, type: string): EventRecord[];
   getLatestRunId(): string | undefined;
-  getRunsBySession(sessionId: string): RunRecord[];
+  getRunsBySession(sessionId: string): RunInfo[];
   getEventsBySession(sessionId: string, afterId?: number): EventRecord[];
   getEventsByTypeForSession(sessionId: string, type: string): EventRecord[];
   getLatestSessionId(): string | undefined;
-  getSessionRuns(sessionId: string): RunRecord[];
+  getSessionRuns(sessionId: string): RunInfo[];
   getSessionMetadataBatch(): Record<string, SessionMetadata>;
   insertFileDiffs(runId: string, planId: string, diffs: Array<{ path: string; diff: string }>, timestamp: string): void;
   getFileDiff(sessionId: string, planId: string, filePath: string): FileDiffRecord | undefined;
@@ -92,11 +113,6 @@ export interface FileDiffRecord {
   filePath: string;
   diffText: string;
   timestamp: string;
-}
-
-export interface SessionMetadata {
-  planCount: number | null;
-  baseProfile: string | null;
 }
 
 const SCHEMA = `
@@ -197,10 +213,10 @@ export function openDatabase(dbPath: string): MonitorDB {
       `UPDATE runs SET plan_set = ? WHERE id = ?`,
     ),
     getRuns: db.prepare(
-      `SELECT id, session_id as sessionId, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd, pid FROM runs ORDER BY started_at DESC`,
+      `SELECT id, session_id, plan_set, command, status, started_at, completed_at, cwd, pid FROM runs ORDER BY started_at DESC`,
     ),
     getRunningRuns: db.prepare(
-      `SELECT id, session_id as sessionId, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd, pid FROM runs WHERE status = 'running' ORDER BY started_at DESC`,
+      `SELECT id, session_id, plan_set, command, status, started_at, completed_at, cwd, pid FROM runs WHERE status = 'running' ORDER BY started_at DESC`,
     ),
     getEventsAll: db.prepare(
       `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? ORDER BY id`,
@@ -212,7 +228,7 @@ export function openDatabase(dbPath: string): MonitorDB {
       `SELECT id, run_id as runId, type, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = ? ORDER BY id`,
     ),
     getRun: db.prepare(
-      `SELECT id, session_id as sessionId, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd, pid FROM runs WHERE id = ?`,
+      `SELECT id, session_id, plan_set, command, status, started_at, completed_at, cwd, pid FROM runs WHERE id = ?`,
     ),
     getLatestRunId: db.prepare(
       `SELECT id FROM runs ORDER BY started_at DESC LIMIT 1`,
@@ -230,7 +246,7 @@ export function openDatabase(dbPath: string): MonitorDB {
       `SELECT COALESCE(MAX(id), 0) as maxId FROM events WHERE type IN (${DAEMON_EVENT_TYPES.map(() => '?').join(', ')})`,
     ),
     getRunsBySession: db.prepare(
-      `SELECT id, session_id as sessionId, plan_set as planSet, command, status, started_at as startedAt, completed_at as completedAt, cwd, pid FROM runs WHERE session_id = ? ORDER BY started_at`,
+      `SELECT id, session_id, plan_set, command, status, started_at, completed_at, cwd, pid FROM runs WHERE session_id = ? ORDER BY started_at`,
     ),
     getEventsBySessionAll: db.prepare(
       `SELECT e.id, e.run_id as runId, e.type, e.plan_id as planId, e.agent, e.data, e.timestamp FROM events e JOIN runs r ON e.run_id = r.id WHERE r.session_id = ? ORDER BY e.id`,
@@ -300,15 +316,16 @@ export function openDatabase(dbPath: string): MonitorDB {
     },
 
     getRuns() {
-      return stmts.getRuns.all() as unknown as RunRecord[];
+      return (stmts.getRuns.all() as unknown as RunRow[]).map(rowToRunInfo);
     },
 
     getRunningRuns() {
-      return stmts.getRunningRuns.all() as unknown as RunRecord[];
+      return (stmts.getRunningRuns.all() as unknown as RunRow[]).map(rowToRunInfo);
     },
 
     getRun(runId) {
-      return stmts.getRun.get(runId) as unknown as RunRecord | undefined;
+      const row = stmts.getRun.get(runId) as unknown as RunRow | undefined;
+      return row !== undefined ? rowToRunInfo(row) : undefined;
     },
 
     getEvents(runId, afterId) {
@@ -323,7 +340,7 @@ export function openDatabase(dbPath: string): MonitorDB {
     },
 
     getRunsBySession(sessionId) {
-      return stmts.getRunsBySession.all(sessionId) as unknown as RunRecord[];
+      return (stmts.getRunsBySession.all(sessionId) as unknown as RunRow[]).map(rowToRunInfo);
     },
 
     getEventsBySession(sessionId, afterId) {
@@ -343,7 +360,7 @@ export function openDatabase(dbPath: string): MonitorDB {
     },
 
     getSessionRuns(sessionId) {
-      return stmts.getRunsBySession.all(sessionId) as unknown as RunRecord[];
+      return (stmts.getRunsBySession.all(sessionId) as unknown as RunRow[]).map(rowToRunInfo);
     },
 
     getSessionMetadataBatch() {

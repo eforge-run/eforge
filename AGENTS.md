@@ -32,6 +32,7 @@ pnpm type-check   # Type check without emitting
 - **State mutation is single-entry-point.** All engine code that mutates `plan.status`, `plan.error`, `state.completedPlans`, or `state.mergeWorktreePath` must call `mutateState(state, event)` from `packages/engine/src/state.ts`. Direct field assignments to those properties outside that file are forbidden — a grep gate enforces zero hits. Use the appropriate lifecycle event variant (`plan:status:change`, `plan:error:set`, `plan:error:clear`, `merge:worktree:set`, `merge:worktree:clear`).
 - Use Mermaid diagrams instead of ASCII art in documentation.
 - Exclude `node_modules/` and `dist/` from file searches.
+- **Daemon wire shapes for runs, queue items, session metadata, and auto-build are owned by `@eforge-build/client`.** Daemon DB read paths must use named row-to-wire mapping helpers (e.g. `rowToRunInfo`) rather than inline SQL camelCase aliases. REST handlers and the `stream:hello` SSE snapshot must construct `runs`, `queue`, `sessionMetadata`, and `autoBuild` through the same projection functions — no parallel object-shaping in the snapshot constructor or local interface re-declarations in monitor packages.
 
 ## Testing
 

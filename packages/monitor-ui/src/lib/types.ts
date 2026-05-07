@@ -18,6 +18,12 @@ export type {
 import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client/browser';
 export type { BuildStageSpec, ReviewProfileConfig };
 
+// Wire shapes owned by @eforge-build/client — canonical source of truth.
+// Re-exported here so existing `@/lib/types` importers continue to resolve.
+// Note: the canonical RunInfo now includes `pid?: number` which the previous
+// local declaration was missing.
+export type { QueueItem, RunInfo, SessionMetadata } from '@eforge-build/client/browser';
+
 export type ConnectionStatus = 'connected' | 'connecting' | 'disconnected';
 
 export type PipelineStage = 'plan' | 'implement' | 'doc-author' | 'doc-sync' | 'test' | 'review' | 'evaluate' | 'complete' | 'failed';
@@ -40,45 +46,12 @@ export interface PlanStatus {
 }
 
 
-export interface QueueItem {
-  id: string;
-  title: string;
-  status: string;
-  priority?: number;
-  created?: string;
-  dependsOn?: string[];
-  /**
-   * Recovery verdict embedded by the daemon in the queue payload for failed items.
-   * Present when a valid `<prdId>.recovery.json` sidecar exists; absent otherwise.
-   */
-  recoveryVerdict?: {
-    verdict: 'retry' | 'split' | 'abandon' | 'manual';
-    confidence: 'low' | 'medium' | 'high';
-  };
-}
-
-export interface RunInfo {
-  id: string;
-  planSet: string;
-  command: string;
-  status: string;
-  startedAt: string;
-  completedAt?: string;
-  cwd: string;
-  sessionId?: string;
-}
-
 export type SessionProfile = {
   profileName: string | null;
   source: 'local' | 'project' | 'user-local' | 'missing' | 'none';
   scope: 'local' | 'project' | 'user' | null;
   config: unknown | null;
 };
-
-export interface SessionMetadata {
-  planCount: number | null;
-  baseProfile: string | null;
-}
 
 export type ValidationCommandStatus = 'running' | 'passed' | 'failed' | 'timeout';
 
