@@ -10,6 +10,17 @@
 
 ---
 
+## Orchestrator Intelligence
+
+**Goal**: Make the orchestrator's review-cycle decisions adaptive and observable.
+
+- **Adaptive reviewer respawn** — First review pass spawns the full set of reviewer perspectives the planner specified. Subsequent passes (after a fixer round) should respawn only the subset whose perspective is still relevant given the prior review results and the nature of the fixes made, rather than always defaulting to the full set. Should also account for overlap between reviewer perspectives so concerns aren't double-counted.
+- **Remove severity filter from review cycle** — Drop `autoAcceptBelow` from the review profile and delete `filterIssuesBySeverity` from the cycle. Nobody uses the opt-in, and "what counts as worth fixing" belongs in reviewer prompts, not engine config. Termination becomes "reviewers reported zero issues." Severity stays on `ReviewIssue` for fixer ordering and UI display.
+- **Per-reviewer hover scoping in monitor UI** — Hovering a reviewer or fixer node in the pipeline view currently shows issue counts aggregated across the whole build phase, which is misleading when multiple reviewer perspectives ran in parallel. Scope the hover to the specific agent instance: for a reviewer, show its perspective and only the issues it reported; for the fixer, show what it actually addressed. Correlate by agent ID / perspective from the existing event stream — no schema changes needed.
+- **Orchestrator decision events** — Emit typed events with rich context whenever the orchestrator makes a decision across any phase (plan and build): planner choices (which reviewer perspectives, parallelism, depth), build-stage choices (which reviewers to spawn, when to stop the review cycle, when to escalate), etc. Surface these in the monitor UI so users can see why the pipeline took a given path. Event name is TBD — needs to fit the existing `phase:stage:action` event taxonomy in `@eforge-build/client`.
+
+---
+
 ## Multimodal Input
 
 **Goal**: Let users attach images and PDFs alongside text to give agents richer context - wireframes, bug screenshots, design specs.
