@@ -13,6 +13,8 @@
   "scripts": {
     "build": "pnpm -r build",
     "build:ui": "pnpm --filter @eforge-build/monitor-ui build",
+    "restart-daemon": "eforge daemon stop && eforge daemon start",
+    "build-and-restart": "pnpm build && pnpm restart-daemon",
     "dev:monitor": "pnpm --filter @eforge-build/monitor-ui dev",
     "test": "node scripts/check-skill-parity.mjs && vitest run",
     "test:watch": "vitest",
