@@ -1,6 +1,6 @@
 {
   "name": "@eforge-build/input",
-  "version": "0.7.10",
+  "version": "0.7.11",
   "description": "Reusable input-artifact protocols for eforge: playbooks and session plans that compile to ordinary build source.",
   "license": "Apache-2.0",
   "type": "module",
