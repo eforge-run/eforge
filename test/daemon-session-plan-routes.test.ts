@@ -276,6 +276,7 @@ describe('GET /api/session-plan/show', () => {
     const data = await res.json() as {
       plan: { session: string; topic: string; body: string };
       readiness: { ready: boolean; missingDimensions: string[]; coveredDimensions: string[]; skippedDimensions: string[] };
+      path: string;
     };
     expect(data.plan.session).toBe('2026-01-01-add-feature');
     expect(data.plan.topic).toBe('Add Feature');
@@ -284,6 +285,8 @@ describe('GET /api/session-plan/show', () => {
     expect(Array.isArray(data.readiness.missingDimensions)).toBe(true);
     expect(Array.isArray(data.readiness.coveredDimensions)).toBe(true);
     expect(Array.isArray(data.readiness.skippedDimensions)).toBe(true);
+    expect(typeof data.path).toBe('string');
+    expect(data.path.endsWith('.eforge/session-plans/2026-01-01-add-feature.md')).toBe(true);
   });
 });
 

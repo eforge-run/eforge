@@ -239,6 +239,7 @@ export interface SessionPlanListResponse {
 export interface SessionPlanShowResponse {
   plan: SessionPlanDataWire;
   readiness: SessionPlanReadinessDetail;
+  path: string;
 }
 
 /** Request body for POST /api/session-plan/create */

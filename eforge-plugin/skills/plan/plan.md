@@ -27,8 +27,8 @@ Planning must distinguish **facts**, **evidence-backed conclusions**, and **assu
 
 **Resume path** — If `--resume` is passed or the user says "resume" / "continue planning":
 1. Call `mcp__eforge__eforge_session_plan { action: 'list-active' }` to discover active sessions.
-2. If one found, call `{ action: 'show', session }` and present a summary of where things stand: topic, planning type, depth, what dimensions have content, key decisions so far, any open questions.
-3. If multiple found, list them and ask which to resume; then call `{ action: 'show', session }` for the chosen one.
+2. If one found, call `{ action: 'show', session, open: true }` and present a summary of where things stand: topic, planning type, depth, what dimensions have content, key decisions so far, any open questions.
+3. If multiple found, list them and ask which to resume; then call `{ action: 'show', session, open: true }` for the chosen one.
 4. If none found, tell the user and offer to start a new session.
 5. If the session has the legacy boolean `dimensions` shape (detected when `plan.required_dimensions` is empty in the `show` response and the plan body references old-format frontmatter), call `{ action: 'migrate-legacy', session }` to convert it, then call `{ action: 'show', session }` again to reload.
 6. Continue from whatever dimension needs work
@@ -37,7 +37,7 @@ Planning must distinguish **facts**, **evidence-backed conclusions**, and **assu
 **New session path**:
 1. If no topic provided, ask: "What change are you planning?"
 2. Generate a session ID: `{YYYY-MM-DD}-{slug}` where slug is a short kebab-case derived from the topic (e.g., `2026-04-03-add-dark-mode`)
-3. Call `mcp__eforge__eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}' }` to create the session file.
+3. Call `mcp__eforge__eforge_session_plan { action: 'create', session: '{session-id}', topic: '{topic}', open: true }` to create the session file. The wrapper best-effort opens the new session plan file in your default Markdown app; planning continues whether or not the open succeeds.
 4. Proceed to Step 2
 
 ### Step 2: Gather Context

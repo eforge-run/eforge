@@ -1865,7 +1865,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_session_plan",
     label: "eforge session-plan",
     description:
-      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape.',
+      'Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan\'s data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application.',
     parameters: Type.Object({
       action: StringEnum(
         ["list-active", "show", "create", "set-section", "skip-dimension", "set-status", "select-dimensions", "readiness", "migrate-legacy"] as const,
@@ -1911,9 +1911,14 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           description: 'Planning depth (optional for "create" and "select-dimensions")',
         }),
       ),
+      open: Type.Optional(
+        Type.Boolean({
+          description: 'When true, best-effort opens the resulting session plan file in the user\'s default application. Used by the /eforge:plan skill on create and on show after a session is selected.',
+        }),
+      ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth } = params;
+      const { action, session, topic, dimension, content, reason, status, planning_type, planning_depth, open } = params;
 
       if (action === "list-active") {
         const { data } = await daemonRequest(ctx.cwd, "GET", API_ROUTES.sessionPlanList);
@@ -1927,6 +1932,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           "GET",
           `${API_ROUTES.sessionPlanShow}?session=${encodeURIComponent(session)}`,
         );
+        if (open === true && typeof (data as Record<string, unknown>).path === 'string') {
+          const { openSessionPlanFile } = await import('./open-session-plan.js');
+          const openStatus = openSessionPlanFile({ path: (data as Record<string, unknown>).path as string, cwd: ctx.cwd });
+          return jsonResult({ ...(data as Record<string, unknown>), open: openStatus });
+        }
         return jsonResult(data);
       }
 
@@ -1937,6 +1947,11 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (planning_type !== undefined) body.planning_type = planning_type;
         if (planning_depth !== undefined) body.planning_depth = planning_depth;
         const { data } = await daemonRequest(ctx.cwd, "POST", API_ROUTES.sessionPlanCreate, body);
+        if (open === true && typeof (data as Record<string, unknown>).path === 'string') {
+          const { openSessionPlanFile } = await import('./open-session-plan.js');
+          const openStatus = openSessionPlanFile({ path: (data as Record<string, unknown>).path as string, cwd: ctx.cwd });
+          return jsonResult({ ...(data as Record<string, unknown>), open: openStatus });
+        }
         return jsonResult(data);
       }
 

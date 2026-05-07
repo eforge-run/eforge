@@ -2188,11 +2188,12 @@ export async function startServer(
         return;
       }
       try {
-        const { loadSessionPlan, getReadinessDetail } = await import('@eforge-build/input');
+        const { loadSessionPlan, getReadinessDetail, resolveSessionPlanPath } = await import('@eforge-build/input');
         const plan = await loadSessionPlan({ cwd, session });
         const readiness = getReadinessDetail(plan);
+        const path = resolveSessionPlanPath({ cwd, session });
         const { body, sections: _sections, ...frontmatter } = plan as typeof plan & { sections: unknown };
-        sendJson(res, { plan: { ...frontmatter, body }, readiness });
+        sendJson(res, { plan: { ...frontmatter, body }, readiness, path });
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to load session plan';
         if (/not found/i.test(msg) || /enoent/i.test(msg)) {
