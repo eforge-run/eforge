@@ -92,7 +92,7 @@ function buildMarkdown(
     `**${verdict.verdict.toUpperCase()}** (confidence: ${verdict.confidence})`,
     '',
     ...(verdict.partial === true ? [
-      `**⚠ Partial summary** — context was incomplete: ${verdict.recoveryError ?? 'state.json was missing'}`,
+      `**⚠ Partial summary** — context was incomplete: ${verdict.recoveryError ?? 'some context was unavailable'}`,
       '',
     ] : []),
     '## Rationale',

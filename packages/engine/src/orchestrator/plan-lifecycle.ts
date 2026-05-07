@@ -2,10 +2,10 @@
  * Plan lifecycle guards - validates status transitions before delegating
  * to the single-entry-point `mutateState()` mutator in state.ts.
  *
- * Both `transitionPlan` and `resumeState` return the lifecycle events they
- * produced so callers can forward them to the SSE event stream. State mutation
- * via `mutateState` always happens synchronously before the events are returned,
- * so consumers receive the notification after the state has already been applied.
+ * `transitionPlan` returns the lifecycle events it produced so callers can
+ * forward them to the SSE event stream. State mutation via `mutateState`
+ * always happens synchronously before the events are returned, so consumers
+ * receive the notification after the state has already been applied.
  */
 
 import type { EforgeEvent, EforgeState, PlanState } from '../events.js';
@@ -36,43 +36,6 @@ export const VALID_TRANSITIONS: Record<PlanStatus, PlanStatus[]> = {
 
 export interface TransitionMetadata {
   error?: string;
-}
-
-/**
- * Resume a EforgeState by resetting running plans to pending and
- * re-evaluating blocked plans whose dependencies have resolved.
- *
- * Returns the lifecycle events produced (plan:error:clear and
- * plan:status:change events). Callers should forward these to the SSE stream.
- */
-export function resumeState(state: EforgeState): EforgeEvent[] {
-  const events: EforgeEvent[] = [];
-
-  // Reset running plans to pending for re-execution
-  for (const [id, plan] of Object.entries(state.plans)) {
-    if (plan.status === 'running') {
-      // Clear any prior error before transitioning back to pending
-      if (plan.error !== undefined) {
-        const clearEvent: EforgeEvent = { type: 'plan:error:clear', planId: id, timestamp: new Date().toISOString() };
-        mutateState(state, clearEvent);
-        events.push(clearEvent);
-      }
-      events.push(...transitionPlan(state, id, 'pending'));
-    }
-  }
-  // Re-evaluate blocked plans — unblock if all deps resolved
-  for (const [planId, plan] of Object.entries(state.plans)) {
-    if (plan.status === 'blocked') {
-      const allDepsResolved = plan.dependsOn.every((dep) => {
-        const depState = state.plans[dep];
-        return depState && (depState.status === 'completed' || depState.status === 'merged');
-      });
-      if (allDepsResolved) {
-        events.push(...transitionPlan(state, planId, 'pending'));
-      }
-    }
-  }
-  return events;
 }
 
 /**

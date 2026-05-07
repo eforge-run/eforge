@@ -1,9 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { updatePlanStatus, isResumable, loadState, saveState } from '@eforge-build/engine/state';
+import { updatePlanStatus } from '@eforge-build/engine/state';
 import type { EforgeState } from '@eforge-build/engine/events';
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { useTempDir } from './test-tmpdir.js';
 
 function makeState(overrides?: Partial<EforgeState>): EforgeState {
   return {
@@ -60,82 +57,5 @@ describe('updatePlanStatus', () => {
   it('throws for unknown planId', () => {
     const state = makeState();
     expect(() => updatePlanStatus(state, 'nonexistent', 'running')).toThrow(/unknown plan/i);
-  });
-});
-
-describe('isResumable', () => {
-  it('returns true when running with pending plans', () => {
-    const state = makeState();
-    expect(isResumable(state)).toBe(true);
-  });
-
-  it('returns false when all plans completed', () => {
-    const state = makeState();
-    state.plans['plan-a'].status = 'completed';
-    state.plans['plan-b'].status = 'completed';
-    expect(isResumable(state)).toBe(false);
-  });
-
-  it('returns false when status is not running', () => {
-    const state = makeState({ status: 'completed' });
-    expect(isResumable(state)).toBe(false);
-  });
-
-  it('returns false when status is failed', () => {
-    const state = makeState({ status: 'failed' });
-    expect(isResumable(state)).toBe(false);
-  });
-
-  it('returns true when some plans still pending', () => {
-    const state = makeState();
-    state.plans['plan-a'].status = 'completed';
-    // plan-b still pending
-    expect(isResumable(state)).toBe(true);
-  });
-});
-
-describe('loadState / saveState', () => {
-  const makeTempDir = useTempDir('eforge-state-test-');
-
-  it('roundtrips state through save and load', () => {
-    const dir = makeTempDir();
-    const state = makeState();
-    saveState(dir, state);
-    const loaded = loadState(dir);
-    expect(loaded).toEqual(state);
-  });
-
-  it('returns null for corrupt JSON', () => {
-    const dir = makeTempDir();
-    const filePath = join(dir, '.eforge', 'state.json');
-    mkdirSync(join(dir, '.eforge'), { recursive: true });
-    writeFileSync(filePath, '{ broken', 'utf-8');
-    expect(loadState(dir)).toBeNull();
-  });
-
-  it('returns null for empty file', () => {
-    const dir = makeTempDir();
-    const filePath = join(dir, '.eforge', 'state.json');
-    mkdirSync(join(dir, '.eforge'), { recursive: true });
-    writeFileSync(filePath, '', 'utf-8');
-    expect(loadState(dir)).toBeNull();
-  });
-
-  it('returns null when no state file exists', () => {
-    const dir = makeTempDir();
-    expect(loadState(dir)).toBeNull();
-  });
-
-  it('creates parent directories if needed', () => {
-    const dir = makeTempDir();
-    const state = makeState();
-    saveState(dir, state);
-    expect(existsSync(join(dir, '.eforge', 'state.json'))).toBe(true);
-  });
-
-  it('leaves no .tmp file after save', () => {
-    const dir = makeTempDir();
-    saveState(dir, makeState());
-    expect(existsSync(join(dir, '.eforge', 'state.json.tmp'))).toBe(false);
   });
 });
