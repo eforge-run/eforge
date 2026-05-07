@@ -78,7 +78,6 @@ export interface ReviewProfileConfig {
   strategy: 'auto' | 'single' | 'parallel';
   perspectives: ('code' | 'security' | 'api' | 'docs' | 'test' | 'verify')[];
   maxRounds: number;
-  autoAcceptBelow?: 'suggestion' | 'warning';
   evaluatorStrictness: 'strict' | 'standard' | 'lenient';
 }
 

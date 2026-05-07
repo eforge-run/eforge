@@ -34,7 +34,6 @@ import { resolveAgentConfig } from '../agent-config.js';
 import { createToolTracker } from '../span-wiring.js';
 import { hasUnstagedChanges, withPeriodicFileCheck, emitFilesChanged } from '../git-helpers.js';
 import { toBuildFailedEvent } from '../error-translator.js';
-import { filterIssuesBySeverity } from '../misc.js';
 
 const exec = promisify(execFile);
 
@@ -562,14 +561,11 @@ registerBuildStage({
   const maxRounds = ctx.review.maxRounds;
   const strategy = ctx.review.strategy;
   const perspectives = ctx.review.perspectives.length > 0 ? ctx.review.perspectives : undefined;
-  const autoAcceptBelow = ctx.review.autoAcceptBelow;
   const strictness = ctx.review.evaluatorStrictness;
 
   for (let round = 0; round < maxRounds; round++) {
     yield* reviewStageInner(ctx, { strategy, perspectives });
-    const { filtered } = filterIssuesBySeverity(ctx.reviewIssues, autoAcceptBelow);
-    ctx.reviewIssues = filtered;
-    if (filtered.length === 0) break;
+    if (ctx.reviewIssues.length === 0) break;
     yield* reviewFixStageInner(ctx);
     yield* evaluateStageInner(ctx, { strictness });
   }

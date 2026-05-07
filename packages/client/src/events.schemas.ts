@@ -85,7 +85,6 @@ const ReviewProfileConfigSchema = z.object({
   strategy: z.enum(['auto', 'single', 'parallel']),
   perspectives: z.array(ReviewPerspectiveSchema),
   maxRounds: z.number(),
-  autoAcceptBelow: z.enum(['suggestion', 'warning']).optional(),
   evaluatorStrictness: z.enum(['strict', 'standard', 'lenient']),
 });
 
