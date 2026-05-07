@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { PlannerSubmissionError } from '@eforge-build/engine/harness';
 import type { AgentHarness } from '@eforge-build/engine/harness';
@@ -16,9 +18,9 @@ import { runModulePlanner } from '@eforge-build/engine/agents/module-planner';
 import { runArchitectureReview } from '@eforge-build/engine/agents/architecture-reviewer';
 import { runPrdValidator } from '@eforge-build/engine/agents/prd-validator';
 import { validatePipeline, formatStageRegistry, getCompileStageNames, getBuildStageNames, getCompileStageDescriptors, getBuildStageDescriptors, resolveAgentConfig, AGENT_ROLE_DEFAULTS } from '@eforge-build/engine/pipeline';
-import { DEFAULT_CONFIG, resolveConfig } from '@eforge-build/engine/config';
+import { DEFAULT_CONFIG, resolveConfig, loadConfig } from '@eforge-build/engine/config';
 import type { EforgeConfig } from '@eforge-build/engine/config';
-import { singletonRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
+import { singletonRegistry, buildAgentRuntimeRegistry, type AgentRuntimeRegistry } from '@eforge-build/engine/agent-runtime-registry';
 
 // --- Planner ---
 
@@ -1732,5 +1734,189 @@ describe('runParallelReview verify perspective', () => {
     for (const p of perspectives) {
       expect(p).toBeDefined();
     }
+  });
+});
+
+// --- AgentRuntimeRegistry profile override threading (AC12) ---
+
+describe('AgentRuntimeRegistry profile override threading', () => {
+  const makeTempDir = useTempDir('eforge-profile-override-wiring-');
+
+  /**
+   * Write a minimal eforge project with an eforge/config.yaml and an optional
+   * profile override file. Only the `planning` tier is required because the
+   * tests only call `forRole('planner')`.
+   */
+  function writeProjectConfig(projectRoot: string, planningModel: string, planningEffort: string): void {
+    mkdirSync(join(projectRoot, 'eforge'), { recursive: true });
+    writeFileSync(
+      join(projectRoot, 'eforge', 'config.yaml'),
+      [
+        'agents:',
+        '  tiers:',
+        '    planning:',
+        '      harness: claude-sdk',
+        `      model: ${planningModel}`,
+        `      effort: ${planningEffort}`,
+      ].join('\n') + '\n',
+      'utf-8',
+    );
+  }
+
+  function writeProfile(projectRoot: string, profileName: string, content: string): void {
+    mkdirSync(join(projectRoot, 'eforge', 'profiles'), { recursive: true });
+    writeFileSync(join(projectRoot, 'eforge', 'profiles', `${profileName}.yaml`), content, 'utf-8');
+  }
+
+  it('buildAgentRuntimeRegistry consumes merged tiers from the override profile, not the project default', async () => {
+    const projectRoot = makeTempDir();
+
+    // Project default: planning uses haiku / low
+    writeProjectConfig(projectRoot, 'claude-haiku-4-5', 'low');
+
+    // Override profile: planning uses opus / xhigh
+    writeProfile(
+      projectRoot,
+      'profile-a',
+      [
+        'agents:',
+        '  tiers:',
+        '    planning:',
+        '      harness: claude-sdk',
+        '      model: claude-opus-4-7',
+        '      effort: xhigh',
+      ].join('\n') + '\n',
+    );
+
+    const result = await loadConfig(projectRoot, { profileOverride: 'profile-a' });
+
+    // The merged config's planning tier must carry the override profile's values
+    expect(result.config.agents.tiers?.['planning']?.model).toBe('claude-opus-4-7');
+    expect(result.config.agents.tiers?.['planning']?.effort).toBe('xhigh');
+
+    // Building a registry from the merged config must succeed and resolve planner
+    const registry = await buildAgentRuntimeRegistry(result.config);
+    expect(registry.forRole('planner')).toBeDefined();
+  });
+
+  it('two profile overrides produce registries wired to their own tier recipes', async () => {
+    const projectRoot = makeTempDir();
+
+    // Project default: planning uses haiku / low (no claudeSdk overrides)
+    writeProjectConfig(projectRoot, 'claude-haiku-4-5', 'low');
+
+    // profile-a: disableSubagents = false
+    writeProfile(
+      projectRoot,
+      'profile-a',
+      [
+        'agents:',
+        '  tiers:',
+        '    planning:',
+        '      harness: claude-sdk',
+        '      model: claude-haiku-4-5',
+        '      effort: low',
+        '      claudeSdk:',
+        '        disableSubagents: false',
+      ].join('\n') + '\n',
+    );
+
+    // profile-b: disableSubagents = true (distinct from profile-a)
+    writeProfile(
+      projectRoot,
+      'profile-b',
+      [
+        'agents:',
+        '  tiers:',
+        '    planning:',
+        '      harness: claude-sdk',
+        '      model: claude-haiku-4-5',
+        '      effort: low',
+        '      claudeSdk:',
+        '        disableSubagents: true',
+      ].join('\n') + '\n',
+    );
+
+    const [resultA, resultB] = await Promise.all([
+      loadConfig(projectRoot, { profileOverride: 'profile-a' }),
+      loadConfig(projectRoot, { profileOverride: 'profile-b' }),
+    ]);
+
+    // Confirm the merged configs carry distinct tier recipes
+    expect(resultA.config.agents.tiers?.['planning']?.claudeSdk?.disableSubagents).toBe(false);
+    expect(resultB.config.agents.tiers?.['planning']?.claudeSdk?.disableSubagents).toBe(true);
+    expect(
+      resultA.config.agents.tiers?.['planning']?.claudeSdk?.disableSubagents,
+    ).not.toBe(
+      resultB.config.agents.tiers?.['planning']?.claudeSdk?.disableSubagents,
+    );
+
+    // Both registries must resolve planner role successfully
+    const [registryA, registryB] = await Promise.all([
+      buildAgentRuntimeRegistry(resultA.config),
+      buildAgentRuntimeRegistry(resultB.config),
+    ]);
+    expect(registryA.forRole('planner')).toBeDefined();
+    expect(registryB.forRole('planner')).toBeDefined();
+  });
+
+  it("override profile's per-role tier mapping is honored by forRole", async () => {
+    const projectRoot = makeTempDir();
+
+    // Project default: defines ONLY the implementation tier — crucially, NOT
+    // the planning tier. Without role-override threading, forRole('planner')
+    // falls back to AGENT_ROLE_TIERS['planner'] = 'planning', which is absent
+    // from the merged config, so the registry would throw. This guarantees
+    // the test fails if the override's `roles` map is not actually threaded
+    // through loadConfig into the merged config consumed by the registry.
+    mkdirSync(join(projectRoot, 'eforge'), { recursive: true });
+    writeFileSync(
+      join(projectRoot, 'eforge', 'config.yaml'),
+      [
+        'agents:',
+        '  tiers:',
+        '    implementation:',
+        '      harness: claude-sdk',
+        '      model: claude-haiku-4-5',
+        '      effort: low',
+      ].join('\n') + '\n',
+      'utf-8',
+    );
+
+    // Override profile: planner role points to implementation tier. Defines
+    // implementation tier (mirrors project) but NOT planning, so the merged
+    // config has no planning tier — only the role override can resolve.
+    writeProfile(
+      projectRoot,
+      'profile-role-override',
+      [
+        'agents:',
+        '  tiers:',
+        '    implementation:',
+        '      harness: claude-sdk',
+        '      model: claude-haiku-4-5',
+        '      effort: low',
+        '  roles:',
+        '    planner:',
+        '      tier: implementation',
+      ].join('\n') + '\n',
+    );
+
+    const result = await loadConfig(projectRoot, { profileOverride: 'profile-role-override' });
+
+    // The override's role map must reach the merged config so the registry
+    // can read it at agent-runtime-registry.ts:187.
+    expect(result.config.agents.roles?.planner?.tier).toBe('implementation');
+    // The merged config must NOT have a planning tier (proves the negative).
+    expect(result.config.agents.tiers?.['planning']).toBeUndefined();
+
+    const registry = await buildAgentRuntimeRegistry(result.config);
+
+    // forRole('planner') must not throw — the role-to-tier lookup at
+    // agent-runtime-registry.ts:187 sees the override profile's roles map
+    // and resolves planner -> implementation tier, which is defined.
+    // Without role-mapping threading, this would throw because `planning`
+    // is missing from the merged config.
+    expect(registry.forRole('planner')).toBeDefined();
   });
 });

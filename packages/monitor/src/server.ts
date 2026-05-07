@@ -1215,11 +1215,25 @@ export async function startServer(
         return;
       }
       try {
-        const body = await parseJsonBody(req) as { source?: string; flags?: string[] };
+        const body = await parseJsonBody(req) as { source?: string; flags?: string[]; profile?: string };
         if (!body.source || typeof body.source !== 'string') {
           sendJsonError(res, 400, 'Missing required field: source');
           return;
         }
+        // --- eforge:region plan-01-per-build-profile-override ---
+        // Validate profile override before spawning any worker.
+        if (body.profile && typeof body.profile === 'string') {
+          const profileName = body.profile;
+          const { getConfigDir, getConventionalConfigDir, loadProfile } = await import('@eforge-build/engine/config');
+          const discoveredConfigDir = await getConfigDir(cwd);
+          const configDir = discoveredConfigDir ?? getConventionalConfigDir(cwd);
+          const profileResult = await loadProfile(configDir, profileName, cwd);
+          if (!profileResult) {
+            sendJsonError(res, 400, `Profile '${profileName}' not found`);
+            return;
+          }
+        }
+        // --- eforge:endregion plan-01-per-build-profile-override ---
         // --- eforge:region plan-04-daemon-cli-wiring ---
         // When source is a session-plan file (.eforge/session-plans/*.md), read
         // and normalize it to ordinary build source before spawning the enqueue
@@ -1255,6 +1269,9 @@ export async function startServer(
           }
         }
         const args = [enqueueSource, ...(body.flags ?? [])];
+        if (body.profile && typeof body.profile === 'string') {
+          args.push('--profile', body.profile);
+        }
         // --- eforge:endregion plan-04-daemon-cli-wiring ---
         const result = options.workerTracker.spawnWorker('enqueue', args, () => {
           emitMutation(options.daemonState, 'enqueue');

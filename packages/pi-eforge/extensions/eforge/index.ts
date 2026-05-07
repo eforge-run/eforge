@@ -362,13 +362,18 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         description:
           "PRD file path or inline description to enqueue for building",
       }),
+      profile: Type.Optional(Type.String({
+        description: "Run this build on the named profile instead of the active profile",
+      })),
     }),
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
+      const body: { source: string; profile?: string } = { source: params.source };
+      if (params.profile) body.profile = params.profile;
       const { data, port } = await daemonRequest<EnqueueResponse>(
         ctx.cwd,
         "POST",
         API_ROUTES.enqueue,
-        { source: params.source },
+        body,
       );
       if (_latestCtx) void refreshStatus(_latestCtx);
       return jsonResult(withMonitorUrl(data, port));
@@ -2061,16 +2066,60 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   // sendUserMessage which injects the skill command as user input.
   // ------------------------------------------------------------------
 
+  // Register /eforge:build as a native command with profile picker when UI is available.
+  // Falls back to skill alias when headless (no UI).
+  pi.registerCommand("eforge:build", {
+    description: "Enqueue a build for eforge",
+    handler: async (args, ctx) => {
+      if (ctx.hasUI) {
+        // Fetch profiles and show a searchable picker
+        let profiles: Array<{ name: string; scope: string; harness?: string; shadowedBy?: string }> = [];
+        try {
+          const result = await daemonRequest<{ profiles: Array<{ name: string; scope: string; harness?: string; shadowedBy?: string }>; active: string | null }>(
+            ctx.cwd, "GET", `${API_ROUTES.profileList}?scope=all`
+          );
+          profiles = result.data.profiles;
+        } catch {
+          // Daemon not running or profile list unavailable — fall through to alias
+          pi.sendUserMessage((`/skill:eforge-build${args ? " " + args : ""}`).trim());
+          return;
+        }
+
+        const items = [
+          {
+            value: "__no_override__",
+            label: "Use active profile (no override)",
+            description: "Run on the daemon's currently bound profile",
+          },
+          ...profiles.map((p) => ({
+            value: p.name,
+            label: p.name,
+            description: `${p.shadowedBy ? p.scope + " (shadowed)" : p.scope}${p.harness ? " - " + p.harness : ""}`,
+          })),
+        ];
+
+        const { showSearchableSelectOverlay } = await import("./ui-helpers.js");
+        const selected = await showSearchableSelectOverlay(ctx, "eforge build - select profile", items);
+        if (!selected) return;
+
+        if (selected === "__no_override__") {
+          pi.sendUserMessage((`/skill:eforge-build${args ? " " + args : ""}`).trim());
+        } else {
+          const profileArg = `--profile ${selected}`;
+          pi.sendUserMessage((`/skill:eforge-build ${profileArg}${args ? " " + args : ""}`).trim());
+        }
+      } else {
+        // Headless: pass args through unchanged
+        pi.sendUserMessage((`/skill:eforge-build${args ? " " + args : ""}`).trim());
+      }
+    },
+  });
+
   const skillCommands: Array<{
     name: string;
     description: string;
     skill: string;
   }> = [
-    {
-      name: "eforge:build",
-      description: "Enqueue a build for eforge",
-      skill: "eforge-build",
-    },
     {
       name: "eforge:status",
       description: "Check eforge run status and queue state",

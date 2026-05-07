@@ -48,7 +48,7 @@ export interface PlanStatus {
 
 export type SessionProfile = {
   profileName: string | null;
-  source: 'local' | 'project' | 'user-local' | 'missing' | 'none';
+  source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override';
   scope: 'local' | 'project' | 'user' | null;
   config: unknown | null;
 };

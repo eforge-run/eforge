@@ -817,7 +817,7 @@ async function readProjectConfigOrEmpty(configDir: string): Promise<PartialEforg
  * Throws `ConfigMigrationError` if a legacy `eforge.yaml` is detected at
  * the start directory and no `eforge/config.yaml` is found.
  */
-export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; warnings: string[]; profile: { name: string | null; source: ActiveProfileSource; scope: 'local' | 'project' | 'user' | null; config: PartialEforgeConfig | null } }> {
+export async function loadConfig(cwd?: string, options?: { profileOverride?: string }): Promise<{ config: EforgeConfig; warnings: string[]; profile: { name: string | null; source: ActiveProfileSource; scope: 'local' | 'project' | 'user' | null; config: PartialEforgeConfig | null } }> {
   const allWarnings: string[] = [];
 
   const startDir = cwd ?? process.cwd();
@@ -878,7 +878,20 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
   let resolvedProfileName: string | null = null;
   let resolvedProfileSource: ActiveProfileSource = 'none';
   let resolvedProfileScope: 'local' | 'project' | 'user' | null = null;
-  {
+  if (options?.profileOverride) {
+    // Short-circuit marker chain — load named profile directly, no fallback.
+    const overrideName = options.profileOverride;
+    const result = await loadProfile(configDir, overrideName, projectRoot);
+    if (!result) {
+      throw new Error(
+        `Profile override '${overrideName}' not found in any scope (searched: project-local <.eforge/profiles/>, project-team <eforge/profiles/>, user <~/.config/eforge/profiles/>)`,
+      );
+    }
+    resolvedProfileName = overrideName;
+    resolvedProfileSource = 'override';
+    profileConfig = result.profile;
+    resolvedProfileScope = result.scope;
+  } else {
     const { name, source, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig, projectRoot);
     allWarnings.push(...warnings);
     resolvedProfileName = name;
@@ -914,7 +927,7 @@ export async function loadConfig(cwd?: string): Promise<{ config: EforgeConfig; 
 /**
  * Source of the active profile resolution.
  */
-export type ActiveProfileSource = 'local' | 'project' | 'user-local' | 'missing' | 'none';
+export type ActiveProfileSource = 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override';
 
 /** Marker filename inside the eforge config directory. */
 const ACTIVE_PROFILE_MARKER = '.active-profile';

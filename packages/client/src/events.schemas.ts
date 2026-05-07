@@ -481,7 +481,7 @@ const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('session:profile'),
     profileName: z.string().nullable(),
-    source: z.enum(['local', 'project', 'user-local', 'missing', 'none']),
+    source: z.enum(['local', 'project', 'user-local', 'missing', 'none', 'override']),
     scope: z.enum(['local', 'project', 'user']).nullable(),
     config: z.unknown().nullable(),
   }),
