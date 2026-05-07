@@ -15,7 +15,7 @@ import { parse as parseYaml } from 'yaml';
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
 import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
-import type { BuildStageSpec, ReviewProfileConfig } from '@eforge-build/client';
+import type { BuildStageSpec, ReviewProfileConfig, QueueItem, AutoBuildState } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION, EforgeEventSchema } from '@eforge-build/client';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
@@ -409,6 +409,18 @@ export async function startServer(
     });
   }
 
+  /**
+   * Build the canonical `AutoBuildState` wire object from daemon state.
+   * Used by `GET /api/auto-build`, `POST /api/auto-build` response, and the
+   * `stream:hello` snapshot — the single source of this JSON shape.
+   */
+  function autoBuildStateToWire(state: DaemonState | undefined): AutoBuildState {
+    return {
+      enabled: state?.autoBuild ?? false,
+      watcher: state?.watcher ?? { running: false, pid: null, sessionId: null },
+    };
+  }
+
   function serveDaemonEventsSSE(req: IncomingMessage, res: ServerResponse): void {
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -431,16 +443,16 @@ export async function startServer(
       // written between them would otherwise appear in recentActivity with
       // id > helloCursor and be re-delivered when the live stream catches up.
       .filter((x): x is { id: number; event: EforgeEvent } => x !== null && x.id <= helloCursor);
+    const snapshotCwd = options?.cwd;
+    const snapshotQueueDir = snapshotCwd ? resolve(snapshotCwd, options?.queueDir ?? 'eforge/queue') : '';
+    const snapshotLockDir = snapshotCwd ? resolve(snapshotCwd, '.eforge', 'queue-locks') : '';
     const daemonSnapshot = {
       liveness: buildHeartbeatObject(),
       recentActivity,
       runs: db.getRuns(),
-      queue: buildQueueSnapshotSync(),
+      queue: snapshotCwd ? loadQueueItemsSync(snapshotQueueDir, snapshotLockDir) : [],
       sessionMetadata: db.getSessionMetadataBatch(),
-      autoBuild: {
-        enabled: options?.daemonState?.autoBuild ?? false,
-        watcher: options?.daemonState?.watcher ?? { running: false, pid: null, sessionId: null },
-      },
+      autoBuild: autoBuildStateToWire(options?.daemonState),
     };
     writeHello(res, helloCursor, daemonSnapshot);
     // --- eforge:endregion plan-01-handshake-primitive-additive ---
@@ -872,35 +884,53 @@ export async function startServer(
 
   // --- eforge:region plan-01-handshake-primitive-additive ---
   /**
-   * Synchronously build a queue snapshot matching the shape of `GET /api/queue`.
+   * Build a canonical `QueueItem` from parsed frontmatter and a resolved status.
+   * Shared by `loadQueueItemsSync` and `loadQueueItems` so item-shaping is never
+   * duplicated between the sync and async queue-reading paths.
+   */
+  function buildQueueItem(
+    id: string,
+    fm: Record<string, unknown>,
+    status: string,
+    recoveryVerdict?: QueueItem['recoveryVerdict'],
+  ): QueueItem {
+    const item: QueueItem = { id, title: fm.title as string, status };
+    if (typeof fm.priority === 'number') item.priority = fm.priority;
+    if (typeof fm.created === 'string') item.created = fm.created;
+    if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
+    if (recoveryVerdict !== undefined) item.recoveryVerdict = recoveryVerdict;
+    return item;
+  }
+
+  /**
+   * Post-process a mutable `QueueItem[]` to filter `dependsOn` entries to only
+   * live items, mirroring `resolveQueueOrder` runtime semantics.
+   * Mutates the array in place.
+   */
+  function postProcessQueueDependsOn(items: QueueItem[]): void {
+    const liveIds = new Set(
+      items
+        .filter((i) => i.status === 'pending' || i.status === 'running' || i.status === 'waiting')
+        .map((i) => i.id),
+    );
+    for (const item of items) {
+      if (item.status === 'failed' || item.status === 'skipped') {
+        delete item.dependsOn;
+      } else if (item.dependsOn) {
+        const filtered = item.dependsOn.filter((dep) => liveIds.has(dep));
+        if (filtered.length === 0) delete item.dependsOn;
+        else item.dependsOn = filtered;
+      }
+    }
+  }
+
+  /**
+   * Synchronously load queue items matching the shape of `GET /api/queue`.
    * Used by `serveDaemonEventsSSE` to embed queue state in the `stream:hello` frame.
    * Uses `readdirSync` / `readFileSync` to avoid making `serveDaemonEventsSSE` async.
    */
-  function buildQueueSnapshotSync(): Array<{
-    id: string;
-    title: string;
-    status: string;
-    priority?: number;
-    created?: string;
-    dependsOn?: string[];
-    recoveryVerdict?: { verdict: 'retry' | 'split' | 'abandon' | 'manual'; confidence: 'low' | 'medium' | 'high' };
-  }> {
-    const cwd = options?.cwd;
-    if (!cwd) return [];
-
-    const queueDir = resolve(cwd, options?.queueDir ?? 'eforge/queue');
-    const lockDir = resolve(cwd, '.eforge', 'queue-locks');
-
-    type SnapshotItem = {
-      id: string;
-      title: string;
-      status: string;
-      priority?: number;
-      created?: string;
-      dependsOn?: string[];
-      recoveryVerdict?: { verdict: 'retry' | 'split' | 'abandon' | 'manual'; confidence: 'low' | 'medium' | 'high' };
-    };
-    const items: SnapshotItem[] = [];
+  function loadQueueItemsSync(queueDir: string, lockDir: string): QueueItem[] {
+    const items: QueueItem[] = [];
 
     function loadDirSync(dir: string, derivedStatus: string): void {
       let entries: string[];
@@ -924,25 +954,21 @@ export async function startServer(
             }
           }
 
-          const item: SnapshotItem = { id, title: fm.title, status };
-          if (typeof fm.priority === 'number') item.priority = fm.priority;
-          if (typeof fm.created === 'string') item.created = fm.created;
-          if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
-
+          let recoveryVerdict: QueueItem['recoveryVerdict'] | undefined;
           if (derivedStatus === 'failed') {
             try {
               const sidecarRaw = readFileSync(resolve(dir, `${id}.recovery.json`), 'utf-8');
               const sidecarData = JSON.parse(sidecarRaw) as Record<string, unknown>;
               if (sidecarData && typeof sidecarData.verdict === 'object' && sidecarData.verdict !== null) {
                 const parsed = recoveryVerdictSchema.parse(sidecarData.verdict);
-                item.recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
+                recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
               }
             } catch {
               // silently omit — missing or malformed sidecar is normal
             }
           }
 
-          items.push(item);
+          items.push(buildQueueItem(id, fm, status, recoveryVerdict));
         } catch {
           // skip unreadable files
         }
@@ -954,53 +980,18 @@ export async function startServer(
     loadDirSync(resolve(queueDir, 'skipped'), 'skipped');
     loadDirSync(resolve(queueDir, 'waiting'), 'waiting');
 
-    // Post-filter dependsOn to mirror resolveQueueOrder runtime semantics.
-    const liveIds = new Set(
-      items
-        .filter((i) => i.status === 'pending' || i.status === 'running' || i.status === 'waiting')
-        .map((i) => i.id),
-    );
-    for (const item of items) {
-      if (item.status === 'failed' || item.status === 'skipped') {
-        delete item.dependsOn;
-      } else if (item.dependsOn) {
-        const filtered = item.dependsOn.filter((dep) => liveIds.has(dep));
-        if (filtered.length === 0) delete item.dependsOn;
-        else item.dependsOn = filtered;
-      }
-    }
-
+    postProcessQueueDependsOn(items);
     return items;
   }
-  // --- eforge:endregion plan-01-handshake-primitive-additive ---
 
-  async function serveQueue(_req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const cwd = options?.cwd;
-    if (!cwd) {
-      sendJson(res, []);
-      return;
-    }
-
-    const queueDir = resolve(cwd, options?.queueDir ?? 'eforge/queue');
-    const lockDir = resolve(cwd, '.eforge', 'queue-locks');
-
-    type QueueItem = {
-      id: string;
-      title: string;
-      status: string;
-      priority?: number;
-      created?: string;
-      dependsOn?: string[];
-      // --- eforge:region plan-01-fix-recovery-ux ---
-      recoveryVerdict?: {
-        verdict: 'retry' | 'split' | 'abandon' | 'manual';
-        confidence: 'low' | 'medium' | 'high';
-      };
-      // --- eforge:endregion plan-01-fix-recovery-ux ---
-    };
+  /**
+   * Asynchronously load queue items matching the shape of `GET /api/queue`.
+   * Used by `serveQueue`. Shares item-shaping with `loadQueueItemsSync` via
+   * `buildQueueItem` and `postProcessQueueDependsOn`.
+   */
+  async function loadQueueItems(queueDir: string, lockDir: string): Promise<QueueItem[]> {
     const items: QueueItem[] = [];
 
-    // Helper: load PRDs from a directory with a given derived status
     async function loadFromDir(dir: string, derivedStatus: string): Promise<void> {
       let entries: string[];
       try {
@@ -1018,7 +1009,6 @@ export async function startServer(
 
           const id = basename(file, '.md');
 
-          // For PRDs in the main queue dir, check lock files to determine running vs pending
           let status = derivedStatus;
           if (derivedStatus === 'pending') {
             try {
@@ -1029,15 +1019,8 @@ export async function startServer(
             }
           }
 
-          const item: QueueItem = { id, title: fm.title, status };
-          if (typeof fm.priority === 'number') item.priority = fm.priority;
-          if (typeof fm.created === 'string') item.created = fm.created;
-          if (Array.isArray(fm.depends_on)) item.dependsOn = fm.depends_on as string[];
-
+          let recoveryVerdict: QueueItem['recoveryVerdict'] | undefined;
           // --- eforge:region plan-01-fix-recovery-ux ---
-          // For failed items, attempt to embed the recovery verdict from the sidecar JSON.
-          // Any error (missing file, malformed JSON, schema validation failure) silently
-          // omits the field — the UI shows "recovery pending" in that case.
           if (derivedStatus === 'failed') {
             try {
               const sidecarPath = resolve(dir, `${id}.recovery.json`);
@@ -1045,7 +1028,7 @@ export async function startServer(
               const sidecarData = JSON.parse(sidecarRaw) as Record<string, unknown>;
               if (sidecarData && typeof sidecarData.verdict === 'object' && sidecarData.verdict !== null) {
                 const parsed = recoveryVerdictSchema.parse(sidecarData.verdict);
-                item.recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
+                recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
               }
             } catch {
               // silently omit — missing or malformed sidecar is normal (recovery pending)
@@ -1053,14 +1036,13 @@ export async function startServer(
           }
           // --- eforge:endregion plan-01-fix-recovery-ux ---
 
-          items.push(item);
+          items.push(buildQueueItem(id, fm, status, recoveryVerdict));
         } catch {
           // skip unreadable files
         }
       }
     }
 
-    // Scan main queue dir (pending/running), waiting/, and terminal subdirectories
     await Promise.all([
       loadFromDir(queueDir, 'pending'),
       loadFromDir(resolve(queueDir, 'failed'), 'failed'),
@@ -1070,21 +1052,21 @@ export async function startServer(
       // --- eforge:endregion plan-05-piggyback-and-queue-scheduling ---
     ]);
 
-    // Post-filter dependsOn to mirror resolveQueueOrder runtime semantics:
-    // terminal items expose no dependsOn; live items retain only deps on other live items.
-    const liveIds = new Set(
-      items.filter((i) => i.status === 'pending' || i.status === 'running' || i.status === 'waiting').map((i) => i.id),
-    );
-    for (const item of items) {
-      if (item.status === 'failed' || item.status === 'skipped') {
-        delete item.dependsOn;
-      } else if (item.dependsOn) {
-        const filtered = item.dependsOn.filter((dep) => liveIds.has(dep));
-        if (filtered.length === 0) delete item.dependsOn;
-        else item.dependsOn = filtered;
-      }
+    postProcessQueueDependsOn(items);
+    return items;
+  }
+  // --- eforge:endregion plan-01-handshake-primitive-additive ---
+
+  async function serveQueue(_req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const cwd = options?.cwd;
+    if (!cwd) {
+      sendJson(res, []);
+      return;
     }
 
+    const queueDir = resolve(cwd, options?.queueDir ?? 'eforge/queue');
+    const lockDir = resolve(cwd, '.eforge', 'queue-locks');
+    const items = await loadQueueItems(queueDir, lockDir);
     sendJson(res, items);
   }
 
@@ -1518,10 +1500,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
       }
-      sendJson(res, {
-        enabled: options.daemonState.autoBuild,
-        watcher: options.daemonState.watcher,
-      });
+      sendJson(res, autoBuildStateToWire(options.daemonState));
       return;
     }
 
@@ -1565,10 +1544,7 @@ export async function startServer(
           // the next PRD.
           options.daemonState.onKillWatcher?.();
         }
-        sendJson(res, {
-          enabled: options.daemonState.autoBuild,
-          watcher: options.daemonState.watcher,
-        });
+        sendJson(res, autoBuildStateToWire(options.daemonState));
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
       }
