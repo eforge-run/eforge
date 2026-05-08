@@ -1,6 +1,6 @@
 {
   "name": "@eforge-build/scopes",
-  "version": "0.7.11",
+  "version": "0.7.12",
   "description": "Canonical scope names, directory helpers, named-set resolution, and layered-singleton lookup for the three eforge configuration tiers (user, project-team, project-local).",
   "license": "Apache-2.0",
   "type": "module",
