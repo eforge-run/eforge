@@ -1,5 +1,38 @@
 # Changelog
 
+## [0.7.12] - 2026-05-07
+
+### Features
+
+- **core**: Add typed orchestrator-decision events to the eforge wire protocol, emit them at every build-phase orchestrator decision site, render them in the monitor UI, and keep the Pi extension passing them through cleanly. Build-phase only; plan-phase decisions deferred to a follow-up roadmap item.
+- **core**: Auto-open session plan markdown on create and resume
+- **core**: Decision-event wire protocol, engine helper, and reducer foundation
+- **core**: Engine emission sites, monitor-UI rendering, and integration tests
+- **core**: Per-build profile override via --profile flag (CLI + MCP) with PRD-frontmatter persistence
+- **core**: Planning decision events: wire, engine, and UI
+- **core**: PRD Gap Close
+- **core**: Remove autoAcceptBelow severity filter from config, schema, engine, UI, and tests
+- **core**: require assumption validation in session plans
+- **core**: Scope per-reviewer hover to perspective-specific issues in monitor UI
+- **core**: Two related review-cycle cleanups: (1) remove the unused autoAcceptBelow severity filter from config/schema/engine/UI/tests; (2) fix the monitor UI so each reviewer's hover shows only that reviewer's perspective-scoped issues while the fixer hover continues to show the merged-and-deduped set.
+
+### Bug Fixes
+
+- **core**: resolve validation failures
+
+### Documentation
+
+- **roadmap**: add Orchestrator Intelligence section
+- **roadmap**: refine orchestrator decision events scope
+
+### Maintenance
+
+- **core**: remove failed-queue sidecars after manual recovery
+
+### Other
+
+- **core**: add scripts
+
 ## [0.7.11] - 2026-05-06
 
 ### Features
@@ -391,18 +424,6 @@ Maintenance release
 ### Maintenance
 
 - **deps:** bump pi packages to 0.68.0 and adapt backend
-
-## [0.5.10] - 2026-04-21
-
-### Features
-
-- prevent eforge recursion in agent contexts
-- add debug-composer CLI and backend debug payload capture
-- add claudeSdk.disableSubagents config option
-
-### Maintenance
-
-- bump pi packages, claude-agent-sdk, and marked
 
 ---
 For older releases, see [GitHub Releases](https://github.com/eforge-build/eforge/releases).
