@@ -4,6 +4,7 @@ import { formatDuration, formatNumber } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { usePlanPreview } from '@/components/preview';
 import { Button } from '@/components/ui/button';
+import { decisionSummary, decisionDetail } from '@/lib/decision-format';
 // --- eforge:region plan-04-monitor-ui ---
 import {
   RecoveryVerdictChip,
@@ -123,6 +124,8 @@ function eventSummary(event: EforgeEvent): string {
     case 'recovery:complete': return `Recovery complete: ${event.prdId}`;
     case 'recovery:error': return `Recovery failed: ${event.prdId} — ${event.error}`;
     // --- eforge:endregion plan-04-monitor-ui ---
+    case 'planning:decision': return `Planning decision: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
+    case 'plan:build:decision': return `Build decision [${event.planId}]: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     default: return event.type;
   }
 }
@@ -231,6 +234,10 @@ function eventDetail(event: EforgeEvent): string | null {
         return `Requirement: ${g.requirement}${complexitySuffix}\n  Gap: ${g.explanation}`;
       }).join('\n\n');
     }
+    case 'planning:decision':
+      return decisionDetail(event.decision);
+    case 'plan:build:decision':
+      return decisionDetail(event.decision);
     default:
       return null;
   }

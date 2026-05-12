@@ -1,116 +1,59 @@
 import { useState } from 'react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { SheetContent } from '@/components/ui/sheet';
-import type { Decision } from '@/lib/reducer';
-
-// ---------------------------------------------------------------------------
-// Color families by decision kind
-// ---------------------------------------------------------------------------
-
-function getPipClass(kind: Decision['kind']): string {
-  switch (kind) {
-    // Planning-phase kinds — teal/green family
-    case 'scope-selected':
-      return 'bg-teal-500 border-teal-400';
-    case 'build-pipeline-chosen':
-      return 'bg-green-500 border-green-400';
-    case 'review-profile-chosen':
-      return 'bg-emerald-500 border-emerald-400';
-    case 'plan-set-shape':
-      return 'bg-cyan-500 border-cyan-400';
-    // Build-phase kinds — blue/amber/red/purple family
-    case 'review-strategy':
-    case 'perspectives-inferred':
-    case 'perspectives-respawned':
-    case 'cycle-terminated':
-      return 'bg-blue-500 border-blue-400';
-    case 'evaluator-strictness':
-      return 'bg-amber-500 border-amber-400';
-    case 'recovery-verdict':
-      return 'bg-red-500 border-red-400';
-    case 'merge-conflict-resolution':
-      return 'bg-purple-500 border-purple-400';
-    default:
-      return 'bg-gray-500 border-gray-400';
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Tooltip summary — kind-specific key fields
-// ---------------------------------------------------------------------------
-
-function decisionSummary(decision: Decision): string {
-  switch (decision.kind) {
-    // Planning-phase summaries
-    case 'scope-selected':
-      return `${decision.scope} (via ${decision.source})`;
-    case 'build-pipeline-chosen':
-      return `${decision.defaultBuild.length} stage(s)`;
-    case 'review-profile-chosen':
-      return `${decision.strategy} — ${decision.perspectives.join(', ')} — ${decision.maxRounds} round(s)`;
-    case 'plan-set-shape':
-      return `${decision.planCount} plan(s): ${decision.planIds.join(', ')}`;
-    // Build-phase summaries
-    case 'review-strategy':
-      return decision.auto
-        ? `${decision.strategy} — auto-threshold (${decision.auto.files} files, ${decision.auto.lines} lines)`
-        : `${decision.strategy} — ${decision.source}`;
-    case 'perspectives-inferred':
-      return decision.perspectives.length > 0
-        ? `inferred: ${decision.perspectives.join(', ')}`
-        : 'inferred: none (fallback to single)';
-    case 'perspectives-respawned':
-      return `round ${decision.round + 1} — ${decision.perspectives.length > 0 ? decision.perspectives.join(', ') : 'auto'}`;
-    case 'cycle-terminated':
-      return `${decision.reason} — round ${decision.round + 1}, ${decision.issuesRemaining} issues remaining`;
-    case 'evaluator-strictness':
-      return `${decision.strictness} (${decision.source})`;
-    case 'recovery-verdict':
-      return decision.successorPrdId
-        ? `${decision.verdict} → ${decision.successorPrdId}`
-        : decision.verdict;
-    case 'merge-conflict-resolution':
-      return `${decision.strategy} — ${decision.files.length} file(s)`;
-    default:
-      return (decision as { kind: string }).kind;
-  }
-}
+import type { DecisionPoint, Decision } from '@/lib/reducer';
+import { decisionKindColor, decisionSummary, decisionDetail } from '@/lib/decision-format';
 
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
 interface DecisionTimelineProps {
-  decisions: Decision[];
+  decisions: DecisionPoint[];
+  sessionStart: number;
+  totalSpan: number;
+  label?: string;
 }
 
-export function DecisionTimeline({ decisions }: DecisionTimelineProps) {
+export function DecisionTimeline({ decisions, sessionStart, totalSpan, label }: DecisionTimelineProps) {
   const [selectedDecision, setSelectedDecision] = useState<Decision | null>(null);
 
   if (decisions.length === 0) return null;
 
   return (
     <>
-      <div className="flex items-center gap-0.5 flex-wrap py-0.5">
-        {decisions.map((decision, idx) => (
-          <Tooltip key={idx}>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
-                className={`w-2.5 h-2.5 rounded-full border cursor-pointer transition-opacity hover:opacity-80 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-foreground/30 ${getPipClass(decision.kind)}`}
-                onClick={() => setSelectedDecision(decision)}
-                aria-label={`${decision.kind}: ${decisionSummary(decision)}`}
-              />
-            </TooltipTrigger>
-            <TooltipContent side="top">
-              <div className="font-medium text-[11px]">{decision.kind}</div>
-              <div className="opacity-70 text-[10px] max-w-[200px]">{decisionSummary(decision)}</div>
-              {decision.rationale && (
-                <div className="opacity-50 text-[10px] max-w-[200px] mt-0.5 italic">{decision.rationale}</div>
-              )}
-            </TooltipContent>
-          </Tooltip>
-        ))}
+      {label && (
+        <div className="text-[10px] text-text-dim mb-0.5 uppercase tracking-wider">{label}</div>
+      )}
+      <div className="relative h-4">
+        {decisions.map((dp, idx) => {
+          const decisionTime = new Date(dp.timestamp).getTime();
+          const leftPercent = Math.max(0, Math.min(((decisionTime - sessionStart) / totalSpan) * 100, 100));
+          const { bg, border } = decisionKindColor(dp.decision.kind);
+
+          return (
+            <Tooltip key={idx}>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className={`absolute top-0 bottom-0 w-1 rounded-sm border cursor-pointer transition-opacity hover:opacity-80 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-foreground/30 hover:z-10 focus:z-10 ${bg} ${border}`}
+                  style={{ left: `${leftPercent}%` }}
+                  onClick={() => setSelectedDecision(dp.decision)}
+                  aria-label={`${dp.decision.kind}: ${decisionSummary(dp.decision)}`}
+                >
+                  <span className="absolute -top-0.5 left-0 right-0 h-1 rounded-t-sm" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="top">
+                <div className="font-medium text-[11px]">{dp.decision.kind}</div>
+                <div className="opacity-70 text-[10px] max-w-[200px]">{decisionSummary(dp.decision)}</div>
+                {dp.decision.rationale && (
+                  <div className="opacity-50 text-[10px] max-w-[200px] mt-0.5 italic">{dp.decision.rationale}</div>
+                )}
+              </TooltipContent>
+            </Tooltip>
+          );
+        })}
       </div>
 
       {selectedDecision && (
@@ -121,7 +64,7 @@ export function DecisionTimeline({ decisions }: DecisionTimelineProps) {
           description={decisionSummary(selectedDecision)}
         >
           <pre className="text-xs font-mono whitespace-pre-wrap break-words bg-bg-secondary rounded p-3 overflow-auto max-h-[60vh]">
-            {JSON.stringify(selectedDecision, null, 2)}
+            {decisionDetail(selectedDecision)}
           </pre>
         </SheetContent>
       )}

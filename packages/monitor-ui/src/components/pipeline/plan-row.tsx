@@ -3,9 +3,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { Button } from '@/components/ui/button';
 import { usePlanPreview } from '@/components/preview';
 import { formatDuration, formatNumber, formatThinking } from '@/lib/format';
-import type { AgentThread, StoredEvent } from '@/lib/reducer';
+import type { AgentThread, StoredEvent, DecisionPoint } from '@/lib/reducer';
 import type { AgentRole, PipelineStage, ReviewIssue, BuildStageSpec, ValidationCommandSpan } from '@/lib/types';
-import type { Decision } from '@/lib/reducer';
 import { DecisionTimeline } from './decision-timeline';
 import {
   EMPTY_EVENTS,
@@ -45,7 +44,7 @@ interface PlanRowProps {
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Array<{ perspective: string; error: string; timestamp: string }>;
   issuesByPerspective?: Record<string, ReviewIssue[]>;
-  decisions?: Decision[];
+  decisions?: DecisionPoint[];
 }
 
 export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -224,7 +223,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
             <BuildStageProgress buildStages={buildStages} currentStage={currentStage} hoveredStage={hoveredStage} onStageHover={onStageHover} threads={threads} />
           )}
           {decisions && decisions.length > 0 && (
-            <DecisionTimeline decisions={decisions} />
+            <DecisionTimeline decisions={decisions} sessionStart={sessionStart} totalSpan={totalSpan} />
           )}
         <div className="flex-1 bg-bg-tertiary rounded-sm overflow-x-clip flex flex-col gap-px py-px min-h-4">
           {sortedThreads.map((thread) => {

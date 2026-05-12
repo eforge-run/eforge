@@ -1,6 +1,6 @@
 import { memo, useMemo, useState } from 'react';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import type { AgentThread, StoredEvent, Decision } from '@/lib/reducer';
+import type { AgentThread, StoredEvent, DecisionPoint } from '@/lib/reducer';
 import type { AgentRole, PipelineStage, ReviewIssue, OrchestrationConfig, BuildStageSpec, ValidationCommandSpan } from '@/lib/types';
 import { EMPTY_THREADS } from './pipeline-colors';
 import { DecisionTimeline } from './decision-timeline';
@@ -22,7 +22,7 @@ interface ThreadPipelineProps {
   validationCommands?: ValidationCommandSpan[];
   perspectiveErrors?: Record<string, Array<{ perspective: string; error: string; timestamp: string }>>;
   reviewIssuesByPerspective?: Record<string, Record<string, ReviewIssue[]>>;
-  decisions?: Record<string, Decision[]>;
+  decisions?: Record<string, DecisionPoint[]>;
 }
 
 function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions }: ThreadPipelineProps) {
@@ -154,8 +154,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
 
         {decisions?.['__run__'] && decisions['__run__'].length > 0 && (
           <div className="mb-2">
-            <div className="text-[10px] text-text-dim mb-0.5 uppercase tracking-wider">Planning decisions</div>
-            <DecisionTimeline decisions={decisions['__run__']} />
+            <DecisionTimeline decisions={decisions['__run__']} sessionStart={sessionStart} totalSpan={totalSpan} label="Planning decisions" />
           </div>
         )}
 

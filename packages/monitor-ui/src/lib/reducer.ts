@@ -34,6 +34,13 @@ import type { PipelineStage } from './types';
 
 /** Union of all decision kinds that can appear in the decisions timeline. */
 export type Decision = BuildDecision | PlanningDecision;
+
+/** A decision wrapped with its event timestamp and event type for time-positioning on the timeline. */
+export interface DecisionPoint {
+  decision: Decision;
+  timestamp: string;
+  eventType: 'planning:decision' | 'plan:build:decision';
+}
 import { formatDuration } from './format';
 import { handlerRegistry } from './reducer/index';
 
@@ -112,7 +119,7 @@ export interface RunState {
    * without a planId (e.g. scope-selected, build-pipeline-chosen,
    * review-profile-chosen, plan-set-shape decisions emitted during the compile phase).
    */
-  decisions: Record<string, Decision[]>;
+  decisions: Record<string, DecisionPoint[]>;
 }
 
 export const initialRunState: RunState = {
