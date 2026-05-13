@@ -10,7 +10,7 @@ pnpm test         # Run tests (vitest)
 pnpm test:watch   # Watch mode
 pnpm type-check   # Type check without emitting
 pnpm docs:generate # Build the docs generator and regenerate all reference artifacts
-pnpm docs:dev     # Start the Next.js dev server for the public docs site (http://localhost:3000). Run `pnpm docs:generate` first on a fresh checkout.
+pnpm docs:dev     # Regenerate reference docs then start the Next.js dev server for the public docs site (http://localhost:3000).
 pnpm docs:build   # Regenerate reference docs then build the Next.js site
 pnpm docs:check   # Drift gate: fails if generated reference docs are out of date
 ```

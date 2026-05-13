@@ -24,7 +24,7 @@
     "docs:check-parity": "node scripts/check-skill-parity.mjs",
     "docs:generate": "pnpm --filter @eforge-build/docs-gen build && node packages/docs-gen/dist/cli.js generate --all",
     "docs:check": "pnpm --filter @eforge-build/docs-gen build && node packages/docs-gen/dist/cli.js check",
-    "docs:dev": "pnpm --filter @eforge-build/web dev",
+    "docs:dev": "pnpm docs:generate && pnpm --filter @eforge-build/web dev",
     "docs:build": "pnpm docs:generate && pnpm --filter @eforge-build/web build"
   },
   "packageManager": "pnpm@10.26.0",
