@@ -41,11 +41,11 @@
     "@eforge-build/client": "workspace:*",
     "@eforge-build/engine": "workspace:*",
     "@eforge-build/input": "workspace:*",
-    "yaml": "^2.8.4"
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@eforge-build/monitor-ui": "workspace:*",
-    "@types/node": "^25.6.0",
+    "@types/node": "^25.7.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   },
