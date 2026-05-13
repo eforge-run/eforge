@@ -1477,6 +1477,9 @@ export async function startServer(
             responseBody = { verdict: 'manual', noAction: result.noAction };
             break;
           }
+          default: {
+            throw new Error(`Unknown verdict: ${(verdictData as { verdict: string }).verdict}`);
+          }
         }
 
         emitMutation(options.daemonState, 'apply-recovery');
