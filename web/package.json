@@ -1,0 +1,27 @@
+{
+  "name": "@eforge-build/web",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next": "^15",
+    "react": "^19",
+    "react-dom": "^19",
+    "remark": "^15",
+    "remark-html": "^16",
+    "remark-gfm": "^4",
+    "gray-matter": "^4"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "vitest": "^2"
+  }
+}

@@ -10,3 +10,6 @@ tmp/
 .orchestration-logs/
 .claude/settings.local.json
 eforge/.active-profile
+# Next.js build output and incremental TS cache (never commit).
+web/.next/
+web/tsconfig.tsbuildinfo

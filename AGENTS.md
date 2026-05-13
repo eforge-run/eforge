@@ -9,6 +9,10 @@ pnpm build        # Bundle all workspace packages (tsup); CLI lands at packages/
 pnpm test         # Run tests (vitest)
 pnpm test:watch   # Watch mode
 pnpm type-check   # Type check without emitting
+pnpm docs:generate # Build the docs generator and regenerate all reference artifacts
+pnpm docs:dev     # Start the Next.js dev server for the public docs site (http://localhost:3000). Run `pnpm docs:generate` first on a fresh checkout.
+pnpm docs:build   # Regenerate reference docs then build the Next.js site
+pnpm docs:check   # Drift gate: fails if generated reference docs are out of date
 ```
 
 ## Key principles
@@ -27,7 +31,7 @@ pnpm type-check   # Type check without emitting
 - **Keep `eforge-plugin/` (Claude Code) and `packages/pi-eforge/` (Pi) in sync.** These are the two consumer-facing integration packages. When adding or changing CLI commands, MCP tools, skills, or user-facing behavior, update *both* packages. Pi extensions are more capable than Claude Code plugins, so `packages/pi-eforge/` may have additional features — but every capability exposed in one should be exposed in the other when technically feasible. Always check both directories before considering a consumer-facing change complete. Daemon HTTP client code is shared via `@eforge-build/client` (`packages/client/`) - do not inline it.
 - **Daemon HTTP client, SSE subscriber, route contract, and response types live in `@eforge-build/client` (`packages/client/`).** Do not inline lockfile, daemon-request, or per-session SSE subscribe helpers in the CLI, MCP proxy, Pi extension, or anywhere else - import them from the shared package (`subscribeToSession` for single-session event streams). Do not inline `/api/...` path literals either: call the typed per-route helpers (`apiEnqueue`, `apiCancel`, `apiHealth`, etc.) from `packages/client/src/api/*`, or - for SSE/EventSource and the browser `fetch` transport in `packages/monitor-ui/src/lib/api.ts` - reference `API_ROUTES` + `buildPath()` from `@eforge-build/client`. The daemon itself (`packages/monitor/src/server.ts`) also dispatches off `API_ROUTES`, so a renamed route surfaces as a type error rather than silent drift. Bump `DAEMON_API_VERSION` in `packages/client/src/api-version.ts` when making breaking changes to the HTTP API surface.
 - The monitor UI (`packages/monitor-ui/`) uses **shadcn/ui components** rather than custom UI primitives.
-- **Workspace layout**: The repo uses pnpm workspaces with packages in `packages/` (engine, eforge, monitor, monitor-ui, client, pi-eforge, scopes, input) and the Claude Code plugin in `eforge-plugin/`.
+- **Workspace layout**: The repo uses pnpm workspaces with packages in `packages/` (engine, eforge, monitor, monitor-ui, client, pi-eforge, scopes, input, docs-gen), the public documentation site in `web/` (`@eforge-build/web`), and the Claude Code plugin in `eforge-plugin/`.
 - **`.eforge/` is developer-facing**: the daemon writes runtime state here (`monitor.db`, `state.json`, `event-log.jsonl`, lock files, session logs) and project-local config lives here too (`config.yaml`, `profiles/`). The directory is gitignored - do not commit it.
 - **Event types and schemas are co-located.** `packages/client/src/events.schemas.ts` is the wire-protocol source of truth. `EforgeEvent` is derived from `EforgeEventSchema` via `Static<typeof EforgeEventSchema>`. Every discriminant variant and its TypeBox schema live in that file. Do not define event shapes anywhere else. To validate an event at runtime, call `safeParseEforgeEvent(value)` from `@eforge-build/client` — do not call `.safeParse()` directly on `EforgeEventSchema`.
 - **State mutation is single-entry-point.** All engine code that mutates `plan.status`, `plan.error`, `state.completedPlans`, or `state.mergeWorktreePath` must call `mutateState(state, event)` from `packages/engine/src/state.ts`. Direct field assignments to those properties outside that file are forbidden — a grep gate enforces zero hits. Use the appropriate lifecycle event variant (`plan:status:change`, `plan:error:set`, `plan:error:clear`, `merge:worktree:set`, `merge:worktree:clear`).
@@ -38,7 +42,7 @@ pnpm type-check   # Type check without emitting
 
 ## Testing
 
-Tests live in `test/` and use vitest.
+Tests live in `test/` (engine and integration tests) and `web/__tests__/` (content loader and nav manifest tests), all run via vitest.
 
 - **Group by logical unit**, not source file.
 - **No mocks.** Test real code. For SDK types, hand-craft data objects cast through `unknown`.

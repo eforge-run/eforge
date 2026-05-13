@@ -14,6 +14,9 @@ export default defineConfig({
     include: [
       'test/**/*.test.ts',
       'packages/engine/test/**/*.test.ts',
+      // --- eforge:region plan-02-web-site ---
+      'web/__tests__/**/*.test.ts',
+      // --- eforge:endregion plan-02-web-site ---
       // --- eforge:region plan-04-monitor-ui ---
       'packages/monitor-ui/src/**/*.test.tsx',
       'packages/monitor-ui/src/**/*.test.ts',
