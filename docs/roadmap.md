@@ -30,7 +30,7 @@
 **Goal**: Full lifecycle coverage, CI support, provider flexibility.
 
 - **Low-fidelity input handling** - When the user provides a high-level prompt with minimal detail, launch an exploration agent (or parallel exploratory agents) that performs thorough codebase exploration before compiling plans. Bypassed for detailed PRDs. Scope levels (expedition/errand/excursion) classify intended depth but don't perform exploration; this fills that gap.
-- **Schema library unification on TypeBox** - Standardize on TypeBox across the codebase. TypeBox schemas are JSON Schema natively (no `z.toJSONSchema()` conversion), already in the dep tree for Pi, and align with Pi's tool API. *Needs a dedicated scoping session - previously punted on, tradeoffs need to be re-examined before committing.*
+- **Schema library unification on TypeBox** - TypeBox is canonical for eforge-owned domain schemas; Zod is isolated to third-party SDK compatibility adapters. The first migration slice (client wire schemas, engine structured output, and custom-tool contracts) is complete. Config, input artifact, and MCP proxy schemas remain Zod until a follow-up PRD lands.
 - **TypeScript project references** - Adopt `tsconfig.json` `references` across workspace members for automatic topological ordering.
 
 ---

@@ -16,7 +16,7 @@ const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
 import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
 import type { BuildStageSpec, ReviewProfileConfig, QueueItem, AutoBuildState } from '@eforge-build/client';
-import { API_ROUTES, DAEMON_API_VERSION, EforgeEventSchema } from '@eforge-build/client';
+import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent, parseWithSchema } from '@eforge-build/client';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 // --- eforge:region plan-01-fix-recovery-ux ---
@@ -127,9 +127,9 @@ function parseEventRow(
     parsed.type = dbType;
   }
 
-  const result = EforgeEventSchema.safeParse(parsed);
+  const result = safeParseEforgeEvent(parsed);
   if (!result.success) {
-    const errorPath = result.error.issues.map((i) => i.path.join('.')).join(', ');
+    const errorPath = result.error.errors.map((e) => e.path).join(', ');
     const prefix = eventData.length > 80 ? eventData.slice(0, 80) + '...' : eventData;
     process.stderr.write(
       `[parseEventRow] invalid event${rowId !== undefined ? ` id=${rowId}` : ''}: ${errorPath} — ${prefix}\n`,
@@ -960,7 +960,7 @@ export async function startServer(
               const sidecarRaw = readFileSync(resolve(dir, `${id}.recovery.json`), 'utf-8');
               const sidecarData = JSON.parse(sidecarRaw) as Record<string, unknown>;
               if (sidecarData && typeof sidecarData.verdict === 'object' && sidecarData.verdict !== null) {
-                const parsed = recoveryVerdictSchema.parse(sidecarData.verdict);
+                const parsed = parseWithSchema(recoveryVerdictSchema, sidecarData.verdict);
                 recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
               }
             } catch {
@@ -1027,7 +1027,7 @@ export async function startServer(
               const sidecarRaw = await readFile(sidecarPath, 'utf-8');
               const sidecarData = JSON.parse(sidecarRaw) as Record<string, unknown>;
               if (sidecarData && typeof sidecarData.verdict === 'object' && sidecarData.verdict !== null) {
-                const parsed = recoveryVerdictSchema.parse(sidecarData.verdict);
+                const parsed = parseWithSchema(recoveryVerdictSchema, sidecarData.verdict);
                 recoveryVerdict = { verdict: parsed.verdict, confidence: parsed.confidence };
               }
             } catch {
@@ -1441,7 +1441,7 @@ export async function startServer(
         }
 
         try {
-          verdictData = recoveryVerdictSchema.parse((sidecarJson as Record<string, unknown>).verdict);
+          verdictData = parseWithSchema(recoveryVerdictSchema, (sidecarJson as Record<string, unknown>).verdict);
         } catch (err) {
           sendJsonError(res, 400, `Invalid recovery verdict in sidecar for ${prdId}: ${err instanceof Error ? err.message : String(err)}`);
           return;
@@ -1476,6 +1476,9 @@ export async function startServer(
             const result = await applyRecoveryManual(helperOptions);
             responseBody = { verdict: 'manual', noAction: result.noAction };
             break;
+          }
+          default: {
+            throw new Error(`Unknown verdict: ${(verdictData as { verdict: string }).verdict}`);
           }
         }
 

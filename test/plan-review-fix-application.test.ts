@@ -15,6 +15,7 @@ import {
   cohesionReviewSubmissionSchema,
   architectureReviewSubmissionSchema,
 } from '@eforge-build/engine/schemas';
+import { safeParseWithSchema } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -383,7 +384,7 @@ describe('applyPlanReviewFixes: replace_plan_body', () => {
 
 describe('planReviewSubmissionSchema', () => {
   it('rejects an unknown kind value', () => {
-    const result = planReviewSubmissionSchema.safeParse({
+    const result = safeParseWithSchema(planReviewSubmissionSchema, {
       fixes: [{
         kind: 'replace_nonexistent',
         planId: 'plan-01-auth',
@@ -394,7 +395,7 @@ describe('planReviewSubmissionSchema', () => {
   });
 
   it('accepts an empty fixes array', () => {
-    const result = planReviewSubmissionSchema.safeParse({ fixes: [] });
+    const result = safeParseWithSchema(planReviewSubmissionSchema, { fixes: [] });
     expect(result.success).toBe(true);
   });
 });
@@ -476,7 +477,7 @@ describe('applyCohesionReviewFixes: replace_plan_body', () => {
 
 describe('cohesionReviewSubmissionSchema', () => {
   it('rejects an unknown kind value', () => {
-    const result = cohesionReviewSubmissionSchema.safeParse({
+    const result = safeParseWithSchema(cohesionReviewSubmissionSchema, {
       fixes: [{
         kind: 'replace_orchestration',
         description: 'should not be valid for cohesion',
@@ -489,7 +490,7 @@ describe('cohesionReviewSubmissionSchema', () => {
   });
 
   it('accepts an empty fixes array', () => {
-    const result = cohesionReviewSubmissionSchema.safeParse({ fixes: [] });
+    const result = safeParseWithSchema(cohesionReviewSubmissionSchema, { fixes: [] });
     expect(result.success).toBe(true);
   });
 });
@@ -530,7 +531,7 @@ describe('applyArchitectureReviewFixes: replace_architecture', () => {
 
 describe('architectureReviewSubmissionSchema', () => {
   it('rejects an unknown kind value', () => {
-    const result = architectureReviewSubmissionSchema.safeParse({
+    const result = safeParseWithSchema(architectureReviewSubmissionSchema, {
       fixes: [{
         kind: 'replace_plan_file',
         planId: 'auth',
@@ -542,7 +543,7 @@ describe('architectureReviewSubmissionSchema', () => {
   });
 
   it('accepts an empty fixes array', () => {
-    const result = architectureReviewSubmissionSchema.safeParse({ fixes: [] });
+    const result = safeParseWithSchema(architectureReviewSubmissionSchema, { fixes: [] });
     expect(result.success).toBe(true);
   });
 });

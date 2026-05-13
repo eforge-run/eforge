@@ -22,6 +22,7 @@ import {
   getPlanFrontmatterSchemaYaml,
   getPipelineCompositionSchemaYaml,
 } from '@eforge-build/engine/schemas';
+import { safeParseWithSchema } from '@eforge-build/client';
 
 describe('getSchemaYaml', () => {
   it('returns YAML string containing expected fields', () => {
@@ -96,7 +97,7 @@ describe('perspective-specific schema YAML getters', () => {
 
 describe('reviewIssueSchema safeParse', () => {
   it('accepts a valid ReviewIssue', () => {
-    const result = reviewIssueSchema.safeParse({
+    const result = safeParseWithSchema(reviewIssueSchema, {
       severity: 'critical',
       category: 'bugs',
       file: 'src/index.ts',
@@ -108,7 +109,7 @@ describe('reviewIssueSchema safeParse', () => {
   });
 
   it('accepts a ReviewIssue without optional fields', () => {
-    const result = reviewIssueSchema.safeParse({
+    const result = safeParseWithSchema(reviewIssueSchema, {
       severity: 'suggestion',
       category: 'performance',
       file: 'src/utils.ts',
@@ -118,7 +119,7 @@ describe('reviewIssueSchema safeParse', () => {
   });
 
   it('rejects invalid severity', () => {
-    const result = reviewIssueSchema.safeParse({
+    const result = safeParseWithSchema(reviewIssueSchema, {
       severity: 'blocker',
       category: 'bugs',
       file: 'src/index.ts',
@@ -128,7 +129,7 @@ describe('reviewIssueSchema safeParse', () => {
   });
 
   it('rejects missing description', () => {
-    const result = reviewIssueSchema.safeParse({
+    const result = safeParseWithSchema(reviewIssueSchema, {
       severity: 'warning',
       category: 'bugs',
       file: 'src/index.ts',
@@ -137,7 +138,7 @@ describe('reviewIssueSchema safeParse', () => {
   });
 
   it('rejects empty description', () => {
-    const result = reviewIssueSchema.safeParse({
+    const result = safeParseWithSchema(reviewIssueSchema, {
       severity: 'warning',
       category: 'bugs',
       file: 'src/index.ts',
@@ -149,7 +150,7 @@ describe('reviewIssueSchema safeParse', () => {
 
 describe('other schemas export and validate', () => {
   it('evaluationVerdictSchema accepts valid verdict', () => {
-    const result = evaluationVerdictSchema.safeParse({
+    const result = safeParseWithSchema(evaluationVerdictSchema, {
       file: 'src/foo.ts',
       action: 'accept',
       reason: 'Fix is correct',
@@ -158,7 +159,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('evaluationEvidenceSchema accepts valid evidence', () => {
-    const result = evaluationEvidenceSchema.safeParse({
+    const result = safeParseWithSchema(evaluationEvidenceSchema, {
       staged: 'Original code does X',
       fix: 'Fix changes X to Y',
       rationale: 'Y is correct',
@@ -169,7 +170,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('clarificationQuestionSchema accepts valid question', () => {
-    const result = clarificationQuestionSchema.safeParse({
+    const result = safeParseWithSchema(clarificationQuestionSchema, {
       id: 'q1',
       question: 'Which database?',
       options: ['Postgres', 'MySQL'],
@@ -179,7 +180,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('stalenessVerdictSchema accepts valid verdict', () => {
-    const result = stalenessVerdictSchema.safeParse({
+    const result = safeParseWithSchema(stalenessVerdictSchema, {
       verdict: 'proceed',
       justification: 'No changes since last plan',
     });
@@ -187,7 +188,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('expeditionModuleSchema accepts valid module', () => {
-    const result = expeditionModuleSchema.safeParse({
+    const result = safeParseWithSchema(expeditionModuleSchema, {
       id: 'auth',
       description: 'Authentication module',
       dependsOn: ['foundation'],
@@ -196,7 +197,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('planFileFrontmatterSchema accepts valid frontmatter', () => {
-    const result = planFileFrontmatterSchema.safeParse({
+    const result = safeParseWithSchema(planFileFrontmatterSchema, {
       id: 'plan-01-auth',
       name: 'Auth Setup',
       dependsOn: [],
@@ -206,7 +207,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('evaluationVerdictSchema rejects invalid action', () => {
-    const result = evaluationVerdictSchema.safeParse({
+    const result = safeParseWithSchema(evaluationVerdictSchema, {
       file: 'src/foo.ts',
       action: 'skip',
       reason: 'Not relevant',
@@ -215,7 +216,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('evaluationVerdictSchema accepts verdict with evidence and hunk', () => {
-    const result = evaluationVerdictSchema.safeParse({
+    const result = safeParseWithSchema(evaluationVerdictSchema, {
       file: 'src/bar.ts',
       action: 'reject',
       reason: 'Alters intent',
@@ -232,7 +233,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('evaluationEvidenceSchema rejects missing required fields', () => {
-    const result = evaluationEvidenceSchema.safeParse({
+    const result = safeParseWithSchema(evaluationEvidenceSchema, {
       staged: 'Code',
       fix: 'Fix',
     });
@@ -240,7 +241,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('clarificationQuestionSchema accepts minimal question', () => {
-    const result = clarificationQuestionSchema.safeParse({
+    const result = safeParseWithSchema(clarificationQuestionSchema, {
       id: 'q1',
       question: 'Which database?',
     });
@@ -248,14 +249,14 @@ describe('other schemas export and validate', () => {
   });
 
   it('clarificationQuestionSchema rejects missing id', () => {
-    const result = clarificationQuestionSchema.safeParse({
+    const result = safeParseWithSchema(clarificationQuestionSchema, {
       question: 'Which database?',
     });
     expect(result.success).toBe(false);
   });
 
   it('stalenessVerdictSchema accepts revise with revision', () => {
-    const result = stalenessVerdictSchema.safeParse({
+    const result = safeParseWithSchema(stalenessVerdictSchema, {
       verdict: 'revise',
       justification: 'API changed',
       revision: 'Updated PRD content',
@@ -264,7 +265,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('stalenessVerdictSchema rejects invalid verdict value', () => {
-    const result = stalenessVerdictSchema.safeParse({
+    const result = safeParseWithSchema(stalenessVerdictSchema, {
       verdict: 'maybe',
       justification: 'Not sure',
     });
@@ -272,7 +273,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('stalenessVerdictSchema rejects empty justification', () => {
-    const result = stalenessVerdictSchema.safeParse({
+    const result = safeParseWithSchema(stalenessVerdictSchema, {
       verdict: 'proceed',
       justification: '',
     });
@@ -280,7 +281,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('expeditionModuleSchema rejects missing dependsOn', () => {
-    const result = expeditionModuleSchema.safeParse({
+    const result = safeParseWithSchema(expeditionModuleSchema, {
       id: 'auth',
       description: 'Auth module',
     });
@@ -288,7 +289,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('planFileFrontmatterSchema accepts frontmatter with migrations', () => {
-    const result = planFileFrontmatterSchema.safeParse({
+    const result = safeParseWithSchema(planFileFrontmatterSchema, {
       id: 'plan-02-db',
       name: 'Database Migration',
       dependsOn: ['plan-01-auth'],
@@ -301,7 +302,7 @@ describe('other schemas export and validate', () => {
   });
 
   it('planFileFrontmatterSchema rejects missing branch', () => {
-    const result = planFileFrontmatterSchema.safeParse({
+    const result = safeParseWithSchema(planFileFrontmatterSchema, {
       id: 'plan-01-auth',
       name: 'Auth Setup',
       dependsOn: [],
@@ -374,7 +375,7 @@ describe('pipelineCompositionSchema', () => {
   };
 
   it('accepts a valid pipeline composition', () => {
-    const result = pipelineCompositionSchema.safeParse({
+    const result = safeParseWithSchema(pipelineCompositionSchema, {
       scope: 'excursion',
       compile: ['planner'],
       defaultBuild: ['implement'],
@@ -385,7 +386,7 @@ describe('pipelineCompositionSchema', () => {
   });
 
   it('accepts parallel build stages', () => {
-    const result = pipelineCompositionSchema.safeParse({
+    const result = safeParseWithSchema(pipelineCompositionSchema, {
       scope: 'expedition',
       compile: ['planner'],
       defaultBuild: ['implement', ['review-cycle', 'test']],
@@ -396,7 +397,7 @@ describe('pipelineCompositionSchema', () => {
   });
 
   it('rejects invalid scope', () => {
-    const result = pipelineCompositionSchema.safeParse({
+    const result = safeParseWithSchema(pipelineCompositionSchema, {
       scope: 'invalid',
       compile: ['planner'],
       defaultBuild: ['implement'],
@@ -407,7 +408,7 @@ describe('pipelineCompositionSchema', () => {
   });
 
   it('rejects empty rationale', () => {
-    const result = pipelineCompositionSchema.safeParse({
+    const result = safeParseWithSchema(pipelineCompositionSchema, {
       scope: 'errand',
       compile: ['planner'],
       defaultBuild: ['implement'],

@@ -9,6 +9,7 @@ import {
   architectureReviewSubmissionSchema,
   type ArchitectureReviewSubmission,
 } from '../schemas.js';
+import { safeParseWithSchema } from '@eforge-build/client';
 import { applyArchitectureReviewFixes } from '../plan.js';
 import { formatSubmissionValidationError } from './planner.js';
 
@@ -46,9 +47,9 @@ function createArchitectureReviewSubmissionTool(
     description: 'Submit fixes for the architecture document. Use this tool to apply all fixes you identified during architecture review. Pass an empty fixes array if no fixes are needed.',
     inputSchema: architectureReviewSubmissionSchema,
     handler: async (input: unknown) => {
-      const result = architectureReviewSubmissionSchema.safeParse(input);
+      const result = safeParseWithSchema(architectureReviewSubmissionSchema, input);
       if (!result.success) {
-        return formatSubmissionValidationError(result.error.issues);
+        return formatSubmissionValidationError(result.error.errors);
       }
       if (!onSubmit(result.data)) {
         return 'Error: a submission tool was already called. Only one submission per review turn is allowed.';

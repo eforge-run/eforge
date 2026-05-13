@@ -6,6 +6,7 @@ import { parse as parseYaml } from 'yaml';
 import { writePlanSet, writeArchitecture } from '@eforge-build/engine/plan';
 import type { PlanSetSubmission, ArchitectureSubmission } from '@eforge-build/engine/schemas';
 import { planSetSubmissionSchema } from '@eforge-build/engine/schemas';
+import { safeParseWithSchema } from '@eforge-build/client';
 
 describe('writePlanSet', () => {
   let tempDir: string;
@@ -124,67 +125,53 @@ describe('writePlanSet', () => {
   });
 });
 
-describe('planSetSubmissionSchema: removed fields are stripped silently', () => {
-  it('strips root name field silently', () => {
-    const result = planSetSubmissionSchema.safeParse({
+describe('planSetSubmissionSchema: extra fields are accepted (TypeBox does not strip unknowns)', () => {
+  // TypeBox does not strip unknown fields from objects (unlike Zod's default behavior).
+  // These tests verify that submissions with extra fields are accepted, not rejected.
+  // The extra fields remain in result.data at runtime but are ignored by downstream code.
+
+  it('accepts root name field as extra', () => {
+    const result = safeParseWithSchema(planSetSubmissionSchema, {
       name: 'my-plan-set',
       description: 'A plan set',
       plans: [{ frontmatter: { id: 'plan-01-a', name: 'A' }, body: '# A' }],
       orchestration: { validate: [], plans: [{ id: 'plan-01-a', dependsOn: [] }] },
     });
-    // Zod strict object would fail; default strips unknown fields — assert behavior either way
-    if (result.success) {
-      // Schema is non-strict: field is silently stripped
-      expect((result.data as Record<string, unknown>).name).toBeUndefined();
-    } else {
-      // Schema is strict: field is rejected
-      expect(result.success).toBe(false);
-    }
+    // TypeBox passes validation with extra fields
+    expect(result.success).toBe(true);
   });
 
-  it('strips root mode field silently', () => {
-    const result = planSetSubmissionSchema.safeParse({
+  it('accepts root mode field as extra', () => {
+    const result = safeParseWithSchema(planSetSubmissionSchema, {
       mode: 'excursion',
       description: 'A plan set',
       plans: [{ frontmatter: { id: 'plan-01-a', name: 'A' }, body: '# A' }],
       orchestration: { validate: [], plans: [{ id: 'plan-01-a', dependsOn: [] }] },
     });
-    if (result.success) {
-      expect((result.data as Record<string, unknown>).mode).toBeUndefined();
-    } else {
-      expect(result.success).toBe(false);
-    }
+    expect(result.success).toBe(true);
   });
 
-  it('strips root baseBranch field silently', () => {
-    const result = planSetSubmissionSchema.safeParse({
+  it('accepts root baseBranch field as extra', () => {
+    const result = safeParseWithSchema(planSetSubmissionSchema, {
       baseBranch: 'main',
       description: 'A plan set',
       plans: [{ frontmatter: { id: 'plan-01-a', name: 'A' }, body: '# A' }],
       orchestration: { validate: [], plans: [{ id: 'plan-01-a', dependsOn: [] }] },
     });
-    if (result.success) {
-      expect((result.data as Record<string, unknown>).baseBranch).toBeUndefined();
-    } else {
-      expect(result.success).toBe(false);
-    }
+    expect(result.success).toBe(true);
   });
 
-  it('strips branch from plan frontmatter silently', () => {
-    const result = planSetSubmissionSchema.safeParse({
+  it('accepts branch in plan frontmatter as extra', () => {
+    const result = safeParseWithSchema(planSetSubmissionSchema, {
       description: 'A plan set',
       plans: [{ frontmatter: { id: 'plan-01-a', name: 'A', branch: 'my-set/plan-01-a' }, body: '# A' }],
       orchestration: { validate: [], plans: [{ id: 'plan-01-a', dependsOn: [] }] },
     });
-    if (result.success) {
-      expect((result.data.plans[0].frontmatter as Record<string, unknown>).branch).toBeUndefined();
-    } else {
-      expect(result.success).toBe(false);
-    }
+    expect(result.success).toBe(true);
   });
 
-  it('strips name and branch from orchestration plan entry silently', () => {
-    const result = planSetSubmissionSchema.safeParse({
+  it('accepts name and branch in orchestration plan entry as extra', () => {
+    const result = safeParseWithSchema(planSetSubmissionSchema, {
       description: 'A plan set',
       plans: [{ frontmatter: { id: 'plan-01-a', name: 'A' }, body: '# A' }],
       orchestration: {
@@ -192,13 +179,7 @@ describe('planSetSubmissionSchema: removed fields are stripped silently', () => 
         plans: [{ id: 'plan-01-a', name: 'A', dependsOn: [], branch: 'my-set/plan-01-a' }],
       },
     });
-    if (result.success) {
-      const orchPlan = result.data.orchestration.plans[0] as Record<string, unknown>;
-      expect(orchPlan.name).toBeUndefined();
-      expect(orchPlan.branch).toBeUndefined();
-    } else {
-      expect(result.success).toBe(false);
-    }
+    expect(result.success).toBe(true);
   });
 });
 

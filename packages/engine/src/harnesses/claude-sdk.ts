@@ -1,8 +1,18 @@
 /**
  * Claude Agent SDK harness — the sole file that imports @anthropic-ai/claude-agent-sdk.
  * All other engine code uses the AgentHarness interface.
+ *
+ * This file also contains the TypeBox-to-Zod adapter (`typeboxObjectToZodRawShape`).
+ * It is the ONLY engine source file that imports Zod, because the Claude Agent SDK's
+ * `tool()` helper requires a Zod raw shape for its schema parameter. Custom tools are
+ * authored in TypeBox; this adapter converts them at the SDK registration boundary.
  */
 import { query as sdkQuery, createSdkMcpServer, tool } from '@anthropic-ai/claude-agent-sdk';
+// TypeBox-to-Zod adapter — required by the Claude Agent SDK's tool() registration API.
+// This is the explicit third-party compatibility surface: TypeBox is eforge's canonical
+// schema language; Zod is isolated to this file to satisfy the SDK's type contract.
+import { z, type ZodRawShape } from 'zod';
+import { TypeGuard, type TObject, type TSchema } from '@sinclair/typebox';
 import type {
   SDKMessage,
   SDKAssistantMessage,
@@ -20,6 +30,97 @@ import { AgentTerminalError } from '../harness.js';
 import { normalizeUsage, toModelUsageEntry, type RawUsage } from './usage.js';
 import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
 import { EFORGE_DISALLOWED_TOOL_PATTERNS } from './eforge-resource-filter.js';
+
+// ---------------------------------------------------------------------------
+// TypeBox → Zod adapter
+// ---------------------------------------------------------------------------
+
+/**
+ * Recursively converts a TypeBox TSchema to a Zod type.
+ * Handles the subset of TypeBox kinds that eforge actually uses in submission tools:
+ * TObject, TString, TNumber, TInteger, TBoolean, TArray, TLiteral, TUnion, TOptional, TRecord.
+ * Unknown kinds throw with a clear error message.
+ */
+function typeboxToZod(schema: TSchema): z.ZodTypeAny {
+  const isOpt = TypeGuard.IsOptional(schema);
+  let zodType: z.ZodTypeAny;
+
+  if (TypeGuard.IsString(schema)) {
+    let s = z.string();
+    if (typeof schema.minLength === 'number') s = s.min(schema.minLength);
+    if (typeof schema.maxLength === 'number') s = s.max(schema.maxLength);
+    if (typeof schema.pattern === 'string') s = s.regex(new RegExp(schema.pattern));
+    zodType = s;
+  } else if (TypeGuard.IsInteger(schema)) {
+    let n = z.number().int();
+    if (typeof schema.minimum === 'number') n = n.min(schema.minimum);
+    if (typeof schema.maximum === 'number') n = n.max(schema.maximum);
+    zodType = n;
+  } else if (TypeGuard.IsNumber(schema)) {
+    let n = z.number();
+    if (typeof schema.minimum === 'number') n = n.min(schema.minimum);
+    if (typeof schema.maximum === 'number') n = n.max(schema.maximum);
+    zodType = n;
+  } else if (TypeGuard.IsBoolean(schema)) {
+    zodType = z.boolean();
+  } else if (TypeGuard.IsArray(schema)) {
+    let a = z.array(typeboxToZod(schema.items as TSchema));
+    if (typeof schema.minItems === 'number') a = a.min(schema.minItems);
+    if (typeof schema.maxItems === 'number') a = a.max(schema.maxItems);
+    zodType = a;
+  } else if (TypeGuard.IsObject(schema)) {
+    zodType = z.object(typeboxObjectToZodRawShape(schema as TObject));
+  } else if (TypeGuard.IsLiteral(schema)) {
+    zodType = z.literal(schema.const as string | number | boolean);
+  } else if (TypeGuard.IsUnion(schema)) {
+    const members = (schema.anyOf as TSchema[]).map(typeboxToZod);
+    if (members.length === 0) {
+      throw new Error('typeboxToZod: union must have at least one member');
+    }
+    if (members.length === 1) {
+      // Single-member union — return the member directly without z.union wrapper
+      zodType = members[0];
+    } else {
+      zodType = z.union([members[0], members[1], ...members.slice(2)] as [z.ZodTypeAny, z.ZodTypeAny, ...z.ZodTypeAny[]]);
+    }
+  } else if (TypeGuard.IsRecord(schema)) {
+    const patternProps = schema.patternProperties as Record<string, TSchema> | undefined;
+    const valueSchemas = Object.values(patternProps ?? {});
+    if (valueSchemas.length === 0) {
+      throw new Error('typeboxToZod: TRecord has no pattern properties');
+    }
+    zodType = z.record(z.string(), typeboxToZod(valueSchemas[0]));
+  } else {
+    const schemaType = (schema as Record<string, unknown>).type ?? 'unknown';
+    throw new Error(`typeboxToZod: unsupported TypeBox schema kind (type: ${String(schemaType)})`);
+  }
+
+  // Preserve the field-level description so the Claude SDK's generated JSON
+  // Schema (visible to the model as the tool's input contract) keeps the
+  // documentation that the TypeBox source schema carries.
+  const description = (schema as { description?: unknown }).description;
+  if (typeof description === 'string' && description.length > 0) {
+    zodType = zodType.describe(description);
+  }
+
+  return isOpt ? zodType.optional() : zodType;
+}
+
+/**
+ * Converts a TypeBox TObject to a Zod raw shape suitable for passing to the
+ * Claude Agent SDK's `tool()` helper. Handles TObject, TString, TNumber,
+ * TInteger, TBoolean, TArray, TLiteral, TUnion, TOptional, and TRecord kinds.
+ * Unknown kinds throw with a descriptive error message.
+ */
+export function typeboxObjectToZodRawShape(schema: TObject): ZodRawShape {
+  // Build the shape in a mutable Record first, then return as ZodRawShape.
+  // ZodRawShape in Zod v4 has a Readonly index signature so direct assignment to it is rejected.
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const [key, propSchema] of Object.entries(schema.properties as Record<string, TSchema>)) {
+    shape[key] = typeboxToZod(propSchema);
+  }
+  return shape as ZodRawShape;
+}
 
 export interface ClaudeSDKHarnessOptions {
   /** MCP servers to make available to all agent runs. */
@@ -153,7 +254,7 @@ export class ClaudeSDKHarness implements AgentHarness {
             tool(
               ct.name,
               ct.description,
-              ct.inputSchema.shape,
+              typeboxObjectToZodRawShape(ct.inputSchema),
               async (args: unknown) => {
                 const text = await ct.handler(args);
                 return { content: [{ type: 'text' as const, text }] };

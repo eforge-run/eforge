@@ -1,3 +1,13 @@
+// --- eforge:region plan-01-schema-utility ---
+export {
+  safeParseWithSchema,
+  parseWithSchema,
+  formatSchemaError,
+  getSchemaYaml,
+} from './schema-utils.js';
+export type { SafeParseResult, SchemaError, ValueError } from './schema-utils.js';
+// --- eforge:endregion plan-01-schema-utility ---
+
 export { API_ROUTES, buildPath } from './routes.js';
 export type {
   ApiRoute,
@@ -221,7 +231,7 @@ export type {
   PlanningDecisionEvent,
 } from './events.js';
 
-export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema, PlanningDecisionSchema } from './events.js';
+export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeEventSchema, REVIEW_PERSPECTIVES, BuildDecisionSchema, PlanningDecisionSchema, safeParseEforgeEvent, parseEforgeEvent, safeParseDaemonStreamSnapshot, safeParseSessionStreamSnapshot } from './events.js';
 
 export type {
   HealthResponse,

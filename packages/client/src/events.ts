@@ -1,7 +1,7 @@
 /**
  * Wire event types for the eforge daemon SSE stream.
  *
- * Types are derived from Zod schemas in `events.schemas.ts` (the wire-protocol
+ * Types are derived from TypeBox schemas in `events.schemas.ts` (the wire-protocol
  * source of truth) and re-exported here so engine code continues to import from
  * './events.js' without changes.
  *
@@ -50,6 +50,10 @@ export {
   REVIEW_PERSPECTIVES,
   BuildDecisionSchema,
   PlanningDecisionSchema,
+  safeParseEforgeEvent,
+  parseEforgeEvent,
+  safeParseDaemonStreamSnapshot,
+  safeParseSessionStreamSnapshot,
 } from './events.schemas.js';
 
 export { EforgeEventSchema } from './events.schemas.js';

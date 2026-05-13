@@ -9,6 +9,7 @@ import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent } from './test-events.js';
 import { getVerifyReviewIssueSchemaYaml, verifyReviewIssueSchema } from '@eforge-build/engine/schemas';
 import { runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
+import { safeParseWithSchema } from '@eforge-build/client';
 
 // ---------------------------------------------------------------------------
 // Schema YAML
@@ -45,7 +46,7 @@ describe('getVerifyReviewIssueSchemaYaml', () => {
 
 describe('verifyReviewIssueSchema', () => {
   it('accepts a valid verify issue', () => {
-    const result = verifyReviewIssueSchema.safeParse({
+    const result = safeParseWithSchema(verifyReviewIssueSchema, {
       severity: 'critical',
       category: 'verification-failure',
       file: '.',
@@ -56,7 +57,7 @@ describe('verifyReviewIssueSchema', () => {
   });
 
   it('rejects non-critical severity', () => {
-    const result = verifyReviewIssueSchema.safeParse({
+    const result = safeParseWithSchema(verifyReviewIssueSchema, {
       severity: 'warning',
       category: 'verification-failure',
       file: '.',
@@ -66,7 +67,7 @@ describe('verifyReviewIssueSchema', () => {
   });
 
   it('rejects non-verification-failure category', () => {
-    const result = verifyReviewIssueSchema.safeParse({
+    const result = safeParseWithSchema(verifyReviewIssueSchema, {
       severity: 'critical',
       category: 'bugs',
       file: '.',

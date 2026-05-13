@@ -3,11 +3,12 @@
  * These parse structured blocks from free-text agent responses
  * regardless of which LLM backend produced them.
  */
-import { z } from 'zod/v4';
+import { Type, type Static } from '@sinclair/typebox';
 import type { ClarificationQuestion, TestIssue, ReviewIssue } from '../events.js';
 import type { ReviewProfileConfig, BuildStageSpec } from '../config.js';
-import { buildStageSpecSchema, reviewProfileConfigSchema } from '../config.js';
+import { pipelineBuildStageSpecSchema, pipelineReviewProfileConfigSchema } from '../schemas.js';
 import type { stalenessVerdictSchema, evaluationEvidenceSchema, evaluationVerdictSchema, recoveryVerdictSchema } from '../schemas.js';
+import { safeParseWithSchema } from '@eforge-build/client';
 
 /**
  * Parse <clarification> XML blocks from assistant text into structured questions.
@@ -99,7 +100,7 @@ export function parseSkipBlock(text: string): string | null {
 
 const VALID_STALENESS_VERDICTS = new Set(['proceed', 'revise', 'obsolete']);
 
-export type StalenessVerdict = z.output<typeof stalenessVerdictSchema>;
+export type StalenessVerdict = Static<typeof stalenessVerdictSchema>;
 
 /**
  * Parse a <staleness verdict="..."> XML block from assistant text.
@@ -144,7 +145,7 @@ export function parseStalenessBlock(text: string): StalenessVerdict | null {
 const VALID_RECOVERY_VERDICTS = new Set(['retry', 'split', 'abandon', 'manual']);
 const VALID_RECOVERY_CONFIDENCES = new Set(['low', 'medium', 'high']);
 
-export type RecoveryVerdict = z.output<typeof recoveryVerdictSchema>;
+export type RecoveryVerdict = Static<typeof recoveryVerdictSchema>;
 
 /**
  * Extract a list of `<item>` elements from inside a named XML tag.
@@ -227,12 +228,12 @@ export function parseRecoveryVerdictBlock(text: string): RecoveryVerdict | null 
  * Present when the evaluator uses the structured format with `<staged>`/`<original>`,
  * `<fix>`, `<rationale>`, `<if-accepted>`, and `<if-rejected>` child elements.
  */
-export type EvaluationEvidence = z.output<typeof evaluationEvidenceSchema>;
+export type EvaluationEvidence = Static<typeof evaluationEvidenceSchema>;
 
 /**
  * A single evaluation verdict from the evaluator's XML output.
  */
-export type EvaluationVerdict = z.output<typeof evaluationVerdictSchema>;
+export type EvaluationVerdict = Static<typeof evaluationVerdictSchema>;
 
 /**
  * Extract text content of a child element from XML content.
@@ -349,9 +350,9 @@ export function parseEvaluationBlock(text: string): EvaluationVerdict[] {
 // Build Config Parsing
 // ---------------------------------------------------------------------------
 
-const buildConfigSchema = z.object({
-  build: z.array(buildStageSpecSchema),
-  review: reviewProfileConfigSchema,
+const buildConfigSchema = Type.Object({
+  build: Type.Array(pipelineBuildStageSpecSchema),
+  review: pipelineReviewProfileConfigSchema,
 });
 
 /**
@@ -396,9 +397,12 @@ export function parseBuildConfigBlock(text: string): ParseBuildConfigResult {
     return { ok: false, reason: 'invalid-json', raw };
   }
 
-  const result = buildConfigSchema.safeParse(parsed);
+  const result = safeParseWithSchema(buildConfigSchema, parsed);
   if (!result.success) {
-    const errors = result.error.issues.map((i) => `${i.path.join('.')}: ${i.message}`);
+    const errors = result.error.errors.map((e) => {
+      const path = e.path ? e.path.replace(/^\//, '').replace(/\//g, '.') : '';
+      return `${path || '(root)'}: ${e.message}`;
+    });
     return { ok: false, reason: 'invalid-schema', raw, errors };
   }
 

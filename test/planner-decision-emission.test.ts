@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { PlanningDecisionSchema } from '@eforge-build/client';
+import { PlanningDecisionSchema, parseWithSchema } from '@eforge-build/client';
 import { emitPlanningDecision } from '@eforge-build/engine/decisions';
 import type { PlanningDecision } from '@eforge-build/client';
 
@@ -99,16 +99,16 @@ describe('emitPlanningDecision — event shape', () => {
 describe('emitPlanningDecision — schema validation', () => {
   it('validates the decision payload through PlanningDecisionSchema', () => {
     const event = emitPlanningDecision(buildPipelineDecision);
-    const parsed = PlanningDecisionSchema.parse(event.decision);
+    const parsed = parseWithSchema(PlanningDecisionSchema,event.decision);
     expect(parsed.kind).toBe('build-pipeline-chosen');
   });
 
-  it('throws ZodError on malformed scope-selected (missing scope)', () => {
+  it('throws when called with a malformed scope-selected (missing scope)', () => {
     const malformed = { kind: 'scope-selected', rationale: 'test', source: 'planner' } as unknown as PlanningDecision;
     expect(() => emitPlanningDecision(malformed)).toThrow();
   });
 
-  it('throws ZodError on malformed review-profile-chosen (invalid strategy)', () => {
+  it('throws when called with a malformed review-profile-chosen (invalid strategy)', () => {
     const malformed = {
       kind: 'review-profile-chosen',
       rationale: 'test',
@@ -120,7 +120,7 @@ describe('emitPlanningDecision — schema validation', () => {
     expect(() => emitPlanningDecision(malformed)).toThrow();
   });
 
-  it('throws ZodError on malformed plan-set-shape (zero planCount)', () => {
+  it('throws when called with a malformed plan-set-shape (zero planCount)', () => {
     const malformed = {
       kind: 'plan-set-shape',
       rationale: 'test',
@@ -146,7 +146,7 @@ describe('PlanningDecision — round-trips through schema', () => {
   for (const decision of allDecisions) {
     it(`round-trips kind=${decision.kind}`, () => {
       const event = emitPlanningDecision(decision);
-      const reparsed = PlanningDecisionSchema.parse(event.decision);
+      const reparsed = parseWithSchema(PlanningDecisionSchema,event.decision);
       expect(reparsed.kind).toBe(decision.kind);
     });
   }

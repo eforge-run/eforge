@@ -9,6 +9,7 @@ import {
   cohesionReviewSubmissionSchema,
   type CohesionReviewSubmission,
 } from '../schemas.js';
+import { safeParseWithSchema } from '@eforge-build/client';
 import { applyCohesionReviewFixes } from '../plan.js';
 import { formatSubmissionValidationError } from './planner.js';
 
@@ -46,9 +47,9 @@ function createCohesionReviewSubmissionTool(
     description: 'Submit fixes for module plan artifacts. Use this tool to apply all fixes you identified during cohesion review. Pass an empty fixes array if no fixes are needed.',
     inputSchema: cohesionReviewSubmissionSchema,
     handler: async (input: unknown) => {
-      const result = cohesionReviewSubmissionSchema.safeParse(input);
+      const result = safeParseWithSchema(cohesionReviewSubmissionSchema, input);
       if (!result.success) {
-        return formatSubmissionValidationError(result.error.issues);
+        return formatSubmissionValidationError(result.error.errors);
       }
       if (!onSubmit(result.data)) {
         return 'Error: a submission tool was already called. Only one submission per review turn is allowed.';

@@ -1,186 +1,211 @@
 /**
- * Zod schemas for all structured XML blocks emitted by eforge agents.
- * Leaf-level file — imports only zod/v4 and yaml, no engine imports.
+ * TypeBox schemas for all structured XML blocks emitted by eforge agents.
+ * Leaf-level file — imports only @sinclair/typebox and @eforge-build/client, no engine imports.
  *
- * Pattern: define Zod schemas with `.describe()`, convert to YAML via
- * `z.toJSONSchema()`, inject into prompts. Matches getProfileSchemaYaml()
- * in config.ts.
+ * Pattern: define TypeBox schemas with `description` options, convert to YAML via
+ * `getSchemaYaml()` from @eforge-build/client, inject into prompts.
  */
-import { z } from 'zod/v4';
-import { stringify as stringifyYaml } from 'yaml';
-import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
+import { Type, type Static, type TSchema } from '@sinclair/typebox';
+import {
+  REVIEW_PERSPECTIVES,
+  getSchemaYaml,
+  safeParseWithSchema,
+  type SafeParseResult,
+  type ValueError,
+} from '@eforge-build/client';
 import type { ReviewProfileConfig } from '@eforge-build/client';
+
+// Re-export getSchemaYaml so existing consumers that import it from this module continue to work.
+export { getSchemaYaml };
 
 // ---------------------------------------------------------------------------
 // Shared enums
 // ---------------------------------------------------------------------------
 
-const severitySchema = z.enum(['critical', 'warning', 'suggestion'])
-  .describe('Issue severity: critical = must fix before merge, warning = should fix, suggestion = nice to have');
+const severitySchema = Type.Union(
+  [Type.Literal('critical'), Type.Literal('warning'), Type.Literal('suggestion')],
+  { description: 'Issue severity: critical = must fix before merge, warning = should fix, suggestion = nice to have' },
+);
 
 // ---------------------------------------------------------------------------
 // Per-perspective category enums
 // ---------------------------------------------------------------------------
 
 /** General reviewer (single-reviewer mode) categories. */
-const generalCategorySchema = z.enum([
-  'bugs', 'security', 'error-handling', 'edge-cases',
-  'types', 'dry', 'performance', 'maintainability',
-]).describe('Review category for the general perspective');
+const generalCategorySchema = Type.Union(
+  ['bugs', 'security', 'error-handling', 'edge-cases', 'types', 'dry', 'performance', 'maintainability'].map(v => Type.Literal(v)),
+  { description: 'Review category for the general perspective' },
+);
 
 /** Code quality specialist categories. */
-const codeCategorySchema = z.enum([
-  'bugs', 'error-handling', 'edge-cases',
-  'types', 'dry', 'performance', 'maintainability',
-]).describe('Review category for the code perspective');
+const codeCategorySchema = Type.Union(
+  ['bugs', 'error-handling', 'edge-cases', 'types', 'dry', 'performance', 'maintainability'].map(v => Type.Literal(v)),
+  { description: 'Review category for the code perspective' },
+);
 
 /** Security specialist categories. */
-const securityCategorySchema = z.enum([
-  'injection', 'secrets', 'auth', 'unsafe-ops',
-  'cryptography', 'dependencies', 'data-exposure',
-]).describe('Review category for the security perspective');
+const securityCategorySchema = Type.Union(
+  ['injection', 'secrets', 'auth', 'unsafe-ops', 'cryptography', 'dependencies', 'data-exposure'].map(v => Type.Literal(v)),
+  { description: 'Review category for the security perspective' },
+);
 
 /** API design specialist categories. */
-const apiCategorySchema = z.enum([
-  'rest-conventions', 'contracts', 'input-validation',
-  'breaking-changes', 'error-responses', 'versioning',
-]).describe('Review category for the api perspective');
+const apiCategorySchema = Type.Union(
+  ['rest-conventions', 'contracts', 'input-validation', 'breaking-changes', 'error-responses', 'versioning'].map(v => Type.Literal(v)),
+  { description: 'Review category for the api perspective' },
+);
 
 /** Documentation specialist categories. */
-const docsCategorySchema = z.enum([
-  'code-examples', 'env-vars', 'stale-docs',
-  'completeness', 'readme',
-]).describe('Review category for the docs perspective');
+const docsCategorySchema = Type.Union(
+  ['code-examples', 'env-vars', 'stale-docs', 'completeness', 'readme'].map(v => Type.Literal(v)),
+  { description: 'Review category for the docs perspective' },
+);
 
 /** Test quality specialist categories. */
-const testCategorySchema = z.enum([
-  'coverage-gaps', 'test-quality', 'test-isolation',
-  'fixtures', 'assertions', 'flaky-patterns', 'test-design',
-]).describe('Review category for the test perspective');
+const testCategorySchema = Type.Union(
+  ['coverage-gaps', 'test-quality', 'test-isolation', 'fixtures', 'assertions', 'flaky-patterns', 'test-design'].map(v => Type.Literal(v)),
+  { description: 'Review category for the test perspective' },
+);
 
 /** Verify perspective category — always verification-failure. */
-const verifyCategorySchema = z.enum(['verification-failure'])
-  .describe('Review category for the verify perspective — always verification-failure');
+const verifyCategorySchema = Type.Union(
+  [Type.Literal('verification-failure')],
+  { description: 'Review category for the verify perspective — always verification-failure' },
+);
 
 /** Verify perspective severity — always critical. */
-const verifySeveritySchema = z.enum(['critical'])
-  .describe('Verify issue severity: always critical — a failing command must be fixed before merge');
+const verifySeveritySchema = Type.Union(
+  [Type.Literal('critical')],
+  { description: 'Verify issue severity: always critical — a failing command must be fixed before merge' },
+);
 
 // ---------------------------------------------------------------------------
 // TestIssue schemas
 // ---------------------------------------------------------------------------
 
-const testIssueCategorySchema = z.enum([
-  'production-bug', 'missing-behavior', 'regression',
-]).describe('Category of test-discovered issue');
+const testIssueCategorySchema = Type.Union(
+  ['production-bug', 'missing-behavior', 'regression'].map(v => Type.Literal(v)),
+  { description: 'Category of test-discovered issue' },
+);
 
-const testIssueSeveritySchema = z.enum(['critical', 'warning'])
-  .describe('Test issue severity: critical = failing test, warning = missing coverage');
+const testIssueSeveritySchema = Type.Union(
+  [Type.Literal('critical'), Type.Literal('warning')],
+  { description: 'Test issue severity: critical = failing test, warning = missing coverage' },
+);
 
-export const testIssueSchema = z.object({
+export const testIssueSchema = Type.Object({
   severity: testIssueSeveritySchema,
   category: testIssueCategorySchema,
-  file: z.string().describe('Production file with the bug'),
-  testFile: z.string().describe('Test file that exposed the issue'),
-  description: z.string().min(1).describe('Description of the issue'),
-  testOutput: z.string().optional().describe('Relevant test failure output'),
-  fix: z.string().optional().describe('Description of unstaged fix applied'),
+  file: Type.String({ description: 'Production file with the bug' }),
+  testFile: Type.String({ description: 'Test file that exposed the issue' }),
+  description: Type.String({ minLength: 1, description: 'Description of the issue' }),
+  testOutput: Type.Optional(Type.String({ description: 'Relevant test failure output' })),
+  fix: Type.Optional(Type.String({ description: 'Description of unstaged fix applied' })),
 });
 
 /** Plan reviewer and cohesion reviewer categories. */
-const planReviewCategorySchema = z.enum([
-  'cohesion', 'completeness', 'correctness',
-  'feasibility', 'dependency', 'scope',
-]).describe('Review category for plan reviews');
+const planReviewCategorySchema = Type.Union(
+  ['cohesion', 'completeness', 'correctness', 'feasibility', 'dependency', 'scope'].map(v => Type.Literal(v)),
+  { description: 'Review category for plan reviews' },
+);
 
 // ---------------------------------------------------------------------------
 // ReviewIssue schema
 // ---------------------------------------------------------------------------
 
 /** Base review issue schema with string category (union of all perspectives). */
-export const reviewIssueSchema = z.object({
+export const reviewIssueSchema = Type.Object({
   severity: severitySchema,
-  category: z.string().describe('Review category — allowed values depend on the review perspective'),
-  file: z.string().describe('Relative file path from the repository root'),
-  line: z.number().int().positive().optional().describe('Line number in the file (optional)'),
-  description: z.string().min(1).describe('Description of the issue'),
-  fix: z.string().optional().describe('Description of the fix applied, if any'),
+  category: Type.String({ description: 'Review category — allowed values depend on the review perspective' }),
+  file: Type.String({ description: 'Relative file path from the repository root' }),
+  line: Type.Optional(Type.Integer({ minimum: 1, description: 'Line number in the file (optional)' })),
+  description: Type.String({ minLength: 1, description: 'Description of the issue' }),
+  fix: Type.Optional(Type.String({ description: 'Description of the fix applied, if any' })),
 });
 
 // ---------------------------------------------------------------------------
 // EvaluationVerdict schema
 // ---------------------------------------------------------------------------
 
-export const evaluationEvidenceSchema = z.object({
-  staged: z.string().describe('What the staged/original code does'),
-  fix: z.string().describe("What the reviewer's fix does"),
-  rationale: z.string().describe('Why the verdict was chosen'),
-  ifAccepted: z.string().describe('Consequence if the fix is accepted'),
-  ifRejected: z.string().describe('Consequence if the fix is rejected'),
-});
+export const evaluationEvidenceSchema = Type.Object({
+  staged: Type.String({ description: 'What the staged/original code does' }),
+  fix: Type.String({ description: "What the reviewer's fix does" }),
+  rationale: Type.String({ description: 'Why the verdict was chosen' }),
+  ifAccepted: Type.String({ description: 'Consequence if the fix is accepted' }),
+  ifRejected: Type.String({ description: 'Consequence if the fix is rejected' }),
+}, { description: 'Structured evidence when the evaluator uses child elements' });
 
-export const evaluationVerdictSchema = z.object({
-  file: z.string().describe('File path being evaluated'),
-  action: z.enum(['accept', 'reject', 'review']).describe('Verdict action'),
-  reason: z.string().describe('Reason for the verdict'),
-  evidence: evaluationEvidenceSchema.optional().describe('Structured evidence when the evaluator uses child elements'),
-  hunk: z.number().int().positive().optional().describe('Hunk number for per-hunk evaluation (1-indexed)'),
+export const evaluationVerdictSchema = Type.Object({
+  file: Type.String({ description: 'File path being evaluated' }),
+  action: Type.Union([Type.Literal('accept'), Type.Literal('reject'), Type.Literal('review')], { description: 'Verdict action' }),
+  reason: Type.String({ description: 'Reason for the verdict' }),
+  evidence: Type.Optional(evaluationEvidenceSchema),
+  hunk: Type.Optional(Type.Integer({ minimum: 1, description: 'Hunk number for per-hunk evaluation (1-indexed)' })),
 });
 
 // ---------------------------------------------------------------------------
 // Clarification schema
 // ---------------------------------------------------------------------------
 
-export const clarificationQuestionSchema = z.object({
-  id: z.string().describe('Unique question identifier'),
-  question: z.string().describe('The question text'),
-  context: z.string().optional().describe('Additional context for the question'),
-  options: z.array(z.string()).optional().describe('Suggested answer options'),
-  default: z.string().optional().describe('Default answer value'),
+export const clarificationQuestionSchema = Type.Object({
+  id: Type.String({ description: 'Unique question identifier' }),
+  question: Type.String({ description: 'The question text' }),
+  context: Type.Optional(Type.String({ description: 'Additional context for the question' })),
+  options: Type.Optional(Type.Array(Type.String(), { description: 'Suggested answer options' })),
+  default: Type.Optional(Type.String({ description: 'Default answer value' })),
 });
 
 // ---------------------------------------------------------------------------
 // Staleness schema
 // ---------------------------------------------------------------------------
 
-export const stalenessVerdictSchema = z.object({
-  verdict: z.enum(['proceed', 'revise', 'obsolete']).describe('Staleness assessment verdict'),
-  justification: z.string().min(1).describe('Reason for the verdict'),
-  revision: z.string().optional().describe('Revised PRD content when verdict is revise'),
+export const stalenessVerdictSchema = Type.Object({
+  verdict: Type.Union(
+    [Type.Literal('proceed'), Type.Literal('revise'), Type.Literal('obsolete')],
+    { description: 'Staleness assessment verdict' },
+  ),
+  justification: Type.String({ minLength: 1, description: 'Reason for the verdict' }),
+  revision: Type.Optional(Type.String({ description: 'Revised PRD content when verdict is revise' })),
 });
 
 // ---------------------------------------------------------------------------
 // Recovery Verdict schema
 // ---------------------------------------------------------------------------
 
-export const recoveryVerdictSchema = z.object({
-  verdict: z.enum(['retry', 'split', 'abandon', 'manual']).describe(
-    'Recovery verdict: retry = transient failure, split = partially complete (use suggestedSuccessorPrd), abandon = no longer viable, manual = human review required (safe default)',
+export const recoveryVerdictSchema = Type.Object({
+  verdict: Type.Union(
+    [Type.Literal('retry'), Type.Literal('split'), Type.Literal('abandon'), Type.Literal('manual')],
+    {
+      description:
+        'Recovery verdict: retry = transient failure, split = partially complete (use suggestedSuccessorPrd), abandon = no longer viable, manual = human review required (safe default)',
+    },
   ),
-  confidence: z.enum(['low', 'medium', 'high']).describe(
-    'Confidence in the verdict based on available evidence',
+  confidence: Type.Union(
+    [Type.Literal('low'), Type.Literal('medium'), Type.Literal('high')],
+    { description: 'Confidence in the verdict based on available evidence' },
   ),
-  rationale: z.string().min(1).describe(
-    'Explanation of the verdict with concrete evidence from the failure summary',
-  ),
-  completedWork: z.array(z.string()).describe(
-    'Work items that were completed before the failure (each item on its own line)',
-  ),
-  remainingWork: z.array(z.string()).describe(
-    'Work items that still need to be done (each item on its own line)',
-  ),
-  risks: z.array(z.string()).describe(
-    'Risks identified in the recovery assessment (each risk on its own line)',
-  ),
-  suggestedSuccessorPrd: z.string().optional().describe(
-    'Full successor PRD content when verdict is split — must be complete and self-contained',
-  ),
-  partial: z.boolean().optional().describe(
-    'When true, the recovery analysis was based on partial context (some context was unavailable)',
-  ),
-  recoveryError: z.string().optional().describe(
-    'Error message when recovery failed or context was incomplete',
-  ),
+  rationale: Type.String({
+    minLength: 1,
+    description: 'Explanation of the verdict with concrete evidence from the failure summary',
+  }),
+  completedWork: Type.Array(Type.String(), {
+    description: 'Work items that were completed before the failure (each item on its own line)',
+  }),
+  remainingWork: Type.Array(Type.String(), {
+    description: 'Work items that still need to be done (each item on its own line)',
+  }),
+  risks: Type.Array(Type.String(), {
+    description: 'Risks identified in the recovery assessment (each risk on its own line)',
+  }),
+  suggestedSuccessorPrd: Type.Optional(Type.String({
+    description: 'Full successor PRD content when verdict is split — must be complete and self-contained',
+  })),
+  partial: Type.Optional(Type.Boolean({
+    description: 'When true, the recovery analysis was based on partial context (some context was unavailable)',
+  })),
+  recoveryError: Type.Optional(Type.String({
+    description: 'Error message when recovery failed or context was incomplete',
+  })),
 });
 
 // ---------------------------------------------------------------------------
@@ -188,11 +213,11 @@ export const recoveryVerdictSchema = z.object({
 // ---------------------------------------------------------------------------
 
 /** Options for applyRecovery() — reserved for future extension. */
-export const applyRecoveryOptionsSchema = z.object({}).passthrough();
-export type ApplyRecoveryOptions = z.infer<typeof applyRecoveryOptionsSchema>;
+export const applyRecoveryOptionsSchema = Type.Object({});
+export type ApplyRecoveryOptions = Static<typeof applyRecoveryOptionsSchema>;
 
 /** The verdict value union — a convenience alias for the enum in recoveryVerdictSchema. */
-export type RecoveryVerdictValue = z.infer<typeof recoveryVerdictSchema>['verdict'];
+export type RecoveryVerdictValue = Static<typeof recoveryVerdictSchema>['verdict'];
 
 /**
  * Return type of EforgeEngine.applyRecovery().
@@ -209,10 +234,10 @@ export interface ApplyRecoveryResult {
 // Expedition module schema
 // ---------------------------------------------------------------------------
 
-export const expeditionModuleSchema = z.object({
-  id: z.string().describe('Module identifier'),
-  description: z.string().describe('Module description'),
-  dependsOn: z.array(z.string()).describe('IDs of modules this module depends on'),
+export const expeditionModuleSchema = Type.Object({
+  id: Type.String({ description: 'Module identifier' }),
+  description: Type.String({ description: 'Module description' }),
+  dependsOn: Type.Array(Type.String(), { description: 'IDs of modules this module depends on' }),
 });
 
 // ---------------------------------------------------------------------------
@@ -220,113 +245,97 @@ export const expeditionModuleSchema = z.object({
 // ---------------------------------------------------------------------------
 
 // Effort and thinking schemas duplicated from config.ts to keep schemas.ts leaf-level
-const effortLevelForTuningSchema = z.enum(['low', 'medium', 'high', 'xhigh', 'max'])
-  .describe('Effort level for thinking depth. Set xhigh only for modules with significant ambiguity, novel API design, or large refactors. Omit to use the role default.');
+const effortLevelForTuningSchema = Type.Union(
+  ['low', 'medium', 'high', 'xhigh', 'max'].map(v => Type.Literal(v)),
+  {
+    description:
+      'Effort level for thinking depth. Set xhigh only for modules with significant ambiguity, novel API design, or large refactors. Omit to use the role default.',
+  },
+);
 
-const thinkingForTuningSchema = z.union([
-  z.object({ type: z.literal('adaptive') }),
-  z.object({ type: z.literal('enabled'), budgetTokens: z.number().int().positive().optional() }),
-  z.object({ type: z.literal('disabled') }),
-]).describe("Controls the agent's thinking/reasoning behavior");
+const thinkingForTuningSchema = Type.Union([
+  Type.Object({ type: Type.Literal('adaptive') }),
+  Type.Object({ type: Type.Literal('enabled'), budgetTokens: Type.Optional(Type.Integer({ minimum: 1 })) }),
+  Type.Object({ type: Type.Literal('disabled') }),
+], { description: "Controls the agent's thinking/reasoning behavior" });
 
 // ---------------------------------------------------------------------------
 // ShardScope schema (parallel implementation shards for mechanical refactors)
 // ---------------------------------------------------------------------------
 
-export const shardScopeSchema = z.object({
-  id: z.string().min(1).describe('Unique shard identifier within the plan'),
-  roots: z.array(z.string().min(1)).optional().describe('Directory roots claimed by this shard (matched via path prefix)'),
-  files: z.array(z.string().min(1)).optional().describe('Explicit file paths claimed by this shard'),
-}).refine(
-  (shard) => (shard.roots !== undefined && shard.roots.length > 0) || (shard.files !== undefined && shard.files.length > 0),
-  { message: 'Each shard must specify at least one of roots or files' },
-).describe('Scope definition for a single implementation shard');
+export const shardScopeSchema = Type.Object({
+  id: Type.String({ minLength: 1, description: 'Unique shard identifier within the plan' }),
+  roots: Type.Optional(Type.Array(Type.String({ minLength: 1 }), {
+    description: 'Directory roots claimed by this shard (matched via path prefix)',
+  })),
+  files: Type.Optional(Type.Array(Type.String({ minLength: 1 }), {
+    description: 'Explicit file paths claimed by this shard',
+  })),
+}, { description: 'Scope definition for a single implementation shard' });
 
-export type ShardScope = z.output<typeof shardScopeSchema>;
+export type ShardScope = Static<typeof shardScopeSchema>;
 
-export const agentTuningSchema = z.object({
-  effort: effortLevelForTuningSchema.optional(),
-  thinking: thinkingForTuningSchema.optional(),
-  rationale: z.string().optional().describe('Why this tuning was chosen'),
-  tier: z.enum(['planning', 'implementation', 'review', 'evaluation']).optional().describe('Override the tier this role belongs to (the tier carries harness/model/effort defaults)'),
-  shards: z.array(shardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
-}).describe('Per-agent effort/thinking/tier tuning');
+/**
+ * Post-parse validator for shardScopeSchema.
+ * Enforces that each shard specifies at least one of roots or files.
+ */
+export function validateShardScope(data: ShardScope): SafeParseResult<ShardScope> {
+  const hasRoots = data.roots !== undefined && data.roots.length > 0;
+  const hasFiles = data.files !== undefined && data.files.length > 0;
+  if (!hasRoots && !hasFiles) {
+    const err: ValueError = { path: '', message: 'Each shard must specify at least one of roots or files' };
+    return { success: false, error: { message: err.message, errors: [err] } };
+  }
+  return { success: true, data };
+}
 
-const planAgentsSchema = z.object({
-  builder: agentTuningSchema.optional(),
-  reviewer: agentTuningSchema.optional(),
-  'review-fixer': agentTuningSchema.optional(),
-  evaluator: agentTuningSchema.optional(),
-  'doc-author': agentTuningSchema.optional(),
-  'doc-syncer': agentTuningSchema.optional(),
-  'test-writer': agentTuningSchema.optional(),
-  tester: agentTuningSchema.optional(),
-}).optional().describe('Per-agent tuning overrides for build-stage agents in this plan');
+export const agentTuningSchema = Type.Object({
+  effort: Type.Optional(effortLevelForTuningSchema),
+  thinking: Type.Optional(thinkingForTuningSchema),
+  rationale: Type.Optional(Type.String({ description: 'Why this tuning was chosen' })),
+  tier: Type.Optional(Type.Union(
+    ['planning', 'implementation', 'review', 'evaluation'].map(v => Type.Literal(v)),
+    { description: 'Override the tier this role belongs to (the tier carries harness/model/effort defaults)' },
+  )),
+  shards: Type.Optional(Type.Array(shardScopeSchema, {
+    description: 'Parallel implementation shards (builder role only)',
+  })),
+}, { description: 'Per-agent effort/thinking/tier tuning' });
+
+const planAgentsSchema = Type.Optional(Type.Object({
+  builder: Type.Optional(agentTuningSchema),
+  reviewer: Type.Optional(agentTuningSchema),
+  'review-fixer': Type.Optional(agentTuningSchema),
+  evaluator: Type.Optional(agentTuningSchema),
+  'doc-author': Type.Optional(agentTuningSchema),
+  'doc-syncer': Type.Optional(agentTuningSchema),
+  'test-writer': Type.Optional(agentTuningSchema),
+  tester: Type.Optional(agentTuningSchema),
+}, { description: 'Per-agent tuning overrides for build-stage agents in this plan' }));
 
 // ---------------------------------------------------------------------------
 // PlanFile frontmatter schema
 // ---------------------------------------------------------------------------
 
-export const planFileFrontmatterSchema = z.object({
-  id: z.string().describe('Plan identifier (e.g., plan-01-auth)'),
-  name: z.string().describe('Human-readable plan name'),
-  dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
-  branch: z.string().describe('Git branch name for this plan'),
-  migrations: z.array(z.object({
-    timestamp: z.string().describe('Migration timestamp'),
-    description: z.string().describe('Migration description'),
-  })).optional().describe('Database migrations included in this plan'),
+export const planFileFrontmatterSchema = Type.Object({
+  id: Type.String({ description: 'Plan identifier (e.g., plan-01-auth)' }),
+  name: Type.String({ description: 'Human-readable plan name' }),
+  dependsOn: Type.Array(Type.String(), { description: 'IDs of plans this plan depends on' }),
+  branch: Type.String({ description: 'Git branch name for this plan' }),
+  migrations: Type.Optional(Type.Array(Type.Object({
+    timestamp: Type.String({ description: 'Migration timestamp' }),
+    description: Type.String({ description: 'Migration description' }),
+  }), { description: 'Database migrations included in this plan' })),
   agents: planAgentsSchema,
 });
-
-// ---------------------------------------------------------------------------
-// Schema YAML generation with caching
-// ---------------------------------------------------------------------------
-
-const _schemaYamlCache = new Map<string, string>();
-
-/**
- * Convert a Zod schema to a YAML string documenting all fields and their
- * descriptions. Uses z.toJSONSchema() and strips internal keys ($schema,
- * ~standard). Cached per key since schemas are static.
- */
-export function getSchemaYaml(key: string, schema: z.ZodType): string {
-  const cached = _schemaYamlCache.get(key);
-  if (cached !== undefined) return cached;
-
-  const jsonSchema = z.toJSONSchema(schema);
-
-  function stripInternalKeys(obj: Record<string, unknown>): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
-    for (const [k, value] of Object.entries(obj)) {
-      if (k === '$schema' || k === '~standard') continue;
-      if (Array.isArray(value)) {
-        result[k] = value.map((item) =>
-          item && typeof item === 'object' && !Array.isArray(item)
-            ? stripInternalKeys(item as Record<string, unknown>)
-            : item,
-        );
-      } else if (value && typeof value === 'object') {
-        result[k] = stripInternalKeys(value as Record<string, unknown>);
-      } else {
-        result[k] = value;
-      }
-    }
-    return result;
-  }
-
-  const cleaned = stripInternalKeys(jsonSchema as Record<string, unknown>);
-  const yaml = stringifyYaml(cleaned);
-  _schemaYamlCache.set(key, yaml);
-  return yaml;
-}
 
 // ---------------------------------------------------------------------------
 // Per-perspective ReviewIssue schema builders
 // ---------------------------------------------------------------------------
 
-function makeReviewIssueSchemaWithCategory(categorySchema: z.ZodType): z.ZodObject {
-  return reviewIssueSchema.extend({
+function makeReviewIssueSchemaWithCategory<T extends TSchema>(categorySchema: T) {
+  return Type.Object({
+    ...reviewIssueSchema.properties,
     category: categorySchema,
   });
 }
@@ -342,7 +351,8 @@ const apiReviewIssueSchema = makeReviewIssueSchemaWithCategory(apiCategorySchema
 const docsReviewIssueSchema = makeReviewIssueSchemaWithCategory(docsCategorySchema);
 const testReviewIssueSchema = makeReviewIssueSchemaWithCategory(testCategorySchema);
 const planReviewIssueSchema = makeReviewIssueSchemaWithCategory(planReviewCategorySchema);
-export const verifyReviewIssueSchema = reviewIssueSchema.extend({
+export const verifyReviewIssueSchema = Type.Object({
+  ...reviewIssueSchema.properties,
   severity: verifySeveritySchema,
   category: verifyCategorySchema,
 });
@@ -433,78 +443,102 @@ export function getPlanFrontmatterSchemaYaml(): string {
 // ---------------------------------------------------------------------------
 // Pipeline Build/Review stage schemas
 // (declared here so orchestrationPlanSchema can reference them without TDZ)
+// Exported so plan.ts and agents/common.ts can use them as TypeBox versions
+// of the config.ts buildStageSpecSchema / reviewProfileConfigSchema.
 // ---------------------------------------------------------------------------
 
 /**
- * Build stage spec for pipeline composition — mirrors buildStageSpecSchema from config.ts.
- * Duplicated here to keep schemas.ts as a leaf-level file (no engine imports).
+ * Build stage spec for pipeline composition — TypeBox counterpart of buildStageSpecSchema from config.ts.
+ * Exported for use by plan.ts and agents/common.ts (config.ts migration is deferred).
  */
-const pipelineBuildStageSpecSchema = z.union([
-  z.string().describe('A single stage name'),
-  z.array(z.string()).describe('Stage names to run in parallel'),
-]).describe('A stage name or array of stage names to run in parallel');
+export const pipelineBuildStageSpecSchema = Type.Union([
+  Type.String({ description: 'A single stage name' }),
+  Type.Array(Type.String(), { description: 'Stage names to run in parallel' }),
+], { description: 'A stage name or array of stage names to run in parallel' });
 
 /**
- * Review profile config for pipeline composition — mirrors reviewProfileConfigSchema from config.ts.
- * Duplicated here to keep schemas.ts as a leaf-level file (no engine imports).
- *
- * Bound to `z.ZodType<ReviewProfileConfig>` so the pipeline composer output
- * validation stays aligned with the shared TypeScript type owned by
- * `@eforge-build/client`.
+ * Review profile config for pipeline composition — TypeBox counterpart of reviewProfileConfigSchema from config.ts.
+ * Typed to be structurally compatible with ReviewProfileConfig from @eforge-build/client.
+ * Exported for use by plan.ts and agents/common.ts (config.ts migration is deferred).
  */
-const pipelineReviewProfileConfigSchema: z.ZodType<ReviewProfileConfig> = z.object({
-  strategy: z.enum(['auto', 'single', 'parallel']).describe('Review strategy'),
-  perspectives: z.array(z.enum(REVIEW_PERSPECTIVES)).nonempty()
-    .describe(`Review perspective names. Valid: ${REVIEW_PERSPECTIVES.join(', ')}`),
-  maxRounds: z.number().int().positive().describe('Number of review-fix-evaluate cycles'),
-  evaluatorStrictness: z.enum(['strict', 'standard', 'lenient']).describe('How strictly the evaluator judges fixes'),
-});
+export const pipelineReviewProfileConfigSchema = Type.Object({
+  strategy: Type.Union(
+    [Type.Literal('auto'), Type.Literal('single'), Type.Literal('parallel')],
+    { description: 'Review strategy' },
+  ),
+  perspectives: Type.Array(
+    Type.Union(REVIEW_PERSPECTIVES.map(p => Type.Literal(p))),
+    { minItems: 1, description: `Review perspective names. Valid: ${REVIEW_PERSPECTIVES.join(', ')}` },
+  ),
+  maxRounds: Type.Integer({ minimum: 1, description: 'Number of review-fix-evaluate cycles' }),
+  evaluatorStrictness: Type.Union(
+    [Type.Literal('strict'), Type.Literal('standard'), Type.Literal('lenient')],
+    { description: 'How strictly the evaluator judges fixes' },
+  ),
+}) satisfies { static: ReviewProfileConfig };
 
 // ---------------------------------------------------------------------------
 // Plan Set Submission schema
 // ---------------------------------------------------------------------------
 
-const planSetSubmissionPlanSchema = z.object({
-  frontmatter: z.object({
-    id: z.string().min(1).describe('Plan identifier (e.g., plan-01-auth)'),
-    name: z.string().min(1).describe('Human-readable plan name'),
-    migrations: z.array(z.object({
-      timestamp: z.string().regex(/^\d{14}$/, 'Migration timestamp must be 14 digits (YYYYMMDDHHmmss)').describe('Migration timestamp in YYYYMMDDHHmmss format'),
-      description: z.string().min(1).describe('Migration description'),
-    })).optional().describe('Database migrations included in this plan'),
+const planSetSubmissionPlanSchema = Type.Object({
+  frontmatter: Type.Object({
+    id: Type.String({ minLength: 1, description: 'Plan identifier (e.g., plan-01-auth)' }),
+    name: Type.String({ minLength: 1, description: 'Human-readable plan name' }),
+    migrations: Type.Optional(Type.Array(Type.Object({
+      timestamp: Type.String({ pattern: '^\\d{14}$', description: 'Migration timestamp in YYYYMMDDHHmmss format' }),
+      description: Type.String({ minLength: 1, description: 'Migration description' }),
+    }), { description: 'Database migrations included in this plan' })),
     agents: planAgentsSchema,
   }),
-  body: z.string().describe('Plan markdown body'),
+  body: Type.String({ description: 'Plan markdown body' }),
 });
 
-const orchestrationPlanSchema = z.object({
-  id: z.string().min(1).describe('Plan ID matching a submitted plan'),
-  dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
-  build: z.array(pipelineBuildStageSpecSchema).optional().describe('Per-plan build stage pipeline; if omitted, the composer\'s defaultBuild is used as a backfill'),
-  review: pipelineReviewProfileConfigSchema.optional().describe('Per-plan review configuration; if omitted, the composer\'s defaultReview is used as a backfill'),
-  buildRationale: z.string().optional().describe('Why this plan\'s build stages differ from the default, or confirmation that the default is appropriate'),
-  reviewRationale: z.string().optional().describe('Why this plan\'s review profile differs from the default, or confirmation that the default is appropriate'),
+const orchestrationPlanSchema = Type.Object({
+  id: Type.String({ minLength: 1, description: 'Plan ID matching a submitted plan' }),
+  dependsOn: Type.Array(Type.String(), { description: 'IDs of plans this plan depends on' }),
+  build: Type.Optional(Type.Array(pipelineBuildStageSpecSchema, {
+    description: "Per-plan build stage pipeline; if omitted, the composer's defaultBuild is used as a backfill",
+  })),
+  review: Type.Optional(Type.Object(pipelineReviewProfileConfigSchema.properties, {
+    description: "Per-plan review configuration; if omitted, the composer's defaultReview is used as a backfill",
+  })),
+  buildRationale: Type.Optional(Type.String({
+    description: "Why this plan's build stages differ from the default, or confirmation that the default is appropriate",
+  })),
+  reviewRationale: Type.Optional(Type.String({
+    description: "Why this plan's review profile differs from the default, or confirmation that the default is appropriate",
+  })),
 });
 
-export const planSetSubmissionSchema = z.object({
-  description: z.string().min(1).describe('Plan set description'),
-  plans: z.array(planSetSubmissionPlanSchema).min(1).describe('Plan files to write'),
-  planSetShapeRationale: z.string().optional().describe('Why the work is split into this number of plans and ordered this way (omit for single-plan submissions)'),
-  orchestration: z.object({
-    validate: z.array(z.string()).describe('Validation commands to run'),
-    plans: z.array(orchestrationPlanSchema).min(1).describe('Orchestration plan entries'),
-  }).describe('Orchestration configuration'),
-}).superRefine((data, ctx) => {
+export const planSetSubmissionSchema = Type.Object({
+  description: Type.String({ minLength: 1, description: 'Plan set description' }),
+  plans: Type.Array(planSetSubmissionPlanSchema, { minItems: 1, description: 'Plan files to write' }),
+  planSetShapeRationale: Type.Optional(Type.String({
+    description: 'Why the work is split into this number of plans and ordered this way (omit for single-plan submissions)',
+  })),
+  orchestration: Type.Object({
+    validate: Type.Array(Type.String(), { description: 'Validation commands to run' }),
+    plans: Type.Array(orchestrationPlanSchema, { minItems: 1, description: 'Orchestration plan entries' }),
+  }, { description: 'Orchestration configuration' }),
+});
+
+export type PlanSetSubmission = Static<typeof planSetSubmissionSchema>;
+
+/**
+ * Post-parse validator for planSetSubmissionSchema.
+ * Enforces cross-field constraints: duplicate IDs, dangling dependencies, cycles,
+ * and orchestration/plan alignment.
+ */
+export function validatePlanSetSubmission(data: PlanSetSubmission): SafeParseResult<PlanSetSubmission> {
+  const errors: ValueError[] = [];
+
   // Check for duplicate plan IDs
   const planIds = data.plans.map(p => p.frontmatter.id);
   const seen = new Set<string>();
   for (const id of planIds) {
     if (seen.has(id)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: `Duplicate plan ID: "${id}"`,
-        path: ['plans'],
-      });
+      errors.push({ path: '/plans', message: `Duplicate plan ID: "${id}"` });
     }
     seen.add(id);
   }
@@ -515,10 +549,9 @@ export const planSetSubmissionSchema = z.object({
   for (let i = 0; i < data.orchestration.plans.length; i++) {
     for (const dep of data.orchestration.plans[i].dependsOn) {
       if (!planIdSet.has(dep)) {
-        ctx.addIssue({
-          code: 'custom',
+        errors.push({
+          path: `/orchestration/plans/${i}/dependsOn`,
           message: `Plan "${data.orchestration.plans[i].id}" depends on unknown plan "${dep}"`,
-          path: ['orchestration', 'plans', i, 'dependsOn'],
         });
       }
     }
@@ -547,11 +580,7 @@ export const planSetSubmissionSchema = z.object({
 
   for (const id of planIds) {
     if (color.get(id) === WHITE && hasCycle(id)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Dependency cycle detected among plans',
-        path: ['plans'],
-      });
+      errors.push({ path: '/plans', message: 'Dependency cycle detected among plans' });
       break;
     }
   }
@@ -559,66 +588,73 @@ export const planSetSubmissionSchema = z.object({
   // Check orchestration plan IDs match submitted plan IDs (also detect duplicates)
   const orchIds = new Set(data.orchestration.plans.map(p => p.id));
   if (orchIds.size !== data.orchestration.plans.length) {
-    ctx.addIssue({
-      code: 'custom',
-      message: `Orchestration contains duplicate plan IDs`,
-      path: ['orchestration', 'plans'],
-    });
+    errors.push({ path: '/orchestration/plans', message: 'Orchestration contains duplicate plan IDs' });
   }
   if (orchIds.size !== planIdSet.size || ![...orchIds].every(id => planIdSet.has(id))) {
-    ctx.addIssue({
-      code: 'custom',
+    errors.push({
+      path: '/orchestration/plans',
       message: `Orchestration plan IDs [${[...orchIds].join(', ')}] do not match submitted plan IDs [${[...planIdSet].join(', ')}]`,
-      path: ['orchestration', 'plans'],
     });
   }
-});
 
-export type PlanSetSubmission = z.output<typeof planSetSubmissionSchema>;
+  if (errors.length > 0) {
+    const message = errors.map(e => `${e.path || '(root)'}: ${e.message}`).join('\n');
+    return { success: false, error: { message, errors } };
+  }
+  return { success: true, data };
+}
 
 // ---------------------------------------------------------------------------
 // Architecture Submission schema
 // ---------------------------------------------------------------------------
 
-const architectureModuleSchema = z.object({
-  id: z.string().min(1).describe('Module identifier'),
-  description: z.string().min(1).describe('Module description'),
-  dependsOn: z.array(z.string()).describe('IDs of modules this module depends on'),
+const architectureModuleSchema = Type.Object({
+  id: Type.String({ minLength: 1, description: 'Module identifier' }),
+  description: Type.String({ minLength: 1, description: 'Module description' }),
+  dependsOn: Type.Array(Type.String(), { description: 'IDs of modules this module depends on' }),
 });
 
-export const architectureSubmissionSchema = z.object({
-  architecture: z.string().min(1).describe('Architecture document markdown content'),
-  modules: z.array(architectureModuleSchema).min(1).describe('Modules in the architecture'),
-  index: z.object({
-    name: z.string().min(1).describe('Plan set name'),
-    description: z.string().describe('Plan set description'),
-    mode: z.literal('expedition').describe('Orchestration mode'),
-    validate: z.array(z.string()).describe('Validation commands to run'),
-    modules: z.record(z.string(), z.object({
-      description: z.string().describe('Module description'),
-      depends_on: z.array(z.string()).describe('Module dependencies'),
-    })).describe('Module map for index.yaml'),
-  }).describe('Index metadata for expedition plan set'),
-}).superRefine((data, ctx) => {
+export const architectureSubmissionSchema = Type.Object({
+  architecture: Type.String({ minLength: 1, description: 'Architecture document markdown content' }),
+  modules: Type.Array(architectureModuleSchema, { minItems: 1, description: 'Modules in the architecture' }),
+  index: Type.Object({
+    name: Type.String({ minLength: 1, description: 'Plan set name' }),
+    description: Type.String({ description: 'Plan set description' }),
+    mode: Type.Literal('expedition', { description: 'Orchestration mode' }),
+    validate: Type.Array(Type.String(), { description: 'Validation commands to run' }),
+    modules: Type.Record(
+      Type.String(),
+      Type.Object({
+        description: Type.String({ description: 'Module description' }),
+        depends_on: Type.Array(Type.String(), { description: 'Module dependencies' }),
+      }),
+      { description: 'Module map for index.yaml' },
+    ),
+  }, { description: 'Index metadata for expedition plan set' }),
+});
+
+export type ArchitectureSubmission = Static<typeof architectureSubmissionSchema>;
+
+/**
+ * Post-parse validator for architectureSubmissionSchema.
+ * Enforces cross-field constraints: duplicate module IDs, dangling dependencies, cycles.
+ */
+export function validateArchitectureSubmission(data: ArchitectureSubmission): SafeParseResult<ArchitectureSubmission> {
+  const errors: ValueError[] = [];
   const moduleIds = new Set(data.modules.map(m => m.id));
 
   // Check for duplicate module IDs
   if (moduleIds.size !== data.modules.length) {
-    ctx.addIssue({
-      code: 'custom',
-      message: 'Architecture contains duplicate module IDs',
-      path: ['modules'],
-    });
+    errors.push({ path: '/modules', message: 'Architecture contains duplicate module IDs' });
   }
 
   // Check for dangling dependsOn references
   for (let i = 0; i < data.modules.length; i++) {
     for (const dep of data.modules[i].dependsOn) {
       if (!moduleIds.has(dep)) {
-        ctx.addIssue({
-          code: 'custom',
+        errors.push({
+          path: `/modules/${i}/dependsOn`,
           message: `Module "${data.modules[i].id}" depends on unknown module "${dep}"`,
-          path: ['modules', i, 'dependsOn'],
         });
       }
     }
@@ -648,17 +684,17 @@ export const architectureSubmissionSchema = z.object({
 
   for (const id of moduleList) {
     if (color.get(id) === WHITE && hasCycle(id)) {
-      ctx.addIssue({
-        code: 'custom',
-        message: 'Dependency cycle detected among modules',
-        path: ['modules'],
-      });
+      errors.push({ path: '/modules', message: 'Dependency cycle detected among modules' });
       break;
     }
   }
-});
 
-export type ArchitectureSubmission = z.output<typeof architectureSubmissionSchema>;
+  if (errors.length > 0) {
+    const message = errors.map(e => `${e.path || '(root)'}: ${e.message}`).join('\n');
+    return { success: false, error: { message, errors } };
+  }
+  return { success: true, data };
+}
 
 // ---------------------------------------------------------------------------
 // Submission schema YAML getters
@@ -682,99 +718,99 @@ export function getArchitectureSubmissionSchemaYaml(): string {
  * Schema for a single fix applied by the plan-reviewer agent.
  * Discriminated union with three variants: replace_orchestration, replace_plan_file, replace_plan_body.
  */
-export const planReviewFixSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('replace_orchestration').describe('Replace the entire orchestration.yaml content'),
-    description: z.string().min(1).describe('Plan set description'),
-    baseBranch: z.string().min(1).describe('Base git branch'),
-    validate: z.array(z.string()).describe('Validation commands to run'),
-    plans: z.array(z.object({
-      id: z.string().min(1).describe('Plan ID'),
-      name: z.string().min(1).describe('Human-readable plan name'),
-      dependsOn: z.array(z.string()).describe('IDs of plans this plan depends on'),
-      branch: z.string().min(1).describe('Git branch name'),
-      build: z.array(pipelineBuildStageSpecSchema).optional().describe('Per-plan build stage pipeline'),
-      review: pipelineReviewProfileConfigSchema.optional().describe('Per-plan review configuration'),
+export const planReviewFixSchema = Type.Union([
+  Type.Object({
+    kind: Type.Literal('replace_orchestration', { description: 'Replace the entire orchestration.yaml content' }),
+    description: Type.String({ minLength: 1, description: 'Plan set description' }),
+    baseBranch: Type.String({ minLength: 1, description: 'Base git branch' }),
+    validate: Type.Array(Type.String(), { description: 'Validation commands to run' }),
+    plans: Type.Array(Type.Object({
+      id: Type.String({ minLength: 1, description: 'Plan ID' }),
+      name: Type.String({ minLength: 1, description: 'Human-readable plan name' }),
+      dependsOn: Type.Array(Type.String(), { description: 'IDs of plans this plan depends on' }),
+      branch: Type.String({ minLength: 1, description: 'Git branch name' }),
+      build: Type.Optional(Type.Array(pipelineBuildStageSpecSchema, { description: 'Per-plan build stage pipeline' })),
+      review: Type.Optional(Type.Object(pipelineReviewProfileConfigSchema.properties, { description: 'Per-plan review configuration' })),
       agents: planAgentsSchema,
-    })).min(1).describe('Orchestration plan entries'),
-  }).describe('Replace the orchestration.yaml content; pipeline is preserved from disk'),
-  z.object({
-    kind: z.literal('replace_plan_file').describe('Replace an entire plan file (frontmatter + body)'),
-    planId: z.string().min(1).describe('Plan ID (e.g., plan-01-auth) — used to resolve the file path'),
-    frontmatter: z.object({
-      id: z.string().min(1).describe('Plan identifier'),
-      name: z.string().min(1).describe('Human-readable plan name'),
-      branch: z.string().min(1).describe('Git branch name for this plan'),
-      migrations: z.array(z.object({
-        timestamp: z.string().regex(/^\d{14}$/, 'Migration timestamp must be 14 digits (YYYYMMDDHHmmss)').describe('Migration timestamp in YYYYMMDDHHmmss format'),
-        description: z.string().describe('Migration description'),
-      })).optional().describe('Database migrations included in this plan'),
+    }), { minItems: 1, description: 'Orchestration plan entries' }),
+  }, { description: 'Replace the orchestration.yaml content; pipeline is preserved from disk' }),
+  Type.Object({
+    kind: Type.Literal('replace_plan_file', { description: 'Replace an entire plan file (frontmatter + body)' }),
+    planId: Type.String({ minLength: 1, description: 'Plan ID (e.g., plan-01-auth) — used to resolve the file path' }),
+    frontmatter: Type.Object({
+      id: Type.String({ minLength: 1, description: 'Plan identifier' }),
+      name: Type.String({ minLength: 1, description: 'Human-readable plan name' }),
+      branch: Type.String({ minLength: 1, description: 'Git branch name for this plan' }),
+      migrations: Type.Optional(Type.Array(Type.Object({
+        timestamp: Type.String({ pattern: '^\\d{14}$', description: 'Migration timestamp in YYYYMMDDHHmmss format' }),
+        description: Type.String({ description: 'Migration description' }),
+      }), { description: 'Database migrations included in this plan' })),
       agents: planAgentsSchema,
-    }).describe('Plan file frontmatter'),
-    body: z.string().describe('Plan markdown body'),
-  }).describe('Replace an entire plan .md file with new frontmatter and body'),
-  z.object({
-    kind: z.literal('replace_plan_body').describe('Replace only the markdown body of a plan file, preserving frontmatter'),
-    planId: z.string().min(1).describe('Plan ID (e.g., plan-01-auth) — used to resolve the file path'),
-    body: z.string().describe('New markdown body (frontmatter is preserved verbatim)'),
-  }).describe('Replace only the body of a plan .md file, leaving frontmatter byte-identical'),
-]).describe('A single fix to apply to plan artifacts');
+    }, { description: 'Plan file frontmatter' }),
+    body: Type.String({ description: 'Plan markdown body' }),
+  }, { description: 'Replace an entire plan .md file with new frontmatter and body' }),
+  Type.Object({
+    kind: Type.Literal('replace_plan_body', { description: 'Replace only the markdown body of a plan file, preserving frontmatter' }),
+    planId: Type.String({ minLength: 1, description: 'Plan ID (e.g., plan-01-auth) — used to resolve the file path' }),
+    body: Type.String({ description: 'New markdown body (frontmatter is preserved verbatim)' }),
+  }, { description: 'Replace only the body of a plan .md file, leaving frontmatter byte-identical' }),
+], { description: 'A single fix to apply to plan artifacts' });
 
-export const planReviewSubmissionSchema = z.object({
-  fixes: z.array(planReviewFixSchema).describe('Fixes to apply to plan artifacts; may be empty if no fixable issues were found'),
+export const planReviewSubmissionSchema = Type.Object({
+  fixes: Type.Array(planReviewFixSchema, { description: 'Fixes to apply to plan artifacts; may be empty if no fixable issues were found' }),
 });
 
-export type PlanReviewSubmission = z.output<typeof planReviewSubmissionSchema>;
+export type PlanReviewSubmission = Static<typeof planReviewSubmissionSchema>;
 
 /**
  * Schema for a single fix applied by the cohesion-reviewer agent.
  * Operates on module plan files in <planSet>/modules/.
  */
-export const cohesionReviewFixSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('replace_plan_file').describe('Replace an entire module plan file (frontmatter + body)'),
-    planId: z.string().min(1).describe('Plan/module ID (e.g., auth) — used to resolve the file path under modules/'),
-    frontmatter: z.object({
-      id: z.string().min(1).describe('Plan identifier'),
-      name: z.string().min(1).describe('Human-readable plan name'),
-      branch: z.string().min(1).describe('Git branch name for this plan'),
-      migrations: z.array(z.object({
-        timestamp: z.string().regex(/^\d{14}$/, 'Migration timestamp must be 14 digits (YYYYMMDDHHmmss)').describe('Migration timestamp in YYYYMMDDHHmmss format'),
-        description: z.string().describe('Migration description'),
-      })).optional().describe('Database migrations included in this plan'),
+export const cohesionReviewFixSchema = Type.Union([
+  Type.Object({
+    kind: Type.Literal('replace_plan_file', { description: 'Replace an entire module plan file (frontmatter + body)' }),
+    planId: Type.String({ minLength: 1, description: 'Plan/module ID (e.g., auth) — used to resolve the file path under modules/' }),
+    frontmatter: Type.Object({
+      id: Type.String({ minLength: 1, description: 'Plan identifier' }),
+      name: Type.String({ minLength: 1, description: 'Human-readable plan name' }),
+      branch: Type.String({ minLength: 1, description: 'Git branch name for this plan' }),
+      migrations: Type.Optional(Type.Array(Type.Object({
+        timestamp: Type.String({ pattern: '^\\d{14}$', description: 'Migration timestamp in YYYYMMDDHHmmss format' }),
+        description: Type.String({ description: 'Migration description' }),
+      }), { description: 'Database migrations included in this plan' })),
       agents: planAgentsSchema,
-    }).describe('Plan file frontmatter'),
-    body: z.string().describe('Plan markdown body'),
-  }).describe('Replace an entire module plan .md file with new frontmatter and body'),
-  z.object({
-    kind: z.literal('replace_plan_body').describe('Replace only the markdown body of a module plan file, preserving frontmatter'),
-    planId: z.string().min(1).describe('Plan/module ID — used to resolve the file path under modules/'),
-    body: z.string().describe('New markdown body (frontmatter is preserved verbatim)'),
-  }).describe('Replace only the body of a module plan .md file, leaving frontmatter byte-identical'),
-]).describe('A single fix to apply to module plan artifacts');
+    }, { description: 'Plan file frontmatter' }),
+    body: Type.String({ description: 'Plan markdown body' }),
+  }, { description: 'Replace an entire module plan .md file with new frontmatter and body' }),
+  Type.Object({
+    kind: Type.Literal('replace_plan_body', { description: 'Replace only the markdown body of a module plan file, preserving frontmatter' }),
+    planId: Type.String({ minLength: 1, description: 'Plan/module ID — used to resolve the file path under modules/' }),
+    body: Type.String({ description: 'New markdown body (frontmatter is preserved verbatim)' }),
+  }, { description: 'Replace only the body of a module plan .md file, leaving frontmatter byte-identical' }),
+], { description: 'A single fix to apply to module plan artifacts' });
 
-export const cohesionReviewSubmissionSchema = z.object({
-  fixes: z.array(cohesionReviewFixSchema).describe('Fixes to apply to module plan artifacts; may be empty if no fixable issues were found'),
+export const cohesionReviewSubmissionSchema = Type.Object({
+  fixes: Type.Array(cohesionReviewFixSchema, { description: 'Fixes to apply to module plan artifacts; may be empty if no fixable issues were found' }),
 });
 
-export type CohesionReviewSubmission = z.output<typeof cohesionReviewSubmissionSchema>;
+export type CohesionReviewSubmission = Static<typeof cohesionReviewSubmissionSchema>;
 
 /**
  * Schema for a single fix applied by the architecture-reviewer agent.
  * Operates on the architecture.md file in <planSet>/.
  */
-export const architectureReviewFixSchema = z.discriminatedUnion('kind', [
-  z.object({
-    kind: z.literal('replace_architecture').describe('Replace the entire architecture.md content'),
-    content: z.string().min(1).describe('New architecture.md markdown content'),
-  }).describe('Replace the entire architecture.md file'),
-]).describe('A single fix to apply to architecture artifacts');
+export const architectureReviewFixSchema = Type.Union([
+  Type.Object({
+    kind: Type.Literal('replace_architecture', { description: 'Replace the entire architecture.md content' }),
+    content: Type.String({ minLength: 1, description: 'New architecture.md markdown content' }),
+  }, { description: 'Replace the entire architecture.md file' }),
+], { description: 'A single fix to apply to architecture artifacts' });
 
-export const architectureReviewSubmissionSchema = z.object({
-  fixes: z.array(architectureReviewFixSchema).describe('Fixes to apply to architecture artifacts; may be empty if no fixable issues were found'),
+export const architectureReviewSubmissionSchema = Type.Object({
+  fixes: Type.Array(architectureReviewFixSchema, { description: 'Fixes to apply to architecture artifacts; may be empty if no fixable issues were found' }),
 });
 
-export type ArchitectureReviewSubmission = z.output<typeof architectureReviewSubmissionSchema>;
+export type ArchitectureReviewSubmission = Static<typeof architectureReviewSubmissionSchema>;
 
 /** Schema YAML for plan-reviewer fix submissions. */
 export function getPlanReviewSubmissionSchemaYaml(): string {
@@ -795,17 +831,29 @@ export function getArchitectureReviewSubmissionSchemaYaml(): string {
 // Pipeline Composition schema
 // ---------------------------------------------------------------------------
 
-export const pipelineCompositionSchema = z.object({
-  scope: z.enum(['errand', 'excursion', 'expedition']).describe('Orchestration scope: errand for trivial tasks, excursion for most work, expedition for 4+ independent subsystems'),
-  compile: z.array(z.string()).describe('Ordered list of compile stage names from the stage catalog'),
-  defaultBuild: z.array(pipelineBuildStageSpecSchema).describe('Default build stage pipeline - each entry is a stage name or array of parallel stage names'),
-  defaultReview: pipelineReviewProfileConfigSchema.describe('Default review configuration for build plans'),
-  rationale: z.string().min(1).describe('Explanation of why this pipeline composition was chosen'),
+export const pipelineCompositionSchema = Type.Object({
+  scope: Type.Union(
+    [Type.Literal('errand'), Type.Literal('excursion'), Type.Literal('expedition')],
+    { description: 'Orchestration scope: errand for trivial tasks, excursion for most work, expedition for 4+ independent subsystems' },
+  ),
+  compile: Type.Array(Type.String(), { description: 'Ordered list of compile stage names from the stage catalog' }),
+  defaultBuild: Type.Array(pipelineBuildStageSpecSchema, {
+    description: 'Default build stage pipeline - each entry is a stage name or array of parallel stage names',
+  }),
+  defaultReview: Type.Object(pipelineReviewProfileConfigSchema.properties, {
+    description: 'Default review configuration for build plans',
+  }),
+  rationale: Type.String({ minLength: 1, description: 'Explanation of why this pipeline composition was chosen' }),
 });
 
-export type PipelineComposition = z.output<typeof pipelineCompositionSchema>;
+export type PipelineComposition = Static<typeof pipelineCompositionSchema>;
 
 /** Schema YAML for pipeline composition (used by pipeline-composer agent). */
 export function getPipelineCompositionSchemaYaml(): string {
   return getSchemaYaml('pipeline-composition', pipelineCompositionSchema);
 }
+
+// ---------------------------------------------------------------------------
+// Convenience re-export of safeParseWithSchema for engine-internal consumers
+// ---------------------------------------------------------------------------
+export { safeParseWithSchema };

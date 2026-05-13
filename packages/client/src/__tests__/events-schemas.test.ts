@@ -1,11 +1,11 @@
 /**
- * Tests for the Zod-based wire event schemas introduced in plan-01-foundation.
+ * Tests for the TypeBox-based wire event schemas.
  *
  * Validates:
  *   - EforgeEventSchema is exported from @eforge-build/client (AC #13)
- *   - EforgeEvent is z.infer-derived: Zod validates what TypeScript accepts (AC #3)
+ *   - EforgeEvent is Static<>-derived: TypeBox validates what TypeScript accepts (AC #3)
  *   - The 5 new event variants round-trip through JSON (AC #3)
- *   - Zod runtime validation accepts valid payloads and rejects invalid ones
+ *   - Runtime validation accepts valid payloads and rejects invalid ones
  *   - agent:start thinkingCoerced/thinkingOriginal optional fields parse correctly (AC #8 precursor)
  *   - Unknown event types are rejected, not silently accepted
  *
@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { EforgeEventSchema } from '../events.schemas.js';
+import { safeParseEforgeEvent } from '../events.schemas.js';
 import type { EforgeEvent } from '../events.schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -95,14 +95,14 @@ describe('new plan lifecycle + merge-worktree variants — JSON roundtrip', () =
 });
 
 // ---------------------------------------------------------------------------
-// Zod schema validation — valid payloads
+// Schema validation — valid payloads
 // ---------------------------------------------------------------------------
 
-describe('EforgeEventSchema.safeParse — new variants', () => {
+describe('safeParseEforgeEvent — new variants', () => {
   it('accepts plan:status:change with every valid status value', () => {
     const statuses = ['pending', 'running', 'completed', 'failed', 'blocked', 'merged'] as const;
     for (const status of statuses) {
-      const result = EforgeEventSchema.safeParse({
+      const result = safeParseEforgeEvent({
         type: 'plan:status:change',
         timestamp: '2025-01-01T00:00:00.000Z',
         planId: 'plan-01',
@@ -113,7 +113,7 @@ describe('EforgeEventSchema.safeParse — new variants', () => {
   });
 
   it('accepts plan:error:set with required fields', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'plan:error:set',
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
@@ -123,7 +123,7 @@ describe('EforgeEventSchema.safeParse — new variants', () => {
   });
 
   it('accepts plan:error:clear with only planId + timestamp', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'plan:error:clear',
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
@@ -132,7 +132,7 @@ describe('EforgeEventSchema.safeParse — new variants', () => {
   });
 
   it('accepts merge:worktree:set with path', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'merge:worktree:set',
       timestamp: '2025-01-01T00:00:00.000Z',
       path: '/tmp/merge-worktree',
@@ -141,7 +141,7 @@ describe('EforgeEventSchema.safeParse — new variants', () => {
   });
 
   it('accepts merge:worktree:clear with only timestamp', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'merge:worktree:clear',
       timestamp: '2025-01-01T00:00:00.000Z',
     });
@@ -149,7 +149,7 @@ describe('EforgeEventSchema.safeParse — new variants', () => {
   });
 
   it('accepts optional envelope fields (sessionId, runId)', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'plan:status:change',
       timestamp: '2025-01-01T00:00:00.000Z',
       sessionId: 'sess-abc',
@@ -166,12 +166,12 @@ describe('EforgeEventSchema.safeParse — new variants', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Zod schema validation — invalid payloads rejected
+// Schema validation — invalid payloads rejected
 // ---------------------------------------------------------------------------
 
-describe('EforgeEventSchema.safeParse — rejection of invalid payloads', () => {
+describe('safeParseEforgeEvent — rejection of invalid payloads', () => {
   it('rejects plan:status:change with an invalid status value', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'plan:status:change',
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
@@ -181,7 +181,7 @@ describe('EforgeEventSchema.safeParse — rejection of invalid payloads', () => 
   });
 
   it('rejects plan:status:change missing planId', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'plan:status:change',
       timestamp: '2025-01-01T00:00:00.000Z',
       status: 'running',
@@ -190,7 +190,7 @@ describe('EforgeEventSchema.safeParse — rejection of invalid payloads', () => 
   });
 
   it('rejects plan:error:set missing error field', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'plan:error:set',
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
@@ -199,7 +199,7 @@ describe('EforgeEventSchema.safeParse — rejection of invalid payloads', () => 
   });
 
   it('rejects merge:worktree:set missing path field', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'merge:worktree:set',
       timestamp: '2025-01-01T00:00:00.000Z',
     });
@@ -207,7 +207,7 @@ describe('EforgeEventSchema.safeParse — rejection of invalid payloads', () => 
   });
 
   it('rejects an entirely unknown event type', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'completely:unknown:event',
       timestamp: '2025-01-01T00:00:00.000Z',
     });
@@ -215,7 +215,7 @@ describe('EforgeEventSchema.safeParse — rejection of invalid payloads', () => 
   });
 
   it('rejects an event missing timestamp (required envelope field)', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'plan:status:change',
       planId: 'plan-01',
       status: 'running',
@@ -224,7 +224,7 @@ describe('EforgeEventSchema.safeParse — rejection of invalid payloads', () => 
   });
 
   it('rejects enqueue:complete missing planSet (required typed field)', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'enqueue:complete',
       timestamp: '2025-01-01T00:00:00.000Z',
       id: 'x',
@@ -233,6 +233,17 @@ describe('EforgeEventSchema.safeParse — rejection of invalid payloads', () => 
       // planSet intentionally omitted
     });
     expect(result.success).toBe(false);
+  });
+
+  it('provides a non-empty error message on failure', () => {
+    const result = safeParseEforgeEvent({
+      type: 'completely:unknown:event',
+      timestamp: '2025-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.message.length).toBeGreaterThan(0);
+    }
   });
 });
 
@@ -255,7 +266,7 @@ describe('agent:start — runtime decision fields survive schema round-trip', ()
       thinkingCoerced: true,
       thinkingOriginal: { type: 'enabled', budget_tokens: 10000 },
     };
-    const result = EforgeEventSchema.safeParse(event);
+    const result = safeParseEforgeEvent(event);
     expect(result.success).toBe(true);
     if (result.success) {
       expect((result.data as Extract<typeof result.data, { type: 'agent:start' }>).thinkingCoerced).toBe(true);
@@ -267,7 +278,7 @@ describe('agent:start — runtime decision fields survive schema round-trip', ()
   });
 
   it('accepts agent:start without optional thinking fields', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'agent:start',
       timestamp: '2025-01-01T00:00:00.000Z',
       agentId: 'agent-abc',
@@ -301,12 +312,12 @@ describe('agent:start — runtime decision fields survive schema round-trip', ()
 });
 
 // ---------------------------------------------------------------------------
-// Schema-as-source-of-truth: Zod validation of pre-existing variants
+// Schema-as-source-of-truth: validation of pre-existing variants
 // ---------------------------------------------------------------------------
 
-describe('EforgeEventSchema.safeParse — pre-existing variant spot-checks', () => {
+describe('safeParseEforgeEvent — pre-existing variant spot-checks', () => {
   it('accepts a well-formed session:start event', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'session:start',
       timestamp: '2025-01-01T00:00:00.000Z',
       sessionId: 'sess-123',
@@ -315,7 +326,7 @@ describe('EforgeEventSchema.safeParse — pre-existing variant spot-checks', () 
   });
 
   it('accepts a well-formed plan:build:failed event', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'plan:build:failed',
       timestamp: '2025-01-01T00:00:00.000Z',
       planId: 'plan-01',
@@ -325,7 +336,7 @@ describe('EforgeEventSchema.safeParse — pre-existing variant spot-checks', () 
   });
 
   it('accepts a well-formed daemon:heartbeat event', () => {
-    const result = EforgeEventSchema.safeParse({
+    const result = safeParseEforgeEvent({
       type: 'daemon:heartbeat',
       timestamp: '2025-01-01T00:00:00.000Z',
       uptime: 60000,
