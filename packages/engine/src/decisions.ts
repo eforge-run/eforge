@@ -10,7 +10,7 @@
  * Similarly, all engine code that emits `planning:decision` events must call
  * `emitPlanningDecision(decision, planId?)` from this file.
  */
-import { BuildDecisionSchema, PlanningDecisionSchema } from '@eforge-build/client';
+import { BuildDecisionSchema, PlanningDecisionSchema, parseWithSchema } from '@eforge-build/client';
 import type { EforgeEvent, BuildDecision, PlanningDecision } from '@eforge-build/client';
 import type { BuildStageContext } from './pipeline/types.js';
 
@@ -23,8 +23,8 @@ export type BuildDecisionEvent = Extract<EforgeEvent, { type: 'plan:build:decisi
 /**
  * Constructs a fully-formed `plan:build:decision` event.
  *
- * Validates the `decision` payload through `BuildDecisionSchema.parse` so
- * production code throws on malformed payloads. Attaches `timestamp` and
+ * Validates the `decision` payload through `parseWithSchema(BuildDecisionSchema, ...)`
+ * so production code throws on malformed payloads. Attaches `timestamp` and
  * `planId` from the provided context.
  *
  * @param ctx - The current build stage context (provides `planId`).
@@ -32,8 +32,8 @@ export type BuildDecisionEvent = Extract<EforgeEvent, { type: 'plan:build:decisi
  * @returns A narrowed `plan:build:decision` event with typed `planId` and `decision` fields.
  */
 export function emitBuildDecision(ctx: BuildStageContext, decision: BuildDecision): BuildDecisionEvent {
-  // Validate the inner payload — throws ZodError if malformed
-  const validated = BuildDecisionSchema.parse(decision);
+  // Validate the inner payload — throws Error if malformed
+  const validated = parseWithSchema(BuildDecisionSchema, decision);
   return {
     timestamp: new Date().toISOString(),
     type: 'plan:build:decision',
@@ -54,8 +54,8 @@ export function emitBuildDecision(ctx: BuildStageContext, decision: BuildDecisio
  * @returns A narrowed `plan:build:decision` event.
  */
 export function emitBuildDecisionForPlan(planId: string, decision: BuildDecision): BuildDecisionEvent {
-  // Validate the inner payload — throws ZodError if malformed
-  const validated = BuildDecisionSchema.parse(decision);
+  // Validate the inner payload — throws Error if malformed
+  const validated = parseWithSchema(BuildDecisionSchema, decision);
   return {
     timestamp: new Date().toISOString(),
     type: 'plan:build:decision',
@@ -70,16 +70,16 @@ export type PlanningDecisionEvent = Extract<EforgeEvent, { type: 'planning:decis
 /**
  * Constructs a fully-formed `planning:decision` event.
  *
- * Validates the `decision` payload through `PlanningDecisionSchema.parse` so
- * production code throws on malformed payloads.
+ * Validates the `decision` payload through `parseWithSchema(PlanningDecisionSchema, ...)`
+ * so production code throws on malformed payloads.
  *
  * @param decision - The typed inner planning decision payload.
  * @param planId - Optional plan identifier to scope the decision to a specific plan.
  * @returns A narrowed `planning:decision` event.
  */
 export function emitPlanningDecision(decision: PlanningDecision, planId?: string): PlanningDecisionEvent {
-  // Validate the inner payload — throws ZodError if malformed
-  const validated = PlanningDecisionSchema.parse(decision);
+  // Validate the inner payload — throws Error if malformed
+  const validated = parseWithSchema(PlanningDecisionSchema, decision);
   return {
     timestamp: new Date().toISOString(),
     type: 'planning:decision',

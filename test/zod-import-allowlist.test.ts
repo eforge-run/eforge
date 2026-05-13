@@ -28,9 +28,6 @@ const repoRoot = join(__dirname, '..');
 // ---------------------------------------------------------------------------
 
 const ZOD_IMPORT_ALLOWLIST: readonly string[] = [
-  // client — wire-event schemas (migrated in plan-02)
-  'packages/client/src/events.schemas.ts',
-
   // eforge CLI — MCP tool integration (migrated in plan-03)
   'packages/eforge/src/cli/mcp-proxy.ts',
   'packages/eforge/src/cli/mcp-tool-factory.ts',

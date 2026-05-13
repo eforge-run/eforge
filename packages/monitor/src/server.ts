@@ -16,7 +16,7 @@ const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
 import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
 import type { BuildStageSpec, ReviewProfileConfig, QueueItem, AutoBuildState } from '@eforge-build/client';
-import { API_ROUTES, DAEMON_API_VERSION, EforgeEventSchema } from '@eforge-build/client';
+import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent } from '@eforge-build/client';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 // --- eforge:region plan-01-fix-recovery-ux ---
@@ -127,9 +127,9 @@ function parseEventRow(
     parsed.type = dbType;
   }
 
-  const result = EforgeEventSchema.safeParse(parsed);
+  const result = safeParseEforgeEvent(parsed);
   if (!result.success) {
-    const errorPath = result.error.issues.map((i) => i.path.join('.')).join(', ');
+    const errorPath = result.error.errors.map((e) => e.path).join(', ');
     const prefix = eventData.length > 80 ? eventData.slice(0, 80) + '...' : eventData;
     process.stderr.write(
       `[parseEventRow] invalid event${rowId !== undefined ? ` id=${rowId}` : ''}: ${errorPath} — ${prefix}\n`,

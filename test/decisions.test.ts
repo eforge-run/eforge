@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { BuildDecisionSchema, PlanningDecisionSchema } from '@eforge-build/client';
+import { BuildDecisionSchema, PlanningDecisionSchema, parseWithSchema } from '@eforge-build/client';
 import type { BuildDecision, PlanningDecision } from '@eforge-build/client';
 import { emitBuildDecision, emitBuildDecisionForPlan, emitPlanningDecision } from '@eforge-build/engine/decisions';
 import type { BuildStageContext } from '@eforge-build/engine/pipeline';
@@ -18,7 +18,7 @@ function makeCtx(planId: string): BuildStageContext {
 
 describe('BuildDecisionSchema — valid kinds', () => {
   it('parses review-strategy (config source)', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'review-strategy',
       rationale: 'Config specified single strategy',
       strategy: 'single',
@@ -29,7 +29,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses review-strategy (auto-threshold source with auto data)', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'review-strategy',
       rationale: 'File count exceeds threshold',
       strategy: 'parallel',
@@ -42,7 +42,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses perspectives-inferred', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'perspectives-inferred',
       rationale: 'Security and API changes detected',
       perspectives: ['security', 'api'],
@@ -54,7 +54,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses cycle-terminated (no-issues)', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'cycle-terminated',
       rationale: 'No issues found in round 1',
       round: 1,
@@ -66,7 +66,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses cycle-terminated (max-rounds)', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'cycle-terminated',
       rationale: 'Reached max rounds limit',
       round: 3,
@@ -78,7 +78,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses perspectives-respawned', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'perspectives-respawned',
       rationale: 'Respawning code and security for round 2',
       round: 2,
@@ -90,7 +90,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses evaluator-strictness (config source)', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'evaluator-strictness',
       rationale: 'Config specifies strict mode',
       strictness: 'strict',
@@ -101,7 +101,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses evaluator-strictness (default source)', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'evaluator-strictness',
       rationale: 'Using default strictness',
       strictness: 'standard',
@@ -112,7 +112,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses recovery-verdict (retry)', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'recovery-verdict',
       rationale: 'Build failed but recoverable via retry',
       verdict: 'retry',
@@ -122,7 +122,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses recovery-verdict (split with successorPrdId)', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'recovery-verdict',
       rationale: 'Split into smaller PRD',
       verdict: 'split',
@@ -133,7 +133,7 @@ describe('BuildDecisionSchema — valid kinds', () => {
   });
 
   it('parses merge-conflict-resolution', () => {
-    const result = BuildDecisionSchema.parse({
+    const result = parseWithSchema(BuildDecisionSchema,{
       kind: 'merge-conflict-resolution',
       rationale: 'Ours strategy chosen for generated files',
       strategy: 'ours',
@@ -151,19 +151,19 @@ describe('BuildDecisionSchema — valid kinds', () => {
 describe('BuildDecisionSchema — invalid inputs', () => {
   it('throws on unknown kind', () => {
     expect(() =>
-      BuildDecisionSchema.parse({ kind: 'unknown-kind', rationale: 'test' }),
+      parseWithSchema(BuildDecisionSchema,{ kind: 'unknown-kind', rationale: 'test' }),
     ).toThrow();
   });
 
   it('throws on missing rationale for review-strategy', () => {
     expect(() =>
-      BuildDecisionSchema.parse({ kind: 'review-strategy', strategy: 'single', source: 'config' }),
+      parseWithSchema(BuildDecisionSchema,{ kind: 'review-strategy', strategy: 'single', source: 'config' }),
     ).toThrow();
   });
 
   it('throws on missing required kind-specific field (round missing for cycle-terminated)', () => {
     expect(() =>
-      BuildDecisionSchema.parse({
+      parseWithSchema(BuildDecisionSchema,{
         kind: 'cycle-terminated',
         rationale: 'test',
         reason: 'no-issues',
@@ -175,7 +175,7 @@ describe('BuildDecisionSchema — invalid inputs', () => {
 
   it('throws on invalid enum value for strategy', () => {
     expect(() =>
-      BuildDecisionSchema.parse({
+      parseWithSchema(BuildDecisionSchema,{
         kind: 'review-strategy',
         rationale: 'test',
         strategy: 'sequential', // invalid
@@ -191,7 +191,7 @@ describe('BuildDecisionSchema — invalid inputs', () => {
 
 describe('PlanningDecisionSchema — valid kinds', () => {
   it('parses scope-selected (pipeline-composer source)', () => {
-    const result = PlanningDecisionSchema.parse({
+    const result = parseWithSchema(PlanningDecisionSchema,{
       kind: 'scope-selected',
       rationale: 'Three independent subsystems each requiring dedicated exploration',
       scope: 'expedition',
@@ -203,7 +203,7 @@ describe('PlanningDecisionSchema — valid kinds', () => {
   });
 
   it('parses scope-selected (planner source)', () => {
-    const result = PlanningDecisionSchema.parse({
+    const result = parseWithSchema(PlanningDecisionSchema,{
       kind: 'scope-selected',
       rationale: 'Simple single-file typo fix',
       scope: 'errand',
@@ -214,7 +214,7 @@ describe('PlanningDecisionSchema — valid kinds', () => {
   });
 
   it('parses build-pipeline-chosen', () => {
-    const result = PlanningDecisionSchema.parse({
+    const result = parseWithSchema(PlanningDecisionSchema,{
       kind: 'build-pipeline-chosen',
       rationale: 'Standard implementation with review cycle for this excursion',
       defaultBuild: ['implement', 'review-cycle'],
@@ -224,7 +224,7 @@ describe('PlanningDecisionSchema — valid kinds', () => {
   });
 
   it('parses build-pipeline-chosen with parallel stages', () => {
-    const result = PlanningDecisionSchema.parse({
+    const result = parseWithSchema(PlanningDecisionSchema,{
       kind: 'build-pipeline-chosen',
       rationale: 'Parallel doc-author with implement for faster iteration',
       defaultBuild: [['implement', 'doc-author'], 'review-cycle'],
@@ -234,7 +234,7 @@ describe('PlanningDecisionSchema — valid kinds', () => {
   });
 
   it('parses review-profile-chosen', () => {
-    const result = PlanningDecisionSchema.parse({
+    const result = parseWithSchema(PlanningDecisionSchema,{
       kind: 'review-profile-chosen',
       rationale: 'Security changes warrant parallel code+security review',
       strategy: 'parallel',
@@ -250,7 +250,7 @@ describe('PlanningDecisionSchema — valid kinds', () => {
   });
 
   it('parses plan-set-shape', () => {
-    const result = PlanningDecisionSchema.parse({
+    const result = parseWithSchema(PlanningDecisionSchema,{
       kind: 'plan-set-shape',
       rationale: 'Schema migration must land before builder can reference new columns',
       planCount: 2,
@@ -269,25 +269,25 @@ describe('PlanningDecisionSchema — valid kinds', () => {
 describe('PlanningDecisionSchema — invalid inputs', () => {
   it('throws on unknown kind', () => {
     expect(() =>
-      PlanningDecisionSchema.parse({ kind: 'unknown-planning-kind', rationale: 'test' }),
+      parseWithSchema(PlanningDecisionSchema,{ kind: 'unknown-planning-kind', rationale: 'test' }),
     ).toThrow();
   });
 
   it('throws on missing rationale', () => {
     expect(() =>
-      PlanningDecisionSchema.parse({ kind: 'scope-selected', scope: 'excursion', source: 'planner' }),
+      parseWithSchema(PlanningDecisionSchema,{ kind: 'scope-selected', scope: 'excursion', source: 'planner' }),
     ).toThrow();
   });
 
   it('throws on invalid scope value', () => {
     expect(() =>
-      PlanningDecisionSchema.parse({ kind: 'scope-selected', rationale: 'test', scope: 'invalid', source: 'planner' }),
+      parseWithSchema(PlanningDecisionSchema,{ kind: 'scope-selected', rationale: 'test', scope: 'invalid', source: 'planner' }),
     ).toThrow();
   });
 
   it('throws on invalid evaluatorStrictness for review-profile-chosen', () => {
     expect(() =>
-      PlanningDecisionSchema.parse({
+      parseWithSchema(PlanningDecisionSchema,{
         kind: 'review-profile-chosen',
         rationale: 'test',
         strategy: 'single',
@@ -336,11 +336,11 @@ describe('emitPlanningDecision', () => {
 
   it('decision round-trips through PlanningDecisionSchema.parse', () => {
     const event = emitPlanningDecision(validDecision);
-    const parsed = PlanningDecisionSchema.parse(event.decision);
+    const parsed = parseWithSchema(PlanningDecisionSchema,event.decision);
     expect(parsed.kind).toBe(validDecision.kind);
   });
 
-  it('throws ZodError when called with a malformed decision', () => {
+  it('throws when called with a malformed decision', () => {
     const malformed = { kind: 'scope-selected', scope: 'excursion', source: 'planner' } as unknown as PlanningDecision;
     // missing rationale
     expect(() => emitPlanningDecision(malformed)).toThrow();
@@ -380,11 +380,11 @@ describe('emitBuildDecision', () => {
 
   it('decision round-trips through BuildDecisionSchema.parse', () => {
     const event = emitBuildDecision(makeCtx('plan-01'), validDecision);
-    const parsed = BuildDecisionSchema.parse(event.decision);
+    const parsed = parseWithSchema(BuildDecisionSchema,event.decision);
     expect(parsed.kind).toBe(validDecision.kind);
   });
 
-  it('throws ZodError when called with a malformed decision', () => {
+  it('throws when called with a malformed decision', () => {
     const malformed = { kind: 'review-strategy', strategy: 'single', source: 'config' } as unknown as BuildDecision;
     // missing rationale
     expect(() => emitBuildDecision(makeCtx('plan-01'), malformed)).toThrow();
@@ -423,11 +423,11 @@ describe('emitBuildDecisionForPlan', () => {
 
   it('decision round-trips through BuildDecisionSchema.parse', () => {
     const event = emitBuildDecisionForPlan('plan-01', validDecision);
-    const parsed = BuildDecisionSchema.parse(event.decision);
+    const parsed = parseWithSchema(BuildDecisionSchema,event.decision);
     expect(parsed.kind).toBe(validDecision.kind);
   });
 
-  it('throws ZodError when called with a malformed decision', () => {
+  it('throws when called with a malformed decision', () => {
     const malformed = { kind: 'recovery-verdict', verdict: 'retry' } as unknown as BuildDecision;
     // missing rationale
     expect(() => emitBuildDecisionForPlan('plan-01', malformed)).toThrow();

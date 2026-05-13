@@ -2,14 +2,16 @@
  * Wire event schemas for the eforge daemon SSE stream.
  *
  * This file is the wire-protocol source of truth. `EforgeEvent` is derived
- * from `EforgeEventSchema` via `z.infer`, so TypeScript types and Zod
- * runtime validators are always in sync.
+ * from `EforgeEventSchema` via `Static<typeof EforgeEventSchema>`, so TypeScript
+ * types and TypeBox runtime validators are always in sync.
  *
  * Event types and schemas are co-located: every discriminant variant lives
  * here, alongside its schema. Do not define event shapes in other files.
  */
 
-import { z } from 'zod';
+import { Type, type Static } from '@sinclair/typebox';
+import { safeParseWithSchema, parseWithSchema } from './schema-utils.js';
+import type { SafeParseResult } from './schema-utils.js';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -21,340 +23,440 @@ export const ORCHESTRATION_MODES = ['errand', 'excursion', 'expedition'] as cons
 // Supporting schemas
 // ---------------------------------------------------------------------------
 
-const AgentRoleSchema = z.enum([
-  'planner',
-  'builder',
-  'reviewer',
-  'review-fixer',
-  'evaluator',
-  'module-planner',
-  'plan-reviewer',
-  'plan-evaluator',
-  'architecture-reviewer',
-  'architecture-evaluator',
-  'cohesion-reviewer',
-  'cohesion-evaluator',
-  'validation-fixer',
-  'merge-conflict-resolver',
-  'staleness-assessor',
-  'formatter',
-  'doc-author',
-  'doc-syncer',
-  'test-writer',
-  'tester',
-  'prd-validator',
-  'dependency-detector',
-  'pipeline-composer',
-  'gap-closer',
-  'recovery-analyst',
+const AgentRoleSchema = Type.Union([
+  Type.Literal('planner'),
+  Type.Literal('builder'),
+  Type.Literal('reviewer'),
+  Type.Literal('review-fixer'),
+  Type.Literal('evaluator'),
+  Type.Literal('module-planner'),
+  Type.Literal('plan-reviewer'),
+  Type.Literal('plan-evaluator'),
+  Type.Literal('architecture-reviewer'),
+  Type.Literal('architecture-evaluator'),
+  Type.Literal('cohesion-reviewer'),
+  Type.Literal('cohesion-evaluator'),
+  Type.Literal('validation-fixer'),
+  Type.Literal('merge-conflict-resolver'),
+  Type.Literal('staleness-assessor'),
+  Type.Literal('formatter'),
+  Type.Literal('doc-author'),
+  Type.Literal('doc-syncer'),
+  Type.Literal('test-writer'),
+  Type.Literal('tester'),
+  Type.Literal('prd-validator'),
+  Type.Literal('dependency-detector'),
+  Type.Literal('pipeline-composer'),
+  Type.Literal('gap-closer'),
+  Type.Literal('recovery-analyst'),
 ]);
 
-const AgentTerminalSubtypeSchema = z.enum([
-  'error_max_turns',
-  'error_max_budget_usd',
-  'error_max_structured_output_retries',
-  'error_during_execution',
+const AgentTerminalSubtypeSchema = Type.Union([
+  Type.Literal('error_max_turns'),
+  Type.Literal('error_max_budget_usd'),
+  Type.Literal('error_max_structured_output_retries'),
+  Type.Literal('error_during_execution'),
 ]);
 
 export const REVIEW_PERSPECTIVES = ['code', 'security', 'api', 'docs', 'test', 'verify'] as const;
-const ReviewPerspectiveSchema = z.enum(REVIEW_PERSPECTIVES);
+const ReviewPerspectiveSchema = Type.Union([
+  Type.Literal('code'),
+  Type.Literal('security'),
+  Type.Literal('api'),
+  Type.Literal('docs'),
+  Type.Literal('test'),
+  Type.Literal('verify'),
+]);
 
-const StalenessVerdictSchema = z.enum(['proceed', 'revise', 'obsolete']);
+const StalenessVerdictSchema = Type.Union([
+  Type.Literal('proceed'),
+  Type.Literal('revise'),
+  Type.Literal('obsolete'),
+]);
 
-const RecoveryVerdictSchema = z.object({
-  verdict: z.enum(['retry', 'split', 'abandon', 'manual']),
-  confidence: z.enum(['low', 'medium', 'high']),
-  rationale: z.string(),
-  completedWork: z.array(z.string()),
-  remainingWork: z.array(z.string()),
-  risks: z.array(z.string()),
-  suggestedSuccessorPrd: z.string().optional(),
-  partial: z.boolean().optional(),
-  recoveryError: z.string().optional(),
+const RecoveryVerdictSchema = Type.Object({
+  verdict: Type.Union([
+    Type.Literal('retry'),
+    Type.Literal('split'),
+    Type.Literal('abandon'),
+    Type.Literal('manual'),
+  ]),
+  confidence: Type.Union([Type.Literal('low'), Type.Literal('medium'), Type.Literal('high')]),
+  rationale: Type.String(),
+  completedWork: Type.Array(Type.String()),
+  remainingWork: Type.Array(Type.String()),
+  risks: Type.Array(Type.String()),
+  suggestedSuccessorPrd: Type.Optional(Type.String()),
+  partial: Type.Optional(Type.Boolean()),
+  recoveryError: Type.Optional(Type.String()),
 });
 
-const ShardScopeSchema = z.object({
-  id: z.string(),
-  roots: z.array(z.string()).optional(),
-  files: z.array(z.string()).optional(),
+const ShardScopeSchema = Type.Object({
+  id: Type.String(),
+  roots: Type.Optional(Type.Array(Type.String())),
+  files: Type.Optional(Type.Array(Type.String())),
 });
 
-const BuildStageSpecSchema = z.union([z.string(), z.array(z.string())]);
+const BuildStageSpecSchema = Type.Union([Type.String(), Type.Array(Type.String())]);
 
-const ReviewProfileConfigSchema = z.object({
-  strategy: z.enum(['auto', 'single', 'parallel']),
-  perspectives: z.array(ReviewPerspectiveSchema),
-  maxRounds: z.number(),
-  evaluatorStrictness: z.enum(['strict', 'standard', 'lenient']),
+const ReviewProfileConfigSchema = Type.Object({
+  strategy: Type.Union([Type.Literal('auto'), Type.Literal('single'), Type.Literal('parallel')]),
+  perspectives: Type.Array(ReviewPerspectiveSchema),
+  maxRounds: Type.Number(),
+  evaluatorStrictness: Type.Union([
+    Type.Literal('strict'),
+    Type.Literal('standard'),
+    Type.Literal('lenient'),
+  ]),
 });
 
-const PipelineCompositionSchema = z.object({
-  scope: z.enum(['errand', 'excursion', 'expedition']),
-  compile: z.array(z.string()),
-  defaultBuild: z.array(BuildStageSpecSchema),
+const PipelineCompositionSchema = Type.Object({
+  scope: Type.Union([
+    Type.Literal('errand'),
+    Type.Literal('excursion'),
+    Type.Literal('expedition'),
+  ]),
+  compile: Type.Array(Type.String()),
+  defaultBuild: Type.Array(BuildStageSpecSchema),
   defaultReview: ReviewProfileConfigSchema,
-  rationale: z.string(),
+  rationale: Type.String(),
 });
 
-const PrdValidationGapSchema = z.object({
-  requirement: z.string(),
-  explanation: z.string(),
-  complexity: z.enum(['trivial', 'moderate', 'significant']).optional(),
+const PrdValidationGapSchema = Type.Object({
+  requirement: Type.String(),
+  explanation: Type.String(),
+  complexity: Type.Optional(
+    Type.Union([
+      Type.Literal('trivial'),
+      Type.Literal('moderate'),
+      Type.Literal('significant'),
+    ]),
+  ),
 });
 
-const ExpeditionModuleSchema = z.object({
-  id: z.string(),
-  description: z.string(),
-  dependsOn: z.array(z.string()),
+const ExpeditionModuleSchema = Type.Object({
+  id: Type.String(),
+  description: Type.String(),
+  dependsOn: Type.Array(Type.String()),
 });
 
-const EforgeResultSchema = z.object({
-  status: z.enum(['completed', 'failed', 'skipped']),
-  summary: z.string(),
+const EforgeResultSchema = Type.Object({
+  status: Type.Union([
+    Type.Literal('completed'),
+    Type.Literal('failed'),
+    Type.Literal('skipped'),
+  ]),
+  summary: Type.String(),
 });
 
-const ClarificationQuestionSchema = z.object({
-  id: z.string(),
-  question: z.string(),
-  context: z.string().optional(),
-  options: z.array(z.string()).optional(),
-  default: z.string().optional(),
+const ClarificationQuestionSchema = Type.Object({
+  id: Type.String(),
+  question: Type.String(),
+  context: Type.Optional(Type.String()),
+  options: Type.Optional(Type.Array(Type.String())),
+  default: Type.Optional(Type.String()),
 });
 
-const ReviewIssueSchema = z.object({
-  severity: z.enum(['critical', 'warning', 'suggestion']),
-  category: z.string(),
-  file: z.string(),
-  line: z.number().optional(),
-  description: z.string(),
-  fix: z.string().optional(),
+const ReviewIssueSchema = Type.Object({
+  severity: Type.Union([
+    Type.Literal('critical'),
+    Type.Literal('warning'),
+    Type.Literal('suggestion'),
+  ]),
+  category: Type.String(),
+  file: Type.String(),
+  line: Type.Optional(Type.Number()),
+  description: Type.String(),
+  fix: Type.Optional(Type.String()),
 });
 
-const TestIssueSchema = z.object({
-  severity: z.enum(['critical', 'warning']),
-  category: z.enum(['production-bug', 'missing-behavior', 'regression']),
-  file: z.string(),
-  testFile: z.string(),
-  description: z.string(),
-  testOutput: z.string().optional(),
-  fix: z.string().optional(),
+const TestIssueSchema = Type.Object({
+  severity: Type.Union([Type.Literal('critical'), Type.Literal('warning')]),
+  category: Type.Union([
+    Type.Literal('production-bug'),
+    Type.Literal('missing-behavior'),
+    Type.Literal('regression'),
+  ]),
+  file: Type.String(),
+  testFile: Type.String(),
+  description: Type.String(),
+  testOutput: Type.Optional(Type.String()),
+  fix: Type.Optional(Type.String()),
 });
 
-const PlanFileSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  dependsOn: z.array(z.string()),
-  branch: z.string(),
-  migrations: z
-    .array(z.object({ timestamp: z.string(), description: z.string() }))
-    .optional(),
-  agents: z
-    .record(
-      z.string(),
-      z.object({
-        effort: z.string().optional(),
-        thinking: z.union([z.boolean(), z.object({}).passthrough()]).optional(),
-        rationale: z.string().optional(),
-        tier: z.string().optional(),
-        shards: z.array(ShardScopeSchema).optional(),
+const PlanFileSchema = Type.Object({
+  id: Type.String(),
+  name: Type.String(),
+  dependsOn: Type.Array(Type.String()),
+  branch: Type.String(),
+  migrations: Type.Optional(
+    Type.Array(
+      Type.Object({ timestamp: Type.String(), description: Type.String() }),
+    ),
+  ),
+  agents: Type.Optional(
+    Type.Record(
+      Type.String(),
+      Type.Object({
+        effort: Type.Optional(Type.String()),
+        thinking: Type.Optional(
+          Type.Union([Type.Boolean(), Type.Record(Type.String(), Type.Unknown())]),
+        ),
+        rationale: Type.Optional(Type.String()),
+        tier: Type.Optional(Type.String()),
+        shards: Type.Optional(Type.Array(ShardScopeSchema)),
       }),
-    )
-    .optional(),
-  body: z.string(),
-  filePath: z.string(),
-  warnings: z.array(z.string()).optional(),
+    ),
+  ),
+  body: Type.String(),
+  filePath: Type.String(),
+  warnings: Type.Optional(Type.Array(Type.String())),
 });
 
-const OrchestrationConfigSchema = z.object({
-  name: z.string(),
-  description: z.string(),
-  created: z.string(),
-  mode: z.enum(ORCHESTRATION_MODES),
-  baseBranch: z.string(),
+const OrchestrationConfigSchema = Type.Object({
+  name: Type.String(),
+  description: Type.String(),
+  created: Type.String(),
+  mode: Type.Union([
+    Type.Literal('errand'),
+    Type.Literal('excursion'),
+    Type.Literal('expedition'),
+  ]),
+  baseBranch: Type.String(),
   pipeline: PipelineCompositionSchema,
-  plans: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      dependsOn: z.array(z.string()),
-      branch: z.string(),
-      build: z.array(BuildStageSpecSchema),
+  plans: Type.Array(
+    Type.Object({
+      id: Type.String(),
+      name: Type.String(),
+      dependsOn: Type.Array(Type.String()),
+      branch: Type.String(),
+      build: Type.Array(BuildStageSpecSchema),
       review: ReviewProfileConfigSchema,
-      maxContinuations: z.number().optional(),
-      agents: z
-        .record(
-          z.string(),
-          z.object({
-            effort: z.string().optional(),
-            thinking: z.union([z.boolean(), z.object({}).passthrough()]).optional(),
-            rationale: z.string().optional(),
-            tier: z.string().optional(),
+      maxContinuations: Type.Optional(Type.Number()),
+      agents: Type.Optional(
+        Type.Record(
+          Type.String(),
+          Type.Object({
+            effort: Type.Optional(Type.String()),
+            thinking: Type.Optional(
+              Type.Union([Type.Boolean(), Type.Record(Type.String(), Type.Unknown())]),
+            ),
+            rationale: Type.Optional(Type.String()),
+            tier: Type.Optional(Type.String()),
           }),
-        )
-        .optional(),
+        ),
+      ),
     }),
   ),
-  validate: z.array(z.string()).optional(),
-  warnings: z.array(z.string()).optional(),
+  validate: Type.Optional(Type.Array(Type.String())),
+  warnings: Type.Optional(Type.Array(Type.String())),
 });
 
-const PlanStateSchema = z.object({
-  status: z.enum(['pending', 'running', 'completed', 'failed', 'blocked', 'merged']),
-  worktreePath: z.string().optional(),
-  branch: z.string(),
-  dependsOn: z.array(z.string()),
-  merged: z.boolean(),
-  error: z.string().optional(),
+const PlanStatusSchema = Type.Union([
+  Type.Literal('pending'),
+  Type.Literal('running'),
+  Type.Literal('completed'),
+  Type.Literal('failed'),
+  Type.Literal('blocked'),
+  Type.Literal('merged'),
+]);
+
+const PlanStateSchema = Type.Object({
+  status: PlanStatusSchema,
+  worktreePath: Type.Optional(Type.String()),
+  branch: Type.String(),
+  dependsOn: Type.Array(Type.String()),
+  merged: Type.Boolean(),
+  error: Type.Optional(Type.String()),
 });
 
-const EforgeStateSchema = z.object({
-  setName: z.string(),
-  status: z.enum(['running', 'completed', 'failed']),
-  startedAt: z.string(),
-  completedAt: z.string().optional(),
-  baseBranch: z.string(),
-  featureBranch: z.string().optional(),
-  worktreeBase: z.string(),
-  mergeWorktreePath: z.string().optional(),
-  plans: z.record(z.string(), PlanStateSchema),
-  completedPlans: z.array(z.string()),
+const EforgeStateSchema = Type.Object({
+  setName: Type.String(),
+  status: Type.Union([
+    Type.Literal('running'),
+    Type.Literal('completed'),
+    Type.Literal('failed'),
+  ]),
+  startedAt: Type.String(),
+  completedAt: Type.Optional(Type.String()),
+  baseBranch: Type.String(),
+  featureBranch: Type.Optional(Type.String()),
+  worktreeBase: Type.String(),
+  mergeWorktreePath: Type.Optional(Type.String()),
+  plans: Type.Record(Type.String(), PlanStateSchema),
+  completedPlans: Type.Array(Type.String()),
 });
 
-const AgentResultDataSchema = z.object({
-  durationMs: z.number(),
-  durationApiMs: z.number(),
-  numTurns: z.number(),
-  totalCostUsd: z.number(),
-  usage: z.object({
-    input: z.number(),
-    output: z.number(),
-    total: z.number(),
-    cacheRead: z.number(),
-    cacheCreation: z.number(),
+const AgentResultDataSchema = Type.Object({
+  durationMs: Type.Number(),
+  durationApiMs: Type.Number(),
+  numTurns: Type.Number(),
+  totalCostUsd: Type.Number(),
+  usage: Type.Object({
+    input: Type.Number(),
+    output: Type.Number(),
+    total: Type.Number(),
+    cacheRead: Type.Number(),
+    cacheCreation: Type.Number(),
   }),
-  modelUsage: z.record(
-    z.string(),
-    z.object({
-      inputTokens: z.number(),
-      outputTokens: z.number(),
-      cacheReadInputTokens: z.number(),
-      cacheCreationInputTokens: z.number(),
-      costUSD: z.number(),
+  modelUsage: Type.Record(
+    Type.String(),
+    Type.Object({
+      inputTokens: Type.Number(),
+      outputTokens: Type.Number(),
+      cacheReadInputTokens: Type.Number(),
+      cacheCreationInputTokens: Type.Number(),
+      costUSD: Type.Number(),
     }),
   ),
-  resultText: z.string().optional(),
+  resultText: Type.Optional(Type.String()),
 });
 
-const ReconciliationReportSchema = z.object({
-  valid: z.array(z.string()),
-  missing: z.array(z.string()),
-  corrupt: z.array(z.string()),
-  cleared: z.array(z.string()),
+const ReconciliationReportSchema = Type.Object({
+  valid: Type.Array(Type.String()),
+  missing: Type.Array(Type.String()),
+  corrupt: Type.Array(Type.String()),
+  cleared: Type.Array(Type.String()),
 });
 
-const EforgeStatusSchema = z.object({
-  running: z.boolean(),
-  setName: z.string().optional(),
-  plans: z.record(z.string(), PlanStateSchema.shape.status),
-  completedPlans: z.array(z.string()),
+const EforgeStatusSchema = Type.Object({
+  running: Type.Boolean(),
+  setName: Type.Optional(Type.String()),
+  plans: Type.Record(Type.String(), PlanStatusSchema),
+  completedPlans: Type.Array(Type.String()),
 });
 
-const LandedCommitSchema = z.object({
-  sha: z.string(),
-  subject: z.string(),
-  author: z.string(),
-  date: z.string(),
+const LandedCommitSchema = Type.Object({
+  sha: Type.String(),
+  subject: Type.String(),
+  author: Type.String(),
+  date: Type.String(),
 });
 
-const PlanSummaryEntrySchema = z.object({
-  planId: z.string(),
-  status: z.string(),
-  mergedAt: z.string().optional(),
-  error: z.string().optional(),
-  terminalSubtype: z.string().optional(),
+const PlanSummaryEntrySchema = Type.Object({
+  planId: Type.String(),
+  status: Type.String(),
+  mergedAt: Type.Optional(Type.String()),
+  error: Type.Optional(Type.String()),
+  terminalSubtype: Type.Optional(Type.String()),
 });
 
-const FailingPlanEntrySchema = z.object({
-  planId: z.string(),
-  agentId: z.string().optional(),
-  agentRole: z.string().optional(),
-  errorMessage: z.string().optional(),
-  terminalSubtype: z.string().optional(),
+const FailingPlanEntrySchema = Type.Object({
+  planId: Type.String(),
+  agentId: Type.Optional(Type.String()),
+  agentRole: Type.Optional(Type.String()),
+  errorMessage: Type.Optional(Type.String()),
+  terminalSubtype: Type.Optional(Type.String()),
 });
 
-const BuildFailureSummarySchema = z.object({
-  prdId: z.string(),
-  setName: z.string(),
-  featureBranch: z.string(),
-  baseBranch: z.string(),
-  plans: z.array(PlanSummaryEntrySchema),
+const BuildFailureSummarySchema = Type.Object({
+  prdId: Type.String(),
+  setName: Type.String(),
+  featureBranch: Type.String(),
+  baseBranch: Type.String(),
+  plans: Type.Array(PlanSummaryEntrySchema),
   failingPlan: FailingPlanEntrySchema,
-  landedCommits: z.array(LandedCommitSchema),
-  diffStat: z.string(),
-  modelsUsed: z.array(z.string()),
-  failedAt: z.string(),
-  partial: z.boolean().optional(),
-  prdContent: z.string().optional(),
+  landedCommits: Type.Array(LandedCommitSchema),
+  diffStat: Type.String(),
+  modelsUsed: Type.Array(Type.String()),
+  failedAt: Type.String(),
+  partial: Type.Optional(Type.Boolean()),
+  prdContent: Type.Optional(Type.String()),
 });
 
 // ---------------------------------------------------------------------------
 // Queue event schemas
 // ---------------------------------------------------------------------------
 
-const QueueEventSchema = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('queue:start'), prdCount: z.number(), dir: z.string() }),
-  z.object({ type: z.literal('queue:prd:start'), prdId: z.string(), title: z.string() }),
-  z.object({ type: z.literal('queue:prd:discovered'), prdId: z.string(), title: z.string() }),
-  z.object({
-    type: z.literal('queue:prd:stale'),
-    prdId: z.string(),
-    title: z.string(),
+const queueEventVariants = [
+  Type.Object({ type: Type.Literal('queue:start'), prdCount: Type.Number(), dir: Type.String() }),
+  Type.Object({
+    type: Type.Literal('queue:prd:start'),
+    prdId: Type.String(),
+    title: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('queue:prd:discovered'),
+    prdId: Type.String(),
+    title: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('queue:prd:stale'),
+    prdId: Type.String(),
+    title: Type.String(),
     verdict: StalenessVerdictSchema,
-    justification: z.string(),
-    revision: z.string().optional(),
+    justification: Type.String(),
+    revision: Type.Optional(Type.String()),
   }),
-  z.object({ type: z.literal('queue:prd:skip'), prdId: z.string(), reason: z.string() }),
-  z.object({ type: z.literal('queue:prd:commit-failed'), prdId: z.string(), title: z.string(), error: z.string() }),
-  z.object({
-    type: z.literal('queue:prd:complete'),
-    prdId: z.string(),
-    status: z.enum(['completed', 'failed', 'skipped']),
+  Type.Object({
+    type: Type.Literal('queue:prd:skip'),
+    prdId: Type.String(),
+    reason: Type.String(),
   }),
-  z.object({ type: z.literal('queue:complete'), processed: z.number(), skipped: z.number() }),
-]);
+  Type.Object({
+    type: Type.Literal('queue:prd:commit-failed'),
+    prdId: Type.String(),
+    title: Type.String(),
+    error: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('queue:prd:complete'),
+    prdId: Type.String(),
+    status: Type.Union([
+      Type.Literal('completed'),
+      Type.Literal('failed'),
+      Type.Literal('skipped'),
+    ]),
+  }),
+  Type.Object({
+    type: Type.Literal('queue:complete'),
+    processed: Type.Number(),
+    skipped: Type.Number(),
+  }),
+] as const;
+
+const QueueEventSchema = Type.Union([...queueEventVariants]);
 
 // ---------------------------------------------------------------------------
 // Base schema (sessionId, runId, timestamp envelope)
 // ---------------------------------------------------------------------------
 
-const EventEnvelopeSchema = z.object({
-  sessionId: z.string().optional(),
-  runId: z.string().optional(),
-  timestamp: z.string(),
+const EventEnvelopeSchema = Type.Object({
+  sessionId: Type.Optional(Type.String()),
+  runId: Type.Optional(Type.String()),
+  timestamp: Type.String(),
 });
 
 // ---------------------------------------------------------------------------
-// All EforgeEvent discriminant variants as Zod schemas
+// All EforgeEvent discriminant variants as TypeBox schemas
 // ---------------------------------------------------------------------------
 
 const agentStartFields = {
-  planId: z.string().optional(),
-  agentId: z.string(),
+  planId: Type.Optional(Type.String()),
+  agentId: Type.String(),
   agent: AgentRoleSchema,
-  model: z.string(),
-  harness: z.enum(['claude-sdk', 'pi']),
-  harnessSource: z.literal('tier'),
-  tier: z.string(),
-  tierSource: z.enum(['tier', 'role', 'plan']),
-  effort: z.string().optional(),
-  effortSource: z.enum(['tier', 'role', 'plan']).optional(),
-  thinking: z.object({}).passthrough().optional(),
-  thinkingSource: z.enum(['tier', 'role', 'plan']).optional(),
-  effortClamped: z.boolean().optional(),
-  effortOriginal: z.string().optional(),
-  thinkingCoerced: z.boolean().optional(),
-  thinkingOriginal: z.object({}).passthrough().optional(),
-  perspective: z.string().optional(),
+  model: Type.String(),
+  harness: Type.Union([Type.Literal('claude-sdk'), Type.Literal('pi')]),
+  harnessSource: Type.Literal('tier'),
+  tier: Type.String(),
+  tierSource: Type.Union([
+    Type.Literal('tier'),
+    Type.Literal('role'),
+    Type.Literal('plan'),
+  ]),
+  effort: Type.Optional(Type.String()),
+  effortSource: Type.Optional(
+    Type.Union([Type.Literal('tier'), Type.Literal('role'), Type.Literal('plan')]),
+  ),
+  thinking: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  thinkingSource: Type.Optional(
+    Type.Union([Type.Literal('tier'), Type.Literal('role'), Type.Literal('plan')]),
+  ),
+  effortClamped: Type.Optional(Type.Boolean()),
+  effortOriginal: Type.Optional(Type.String()),
+  thinkingCoerced: Type.Optional(Type.Boolean()),
+  thinkingOriginal: Type.Optional(Type.Record(Type.String(), Type.Unknown())),
+  perspective: Type.Optional(Type.String()),
 };
 
 // ---------------------------------------------------------------------------
@@ -362,782 +464,892 @@ const agentStartFields = {
 // ---------------------------------------------------------------------------
 
 /**
- * Inner discriminated union for build-phase orchestrator decisions.
- * Consumed by the `plan:build:decision` event variant.
- */
-/**
  * Inner discriminated union for plan-phase (planner) decisions.
  * Consumed by the `planning:decision` event variant.
  */
-export const PlanningDecisionSchema = z.discriminatedUnion('kind', [
+export const PlanningDecisionSchema = Type.Union([
   // Scope / orchestration mode selection
-  z.object({
-    kind: z.literal('scope-selected'),
-    rationale: z.string(),
-    scope: z.enum(['errand', 'excursion', 'expedition']),
-    source: z.enum(['pipeline-composer', 'planner']),
+  Type.Object({
+    kind: Type.Literal('scope-selected'),
+    rationale: Type.String(),
+    scope: Type.Union([
+      Type.Literal('errand'),
+      Type.Literal('excursion'),
+      Type.Literal('expedition'),
+    ]),
+    source: Type.Union([Type.Literal('pipeline-composer'), Type.Literal('planner')]),
   }),
   // Default build pipeline chosen for the plan set
-  z.object({
-    kind: z.literal('build-pipeline-chosen'),
-    rationale: z.string(),
-    defaultBuild: z.array(BuildStageSpecSchema).min(1),
+  Type.Object({
+    kind: Type.Literal('build-pipeline-chosen'),
+    rationale: Type.String(),
+    defaultBuild: Type.Array(BuildStageSpecSchema, { minItems: 1 }),
   }),
   // Default review profile chosen for the plan set
-  z.object({
-    kind: z.literal('review-profile-chosen'),
-    rationale: z.string(),
-    strategy: z.enum(['auto', 'single', 'parallel']),
-    perspectives: z.array(ReviewPerspectiveSchema).min(1),
-    maxRounds: z.number().int().positive(),
-    evaluatorStrictness: z.enum(['strict', 'standard', 'lenient']),
+  Type.Object({
+    kind: Type.Literal('review-profile-chosen'),
+    rationale: Type.String(),
+    strategy: Type.Union([
+      Type.Literal('auto'),
+      Type.Literal('single'),
+      Type.Literal('parallel'),
+    ]),
+    perspectives: Type.Array(ReviewPerspectiveSchema, { minItems: 1 }),
+    maxRounds: Type.Integer({ minimum: 1 }),
+    evaluatorStrictness: Type.Union([
+      Type.Literal('strict'),
+      Type.Literal('standard'),
+      Type.Literal('lenient'),
+    ]),
   }),
   // Plan set shape: how many plans and why they are split that way
-  z.object({
-    kind: z.literal('plan-set-shape'),
-    rationale: z.string(),
-    planCount: z.number().int().positive(),
-    planIds: z.array(z.string()).min(1),
+  Type.Object({
+    kind: Type.Literal('plan-set-shape'),
+    rationale: Type.String(),
+    planCount: Type.Integer({ minimum: 1 }),
+    planIds: Type.Array(Type.String(), { minItems: 1 }),
   }),
 ]);
 
-export type PlanningDecision = z.infer<typeof PlanningDecisionSchema>;
+export type PlanningDecision = Static<typeof PlanningDecisionSchema>;
 
-export const PlanningDecisionEventSchema = z.object({
-  type: z.literal('planning:decision'),
-  planId: z.string().optional(),
+export const PlanningDecisionEventSchema = Type.Object({
+  type: Type.Literal('planning:decision'),
+  planId: Type.Optional(Type.String()),
   decision: PlanningDecisionSchema,
 });
 
-export const BuildDecisionSchema = z.discriminatedUnion('kind', [
+export const BuildDecisionSchema = Type.Union([
   // Review strategy selection
-  z.object({
-    kind: z.literal('review-strategy'),
-    rationale: z.string(),
-    strategy: z.enum(['single', 'parallel']),
-    source: z.enum(['config', 'auto-threshold']),
-    auto: z.object({
-      files: z.number().int().nonnegative(),
-      lines: z.number().int().nonnegative(),
-      threshold: z.object({
-        files: z.number().int().nonnegative(),
-        lines: z.number().int().nonnegative(),
+  Type.Object({
+    kind: Type.Literal('review-strategy'),
+    rationale: Type.String(),
+    strategy: Type.Union([Type.Literal('single'), Type.Literal('parallel')]),
+    source: Type.Union([Type.Literal('config'), Type.Literal('auto-threshold')]),
+    auto: Type.Optional(
+      Type.Object({
+        files: Type.Integer({ minimum: 0 }),
+        lines: Type.Integer({ minimum: 0 }),
+        threshold: Type.Object({
+          files: Type.Integer({ minimum: 0 }),
+          lines: Type.Integer({ minimum: 0 }),
+        }),
       }),
-    }).optional(),
+    ),
   }),
   // Perspectives inferred for parallel review
-  z.object({
-    kind: z.literal('perspectives-inferred'),
-    rationale: z.string(),
-    perspectives: z.array(ReviewPerspectiveSchema),
-    categories: z.array(z.string()),
-    rules: z.array(z.string()),
+  Type.Object({
+    kind: Type.Literal('perspectives-inferred'),
+    rationale: Type.String(),
+    perspectives: Type.Array(ReviewPerspectiveSchema),
+    categories: Type.Array(Type.String()),
+    rules: Type.Array(Type.String()),
   }),
   // Review cycle terminated
-  z.object({
-    kind: z.literal('cycle-terminated'),
-    rationale: z.string(),
-    round: z.number().int().nonnegative(),
-    reason: z.enum(['no-issues', 'max-rounds']),
-    issuesRemaining: z.number().int().nonnegative(),
+  Type.Object({
+    kind: Type.Literal('cycle-terminated'),
+    rationale: Type.String(),
+    round: Type.Integer({ minimum: 0 }),
+    reason: Type.Union([Type.Literal('no-issues'), Type.Literal('max-rounds')]),
+    issuesRemaining: Type.Integer({ minimum: 0 }),
   }),
   // Perspectives respawned for next review round
-  z.object({
-    kind: z.literal('perspectives-respawned'),
-    rationale: z.string(),
-    round: z.number().int().nonnegative(),
-    perspectives: z.array(ReviewPerspectiveSchema),
-    dropped: z.array(ReviewPerspectiveSchema),
+  Type.Object({
+    kind: Type.Literal('perspectives-respawned'),
+    rationale: Type.String(),
+    round: Type.Integer({ minimum: 0 }),
+    perspectives: Type.Array(ReviewPerspectiveSchema),
+    dropped: Type.Array(ReviewPerspectiveSchema),
   }),
   // Evaluator strictness selection
-  z.object({
-    kind: z.literal('evaluator-strictness'),
-    rationale: z.string(),
-    strictness: z.enum(['strict', 'standard', 'lenient']),
-    source: z.enum(['config', 'default']),
+  Type.Object({
+    kind: Type.Literal('evaluator-strictness'),
+    rationale: Type.String(),
+    strictness: Type.Union([
+      Type.Literal('strict'),
+      Type.Literal('standard'),
+      Type.Literal('lenient'),
+    ]),
+    source: Type.Union([Type.Literal('config'), Type.Literal('default')]),
   }),
   // Recovery verdict applied
-  z.object({
-    kind: z.literal('recovery-verdict'),
-    rationale: z.string(),
-    verdict: z.enum(['retry', 'split', 'abandon', 'manual']),
-    successorPrdId: z.string().optional(),
+  Type.Object({
+    kind: Type.Literal('recovery-verdict'),
+    rationale: Type.String(),
+    verdict: Type.Union([
+      Type.Literal('retry'),
+      Type.Literal('split'),
+      Type.Literal('abandon'),
+      Type.Literal('manual'),
+    ]),
+    successorPrdId: Type.Optional(Type.String()),
   }),
   // Merge conflict resolution strategy
-  z.object({
-    kind: z.literal('merge-conflict-resolution'),
-    rationale: z.string(),
-    strategy: z.string(),
-    files: z.array(z.string()),
+  Type.Object({
+    kind: Type.Literal('merge-conflict-resolution'),
+    rationale: Type.String(),
+    strategy: Type.String(),
+    files: Type.Array(Type.String()),
   }),
 ]);
 
-export type BuildDecision = z.infer<typeof BuildDecisionSchema>;
+export type BuildDecision = Static<typeof BuildDecisionSchema>;
 
-const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
+const EforgeEventVariantsSchema = Type.Union([
   // Session lifecycle
-  z.object({ type: z.literal('session:start'), sessionId: z.string() }),
-  z.object({ type: z.literal('session:end'), sessionId: z.string(), result: EforgeResultSchema }),
-  z.object({
-    type: z.literal('session:profile'),
-    profileName: z.string().nullable(),
-    source: z.enum(['local', 'project', 'user-local', 'missing', 'none', 'override']),
-    scope: z.enum(['local', 'project', 'user']).nullable(),
-    config: z.unknown().nullable(),
+  Type.Object({ type: Type.Literal('session:start'), sessionId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('session:end'),
+    sessionId: Type.String(),
+    result: EforgeResultSchema,
+  }),
+  Type.Object({
+    type: Type.Literal('session:profile'),
+    profileName: Type.Union([Type.String(), Type.Null()]),
+    source: Type.Union([
+      Type.Literal('local'),
+      Type.Literal('project'),
+      Type.Literal('user-local'),
+      Type.Literal('missing'),
+      Type.Literal('none'),
+      Type.Literal('override'),
+    ]),
+    scope: Type.Union([
+      Type.Literal('local'),
+      Type.Literal('project'),
+      Type.Literal('user'),
+      Type.Null(),
+    ]),
+    config: Type.Union([Type.Unknown(), Type.Null()]),
   }),
 
   // Phase lifecycle
-  z.object({
-    type: z.literal('phase:start'),
-    runId: z.string(),
-    planSet: z.string(),
-    command: z.enum(['compile', 'build']),
+  Type.Object({
+    type: Type.Literal('phase:start'),
+    runId: Type.String(),
+    planSet: Type.String(),
+    command: Type.Union([Type.Literal('compile'), Type.Literal('build')]),
   }),
-  z.object({ type: z.literal('phase:end'), runId: z.string(), result: EforgeResultSchema }),
+  Type.Object({
+    type: Type.Literal('phase:end'),
+    runId: Type.String(),
+    result: EforgeResultSchema,
+  }),
 
   // Config and plan warnings
-  z.object({
-    type: z.literal('config:warning'),
-    message: z.string(),
-    source: z.string(),
-    details: z.string().optional(),
+  Type.Object({
+    type: Type.Literal('config:warning'),
+    message: Type.String(),
+    source: Type.String(),
+    details: Type.Optional(Type.String()),
   }),
-  z.object({
-    type: z.literal('planning:warning'),
-    planId: z.string().optional(),
-    message: z.string(),
-    source: z.string(),
-    details: z.string().optional(),
+  Type.Object({
+    type: Type.Literal('planning:warning'),
+    planId: Type.Optional(Type.String()),
+    message: Type.String(),
+    source: Type.String(),
+    details: Type.Optional(Type.String()),
   }),
-  z.object({
-    type: z.literal('planning:module:build-config:invalid'),
-    moduleId: z.string(),
-    reason: z.enum(['invalid-json', 'invalid-schema']),
-    errors: z.array(z.string()),
+  Type.Object({
+    type: Type.Literal('planning:module:build-config:invalid'),
+    moduleId: Type.String(),
+    reason: Type.Union([Type.Literal('invalid-json'), Type.Literal('invalid-schema')]),
+    errors: Type.Array(Type.String()),
   }),
 
   // Planning
-  z.object({ type: z.literal('planning:start'), source: z.string(), label: z.string().optional() }),
-  z.object({ type: z.literal('planning:skip'), reason: z.string() }),
-  z.object({
-    type: z.literal('planning:submission'),
-    planCount: z.number(),
-    totalBodySize: z.number(),
-    hasMigrations: z.boolean(),
+  Type.Object({
+    type: Type.Literal('planning:start'),
+    source: Type.String(),
+    label: Type.Optional(Type.String()),
   }),
-  z.object({ type: z.literal('planning:error'), reason: z.string() }),
-  z.object({ type: z.literal('planning:clarification'), questions: z.array(ClarificationQuestionSchema) }),
-  z.object({ type: z.literal('planning:clarification:answer'), answers: z.record(z.string(), z.string()) }),
-  z.object({ type: z.literal('planning:progress'), message: z.string() }),
-  z.object({
-    type: z.literal('planning:continuation'),
-    attempt: z.number(),
-    maxContinuations: z.number(),
-    reason: z.enum(['max_turns', 'dropped_submission']).optional(),
+  Type.Object({ type: Type.Literal('planning:skip'), reason: Type.String() }),
+  Type.Object({
+    type: Type.Literal('planning:submission'),
+    planCount: Type.Number(),
+    totalBodySize: Type.Number(),
+    hasMigrations: Type.Boolean(),
   }),
-  z.object({
-    type: z.literal('planning:pipeline'),
-    scope: z.string(),
-    compile: z.array(z.string()),
-    defaultBuild: z.array(BuildStageSpecSchema),
+  Type.Object({ type: Type.Literal('planning:error'), reason: Type.String() }),
+  Type.Object({
+    type: Type.Literal('planning:clarification'),
+    questions: Type.Array(ClarificationQuestionSchema),
+  }),
+  Type.Object({
+    type: Type.Literal('planning:clarification:answer'),
+    answers: Type.Record(Type.String(), Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('planning:progress'),
+    message: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('planning:continuation'),
+    attempt: Type.Number(),
+    maxContinuations: Type.Number(),
+    reason: Type.Optional(
+      Type.Union([Type.Literal('max_turns'), Type.Literal('dropped_submission')]),
+    ),
+  }),
+  Type.Object({
+    type: Type.Literal('planning:pipeline'),
+    scope: Type.String(),
+    compile: Type.Array(Type.String()),
+    defaultBuild: Type.Array(BuildStageSpecSchema),
     defaultReview: ReviewProfileConfigSchema,
-    rationale: z.string(),
+    rationale: Type.String(),
   }),
-  z.object({
-    type: z.literal('planning:complete'),
-    plans: z.array(PlanFileSchema),
-    planConfigs: z
-      .array(
-        z.object({
-          id: z.string(),
-          build: z.array(BuildStageSpecSchema).optional(),
-          review: ReviewProfileConfigSchema.optional(),
+  Type.Object({
+    type: Type.Literal('planning:complete'),
+    plans: Type.Array(PlanFileSchema),
+    planConfigs: Type.Optional(
+      Type.Array(
+        Type.Object({
+          id: Type.String(),
+          build: Type.Optional(Type.Array(BuildStageSpecSchema)),
+          review: Type.Optional(ReviewProfileConfigSchema),
         }),
-      )
-      .optional(),
+      ),
+    ),
   }),
 
   // Planning review
-  z.object({ type: z.literal('planning:review:start') }),
-  z.object({ type: z.literal('planning:review:complete'), issues: z.array(ReviewIssueSchema) }),
-  z.object({ type: z.literal('planning:evaluate:start') }),
-  z.object({
-    type: z.literal('planning:evaluate:continuation'),
-    attempt: z.number(),
-    maxContinuations: z.number(),
+  Type.Object({ type: Type.Literal('planning:review:start') }),
+  Type.Object({
+    type: Type.Literal('planning:review:complete'),
+    issues: Type.Array(ReviewIssueSchema),
   }),
-  z.object({
-    type: z.literal('planning:evaluate:complete'),
-    accepted: z.number(),
-    rejected: z.number(),
-    verdicts: z
-      .array(
-        z.object({
-          file: z.string(),
-          action: z.enum(['accept', 'reject', 'review']),
-          reason: z.string(),
+  Type.Object({ type: Type.Literal('planning:evaluate:start') }),
+  Type.Object({
+    type: Type.Literal('planning:evaluate:continuation'),
+    attempt: Type.Number(),
+    maxContinuations: Type.Number(),
+  }),
+  Type.Object({
+    type: Type.Literal('planning:evaluate:complete'),
+    accepted: Type.Number(),
+    rejected: Type.Number(),
+    verdicts: Type.Optional(
+      Type.Array(
+        Type.Object({
+          file: Type.String(),
+          action: Type.Union([
+            Type.Literal('accept'),
+            Type.Literal('reject'),
+            Type.Literal('review'),
+          ]),
+          reason: Type.String(),
         }),
-      )
-      .optional(),
+      ),
+    ),
   }),
 
   // Architecture review
-  z.object({ type: z.literal('planning:architecture:review:start') }),
-  z.object({
-    type: z.literal('planning:architecture:review:complete'),
-    issues: z.array(ReviewIssueSchema),
+  Type.Object({ type: Type.Literal('planning:architecture:review:start') }),
+  Type.Object({
+    type: Type.Literal('planning:architecture:review:complete'),
+    issues: Type.Array(ReviewIssueSchema),
   }),
-  z.object({ type: z.literal('planning:architecture:evaluate:start') }),
-  z.object({
-    type: z.literal('planning:architecture:evaluate:continuation'),
-    attempt: z.number(),
-    maxContinuations: z.number(),
+  Type.Object({ type: Type.Literal('planning:architecture:evaluate:start') }),
+  Type.Object({
+    type: Type.Literal('planning:architecture:evaluate:continuation'),
+    attempt: Type.Number(),
+    maxContinuations: Type.Number(),
   }),
-  z.object({
-    type: z.literal('planning:architecture:evaluate:complete'),
-    accepted: z.number(),
-    rejected: z.number(),
-    verdicts: z
-      .array(
-        z.object({
-          file: z.string(),
-          action: z.enum(['accept', 'reject', 'review']),
-          reason: z.string(),
+  Type.Object({
+    type: Type.Literal('planning:architecture:evaluate:complete'),
+    accepted: Type.Number(),
+    rejected: Type.Number(),
+    verdicts: Type.Optional(
+      Type.Array(
+        Type.Object({
+          file: Type.String(),
+          action: Type.Union([
+            Type.Literal('accept'),
+            Type.Literal('reject'),
+            Type.Literal('review'),
+          ]),
+          reason: Type.String(),
         }),
-      )
-      .optional(),
+      ),
+    ),
   }),
 
   // Cohesion review
-  z.object({ type: z.literal('planning:cohesion:start') }),
-  z.object({
-    type: z.literal('planning:cohesion:complete'),
-    issues: z.array(ReviewIssueSchema),
+  Type.Object({ type: Type.Literal('planning:cohesion:start') }),
+  Type.Object({
+    type: Type.Literal('planning:cohesion:complete'),
+    issues: Type.Array(ReviewIssueSchema),
   }),
-  z.object({ type: z.literal('planning:cohesion:evaluate:start') }),
-  z.object({
-    type: z.literal('planning:cohesion:evaluate:continuation'),
-    attempt: z.number(),
-    maxContinuations: z.number(),
+  Type.Object({ type: Type.Literal('planning:cohesion:evaluate:start') }),
+  Type.Object({
+    type: Type.Literal('planning:cohesion:evaluate:continuation'),
+    attempt: Type.Number(),
+    maxContinuations: Type.Number(),
   }),
-  z.object({
-    type: z.literal('planning:cohesion:evaluate:complete'),
-    accepted: z.number(),
-    rejected: z.number(),
-    verdicts: z
-      .array(
-        z.object({
-          file: z.string(),
-          action: z.enum(['accept', 'reject', 'review']),
-          reason: z.string(),
+  Type.Object({
+    type: Type.Literal('planning:cohesion:evaluate:complete'),
+    accepted: Type.Number(),
+    rejected: Type.Number(),
+    verdicts: Type.Optional(
+      Type.Array(
+        Type.Object({
+          file: Type.String(),
+          action: Type.Union([
+            Type.Literal('accept'),
+            Type.Literal('reject'),
+            Type.Literal('review'),
+          ]),
+          reason: Type.String(),
         }),
-      )
-      .optional(),
+      ),
+    ),
   }),
 
   // Building (per-plan)
-  z.object({ type: z.literal('plan:build:start'), planId: z.string() }),
-  z.object({ type: z.literal('plan:build:implement:start'), planId: z.string() }),
-  z.object({ type: z.literal('plan:build:implement:progress'), planId: z.string(), message: z.string() }),
-  z.object({
-    type: z.literal('plan:build:implement:continuation'),
-    planId: z.string(),
-    attempt: z.number(),
-    maxContinuations: z.number(),
-    shardId: z.string().optional(),
+  Type.Object({ type: Type.Literal('plan:build:start'), planId: Type.String() }),
+  Type.Object({ type: Type.Literal('plan:build:implement:start'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:implement:progress'),
+    planId: Type.String(),
+    message: Type.String(),
   }),
-  z.object({ type: z.literal('plan:build:implement:complete'), planId: z.string() }),
-  z.object({
-    type: z.literal('plan:build:files_changed'),
-    planId: z.string(),
-    files: z.array(z.string()),
-    diffs: z
-      .array(z.object({ path: z.string(), diff: z.string() }))
-      .optional(),
-    baseBranch: z.string().optional(),
+  Type.Object({
+    type: Type.Literal('plan:build:implement:continuation'),
+    planId: Type.String(),
+    attempt: Type.Number(),
+    maxContinuations: Type.Number(),
+    shardId: Type.Optional(Type.String()),
   }),
-  z.object({ type: z.literal('plan:build:review:start'), planId: z.string() }),
-  z.object({
-    type: z.literal('plan:build:review:complete'),
-    planId: z.string(),
-    issues: z.array(ReviewIssueSchema),
+  Type.Object({ type: Type.Literal('plan:build:implement:complete'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:files_changed'),
+    planId: Type.String(),
+    files: Type.Array(Type.String()),
+    diffs: Type.Optional(
+      Type.Array(Type.Object({ path: Type.String(), diff: Type.String() })),
+    ),
+    baseBranch: Type.Optional(Type.String()),
   }),
-  z.object({
-    type: z.literal('plan:build:review:parallel:start'),
-    planId: z.string(),
-    perspectives: z.array(ReviewPerspectiveSchema),
+  Type.Object({ type: Type.Literal('plan:build:review:start'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:review:complete'),
+    planId: Type.String(),
+    issues: Type.Array(ReviewIssueSchema),
   }),
-  z.object({
-    type: z.literal('plan:build:review:parallel:perspective:start'),
-    planId: z.string(),
+  Type.Object({
+    type: Type.Literal('plan:build:review:parallel:start'),
+    planId: Type.String(),
+    perspectives: Type.Array(ReviewPerspectiveSchema),
+  }),
+  Type.Object({
+    type: Type.Literal('plan:build:review:parallel:perspective:start'),
+    planId: Type.String(),
     perspective: ReviewPerspectiveSchema,
   }),
-  z.object({
-    type: z.literal('plan:build:review:parallel:perspective:complete'),
-    planId: z.string(),
+  Type.Object({
+    type: Type.Literal('plan:build:review:parallel:perspective:complete'),
+    planId: Type.String(),
     perspective: ReviewPerspectiveSchema,
-    issues: z.array(ReviewIssueSchema),
+    issues: Type.Array(ReviewIssueSchema),
   }),
-  z.object({
-    type: z.literal('plan:build:review:parallel:perspective:error'),
-    planId: z.string(),
-    perspective: z.string(),
-    error: z.string(),
+  Type.Object({
+    type: Type.Literal('plan:build:review:parallel:perspective:error'),
+    planId: Type.String(),
+    perspective: Type.String(),
+    error: Type.String(),
   }),
-  z.object({
-    type: z.literal('plan:build:review:fix:start'),
-    planId: z.string(),
-    issueCount: z.number(),
+  Type.Object({
+    type: Type.Literal('plan:build:review:fix:start'),
+    planId: Type.String(),
+    issueCount: Type.Number(),
   }),
-  z.object({ type: z.literal('plan:build:review:fix:complete'), planId: z.string() }),
-  z.object({ type: z.literal('plan:build:evaluate:start'), planId: z.string() }),
-  z.object({
-    type: z.literal('plan:build:evaluate:continuation'),
-    planId: z.string(),
-    attempt: z.number(),
-    maxContinuations: z.number(),
+  Type.Object({ type: Type.Literal('plan:build:review:fix:complete'), planId: Type.String() }),
+  Type.Object({ type: Type.Literal('plan:build:evaluate:start'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:evaluate:continuation'),
+    planId: Type.String(),
+    attempt: Type.Number(),
+    maxContinuations: Type.Number(),
   }),
-  z.object({
-    type: z.literal('plan:build:evaluate:complete'),
-    planId: z.string(),
-    accepted: z.number(),
-    rejected: z.number(),
-    verdicts: z
-      .array(
-        z.object({
-          file: z.string(),
-          action: z.enum(['accept', 'reject', 'review']),
-          reason: z.string(),
+  Type.Object({
+    type: Type.Literal('plan:build:evaluate:complete'),
+    planId: Type.String(),
+    accepted: Type.Number(),
+    rejected: Type.Number(),
+    verdicts: Type.Optional(
+      Type.Array(
+        Type.Object({
+          file: Type.String(),
+          action: Type.Union([
+            Type.Literal('accept'),
+            Type.Literal('reject'),
+            Type.Literal('review'),
+          ]),
+          reason: Type.String(),
         }),
-      )
-      .optional(),
+      ),
+    ),
   }),
-  z.object({ type: z.literal('plan:build:doc-author:start'), planId: z.string() }),
-  z.object({
-    type: z.literal('plan:build:doc-author:complete'),
-    planId: z.string(),
-    docsAuthored: z.number(),
+  Type.Object({ type: Type.Literal('plan:build:doc-author:start'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:doc-author:complete'),
+    planId: Type.String(),
+    docsAuthored: Type.Number(),
   }),
-  z.object({ type: z.literal('plan:build:doc-sync:start'), planId: z.string() }),
-  z.object({
-    type: z.literal('plan:build:doc-sync:complete'),
-    planId: z.string(),
-    docsSynced: z.number(),
+  Type.Object({ type: Type.Literal('plan:build:doc-sync:start'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:doc-sync:complete'),
+    planId: Type.String(),
+    docsSynced: Type.Number(),
   }),
-  z.object({ type: z.literal('plan:build:test:write:start'), planId: z.string() }),
-  z.object({
-    type: z.literal('plan:build:test:write:complete'),
-    planId: z.string(),
-    testsWritten: z.number(),
+  Type.Object({ type: Type.Literal('plan:build:test:write:start'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:test:write:complete'),
+    planId: Type.String(),
+    testsWritten: Type.Number(),
   }),
-  z.object({ type: z.literal('plan:build:test:start'), planId: z.string() }),
-  z.object({
-    type: z.literal('plan:build:test:complete'),
-    planId: z.string(),
-    passed: z.number(),
-    failed: z.number(),
-    testBugsFixed: z.number(),
-    productionIssues: z.array(TestIssueSchema),
+  Type.Object({ type: Type.Literal('plan:build:test:start'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:test:complete'),
+    planId: Type.String(),
+    passed: Type.Number(),
+    failed: Type.Number(),
+    testBugsFixed: Type.Number(),
+    productionIssues: Type.Array(TestIssueSchema),
   }),
-  z.object({ type: z.literal('plan:build:complete'), planId: z.string() }),
-  z.object({
-    type: z.literal('plan:build:failed'),
-    planId: z.string(),
-    error: z.string(),
-    terminalSubtype: AgentTerminalSubtypeSchema.optional(),
+  Type.Object({ type: Type.Literal('plan:build:complete'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:build:failed'),
+    planId: Type.String(),
+    error: Type.String(),
+    terminalSubtype: Type.Optional(AgentTerminalSubtypeSchema),
   }),
-  z.object({ type: z.literal('plan:build:progress'), planId: z.string(), message: z.string() }),
+  Type.Object({
+    type: Type.Literal('plan:build:progress'),
+    planId: Type.String(),
+    message: Type.String(),
+  }),
 
-  // Plan lifecycle state events (new in plan-01-foundation)
-  z.object({
-    type: z.literal('plan:status:change'),
-    planId: z.string(),
-    status: PlanStateSchema.shape.status,
+  // Plan lifecycle state events
+  Type.Object({
+    type: Type.Literal('plan:status:change'),
+    planId: Type.String(),
+    status: PlanStatusSchema,
   }),
-  z.object({
-    type: z.literal('plan:error:set'),
-    planId: z.string(),
-    error: z.string(),
+  Type.Object({
+    type: Type.Literal('plan:error:set'),
+    planId: Type.String(),
+    error: Type.String(),
   }),
-  z.object({
-    type: z.literal('plan:error:clear'),
-    planId: z.string(),
+  Type.Object({
+    type: Type.Literal('plan:error:clear'),
+    planId: Type.String(),
   }),
 
   // Orchestration
-  z.object({ type: z.literal('schedule:start'), planIds: z.array(z.string()) }),
-  z.object({ type: z.literal('plan:schedule:ready'), planId: z.string(), reason: z.string() }),
-  z.object({ type: z.literal('plan:merge:start'), planId: z.string() }),
-  z.object({ type: z.literal('plan:merge:complete'), planId: z.string(), commitSha: z.string().optional() }),
-  z.object({ type: z.literal('plan:merge:resolve:start'), planId: z.string() }),
-  z.object({ type: z.literal('plan:merge:resolve:complete'), planId: z.string(), resolved: z.boolean() }),
-  z.object({
-    type: z.literal('merge:finalize:start'),
-    featureBranch: z.string(),
-    baseBranch: z.string(),
+  Type.Object({ type: Type.Literal('schedule:start'), planIds: Type.Array(Type.String()) }),
+  Type.Object({
+    type: Type.Literal('plan:schedule:ready'),
+    planId: Type.String(),
+    reason: Type.String(),
   }),
-  z.object({
-    type: z.literal('merge:finalize:complete'),
-    featureBranch: z.string(),
-    baseBranch: z.string(),
-    commitSha: z.string().optional(),
+  Type.Object({ type: Type.Literal('plan:merge:start'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:merge:complete'),
+    planId: Type.String(),
+    commitSha: Type.Optional(Type.String()),
   }),
-  z.object({
-    type: z.literal('merge:finalize:skipped'),
-    featureBranch: z.string(),
-    baseBranch: z.string(),
-    reason: z.string(),
+  Type.Object({ type: Type.Literal('plan:merge:resolve:start'), planId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('plan:merge:resolve:complete'),
+    planId: Type.String(),
+    resolved: Type.Boolean(),
+  }),
+  Type.Object({
+    type: Type.Literal('merge:finalize:start'),
+    featureBranch: Type.String(),
+    baseBranch: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('merge:finalize:complete'),
+    featureBranch: Type.String(),
+    baseBranch: Type.String(),
+    commitSha: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('merge:finalize:skipped'),
+    featureBranch: Type.String(),
+    baseBranch: Type.String(),
+    reason: Type.String(),
   }),
 
-  // Merge worktree lifecycle events (new in plan-01-foundation)
-  z.object({
-    type: z.literal('merge:worktree:set'),
-    path: z.string(),
+  // Merge worktree lifecycle events
+  Type.Object({
+    type: Type.Literal('merge:worktree:set'),
+    path: Type.String(),
   }),
-  z.object({
-    type: z.literal('merge:worktree:clear'),
+  Type.Object({
+    type: Type.Literal('merge:worktree:clear'),
   }),
 
   // Expedition planning phases
-  z.object({
-    type: z.literal('expedition:architecture:complete'),
-    modules: z.array(ExpeditionModuleSchema),
+  Type.Object({
+    type: Type.Literal('expedition:architecture:complete'),
+    modules: Type.Array(ExpeditionModuleSchema),
   }),
-  z.object({
-    type: z.literal('expedition:wave:start'),
-    wave: z.number(),
-    moduleIds: z.array(z.string()),
+  Type.Object({
+    type: Type.Literal('expedition:wave:start'),
+    wave: Type.Number(),
+    moduleIds: Type.Array(Type.String()),
   }),
-  z.object({ type: z.literal('expedition:wave:complete'), wave: z.number() }),
-  z.object({ type: z.literal('expedition:module:start'), moduleId: z.string() }),
-  z.object({ type: z.literal('expedition:module:complete'), moduleId: z.string() }),
-  z.object({ type: z.literal('expedition:compile:start') }),
-  z.object({
-    type: z.literal('expedition:compile:complete'),
-    plans: z.array(PlanFileSchema),
+  Type.Object({ type: Type.Literal('expedition:wave:complete'), wave: Type.Number() }),
+  Type.Object({ type: Type.Literal('expedition:module:start'), moduleId: Type.String() }),
+  Type.Object({ type: Type.Literal('expedition:module:complete'), moduleId: Type.String() }),
+  Type.Object({ type: Type.Literal('expedition:compile:start') }),
+  Type.Object({
+    type: Type.Literal('expedition:compile:complete'),
+    plans: Type.Array(PlanFileSchema),
   }),
 
   // Agent lifecycle
-  z.object({ type: z.literal('agent:start'), ...agentStartFields }),
-  z.object({
-    type: z.literal('agent:warning'),
-    planId: z.string().optional(),
-    agentId: z.string(),
+  Type.Object({ type: Type.Literal('agent:start'), ...agentStartFields }),
+  Type.Object({
+    type: Type.Literal('agent:warning'),
+    planId: Type.Optional(Type.String()),
+    agentId: Type.String(),
     agent: AgentRoleSchema,
-    code: z.string(),
-    message: z.string(),
+    code: Type.String(),
+    message: Type.String(),
   }),
-  z.object({
-    type: z.literal('agent:stop'),
-    planId: z.string().optional(),
-    agentId: z.string(),
+  Type.Object({
+    type: Type.Literal('agent:stop'),
+    planId: Type.Optional(Type.String()),
+    agentId: Type.String(),
     agent: AgentRoleSchema,
-    error: z.string().optional(),
+    error: Type.Optional(Type.String()),
   }),
-  z.object({
-    type: z.literal('agent:usage'),
-    planId: z.string().optional(),
-    agentId: z.string(),
+  Type.Object({
+    type: Type.Literal('agent:usage'),
+    planId: Type.Optional(Type.String()),
+    agentId: Type.String(),
     agent: AgentRoleSchema,
-    usage: z.object({
-      input: z.number(),
-      output: z.number(),
-      total: z.number(),
-      cacheRead: z.number(),
-      cacheCreation: z.number(),
+    usage: Type.Object({
+      input: Type.Number(),
+      output: Type.Number(),
+      total: Type.Number(),
+      cacheRead: Type.Number(),
+      cacheCreation: Type.Number(),
     }),
-    costUsd: z.number(),
-    numTurns: z.number(),
-    final: z.boolean().optional(),
+    costUsd: Type.Number(),
+    numTurns: Type.Number(),
+    final: Type.Optional(Type.Boolean()),
   }),
 
   // Agent-level (verbose streaming)
-  z.object({
-    type: z.literal('agent:message'),
-    planId: z.string().optional(),
-    agentId: z.string(),
+  Type.Object({
+    type: Type.Literal('agent:message'),
+    planId: Type.Optional(Type.String()),
+    agentId: Type.String(),
     agent: AgentRoleSchema,
-    content: z.string(),
+    content: Type.String(),
   }),
-  z.object({
-    type: z.literal('agent:tool_use'),
-    planId: z.string().optional(),
-    agentId: z.string(),
+  Type.Object({
+    type: Type.Literal('agent:tool_use'),
+    planId: Type.Optional(Type.String()),
+    agentId: Type.String(),
     agent: AgentRoleSchema,
-    tool: z.string(),
-    toolUseId: z.string(),
-    input: z.unknown(),
+    tool: Type.String(),
+    toolUseId: Type.String(),
+    input: Type.Unknown(),
   }),
-  z.object({
-    type: z.literal('agent:tool_result'),
-    planId: z.string().optional(),
-    agentId: z.string(),
+  Type.Object({
+    type: Type.Literal('agent:tool_result'),
+    planId: Type.Optional(Type.String()),
+    agentId: Type.String(),
     agent: AgentRoleSchema,
-    tool: z.string(),
-    toolUseId: z.string(),
-    output: z.string(),
+    tool: Type.String(),
+    toolUseId: Type.String(),
+    output: Type.String(),
   }),
-  z.object({
-    type: z.literal('agent:result'),
-    planId: z.string().optional(),
+  Type.Object({
+    type: Type.Literal('agent:result'),
+    planId: Type.Optional(Type.String()),
     agent: AgentRoleSchema,
     result: AgentResultDataSchema,
   }),
 
   // Generic retry notification
-  z.object({
-    type: z.literal('agent:retry'),
+  Type.Object({
+    type: Type.Literal('agent:retry'),
     agent: AgentRoleSchema,
-    attempt: z.number(),
-    maxAttempts: z.number(),
+    attempt: Type.Number(),
+    maxAttempts: Type.Number(),
     subtype: AgentTerminalSubtypeSchema,
-    label: z.string(),
-    planId: z.string().optional(),
-    shardId: z.string().optional(),
+    label: Type.String(),
+    planId: Type.Optional(Type.String()),
+    shardId: Type.Optional(Type.String()),
   }),
 
   // Validation (post-merge)
-  z.object({ type: z.literal('validation:start'), commands: z.array(z.string()) }),
-  z.object({ type: z.literal('validation:command:start'), command: z.string() }),
-  z.object({
-    type: z.literal('validation:command:complete'),
-    command: z.string(),
-    exitCode: z.number(),
-    output: z.string(),
+  Type.Object({ type: Type.Literal('validation:start'), commands: Type.Array(Type.String()) }),
+  Type.Object({ type: Type.Literal('validation:command:start'), command: Type.String() }),
+  Type.Object({
+    type: Type.Literal('validation:command:complete'),
+    command: Type.String(),
+    exitCode: Type.Number(),
+    output: Type.String(),
   }),
-  z.object({
-    type: z.literal('validation:command:timeout'),
-    command: z.string(),
-    timeoutMs: z.number(),
-    pid: z.number(),
+  Type.Object({
+    type: Type.Literal('validation:command:timeout'),
+    command: Type.String(),
+    timeoutMs: Type.Number(),
+    pid: Type.Number(),
   }),
-  z.object({ type: z.literal('validation:complete'), passed: z.boolean() }),
-  z.object({
-    type: z.literal('validation:fix:start'),
-    attempt: z.number(),
-    maxAttempts: z.number(),
+  Type.Object({ type: Type.Literal('validation:complete'), passed: Type.Boolean() }),
+  Type.Object({
+    type: Type.Literal('validation:fix:start'),
+    attempt: Type.Number(),
+    maxAttempts: Type.Number(),
   }),
-  z.object({ type: z.literal('validation:fix:complete'), attempt: z.number() }),
+  Type.Object({ type: Type.Literal('validation:fix:complete'), attempt: Type.Number() }),
 
   // PRD validation
-  z.object({ type: z.literal('prd_validation:start') }),
-  z.object({
-    type: z.literal('prd_validation:complete'),
-    passed: z.boolean(),
-    gaps: z.array(PrdValidationGapSchema),
-    completionPercent: z.number().optional(),
+  Type.Object({ type: Type.Literal('prd_validation:start') }),
+  Type.Object({
+    type: Type.Literal('prd_validation:complete'),
+    passed: Type.Boolean(),
+    gaps: Type.Array(PrdValidationGapSchema),
+    completionPercent: Type.Optional(Type.Number()),
   }),
 
   // Gap closing
-  z.object({
-    type: z.literal('gap_close:start'),
-    gapCount: z.number().optional(),
-    completionPercent: z.number().optional(),
+  Type.Object({
+    type: Type.Literal('gap_close:start'),
+    gapCount: Type.Optional(Type.Number()),
+    completionPercent: Type.Optional(Type.Number()),
   }),
-  z.object({
-    type: z.literal('gap_close:plan_ready'),
-    planBody: z.string(),
-    gaps: z.array(PrdValidationGapSchema),
+  Type.Object({
+    type: Type.Literal('gap_close:plan_ready'),
+    planBody: Type.String(),
+    gaps: Type.Array(PrdValidationGapSchema),
   }),
-  z.object({ type: z.literal('gap_close:complete'), passed: z.boolean().optional() }),
+  Type.Object({
+    type: Type.Literal('gap_close:complete'),
+    passed: Type.Optional(Type.Boolean()),
+  }),
 
   // Reconciliation
-  z.object({ type: z.literal('reconciliation:start') }),
-  z.object({
-    type: z.literal('reconciliation:complete'),
+  Type.Object({ type: Type.Literal('reconciliation:start') }),
+  Type.Object({
+    type: Type.Literal('reconciliation:complete'),
     report: ReconciliationReportSchema,
   }),
 
   // Cleanup
-  z.object({ type: z.literal('cleanup:start'), planSet: z.string() }),
-  z.object({ type: z.literal('cleanup:complete'), planSet: z.string() }),
+  Type.Object({ type: Type.Literal('cleanup:start'), planSet: Type.String() }),
+  Type.Object({ type: Type.Literal('cleanup:complete'), planSet: Type.String() }),
 
   // User interaction
-  z.object({
-    type: z.literal('approval:needed'),
-    planId: z.string().optional(),
-    action: z.string(),
-    details: z.string(),
+  Type.Object({
+    type: Type.Literal('approval:needed'),
+    planId: Type.Optional(Type.String()),
+    action: Type.String(),
+    details: Type.String(),
   }),
-  z.object({ type: z.literal('approval:response'), approved: z.boolean() }),
+  Type.Object({ type: Type.Literal('approval:response'), approved: Type.Boolean() }),
 
   // Enqueue
-  z.object({ type: z.literal('enqueue:start'), source: z.string() }),
-  z.object({
-    type: z.literal('enqueue:complete'),
-    id: z.string(),
-    filePath: z.string(),
-    title: z.string(),
-    planSet: z.string(),
+  Type.Object({ type: Type.Literal('enqueue:start'), source: Type.String() }),
+  Type.Object({
+    type: Type.Literal('enqueue:complete'),
+    id: Type.String(),
+    filePath: Type.String(),
+    title: Type.String(),
+    planSet: Type.String(),
   }),
-  z.object({ type: z.literal('enqueue:failed'), error: z.string() }),
-  z.object({ type: z.literal('enqueue:commit-failed'), error: z.string() }),
+  Type.Object({ type: Type.Literal('enqueue:failed'), error: Type.String() }),
+  Type.Object({ type: Type.Literal('enqueue:commit-failed'), error: Type.String() }),
 
   // Recovery analysis
-  z.object({ type: z.literal('recovery:start'), prdId: z.string(), setName: z.string() }),
-  z.object({
-    type: z.literal('recovery:summary'),
-    prdId: z.string(),
+  Type.Object({
+    type: Type.Literal('recovery:start'),
+    prdId: Type.String(),
+    setName: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('recovery:summary'),
+    prdId: Type.String(),
     summary: BuildFailureSummarySchema,
   }),
-  z.object({
-    type: z.literal('recovery:complete'),
-    prdId: z.string(),
+  Type.Object({
+    type: Type.Literal('recovery:complete'),
+    prdId: Type.String(),
     verdict: RecoveryVerdictSchema,
-    sidecarMdPath: z.string().optional(),
-    sidecarJsonPath: z.string().optional(),
+    sidecarMdPath: Type.Optional(Type.String()),
+    sidecarJsonPath: Type.Optional(Type.String()),
   }),
-  z.object({
-    type: z.literal('recovery:error'),
-    prdId: z.string(),
-    error: z.string(),
-    rawOutput: z.string().optional(),
+  Type.Object({
+    type: Type.Literal('recovery:error'),
+    prdId: Type.String(),
+    error: Type.String(),
+    rawOutput: Type.Optional(Type.String()),
   }),
 
   // Recovery apply
-  z.object({ type: z.literal('recovery:apply:start'), prdId: z.string() }),
-  z.object({
-    type: z.literal('recovery:apply:complete'),
-    prdId: z.string(),
-    verdict: z.enum(['retry', 'split', 'abandon', 'manual']),
-    successorPrdId: z.string().optional(),
-    noAction: z.boolean(),
+  Type.Object({ type: Type.Literal('recovery:apply:start'), prdId: Type.String() }),
+  Type.Object({
+    type: Type.Literal('recovery:apply:complete'),
+    prdId: Type.String(),
+    verdict: Type.Union([
+      Type.Literal('retry'),
+      Type.Literal('split'),
+      Type.Literal('abandon'),
+      Type.Literal('manual'),
+    ]),
+    successorPrdId: Type.Optional(Type.String()),
+    noAction: Type.Boolean(),
   }),
-  z.object({ type: z.literal('recovery:apply:error'), prdId: z.string(), message: z.string() }),
+  Type.Object({
+    type: Type.Literal('recovery:apply:error'),
+    prdId: Type.String(),
+    message: Type.String(),
+  }),
 
-  // Daemon run-state upsert — authoritative source for DaemonState.runs
-  // Emitted by the recorder immediately after every insertRun / updateRunStatus /
-  // updateRunPlanSet call. Payload is the full RunInfo re-read from the DB.
-  z.object({
-    type: z.literal('daemon:run:upsert'),
-    run: z.object({
-      id: z.string(),
-      sessionId: z.string().optional(),
-      planSet: z.string(),
-      command: z.string(),
-      status: z.string(),
-      startedAt: z.string(),
-      completedAt: z.string().optional(),
-      cwd: z.string(),
-      pid: z.number().optional(),
+  // Daemon run-state upsert
+  Type.Object({
+    type: Type.Literal('daemon:run:upsert'),
+    run: Type.Object({
+      id: Type.String(),
+      sessionId: Type.Optional(Type.String()),
+      planSet: Type.String(),
+      command: Type.String(),
+      status: Type.String(),
+      startedAt: Type.String(),
+      completedAt: Type.Optional(Type.String()),
+      cwd: Type.String(),
+      pid: Type.Optional(Type.Number()),
     }),
   }),
 
   // Daemon internal
-  z.object({ type: z.literal('daemon:auto-build:paused'), reason: z.string() }),
+  Type.Object({
+    type: Type.Literal('daemon:auto-build:paused'),
+    reason: Type.String(),
+  }),
 
   // Daemon lifecycle
-  z.object({
-    type: z.literal('daemon:lifecycle:starting'),
-    pid: z.number(),
-    port: z.number(),
-    version: z.string(),
-    mode: z.string(),
+  Type.Object({
+    type: Type.Literal('daemon:lifecycle:starting'),
+    pid: Type.Number(),
+    port: Type.Number(),
+    version: Type.String(),
+    mode: Type.String(),
   }),
-  z.object({
-    type: z.literal('daemon:lifecycle:ready'),
-    pid: z.number(),
-    port: z.number(),
-    version: z.string(),
-    mode: z.string(),
-    recoveryDurationMs: z.number(),
+  Type.Object({
+    type: Type.Literal('daemon:lifecycle:ready'),
+    pid: Type.Number(),
+    port: Type.Number(),
+    version: Type.String(),
+    mode: Type.String(),
+    recoveryDurationMs: Type.Number(),
   }),
-  z.object({
-    type: z.literal('daemon:lifecycle:shutdown:start'),
-    signal: z.string(),
-    reason: z.string(),
+  Type.Object({
+    type: Type.Literal('daemon:lifecycle:shutdown:start'),
+    signal: Type.String(),
+    reason: Type.String(),
   }),
-  z.object({
-    type: z.literal('daemon:lifecycle:shutdown:complete'),
-    durationMs: z.number(),
+  Type.Object({
+    type: Type.Literal('daemon:lifecycle:shutdown:complete'),
+    durationMs: Type.Number(),
   }),
-  z.object({
-    type: z.literal('daemon:heartbeat'),
-    uptime: z.number(),
-    queueDepth: z.number(),
-    runningBuilds: z.number(),
-    autoBuild: z.object({ enabled: z.boolean(), paused: z.boolean() }),
-    subscribers: z.number(),
+  Type.Object({
+    type: Type.Literal('daemon:heartbeat'),
+    uptime: Type.Number(),
+    queueDepth: Type.Number(),
+    runningBuilds: Type.Number(),
+    autoBuild: Type.Object({ enabled: Type.Boolean(), paused: Type.Boolean() }),
+    subscribers: Type.Number(),
   }),
 
   // Daemon scheduler
-  z.object({
-    type: z.literal('daemon:scheduler:dequeued'),
-    prdId: z.string(),
-    queueDepth: z.number(),
-    capacityRemaining: z.number(),
+  Type.Object({
+    type: Type.Literal('daemon:scheduler:dequeued'),
+    prdId: Type.String(),
+    queueDepth: Type.Number(),
+    capacityRemaining: Type.Number(),
   }),
-  z.object({
-    type: z.literal('daemon:scheduler:capacity-blocked'),
-    queueDepth: z.number(),
-    runningCount: z.number(),
-    limit: z.number(),
+  Type.Object({
+    type: Type.Literal('daemon:scheduler:capacity-blocked'),
+    queueDepth: Type.Number(),
+    runningCount: Type.Number(),
+    limit: Type.Number(),
   }),
-  z.object({
-    type: z.literal('daemon:scheduler:dependency-blocked'),
-    prdId: z.string(),
-    blockedBy: z.array(z.string()),
+  Type.Object({
+    type: Type.Literal('daemon:scheduler:dependency-blocked'),
+    prdId: Type.String(),
+    blockedBy: Type.Array(Type.String()),
   }),
 
   // Daemon auto-build extensions
-  z.object({ type: z.literal('daemon:auto-build:enabled') }),
-  z.object({ type: z.literal('daemon:auto-build:resumed') }),
-  z.object({
-    type: z.literal('daemon:auto-build:triggered'),
-    trigger: z.string(),
-    prdsEnqueued: z.number(),
+  Type.Object({ type: Type.Literal('daemon:auto-build:enabled') }),
+  Type.Object({ type: Type.Literal('daemon:auto-build:resumed') }),
+  Type.Object({
+    type: Type.Literal('daemon:auto-build:triggered'),
+    trigger: Type.String(),
+    prdsEnqueued: Type.Number(),
   }),
 
   // Daemon recovery
-  z.object({ type: z.literal('daemon:recovery:start') }),
-  z.object({
-    type: z.literal('daemon:recovery:run-marked-failed'),
-    runId: z.string(),
-    planSet: z.string(),
-    reason: z.string(),
+  Type.Object({ type: Type.Literal('daemon:recovery:start') }),
+  Type.Object({
+    type: Type.Literal('daemon:recovery:run-marked-failed'),
+    runId: Type.String(),
+    planSet: Type.String(),
+    reason: Type.String(),
   }),
-  z.object({
-    type: z.literal('daemon:recovery:lock-removed'),
-    path: z.string(),
-    pid: z.number(),
+  Type.Object({
+    type: Type.Literal('daemon:recovery:lock-removed'),
+    path: Type.String(),
+    pid: Type.Number(),
   }),
-  z.object({
-    type: z.literal('daemon:recovery:complete'),
-    runsFailed: z.number(),
-    locksRemoved: z.number(),
-    durationMs: z.number(),
+  Type.Object({
+    type: Type.Literal('daemon:recovery:complete'),
+    runsFailed: Type.Number(),
+    locksRemoved: Type.Number(),
+    durationMs: Type.Number(),
   }),
 
   // Daemon orphan reaping
-  z.object({
-    type: z.literal('daemon:orphan:reaped'),
-    runId: z.string(),
-    sessionId: z.string(),
-    planSet: z.string(),
-    pid: z.number(),
+  Type.Object({
+    type: Type.Literal('daemon:orphan:reaped'),
+    runId: Type.String(),
+    sessionId: Type.String(),
+    planSet: Type.String(),
+    pid: Type.Number(),
   }),
 
   // Daemon errors and warnings
-  z.object({
-    type: z.literal('daemon:warning'),
-    source: z.string(),
-    message: z.string(),
-    details: z.string().optional(),
+  Type.Object({
+    type: Type.Literal('daemon:warning'),
+    source: Type.String(),
+    message: Type.String(),
+    details: Type.Optional(Type.String()),
   }),
-  z.object({
-    type: z.literal('daemon:error'),
-    source: z.string(),
-    message: z.string(),
-    stack: z.string().optional(),
+  Type.Object({
+    type: Type.Literal('daemon:error'),
+    source: Type.String(),
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
   }),
 
   // Queue events
-  ...QueueEventSchema.options,
+  ...queueEventVariants,
 
   // Build-phase orchestrator decision events
-  z.object({
-    type: z.literal('plan:build:decision'),
-    planId: z.string(),
+  Type.Object({
+    type: Type.Literal('plan:build:decision'),
+    planId: Type.String(),
     decision: BuildDecisionSchema,
   }),
 
@@ -1149,40 +1361,40 @@ const EforgeEventVariantsSchema = z.discriminatedUnion('type', [
 // Root schema: envelope + discriminated variant
 // ---------------------------------------------------------------------------
 
-export const EforgeEventSchema = EventEnvelopeSchema.and(EforgeEventVariantsSchema);
+export const EforgeEventSchema = Type.Intersect([EventEnvelopeSchema, EforgeEventVariantsSchema]);
 
 // ---------------------------------------------------------------------------
 // Derived types — single source of truth
 // ---------------------------------------------------------------------------
 
-export type EforgeEvent = z.infer<typeof EforgeEventSchema>;
+export type EforgeEvent = Static<typeof EforgeEventSchema>;
 export type DaemonRunUpsertEvent = Extract<EforgeEvent, { type: 'daemon:run:upsert' }>;
-export type AgentRole = z.infer<typeof AgentRoleSchema>;
-export type AgentTerminalSubtype = z.infer<typeof AgentTerminalSubtypeSchema>;
-export type ReviewPerspective = z.infer<typeof ReviewPerspectiveSchema>;
-export type StalenessVerdict = z.infer<typeof StalenessVerdictSchema>;
-export type RecoveryVerdict = z.infer<typeof RecoveryVerdictSchema>;
-export type ShardScope = z.infer<typeof ShardScopeSchema>;
-export type PipelineComposition = z.infer<typeof PipelineCompositionSchema>;
-export type PrdValidationGap = z.infer<typeof PrdValidationGapSchema>;
-export type ExpeditionModule = z.infer<typeof ExpeditionModuleSchema>;
-export type EforgeResult = z.infer<typeof EforgeResultSchema>;
-export type ClarificationQuestion = z.infer<typeof ClarificationQuestionSchema>;
-export type ReviewIssue = z.infer<typeof ReviewIssueSchema>;
-export type TestIssue = z.infer<typeof TestIssueSchema>;
-export type PlanFile = z.infer<typeof PlanFileSchema>;
-export type OrchestrationConfig = z.infer<typeof OrchestrationConfigSchema>;
-export type PlanState = z.infer<typeof PlanStateSchema>;
-export type EforgeState = z.infer<typeof EforgeStateSchema>;
-export type AgentResultData = z.infer<typeof AgentResultDataSchema>;
-export type ReconciliationReport = z.infer<typeof ReconciliationReportSchema>;
-export type EforgeStatus = z.infer<typeof EforgeStatusSchema>;
-export type LandedCommit = z.infer<typeof LandedCommitSchema>;
-export type PlanSummaryEntry = z.infer<typeof PlanSummaryEntrySchema>;
-export type FailingPlanEntry = z.infer<typeof FailingPlanEntrySchema>;
-export type BuildFailureSummary = z.infer<typeof BuildFailureSummarySchema>;
-export type QueueEvent = z.infer<typeof QueueEventSchema>;
-export type PlanningDecisionEvent = z.infer<typeof PlanningDecisionEventSchema>;
+export type AgentRole = Static<typeof AgentRoleSchema>;
+export type AgentTerminalSubtype = Static<typeof AgentTerminalSubtypeSchema>;
+export type ReviewPerspective = Static<typeof ReviewPerspectiveSchema>;
+export type StalenessVerdict = Static<typeof StalenessVerdictSchema>;
+export type RecoveryVerdict = Static<typeof RecoveryVerdictSchema>;
+export type ShardScope = Static<typeof ShardScopeSchema>;
+export type PipelineComposition = Static<typeof PipelineCompositionSchema>;
+export type PrdValidationGap = Static<typeof PrdValidationGapSchema>;
+export type ExpeditionModule = Static<typeof ExpeditionModuleSchema>;
+export type EforgeResult = Static<typeof EforgeResultSchema>;
+export type ClarificationQuestion = Static<typeof ClarificationQuestionSchema>;
+export type ReviewIssue = Static<typeof ReviewIssueSchema>;
+export type TestIssue = Static<typeof TestIssueSchema>;
+export type PlanFile = Static<typeof PlanFileSchema>;
+export type OrchestrationConfig = Static<typeof OrchestrationConfigSchema>;
+export type PlanState = Static<typeof PlanStateSchema>;
+export type EforgeState = Static<typeof EforgeStateSchema>;
+export type AgentResultData = Static<typeof AgentResultDataSchema>;
+export type ReconciliationReport = Static<typeof ReconciliationReportSchema>;
+export type EforgeStatus = Static<typeof EforgeStatusSchema>;
+export type LandedCommit = Static<typeof LandedCommitSchema>;
+export type PlanSummaryEntry = Static<typeof PlanSummaryEntrySchema>;
+export type FailingPlanEntry = Static<typeof FailingPlanEntrySchema>;
+export type BuildFailureSummary = Static<typeof BuildFailureSummarySchema>;
+export type QueueEvent = Static<typeof QueueEventSchema>;
+export type PlanningDecisionEvent = Static<typeof PlanningDecisionEventSchema>;
 
 // ---------------------------------------------------------------------------
 // Re-export constants and utilities
@@ -1215,67 +1427,76 @@ export function isAlwaysYieldedAgentEvent(event: EforgeEvent): boolean {
  * Shape of the `liveness` field inside `DaemonStreamSnapshot`.
  * Matches the JSON object that `buildHeartbeatPayload()` in server.ts produces.
  */
-const DaemonStreamLivenessSchema = z.object({
-  type: z.literal('daemon:heartbeat'),
-  timestamp: z.string(),
-  uptime: z.number(),
-  queueDepth: z.number(),
-  runningBuilds: z.number(),
-  autoBuild: z.object({
-    enabled: z.boolean(),
-    paused: z.boolean(),
+const DaemonStreamLivenessSchema = Type.Object({
+  type: Type.Literal('daemon:heartbeat'),
+  timestamp: Type.String(),
+  uptime: Type.Number(),
+  queueDepth: Type.Number(),
+  runningBuilds: Type.Number(),
+  autoBuild: Type.Object({
+    enabled: Type.Boolean(),
+    paused: Type.Boolean(),
   }),
-  subscribers: z.number(),
+  subscribers: Type.Number(),
 });
 
 /** Shape of a single item in `DaemonStreamSnapshot.recentActivity`. */
-const DaemonRecentActivityItemSchema = z.object({
-  id: z.number(),
+const DaemonRecentActivityItemSchema = Type.Object({
+  id: Type.Number(),
   event: EforgeEventSchema,
 });
 
 /** Shape of a run record as returned by `GET /api/runs`. */
-const DaemonRunRecordSchema = z.object({
-  id: z.string(),
-  sessionId: z.string().optional(),
-  planSet: z.string(),
-  command: z.string(),
-  status: z.string(),
-  startedAt: z.string(),
-  completedAt: z.string().optional(),
-  cwd: z.string(),
-  pid: z.number().optional(),
+const DaemonRunRecordSchema = Type.Object({
+  id: Type.String(),
+  sessionId: Type.Optional(Type.String()),
+  planSet: Type.String(),
+  command: Type.String(),
+  status: Type.String(),
+  startedAt: Type.String(),
+  completedAt: Type.Optional(Type.String()),
+  cwd: Type.String(),
+  pid: Type.Optional(Type.Number()),
 });
 
 /** Shape of a single queue item as returned by `GET /api/queue`. */
-const DaemonQueueItemSchema = z.object({
-  id: z.string(),
-  title: z.string(),
-  status: z.string(),
-  priority: z.number().optional(),
-  created: z.string().optional(),
-  dependsOn: z.array(z.string()).optional(),
-  recoveryVerdict: z
-    .object({
-      verdict: z.enum(['retry', 'split', 'abandon', 'manual']),
-      confidence: z.enum(['low', 'medium', 'high']),
-    })
-    .optional(),
+const DaemonQueueItemSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  status: Type.String(),
+  priority: Type.Optional(Type.Number()),
+  created: Type.Optional(Type.String()),
+  dependsOn: Type.Optional(Type.Array(Type.String())),
+  recoveryVerdict: Type.Optional(
+    Type.Object({
+      verdict: Type.Union([
+        Type.Literal('retry'),
+        Type.Literal('split'),
+        Type.Literal('abandon'),
+        Type.Literal('manual'),
+      ]),
+      confidence: Type.Union([
+        Type.Literal('low'),
+        Type.Literal('medium'),
+        Type.Literal('high'),
+      ]),
+    }),
+  ),
 });
 
 /** Shape of a per-session metadata entry as returned by `GET /api/session-metadata`. */
-const DaemonSessionMetadataItemSchema = z.object({
-  planCount: z.number().nullable(),
-  baseProfile: z.string().nullable(),
+const DaemonSessionMetadataItemSchema = Type.Object({
+  planCount: Type.Union([Type.Number(), Type.Null()]),
+  baseProfile: Type.Union([Type.String(), Type.Null()]),
 });
 
 /** Shape of the auto-build response as returned by `GET /api/auto-build`. */
-const DaemonAutoBuildSchema = z.object({
-  enabled: z.boolean(),
-  watcher: z.object({
-    running: z.boolean(),
-    pid: z.number().nullable(),
-    sessionId: z.string().nullable(),
+const DaemonAutoBuildSchema = Type.Object({
+  enabled: Type.Boolean(),
+  watcher: Type.Object({
+    running: Type.Boolean(),
+    pid: Type.Union([Type.Number(), Type.Null()]),
+    sessionId: Type.Union([Type.String(), Type.Null()]),
   }),
 });
 
@@ -1289,13 +1510,13 @@ const DaemonAutoBuildSchema = z.object({
  * All other fields match the response shapes of existing REST endpoints
  * byte-for-byte so plan-02 consumers can feed them into existing reducers.
  */
-export const DaemonStreamSnapshotSchema = z.object({
-  cursor: z.number(),
+export const DaemonStreamSnapshotSchema = Type.Object({
+  cursor: Type.Number(),
   liveness: DaemonStreamLivenessSchema,
-  recentActivity: z.array(DaemonRecentActivityItemSchema),
-  runs: z.array(DaemonRunRecordSchema),
-  queue: z.array(DaemonQueueItemSchema),
-  sessionMetadata: z.record(z.string(), DaemonSessionMetadataItemSchema),
+  recentActivity: Type.Array(DaemonRecentActivityItemSchema),
+  runs: Type.Array(DaemonRunRecordSchema),
+  queue: Type.Array(DaemonQueueItemSchema),
+  sessionMetadata: Type.Record(Type.String(), DaemonSessionMetadataItemSchema),
   autoBuild: DaemonAutoBuildSchema,
 });
 
@@ -1306,16 +1527,56 @@ export const DaemonStreamSnapshotSchema = z.object({
  * `cursor` is the max event id for the session at connect time.
  * `status` and `events` match the `RunState` shape from `GET /api/runs/:id/state`.
  */
-export const SessionStreamSnapshotSchema = z.object({
-  cursor: z.number(),
-  status: z.enum(['pending', 'running', 'completed', 'failed']),
-  events: z.array(
-    z.object({
-      id: z.number(),
-      data: z.string(),
+export const SessionStreamSnapshotSchema = Type.Object({
+  cursor: Type.Number(),
+  status: Type.Union([
+    Type.Literal('pending'),
+    Type.Literal('running'),
+    Type.Literal('completed'),
+    Type.Literal('failed'),
+  ]),
+  events: Type.Array(
+    Type.Object({
+      id: Type.Number(),
+      data: Type.String(),
     }),
   ),
 });
 
-export type DaemonStreamSnapshot = z.infer<typeof DaemonStreamSnapshotSchema>;
-export type SessionStreamSnapshot = z.infer<typeof SessionStreamSnapshotSchema>;
+export type DaemonStreamSnapshot = Static<typeof DaemonStreamSnapshotSchema>;
+export type SessionStreamSnapshot = Static<typeof SessionStreamSnapshotSchema>;
+
+// ---------------------------------------------------------------------------
+// Parse helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Safely parses an unknown value as an `EforgeEvent`.
+ * Returns `{ success: true, data }` on success or `{ success: false, error }` on failure.
+ */
+export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEvent> {
+  return safeParseWithSchema(EforgeEventSchema, value);
+}
+
+/**
+ * Parses an unknown value as an `EforgeEvent`, throwing on failure.
+ */
+export function parseEforgeEvent(value: unknown): EforgeEvent {
+  return parseWithSchema(EforgeEventSchema, value);
+}
+
+/**
+ * Safely parses an unknown value as a `DaemonStreamSnapshot`.
+ * Returns `{ success: true, data }` on success or `{ success: false, error }` on failure.
+ */
+export function safeParseDaemonStreamSnapshot(value: unknown): SafeParseResult<DaemonStreamSnapshot> {
+  return safeParseWithSchema(DaemonStreamSnapshotSchema, value);
+}
+
+/**
+ * Safely parses an unknown value as a `SessionStreamSnapshot`.
+ * Returns `{ success: true, data }` on success or `{ success: false, error }` on failure.
+ */
+export function safeParseSessionStreamSnapshot(value: unknown): SafeParseResult<SessionStreamSnapshot> {
+  return safeParseWithSchema(SessionStreamSnapshotSchema, value);
+}
