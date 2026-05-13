@@ -15,6 +15,7 @@ pnpm type-check   # Type check without emitting
 
 - **Engine emits, consumers render.** The engine never writes to stdout - all communication flows through `EforgeEvent`s.
 - **Engine vs plugin boundary.** The engine runs without Claude Code. The plugin is a thin launcher/facilitator - requirement refinement, subprocess delegation, status rendering.
+- **Engine vs wrapper-app boundary.** Scheduling, triggers, approvals, notifications, and richer workflow orchestration belong in wrapper apps built on stable eforge APIs, not in the engine. The build engine consumes normalized PRD/build source and emits typed events; reusable input-artifact protocols (playbooks, session plans) live in `@eforge-build/input`; scope and path lookup lives in `@eforge-build/scopes`. Wrapper apps may compose these packages directly or call the daemon HTTP client (`@eforge-build/client`). New scheduling or workflow features proposed for the engine or daemon should be challenged against this guardrail - if it belongs in a wrapper app, keep it there.
 
 ## Conventions
 
