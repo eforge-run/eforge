@@ -1,3 +1,13 @@
+// --- eforge:region plan-01-schema-utility ---
+export {
+  safeParseWithSchema,
+  parseWithSchema,
+  formatSchemaError,
+  getSchemaYaml,
+} from './schema-utils.js';
+export type { SafeParseResult, SchemaError } from './schema-utils.js';
+// --- eforge:endregion plan-01-schema-utility ---
+
 export { API_ROUTES, buildPath } from './routes.js';
 export type {
   ApiRoute,

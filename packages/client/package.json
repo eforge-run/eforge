@@ -34,9 +34,12 @@
   },
   "homepage": "https://eforge.build",
   "scripts": {
-    "build": "tsup"
+    "build": "tsup",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
+    "@sinclair/typebox": "^0.34.49",
+    "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
