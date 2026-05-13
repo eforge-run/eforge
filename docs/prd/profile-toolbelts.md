@@ -94,6 +94,26 @@ agents:
 }
 ```
 
+## Relationship to Native TypeScript Extensions
+
+Toolbelts and native TypeScript extensions are complementary but intentionally separate concepts:
+
+- **Toolbelts** are declarative MCP capability bundles selected by agent runtime profiles. They answer: "Which project MCP servers should this tier expose?"
+- **Extensions** are imperative TypeScript modules that observe or influence eforge lifecycle behavior. They answer: "What should eforge do when something happens?"
+
+Toolbelts do not execute code and do not perform automatic profile selection. Extensions may inspect profile metadata, tags, and toolbelt assignments when making decisions such as per-build profile routing, but extensions should not redefine toolbelts or become a hidden profile/config layer.
+
+The effective tool surface for an agent run should be understood as:
+
+```text
+engine-internal tools
++ profile/toolbelt-selected project MCP tools
++ extension-contributed custom tools
+- explicit allowed/disallowed filters
+```
+
+Toolbelt filtering applies only to project MCP servers from `.mcp.json`. It must not filter engine-internal submission tools, harness built-ins, or extension-contributed custom tools.
+
 ## Proposed schema
 
 ### Profile metadata
