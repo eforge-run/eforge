@@ -9,6 +9,7 @@ import {
   planReviewSubmissionSchema,
   type PlanReviewSubmission,
 } from '../schemas.js';
+import { safeParseWithSchema } from '@eforge-build/client';
 import { applyPlanReviewFixes } from '../plan.js';
 import { formatSubmissionValidationError } from './planner.js';
 
@@ -44,9 +45,9 @@ function createPlanReviewSubmissionTool(
     description: 'Submit fixes for plan artifacts. Use this tool to apply all fixes you identified during review. Pass an empty fixes array if no fixes are needed.',
     inputSchema: planReviewSubmissionSchema,
     handler: async (input: unknown) => {
-      const result = planReviewSubmissionSchema.safeParse(input);
+      const result = safeParseWithSchema(planReviewSubmissionSchema, input);
       if (!result.success) {
-        return formatSubmissionValidationError(result.error.issues);
+        return formatSubmissionValidationError(result.error.errors);
       }
       if (!onSubmit(result.data)) {
         return 'Error: a submission tool was already called. Only one submission per review turn is allowed.';

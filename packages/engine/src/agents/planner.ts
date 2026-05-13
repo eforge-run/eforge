@@ -9,8 +9,10 @@ import { deriveNameFromSource, extractPlanTitle, parsePlanFile, writePlanSet, wr
 import {
   getClarificationSchemaYaml, getModuleSchemaYaml, getPlanFrontmatterSchemaYaml,
   planSetSubmissionSchema, architectureSubmissionSchema,
+  validatePlanSetSubmission, validateArchitectureSubmission,
   type PlanSetSubmission, type ArchitectureSubmission,
 } from '../schemas.js';
+import { safeParseWithSchema, type ValueError } from '@eforge-build/client';
 import { REVIEW_PERSPECTIVES, type BuildStageSpec, type ReviewProfileConfig } from '@eforge-build/client';
 import { emitPlanningDecision } from '../decisions.js';
 
@@ -63,17 +65,22 @@ ${rows.join('\n')}`;
 }
 
 /**
- * Format zod validation issues into a retry-oriented error message.
+ * Format TypeBox validation errors into a retry-oriented error message.
  *
  * The previous `Validation error: ${result.error.message}` served up a raw
  * JSON-stringified issues array, which models read as "the tool is broken"
  * and abandon in favor of Write. An explicit per-path breakdown plus an
  * explicit "call the tool again" instruction flips that behavior to a retry.
+ *
+ * TypeBox paths are JSON-pointer strings (e.g. `/plans/0/id`); they are
+ * converted to dot-notation (e.g. `plans.0.id`) for readability.
  */
-export function formatSubmissionValidationError(issues: readonly { path: readonly (string | number | symbol)[]; message: string }[]): string {
-  const lines = issues.map((issue) => {
-    const path = issue.path.length > 0 ? issue.path.map(String).join('.') : '(root)';
-    return `  - ${path}: ${issue.message}`;
+export function formatSubmissionValidationError(errors: readonly ValueError[]): string {
+  const lines = errors.map((error) => {
+    const path = error.path
+      ? (error.path.replace(/^\//, '').replace(/\//g, '.') || '(root)')
+      : '(root)';
+    return `  - ${path}: ${error.message}`;
   });
   return [
     'Submission rejected: the payload did not validate against the schema.',
@@ -96,11 +103,15 @@ function createPlanSetSubmissionTool(
     description: 'Submit a complete plan set with all plan files and orchestration configuration. This is the only way to complete the planning turn for errand/excursion mode.',
     inputSchema: planSetSubmissionSchema,
     handler: async (input: unknown) => {
-      const result = planSetSubmissionSchema.safeParse(input);
-      if (!result.success) {
-        return formatSubmissionValidationError(result.error.issues);
+      const parseResult = safeParseWithSchema(planSetSubmissionSchema, input);
+      if (!parseResult.success) {
+        return formatSubmissionValidationError(parseResult.error.errors);
       }
-      if (!onSubmit(result.data)) {
+      const validationResult = validatePlanSetSubmission(parseResult.data);
+      if (!validationResult.success) {
+        return formatSubmissionValidationError(validationResult.error.errors);
+      }
+      if (!onSubmit(validationResult.data)) {
         return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
       }
       return 'Plan set submitted successfully.';
@@ -120,11 +131,15 @@ function createArchitectureSubmissionTool(
     description: 'Submit architecture documentation and module definitions for an expedition. This is the only way to complete the planning turn for expedition mode.',
     inputSchema: architectureSubmissionSchema,
     handler: async (input: unknown) => {
-      const result = architectureSubmissionSchema.safeParse(input);
-      if (!result.success) {
-        return formatSubmissionValidationError(result.error.issues);
+      const parseResult = safeParseWithSchema(architectureSubmissionSchema, input);
+      if (!parseResult.success) {
+        return formatSubmissionValidationError(parseResult.error.errors);
       }
-      if (!onSubmit(result.data)) {
+      const validationResult = validateArchitectureSubmission(parseResult.data);
+      if (!validationResult.success) {
+        return formatSubmissionValidationError(validationResult.error.errors);
+      }
+      if (!onSubmit(validationResult.data)) {
         return 'Error: a submission tool was already called. Only one submission per planning turn is allowed.';
       }
       return 'Architecture submitted successfully.';

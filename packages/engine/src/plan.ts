@@ -4,12 +4,18 @@ import { execFile } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { promisify } from 'node:util';
 import { parse as parseYaml, stringify as stringifyYaml } from 'yaml';
+import { Type } from '@sinclair/typebox';
 import type { PlanFile, OrchestrationConfig, ExpeditionModule } from './events.js';
 import type { BuildStageSpec, ReviewProfileConfig } from './config.js';
-import { buildStageSpecSchema, reviewProfileConfigSchema } from './config.js';
-import { pipelineCompositionSchema, agentTuningSchema } from './schemas.js';
-import type { PipelineComposition } from './schemas.js';
-import { z } from 'zod/v4';
+import {
+  pipelineCompositionSchema,
+  agentTuningSchema,
+  pipelineBuildStageSpecSchema,
+  pipelineReviewProfileConfigSchema,
+  validateShardScope,
+  type PipelineComposition,
+} from './schemas.js';
+import { safeParseWithSchema, formatSchemaError } from '@eforge-build/client';
 
 const execAsync = promisify(execFile);
 
@@ -213,12 +219,26 @@ export async function parsePlanFile(mdPath: string, tiers?: Record<string, unkno
   let agents: PlanFile['agents'] | undefined;
   const planWarnings: string[] = [];
   if (frontmatter.agents !== undefined) {
-    const agentsValidator = z.record(z.string(), agentTuningSchema);
-    const agentsResult = agentsValidator.safeParse(frontmatter.agents);
+    const agentsValidator = Type.Record(Type.String(), agentTuningSchema);
+    const agentsResult = safeParseWithSchema(agentsValidator, frontmatter.agents);
     if (agentsResult.success) {
-      agents = agentsResult.data as PlanFile['agents'];
+      // Post-parse: validate shard constraints (each shard must specify roots or files)
+      const invalidShards: string[] = [];
+      for (const [role, tuning] of Object.entries(agentsResult.data)) {
+        for (const shard of ((tuning as { shards?: Array<{ id: string; roots?: string[]; files?: string[] }> }).shards ?? [])) {
+          const shardResult = validateShardScope(shard);
+          if (!shardResult.success) {
+            invalidShards.push(`role "${role}", shard "${shard.id}"`);
+          }
+        }
+      }
+      if (invalidShards.length > 0) {
+        planWarnings.push(`[eforge] Plan file ${absPath}: malformed 'agents' block will be ignored: invalid shards (${invalidShards.join(', ')})`);
+      } else {
+        agents = agentsResult.data as PlanFile['agents'];
+      }
     } else {
-      planWarnings.push(`[eforge] Plan file ${absPath}: malformed 'agents' block will be ignored: ${z.prettifyError(agentsResult.error)}`);
+      planWarnings.push(`[eforge] Plan file ${absPath}: malformed 'agents' block will be ignored: ${formatSchemaError(agentsResult.error)}`);
     }
   }
 
@@ -270,20 +290,20 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
         const id = typeof p.id === 'string' ? p.id : String(p.id ?? '');
 
         // Parse required per-plan build/review
-        const buildResult = z.array(buildStageSpecSchema).safeParse(p.build);
+        const buildResult = safeParseWithSchema(Type.Array(pipelineBuildStageSpecSchema), p.build);
         if (!buildResult.success) {
-          throw new Error(`Plan '${id}' has invalid or missing 'build' field: ${buildResult.error.message}`);
+          throw new Error(`Plan '${id}' has invalid or missing 'build' field: ${formatSchemaError(buildResult.error)}`);
         }
-        const reviewResult = reviewProfileConfigSchema.safeParse(p.review);
+        const reviewResult = safeParseWithSchema(pipelineReviewProfileConfigSchema, p.review);
         if (!reviewResult.success) {
-          throw new Error(`Plan '${id}' has invalid or missing 'review' field: ${reviewResult.error.message}`);
+          throw new Error(`Plan '${id}' has invalid or missing 'review' field: ${formatSchemaError(reviewResult.error)}`);
         }
 
         // Parse optional agents block
         let agents: Record<string, { effort?: string; thinking?: boolean | { [x: string]: unknown }; rationale?: string; tier?: string }> | undefined;
         if (p.agents !== undefined) {
-          const agentsValidator = z.record(z.string(), agentTuningSchema);
-          const agentsResult = agentsValidator.safeParse(p.agents);
+          const agentsValidator = Type.Record(Type.String(), agentTuningSchema);
+          const agentsResult = safeParseWithSchema(agentsValidator, p.agents);
           if (agentsResult.success) {
             agents = agentsResult.data as Record<string, { effort?: string; thinking?: boolean | { [x: string]: unknown }; rationale?: string; tier?: string }>;
           } else {
@@ -312,7 +332,7 @@ export async function parseOrchestrationConfig(yamlPath: string): Promise<Orches
   if (!data.pipeline || typeof data.pipeline !== 'object') {
     throw new Error(`Orchestration config missing required 'pipeline' field: ${absPath}`);
   }
-  const pipelineResult = pipelineCompositionSchema.safeParse(data.pipeline);
+  const pipelineResult = safeParseWithSchema(pipelineCompositionSchema, data.pipeline);
   if (!pipelineResult.success) {
     throw new Error(`Orchestration config has malformed 'pipeline' field: ${absPath}`);
   }

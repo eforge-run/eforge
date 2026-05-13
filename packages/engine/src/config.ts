@@ -12,7 +12,6 @@ import { z } from 'zod/v4';
 import { sanitizeProfileName, parseRawConfigLegacy, REVIEW_PERSPECTIVES } from '@eforge-build/client';
 import type { ReviewProfileConfig, BuildStageSpec } from '@eforge-build/client';
 import type { AgentRole } from './events.js';
-import { shardScopeSchema } from './schemas.js';
 import type { ShardScope } from './schemas.js';
 import {
   resolveNamedSet,
@@ -205,6 +204,20 @@ export const tierConfigSchema = z.object({
   }
 }).describe('A self-contained tier recipe (harness + model + effort + tuning)');
 
+// Local Zod copy of shardScopeSchema for use within Zod-based config schemas.
+// config.ts will be migrated to TypeBox in a follow-up PRD. Mirrors the TypeBox
+// shardScopeSchema + validateShardScope pair from schemas.ts: the .refine() here
+// enforces the same "must specify at least one of roots or files" constraint
+// that validateShardScope enforces on the TypeBox side.
+const localShardScopeSchema = z.object({
+  id: z.string().min(1).describe('Unique shard identifier within the plan'),
+  roots: z.array(z.string().min(1)).optional().describe('Directory roots claimed by this shard (matched via path prefix)'),
+  files: z.array(z.string().min(1)).optional().describe('Explicit file paths claimed by this shard'),
+}).refine(
+  (shard) => (shard.roots !== undefined && shard.roots.length > 0) || (shard.files !== undefined && shard.files.length > 0),
+  { message: 'Each shard must specify at least one of roots or files' },
+).describe('Scope definition for a single implementation shard');
+
 /**
  * Per-role override block. Roles select a tier and may further tune per-role
  * fields without redeclaring the harness/model/etc. (those flow from the tier).
@@ -217,7 +230,7 @@ const roleOverrideSchema = z.object({
   allowedTools: z.array(z.string()).optional().describe('Override allowedTools for this role'),
   disallowedTools: z.array(z.string()).optional().describe('Override disallowedTools for this role'),
   promptAppend: z.string().optional().describe('Text appended to this role\'s prompt after variable substitution'),
-  shards: z.array(shardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
+  shards: z.array(localShardScopeSchema).optional().describe('Parallel implementation shards (builder role only)'),
 });
 
 /** Base object schema without refinements — .partial() is derived from this. */

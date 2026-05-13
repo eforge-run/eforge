@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import type { EforgeEvent, BuildFailureSummary } from '@eforge-build/engine/events';
 import { parseRecoveryVerdictBlock } from '@eforge-build/engine/agents/common';
 import { recoveryVerdictSchema, getRecoveryVerdictSchemaYaml } from '@eforge-build/engine/schemas';
+import { safeParseWithSchema } from '@eforge-build/client';
 import { runRecoveryAnalyst } from '@eforge-build/engine/agents/recovery-analyst';
 import { writeRecoverySidecar } from '@eforge-build/engine/recovery/sidecar';
 import { buildFailureSummary } from '@eforge-build/engine/recovery/failure-summary';
@@ -185,11 +186,11 @@ describe('recoveryVerdictSchema', () => {
   }
 
   it('accepts retry verdict', () => {
-    expect(recoveryVerdictSchema.safeParse(makeVerdict({ verdict: 'retry', confidence: 'high' })).success).toBe(true);
+    expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict({ verdict: 'retry', confidence: 'high' })).success).toBe(true);
   });
 
   it('accepts split verdict with suggestedSuccessorPrd', () => {
-    const result = recoveryVerdictSchema.safeParse(makeVerdict({
+    const result = safeParseWithSchema(recoveryVerdictSchema, makeVerdict({
       verdict: 'split',
       confidence: 'medium',
       suggestedSuccessorPrd: '# Successor PRD\n\nContent here.',
@@ -198,23 +199,23 @@ describe('recoveryVerdictSchema', () => {
   });
 
   it('accepts abandon verdict', () => {
-    expect(recoveryVerdictSchema.safeParse(makeVerdict({ verdict: 'abandon' })).success).toBe(true);
+    expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict({ verdict: 'abandon' })).success).toBe(true);
   });
 
   it('accepts manual verdict (no suggestedSuccessorPrd)', () => {
-    expect(recoveryVerdictSchema.safeParse(makeVerdict()).success).toBe(true);
+    expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict()).success).toBe(true);
   });
 
   it('rejects unknown verdict', () => {
-    expect(recoveryVerdictSchema.safeParse(makeVerdict({ verdict: 'unknown' })).success).toBe(false);
+    expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict({ verdict: 'unknown' })).success).toBe(false);
   });
 
   it('rejects unknown confidence', () => {
-    expect(recoveryVerdictSchema.safeParse(makeVerdict({ confidence: 'extreme' })).success).toBe(false);
+    expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict({ confidence: 'extreme' })).success).toBe(false);
   });
 
   it('rejects empty rationale', () => {
-    expect(recoveryVerdictSchema.safeParse(makeVerdict({ rationale: '' })).success).toBe(false);
+    expect(safeParseWithSchema(recoveryVerdictSchema, makeVerdict({ rationale: '' })).success).toBe(false);
   });
 });
 

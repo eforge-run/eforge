@@ -30,7 +30,6 @@ import { discoverPiExtensions, type PiExtensionConfig } from './pi-extensions.js
 import { normalizeUsage, toModelUsageEntry } from './usage.js';
 import { buildAgentStartEvent, normalizeToolUseId } from './common.js';
 import { isEforgePiResource, EFORGE_PI_PACKAGE_NAME } from './eforge-resource-filter.js';
-import { z } from 'zod/v4';
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -424,12 +423,12 @@ export class PiHarness implements AgentHarness {
       // execute callback matches Pi's arity-5 signature
       // `(toolCallId, params, signal, onUpdate, ctx)`; the planner handler
       // only uses `params`, the rest are accepted and ignored.
+      // The inputSchema is now a TypeBox TObject — pass it directly as parameters
+      // without any Zod/JSON-Schema round-trip.
       const eforgeCustomTools: ToolDefinition[] = [];
       if (options.customTools && options.customTools.length > 0) {
-        const { jsonSchemaToTypeBox } = await import('./pi-mcp-bridge.js');
         for (const ct of options.customTools) {
-          const jsonSchema = z.toJSONSchema(ct.inputSchema) as Record<string, unknown>;
-          const parameters = jsonSchemaToTypeBox(jsonSchema);
+          const parameters = ct.inputSchema;
           const execute: ToolDefinition['execute'] = async (
             _toolCallId,
             params,

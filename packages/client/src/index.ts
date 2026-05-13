@@ -5,7 +5,7 @@ export {
   formatSchemaError,
   getSchemaYaml,
 } from './schema-utils.js';
-export type { SafeParseResult, SchemaError } from './schema-utils.js';
+export type { SafeParseResult, SchemaError, ValueError } from './schema-utils.js';
 // --- eforge:endregion plan-01-schema-utility ---
 
 export { API_ROUTES, buildPath } from './routes.js';

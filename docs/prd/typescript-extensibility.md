@@ -145,7 +145,7 @@ The SDK should export:
 - test harness / event replay helpers,
 - examples and templates.
 
-Prefer TypeBox for public schemas to align with Pi and the roadmap item to standardize schemas on TypeBox.
+Prefer TypeBox for public schemas to align with Pi and the broader codebase migration to TypeBox as the canonical schema library for eforge-owned domain schemas. Zod remains only at third-party SDK compatibility boundaries (e.g. the Claude Agent SDK adapter in `harnesses/claude-sdk.ts`).
 
 ## Extension Point Roadmap
 
@@ -513,7 +513,7 @@ This lets `/eforge:extend` report concrete behavior:
 
 ## Preferred Roadmap Summary
 
-1. **TypeBox schema unification / shared tool registry prerequisites** where needed for public tool schemas.
+1. **TypeBox schema unification** - migration is in progress. The first slice (client wire schemas in `@eforge-build/client`, engine structured-output schemas in `packages/engine/src/schemas.ts`, and custom-tool contracts in `harness.ts`) is complete. Config (`config.ts`), input artifact (`packages/input/`), and MCP proxy schemas (`mcp-tool-factory.ts`, `mcp-proxy.ts`) remain Zod until a follow-up PRD. No shared tool registry prerequisite is required before beginning phase 1 of the extension roadmap.
 2. **Extension SDK + loader** with scoped discovery and config.
 3. **Typed event extensions** as the first supported capability.
 4. **CLI/daemon extension manager** for list/new/validate/test/reload.

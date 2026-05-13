@@ -411,19 +411,35 @@ describe('sharded implement stage', () => {
   });
 
   it('schema: shards with neither roots nor files fail validation', async () => {
-    const { shardScopeSchema } = await import('@eforge-build/engine/schemas');
+    const { shardScopeSchema, validateShardScope } = await import('@eforge-build/engine/schemas');
+    const { safeParseWithSchema } = await import('@eforge-build/client');
 
-    // Valid
-    expect(shardScopeSchema.safeParse({ id: 'a', roots: ['src/'] }).success).toBe(true);
-    expect(shardScopeSchema.safeParse({ id: 'b', files: ['foo.ts'] }).success).toBe(true);
-    expect(shardScopeSchema.safeParse({ id: 'c', roots: ['src/'], files: ['foo.ts'] }).success).toBe(true);
+    // Valid: schema-level parse passes, post-parse validation also passes
+    const resultA = safeParseWithSchema(shardScopeSchema, { id: 'a', roots: ['src/'] });
+    expect(resultA.success).toBe(true);
+    if (resultA.success) expect(validateShardScope(resultA.data).success).toBe(true);
 
-    // Invalid: neither roots nor files
-    const emptyResult = shardScopeSchema.safeParse({ id: 'd' });
-    expect(emptyResult.success).toBe(false);
+    const resultB = safeParseWithSchema(shardScopeSchema, { id: 'b', files: ['foo.ts'] });
+    expect(resultB.success).toBe(true);
+    if (resultB.success) expect(validateShardScope(resultB.data).success).toBe(true);
 
-    // Invalid: empty roots and empty files
-    const emptyArrayResult = shardScopeSchema.safeParse({ id: 'e', roots: [], files: [] });
-    expect(emptyArrayResult.success).toBe(false);
+    const resultC = safeParseWithSchema(shardScopeSchema, { id: 'c', roots: ['src/'], files: ['foo.ts'] });
+    expect(resultC.success).toBe(true);
+    if (resultC.success) expect(validateShardScope(resultC.data).success).toBe(true);
+
+    // Invalid: neither roots nor files — schema-level parse succeeds (optional fields)
+    // but post-parse validation rejects it
+    const emptyResult = safeParseWithSchema(shardScopeSchema, { id: 'd' });
+    expect(emptyResult.success).toBe(true); // TypeBox: optional fields are allowed to be absent
+    if (emptyResult.success) {
+      expect(validateShardScope(emptyResult.data).success).toBe(false);
+    }
+
+    // Invalid: empty roots and empty files — same pattern
+    const emptyArrayResult = safeParseWithSchema(shardScopeSchema, { id: 'e', roots: [], files: [] });
+    expect(emptyArrayResult.success).toBe(true);
+    if (emptyArrayResult.success) {
+      expect(validateShardScope(emptyArrayResult.data).success).toBe(false);
+    }
   });
 });

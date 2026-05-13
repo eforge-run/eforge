@@ -24,24 +24,29 @@ const repoRoot = join(__dirname, '..');
 // Allowlist
 //
 // Every file listed here is currently permitted to import from 'zod' or
-// 'zod/v4'.  Remove entries as files are migrated to TypeBox in plan-02 / plan-03.
+// 'zod/v4'.  Remove entries as files are migrated to TypeBox.
+//
+// plan-03 removed: schemas.ts, harness.ts, harnesses/pi.ts, plan.ts,
+//   agents/common.ts (all migrated to TypeBox in plan-03).
+// plan-03 added: harnesses/claude-sdk.ts — contains the explicit TypeBox-to-Zod
+//   adapter (typeboxObjectToZodRawShape) required to satisfy the Claude Agent
+//   SDK's tool() registration API. Zod is isolated to this one adapter file.
 // ---------------------------------------------------------------------------
 
 const ZOD_IMPORT_ALLOWLIST: readonly string[] = [
-  // eforge CLI — MCP tool integration (migrated in plan-03)
+  // eforge CLI — MCP tool integration (out of scope for plan-03)
   'packages/eforge/src/cli/mcp-proxy.ts',
   'packages/eforge/src/cli/mcp-tool-factory.ts',
 
-  // engine — config, plan, prd-queue, schemas, harness files (migrated in plan-03)
-  'packages/engine/src/agents/common.ts',
-  'packages/engine/src/config.ts',
-  'packages/engine/src/harness.ts',
-  'packages/engine/src/harnesses/pi.ts',
-  'packages/engine/src/plan.ts',
-  'packages/engine/src/prd-queue.ts',
-  'packages/engine/src/schemas.ts',
+  // engine — TypeBox-to-Zod adapter for Claude Agent SDK tool() registration.
+  // This is the only permitted Zod import in engine source after plan-03.
+  'packages/engine/src/harnesses/claude-sdk.ts',
 
-  // input — playbook + session-plan schemas (migrated in plan-03)
+  // engine — config and prd-queue (deferred to a follow-up PRD)
+  'packages/engine/src/config.ts',
+  'packages/engine/src/prd-queue.ts',
+
+  // input — playbook + session-plan schemas (out of scope for plan-03)
   'packages/input/src/playbook.ts',
   'packages/input/src/session-plan.ts',
 ] as const;

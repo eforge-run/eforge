@@ -6,7 +6,7 @@ import { loadPrompt } from '../prompts.js';
 import { pipelineCompositionSchema, getPipelineCompositionSchemaYaml } from '../schemas.js';
 import type { PipelineComposition } from '../schemas.js';
 import { formatStageRegistry, validatePipeline } from '../pipeline.js';
-import { REVIEW_PERSPECTIVES } from '@eforge-build/client';
+import { REVIEW_PERSPECTIVES, parseWithSchema } from '@eforge-build/client';
 
 /**
  * Options for the pipeline composer agent.
@@ -136,7 +136,7 @@ export async function* composePipeline(
     // Try to extract and validate JSON
     try {
       const parsed = extractJson(resultText);
-      const composition: PipelineComposition = pipelineCompositionSchema.parse(parsed);
+      const composition: PipelineComposition = parseWithSchema(pipelineCompositionSchema, parsed);
 
       // Validate the composed pipeline against registered stages
       const validation = validatePipeline(composition.compile, composition.defaultBuild);
