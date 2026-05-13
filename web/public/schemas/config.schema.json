@@ -1,0 +1,530 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "maxConcurrentBuilds": {
+      "type": "integer",
+      "exclusiveMinimum": 0,
+      "maximum": 9007199254740991
+    },
+    "langfuse": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "publicKey": {
+          "type": "string"
+        },
+        "secretKey": {
+          "type": "string"
+        },
+        "host": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "agents": {
+      "type": "object",
+      "properties": {
+        "maxTurns": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxContinuations": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "permissionMode": {
+          "type": "string",
+          "enum": [
+            "bypass",
+            "default"
+          ]
+        },
+        "settingSources": {
+          "minItems": 1,
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "user",
+              "project",
+              "local"
+            ]
+          }
+        },
+        "bare": {
+          "type": "boolean"
+        },
+        "promptDir": {
+          "description": "Directory of .md files that shadow bundled prompts by name match",
+          "type": "string"
+        },
+        "tiers": {
+          "description": "Tier recipes — every tier referenced by any role must be declared",
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "harness": {
+                "type": "string",
+                "enum": [
+                  "claude-sdk",
+                  "pi"
+                ],
+                "description": "Which harness to run for roles in this tier"
+              },
+              "pi": {
+                "description": "Pi-specific configuration (only when harness === \"pi\")",
+                "type": "object",
+                "properties": {
+                  "provider": {
+                    "description": "Pi provider name (required when used in a pi tier)",
+                    "type": "string"
+                  },
+                  "apiKey": {
+                    "description": "API key for the Pi provider",
+                    "type": "string"
+                  },
+                  "thinkingLevel": {
+                    "description": "Thinking level for Pi agents",
+                    "type": "string",
+                    "enum": [
+                      "off",
+                      "low",
+                      "medium",
+                      "high",
+                      "xhigh"
+                    ]
+                  },
+                  "extensions": {
+                    "description": "Pi extension configuration",
+                    "type": "object",
+                    "properties": {
+                      "autoDiscover": {
+                        "description": "Automatically discover Pi extensions",
+                        "type": "boolean"
+                      },
+                      "include": {
+                        "description": "Extension names to include",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "exclude": {
+                        "description": "Extension names to exclude",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      },
+                      "paths": {
+                        "description": "Explicit extension directory paths to load",
+                        "type": "array",
+                        "items": {
+                          "type": "string"
+                        }
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "compaction": {
+                    "description": "Context compaction settings",
+                    "type": "object",
+                    "properties": {
+                      "enabled": {
+                        "description": "Enable context compaction",
+                        "type": "boolean"
+                      },
+                      "threshold": {
+                        "description": "Token threshold before compaction triggers",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
+                  },
+                  "retry": {
+                    "description": "Retry configuration for Pi API calls",
+                    "type": "object",
+                    "properties": {
+                      "maxRetries": {
+                        "description": "Maximum retry attempts",
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 9007199254740991
+                      },
+                      "backoffMs": {
+                        "description": "Initial backoff in milliseconds",
+                        "type": "integer",
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991
+                      }
+                    },
+                    "additionalProperties": false
+                  }
+                },
+                "additionalProperties": false
+              },
+              "claudeSdk": {
+                "description": "Claude SDK-specific configuration (only when harness === \"claude-sdk\")",
+                "type": "object",
+                "properties": {
+                  "disableSubagents": {
+                    "description": "Disable the Task tool so agents cannot spawn subagents. Claude SDK harness only.",
+                    "type": "boolean"
+                  }
+                },
+                "additionalProperties": false
+              },
+              "model": {
+                "type": "string",
+                "description": "Model identifier for this tier (provider is taken from pi.provider for pi)"
+              },
+              "effort": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ],
+                "description": "Effort level for roles in this tier"
+              },
+              "thinking": {
+                "description": "When true, request thinking; coerced to adaptive for adaptive-only models",
+                "type": "boolean"
+              },
+              "fallbackModel": {
+                "description": "Fallback model id when primary is unavailable",
+                "type": "string"
+              },
+              "maxTurns": {
+                "description": "Default maxTurns for roles in this tier",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "allowedTools": {
+                "description": "Whitelist of allowed tool names",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "disallowedTools": {
+                "description": "Blacklist of disallowed tool names",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "promptAppend": {
+                "description": "Text appended to every agent prompt in this tier after variable substitution",
+                "type": "string"
+              }
+            },
+            "required": [
+              "harness",
+              "model",
+              "effort"
+            ],
+            "additionalProperties": false,
+            "description": "A self-contained tier recipe (harness + model + effort + tuning)"
+          }
+        },
+        "roles": {
+          "description": "Per-agent role overrides",
+          "type": "object",
+          "propertyNames": {
+            "type": "string",
+            "enum": [
+              "planner",
+              "builder",
+              "reviewer",
+              "review-fixer",
+              "evaluator",
+              "module-planner",
+              "plan-reviewer",
+              "plan-evaluator",
+              "architecture-reviewer",
+              "architecture-evaluator",
+              "cohesion-reviewer",
+              "cohesion-evaluator",
+              "validation-fixer",
+              "merge-conflict-resolver",
+              "staleness-assessor",
+              "formatter",
+              "doc-author",
+              "doc-syncer",
+              "test-writer",
+              "tester",
+              "prd-validator",
+              "dependency-detector",
+              "pipeline-composer",
+              "gap-closer",
+              "recovery-analyst"
+            ]
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "tier": {
+                "description": "Override the tier assignment for this role",
+                "type": "string",
+                "enum": [
+                  "planning",
+                  "implementation",
+                  "review",
+                  "evaluation"
+                ]
+              },
+              "effort": {
+                "description": "Override effort for this role",
+                "type": "string",
+                "enum": [
+                  "low",
+                  "medium",
+                  "high",
+                  "xhigh",
+                  "max"
+                ]
+              },
+              "thinking": {
+                "description": "Override thinking for this role",
+                "type": "boolean"
+              },
+              "maxTurns": {
+                "description": "Override maxTurns for this role",
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "allowedTools": {
+                "description": "Override allowedTools for this role",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "disallowedTools": {
+                "description": "Override disallowedTools for this role",
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "promptAppend": {
+                "description": "Text appended to this role's prompt after variable substitution",
+                "type": "string"
+              },
+              "shards": {
+                "description": "Parallel implementation shards (builder role only)",
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "minLength": 1,
+                      "description": "Unique shard identifier within the plan"
+                    },
+                    "roots": {
+                      "description": "Directory roots claimed by this shard (matched via path prefix)",
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    },
+                    "files": {
+                      "description": "Explicit file paths claimed by this shard",
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "minLength": 1
+                      }
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": false,
+                  "description": "Scope definition for a single implementation shard"
+                }
+              }
+            },
+            "additionalProperties": false
+          },
+          "required": [
+            "planner",
+            "builder",
+            "reviewer",
+            "review-fixer",
+            "evaluator",
+            "module-planner",
+            "plan-reviewer",
+            "plan-evaluator",
+            "architecture-reviewer",
+            "architecture-evaluator",
+            "cohesion-reviewer",
+            "cohesion-evaluator",
+            "validation-fixer",
+            "merge-conflict-resolver",
+            "staleness-assessor",
+            "formatter",
+            "doc-author",
+            "doc-syncer",
+            "test-writer",
+            "tester",
+            "prd-validator",
+            "dependency-detector",
+            "pipeline-composer",
+            "gap-closer",
+            "recovery-analyst"
+          ]
+        }
+      },
+      "additionalProperties": false
+    },
+    "build": {
+      "type": "object",
+      "properties": {
+        "worktreeDir": {
+          "type": "string"
+        },
+        "postMergeCommands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "postMergeCommandTimeoutMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "maxValidationRetries": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        },
+        "cleanupPlanFiles": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    },
+    "plan": {
+      "type": "object",
+      "properties": {
+        "outputDir": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "plugins": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "include": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "prdQueue": {
+      "type": "object",
+      "properties": {
+        "dir": {
+          "type": "string"
+        },
+        "autoBuild": {
+          "type": "boolean"
+        },
+        "watchPollIntervalMs": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "daemon": {
+      "type": "object",
+      "properties": {
+        "idleShutdownMs": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "monitor": {
+      "type": "object",
+      "properties": {
+        "retentionCount": {
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        }
+      },
+      "additionalProperties": false
+    },
+    "hooks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "timeout": {
+            "default": 5000,
+            "type": "number",
+            "exclusiveMinimum": 0
+          }
+        },
+        "required": [
+          "event",
+          "command",
+          "timeout"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

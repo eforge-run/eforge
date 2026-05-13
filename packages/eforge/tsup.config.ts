@@ -19,15 +19,30 @@ function resolveBuildVersion(semver: string): string {
   }
 }
 
-export default defineConfig({
-  entry: ["src/cli.ts"],
-  format: ["esm"],
-  target: "node22",
-  clean: true,
-  dts: false,
-  external: [/^@eforge-build\//],
-  define: { EFORGE_VERSION: JSON.stringify(resolveBuildVersion(version)) },
-  banner: {
-    js: "#!/usr/bin/env -S node --disable-warning=ExperimentalWarning",
+const eforgeVersion = JSON.stringify(resolveBuildVersion(version));
+
+export default defineConfig([
+  {
+    // Binary entry: the executable eforge CLI
+    entry: ["src/cli.ts"],
+    format: ["esm"],
+    target: "node22",
+    clean: true,
+    dts: false,
+    external: [/^@eforge-build\//],
+    define: { EFORGE_VERSION: eforgeVersion },
+    banner: {
+      js: "#!/usr/bin/env -S node --disable-warning=ExperimentalWarning",
+    },
   },
-});
+  {
+    // Library entry: exports buildEforgeCommand for programmatic use (docs-gen, tests)
+    entry: { "cli/index": "src/cli/index.ts" },
+    format: ["esm"],
+    target: "node22",
+    clean: false,
+    dts: true,
+    external: [/^@eforge-build\//, "commander", "chalk", "ora", "yaml", "zod"],
+    define: { EFORGE_VERSION: eforgeVersion },
+  },
+]);

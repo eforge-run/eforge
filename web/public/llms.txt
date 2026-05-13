@@ -1,0 +1,19 @@
+# eforge
+
+eforge is an autonomous build-and-review orchestration engine for code generation. It accepts a PRD (Product Requirements Document) as input, plans implementation steps using AI agents, builds in parallel worktrees, reviews the result, and merges to the base branch. The daemon keeps a persistent HTTP server for queue management and live SSE event streaming.
+
+## Canonical reference
+
+- [CLI reference](/reference/cli.md): All eforge CLI subcommands and options
+- [Daemon HTTP API](/reference/api.md): REST endpoints and SSE streams exposed by the eforge daemon
+- [Event protocol](/reference/events.md): All EforgeEvent discriminant variants emitted on the SSE stream
+- [Configuration](/reference/config.md): eforge/config.yaml schema with all fields and defaults
+- [MCP tools and skills](/reference/tools.md): MCP tools (Claude Code plugin) and native commands (Pi extension) plus skill parity table
+
+## Schemas
+
+- [Event schema (JSON Schema)](/schemas/events.schema.json)
+- [Config schema (JSON Schema)](/schemas/config.schema.json)
+
+eforge version: 0.7.12
+Docs commit: 92819a5c
