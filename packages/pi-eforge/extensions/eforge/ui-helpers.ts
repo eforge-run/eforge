@@ -6,8 +6,8 @@
  * composition that the eforge_confirm_build tool established.
  */
 
-import { DynamicBorder, getMarkdownTheme } from "@mariozechner/pi-coding-agent";
-import { Container, Input, Markdown, type SelectItem, SelectList, Text, matchesKey, Key, fuzzyFilter } from "@mariozechner/pi-tui";
+import { DynamicBorder, getMarkdownTheme } from "@earendil-works/pi-coding-agent";
+import { Container, Input, Markdown, type SelectItem, SelectList, Text, matchesKey, Key, fuzzyFilter } from "@earendil-works/pi-tui";
 
 /** Minimal UI context type for overlay helpers. */
 export interface UIContext {

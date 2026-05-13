@@ -8,7 +8,7 @@
  * Pi UI is not available.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
   apiPlaybookList,
   apiPlaybookEnqueue,

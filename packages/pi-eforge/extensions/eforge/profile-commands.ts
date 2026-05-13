@@ -7,7 +7,7 @@
  * the Pi UI is not available.
  */
 
-import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { daemonRequest, API_ROUTES, buildPath } from "@eforge-build/client";
 import { showSelectOverlay, showSearchableSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
 import { buildProfileCreatePayload, type TierSelection, type ProfileCreatePayload } from "./profile-payload";

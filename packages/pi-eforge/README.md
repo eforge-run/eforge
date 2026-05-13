@@ -34,7 +34,7 @@ Then, in your project:
 ## Requirements
 
 - Node.js 22+
-- [Pi](https://github.com/nicories/pi-mono)
+- [Pi](https://github.com/earendil-works/pi-mono)
 - An LLM provider credential supported by your chosen eforge harness
 
 ## Relationship to the `@eforge-build/eforge` npm package

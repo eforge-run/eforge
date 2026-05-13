@@ -130,7 +130,7 @@ export async function buildAgentRuntimeRegistry(
     } catch (err) {
       throw new Error(
         'Failed to load Pi harness. Ensure Pi SDK dependencies are installed ' +
-        '(@mariozechner/pi-ai and @mariozechner/pi-agent-core). ' +
+        '(@earendil-works/pi-ai and @earendil-works/pi-agent-core). ' +
         `Original error: ${err instanceof Error ? err.message : String(err)}`,
       );
     }

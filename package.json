@@ -35,16 +35,16 @@
     "@eforge-build/monitor": "workspace:*",
     "@eforge-build/monitor-ui": "workspace:*",
     "@eforge-build/scopes": "workspace:*",
-    "@mariozechner/pi-agent-core": "^0.70.6",
-    "@mariozechner/pi-ai": "^0.70.6",
-    "@mariozechner/pi-coding-agent": "^0.70.6",
-    "@types/jsdom": "^28.0.1",
-    "@types/node": "^25.6.0",
+    "@earendil-works/pi-agent-core": "^0.74.0",
+    "@earendil-works/pi-ai": "^0.74.0",
+    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@types/jsdom": "^28.0.3",
+    "@types/node": "^25.7.0",
     "commander": "^14.0.3",
     "jsdom": "^29.1.1",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.5",
-    "yaml": "^2.8.4",
-    "zod": "^4.4.2"
+    "vitest": "^4.1.6",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
   }
 }

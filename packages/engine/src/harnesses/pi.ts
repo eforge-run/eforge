@@ -1,5 +1,5 @@
 /**
- * Pi coding agent harness — implements AgentHarness using @mariozechner/pi-coding-agent.
+ * Pi coding agent harness — implements AgentHarness using @earendil-works/pi-coding-agent.
  * All Pi SDK imports are isolated to this file and pi-mcp-bridge.ts.
  */
 
@@ -16,10 +16,10 @@ import {
   getAgentDir,
   type AgentSessionEvent,
   type ToolDefinition,
-} from '@mariozechner/pi-coding-agent';
-import { getModel } from '@mariozechner/pi-ai';
-import type { Model, Api } from '@mariozechner/pi-ai';
-import type { AgentTool, ThinkingLevel } from '@mariozechner/pi-agent-core';
+} from '@earendil-works/pi-coding-agent';
+import { getModel } from '@earendil-works/pi-ai';
+import type { Model, Api } from '@earendil-works/pi-ai';
+import type { AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
 import type { AgentHarness, AgentRunOptions, ThinkingConfig, EffortLevel, HarnessDebugCallback, HarnessDebugPayload } from '../harness.js';

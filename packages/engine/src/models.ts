@@ -47,12 +47,12 @@ interface PiCodingAgentModule {
 }
 
 async function loadPiAi(): Promise<PiAiModule> {
-  const mod = await import('@mariozechner/pi-ai');
+  const mod = await import('@earendil-works/pi-ai');
   return mod as unknown as PiAiModule;
 }
 
 async function loadPiModelRegistry(): Promise<PiModelRegistryLike> {
-  const mod = await import('@mariozechner/pi-coding-agent');
+  const mod = await import('@earendil-works/pi-coding-agent');
   const pi = mod as unknown as PiCodingAgentModule;
   return pi.ModelRegistry.create(pi.AuthStorage.create());
 }

@@ -28,19 +28,19 @@
     ]
   },
   "peerDependencies": {
-    "@mariozechner/pi-ai": "*",
-    "@mariozechner/pi-coding-agent": "*",
-    "@mariozechner/pi-tui": "*",
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "@earendil-works/pi-tui": "*",
     "@sinclair/typebox": "*"
   },
   "peerDependenciesMeta": {
-    "@mariozechner/pi-coding-agent": {
+    "@earendil-works/pi-coding-agent": {
       "optional": false
     },
-    "@mariozechner/pi-ai": {
+    "@earendil-works/pi-ai": {
       "optional": false
     },
-    "@mariozechner/pi-tui": {
+    "@earendil-works/pi-tui": {
       "optional": false
     },
     "@sinclair/typebox": {

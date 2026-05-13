@@ -67,7 +67,7 @@ For a deeper look at the engine internals, see the [architecture docs](docs/arch
 
 ## Install
 
-**Prerequisites:** Node.js 22+, [Claude Code](https://claude.ai/code) or [Pi](https://github.com/nicories/pi-mono), and an LLM provider credential - Anthropic API key or [Claude subscription](https://claude.ai/upgrade) for the `claude-sdk` harness, or a provider-specific API key or OAuth token for the `pi` harness
+**Prerequisites:** Node.js 22+, [Claude Code](https://claude.ai/code) or [Pi](https://github.com/earendil-works/pi-mono), and an LLM provider credential - Anthropic API key or [Claude subscription](https://claude.ai/upgrade) for the `claude-sdk` harness, or a provider-specific API key or OAuth token for the `pi` harness
 
 Claude Code plugin:
 
@@ -191,6 +191,6 @@ eforge's harness abstraction allows different AI providers. Each harness carries
 
   **Note:** If you are building a product or service on top of eforge, Anthropic requires API key authentication through [Claude Console](https://platform.claude.com/) - OAuth tokens from Free, Pro, or Max plans may not be used for third-party products.
 
-- **Pi harness** (`@mariozechner/pi-ai`, `@mariozechner/pi-agent-core`, `@mariozechner/pi-coding-agent`) - a fully open-source harness alternative supporting 20+ LLM providers (OpenAI, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, and more). All three packages are [MIT licensed](https://github.com/nicories/pi-mono/blob/main/LICENSE) from the [pi-mono](https://github.com/nicories/pi-mono) monorepo.
+- **Pi harness** (`@earendil-works/pi-ai`, `@earendil-works/pi-agent-core`, `@earendil-works/pi-coding-agent`) - a fully open-source harness alternative supporting 20+ LLM providers (OpenAI, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, and more). All three packages are [MIT licensed](https://github.com/earendil-works/pi-mono/blob/main/LICENSE) from the [pi-mono](https://github.com/earendil-works/pi-mono) monorepo.
 
 eforge's Apache 2.0 license applies to eforge's own source code. It does not extend to or override the license terms of its dependencies.
