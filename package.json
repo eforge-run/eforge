@@ -21,7 +21,11 @@
     "type-check": "pnpm -r type-check",
     "release": "node scripts/bump-version.mjs",
     "publish-all": "node scripts/publish-all.mjs",
-    "docs:check-parity": "node scripts/check-skill-parity.mjs"
+    "docs:check-parity": "node scripts/check-skill-parity.mjs",
+    "docs:generate": "pnpm --filter @eforge-build/docs-gen build && node packages/docs-gen/dist/cli.js generate --all",
+    "docs:check": "pnpm --filter @eforge-build/docs-gen build && node packages/docs-gen/dist/cli.js check",
+    "docs:dev": "pnpm docs:generate && pnpm --filter @eforge-build/web dev",
+    "docs:build": "pnpm docs:generate && pnpm --filter @eforge-build/web build"
   },
   "packageManager": "pnpm@10.26.0",
   "pnpm": {
@@ -31,6 +35,8 @@
   },
   "devDependencies": {
     "@eforge-build/client": "workspace:*",
+    "@eforge-build/web": "workspace:*",
+    "@eforge-build/docs-gen": "workspace:*",
     "@eforge-build/engine": "workspace:*",
     "@eforge-build/monitor": "workspace:*",
     "@eforge-build/monitor-ui": "workspace:*",

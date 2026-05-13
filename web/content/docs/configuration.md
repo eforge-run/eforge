@@ -1,0 +1,172 @@
+---
+title: Configuration
+description: Key configuration options for eforge and how to tune them.
+---
+
+# Configuration
+
+eforge is configured via `eforge/config.yaml` (searched upward from cwd). All fields are optional - defaults work for most projects. This page covers the most commonly tuned options. For the full schema see the [Configuration Reference](/reference/config).
+
+## The Three Config Tiers
+
+Config merges from three levels (lowest to highest priority):
+
+| Tier | Path | Committed? | Purpose |
+|------|------|-----------|---------|
+| User | `~/.config/eforge/config.yaml` | No | Cross-project, personal |
+| Project | `eforge/config.yaml` | Yes | Team-canonical |
+| Project-local | `.eforge/config.yaml` | No (gitignored) | Personal override |
+
+The project-local tier deep-merges over the others. Use it for personal tuning - different model choices, extra verbosity, or test commands you do not want to commit.
+
+## Initialization
+
+The fastest way to set up config is `/eforge:init` in Claude Code or Pi. It scaffolds `eforge/config.yaml` with sensible defaults and walks you through harness and model selection.
+
+To edit config interactively after initialization: `/eforge:config --edit`.
+
+## Agent Tiers
+
+Tiers are the primary configuration axis. Each tier is a self-contained recipe: `harness + model + effort`.
+
+```yaml
+agents:
+  tiers:
+    planning:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+    implementation:
+      harness: claude-sdk
+      model: claude-sonnet-4-6
+      effort: medium
+    review:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+    evaluation:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+```
+
+You only need to list tiers you want to change - unspecified tiers keep their engine defaults.
+
+**Effort levels**: `low`, `medium`, `high`, `xhigh`, `max`. Higher effort means more agent turns and more thorough output, at higher cost.
+
+**Thinking**: Add `thinking: true` to a tier to enable extended thinking. It is coerced to adaptive mode for models that only support adaptive thinking.
+
+## Using the Pi Harness
+
+To build with a provider other than Anthropic, set `harness: pi` and add a `pi.provider` block:
+
+```yaml
+agents:
+  tiers:
+    planning:
+      harness: pi
+      model: anthropic/claude-opus-4-6
+      effort: high
+      pi:
+        provider: openrouter
+    implementation:
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
+      effort: medium
+      pi:
+        provider: openrouter
+```
+
+Pi supports OpenAI, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, and local models. Authentication resolves from provider-specific environment variables or `~/.pi/agent/auth.json`. For OAuth providers (OpenAI Codex, GitHub Copilot), run `pi auth login <provider>` first.
+
+## Agent Runtime Profiles
+
+A profile bundles tier recipes into a reusable named file. This lets you switch between configurations - such as "use Claude for review, local model for implementation" - without editing `eforge/config.yaml`.
+
+Profiles live at three scopes:
+
+- `~/.config/eforge/profiles/` - User scope
+- `eforge/profiles/` - Project scope (committed)
+- `.eforge/profiles/` - Project-local scope (gitignored)
+
+The active profile is resolved highest-priority-first. Set one with:
+
+```
+/eforge:profile use <name>
+```
+
+Or from the CLI: `eforge profile use <name>`.
+
+## Post-Merge Commands
+
+Commands to run after all plans merge - compile, test, lint, or any validation step:
+
+```yaml
+build:
+  postMergeCommands:
+    - "pnpm type-check"
+    - "pnpm test"
+  maxValidationRetries: 2
+```
+
+Each command runs under a 5-minute wall-clock timeout. On failure, a validation-fixer agent attempts repairs up to `maxValidationRetries` times.
+
+## Queue Concurrency
+
+How many PRDs to build concurrently when processing the queue:
+
+```yaml
+maxConcurrentBuilds: 2   # default
+```
+
+Within a single build, plans run in parallel automatically as their dependencies are satisfied - no configuration needed there.
+
+## Per-Role Tuning
+
+Fine-tune individual agent roles without reassigning them to a different tier:
+
+```yaml
+agents:
+  roles:
+    builder:
+      effort: high
+      maxTurns: 80
+    reviewer:
+      promptAppend: |
+        ## Project Rules
+        - Flag raw SQL queries
+        - Require error handling for all async operations
+    formatter:
+      effort: low
+```
+
+Available per-role fields: `tier`, `effort`, `thinking`, `maxTurns`, `allowedTools`, `disallowedTools`, `promptAppend`, `shards` (builder-only).
+
+## Custom Prompts
+
+Override any bundled agent prompt by placing a `.md` file in `eforge/prompts/` with the same name as the role:
+
+```yaml
+agents:
+  promptDir: eforge/prompts
+```
+
+If `eforge/prompts/reviewer.md` exists, it replaces the bundled reviewer prompt entirely. Use `promptAppend` on a role for additive rules instead of full replacement.
+
+## Hooks
+
+Hooks are fire-and-forget shell commands triggered by eforge events - useful for notifications, logging, and external integrations:
+
+```yaml
+hooks:
+  - event: build:complete
+    run: "notify-send 'Build complete'"
+  - event: build:failed
+    run: "curl -X POST $SLACK_WEBHOOK -d '{\"text\": \"Build failed\"}'"
+```
+
+Hooks do not block the pipeline. See the [hooks reference](/reference/config#hooks) for the full event list.
+
+## Full Reference
+
+For the complete `eforge/config.yaml` schema with all fields, types, and defaults, see the [Configuration Reference](/reference/config).

@@ -123,13 +123,13 @@ async function consumeEvents(
 }
 
 
-export function createProgram(abortController?: AbortController): Command {
+export function createProgram(abortController?: AbortController, version?: string): Command {
   const program = new Command();
 
   program
     .name('eforge')
     .description('Autonomous plan-build-review CLI for code generation')
-    .version(EFORGE_VERSION);
+    .version(version ?? EFORGE_VERSION);
 
   program
     .command('enqueue <source>')
@@ -877,4 +877,15 @@ export async function run(): Promise<void> {
   const abortController = setupSignalHandlers();
   const program = createProgram(abortController);
   await program.parseAsync();
+}
+
+/**
+ * Factory function for the eforge Commander program tree.
+ * Exported for programmatic use (docs-gen, testing) — builds the full command
+ * hierarchy without executing or parsing args. An optional `version` override
+ * can be supplied when the caller does not have access to the baked-in
+ * EFORGE_VERSION define constant.
+ */
+export function buildEforgeCommand(options?: { version?: string }): Command {
+  return createProgram(undefined, options?.version);
 }

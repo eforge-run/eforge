@@ -1,0 +1,6295 @@
+{
+  "allOf": [
+    {
+      "type": "object",
+      "required": [
+        "timestamp"
+      ],
+      "properties": {
+        "sessionId": {
+          "type": "string"
+        },
+        "runId": {
+          "type": "string"
+        },
+        "timestamp": {
+          "type": "string"
+        }
+      }
+    },
+    {
+      "anyOf": [
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "sessionId"
+          ],
+          "properties": {
+            "type": {
+              "const": "session:start",
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "sessionId",
+            "result"
+          ],
+          "properties": {
+            "type": {
+              "const": "session:end",
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "result": {
+              "type": "object",
+              "required": [
+                "status",
+                "summary"
+              ],
+              "properties": {
+                "status": {
+                  "anyOf": [
+                    {
+                      "const": "completed",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "type": "string"
+                    },
+                    {
+                      "const": "skipped",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "profileName",
+            "source",
+            "scope",
+            "config"
+          ],
+          "properties": {
+            "type": {
+              "const": "session:profile",
+              "type": "string"
+            },
+            "profileName": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "const": "local",
+                  "type": "string"
+                },
+                {
+                  "const": "project",
+                  "type": "string"
+                },
+                {
+                  "const": "user-local",
+                  "type": "string"
+                },
+                {
+                  "const": "missing",
+                  "type": "string"
+                },
+                {
+                  "const": "none",
+                  "type": "string"
+                },
+                {
+                  "const": "override",
+                  "type": "string"
+                }
+              ]
+            },
+            "scope": {
+              "anyOf": [
+                {
+                  "const": "local",
+                  "type": "string"
+                },
+                {
+                  "const": "project",
+                  "type": "string"
+                },
+                {
+                  "const": "user",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "config": {
+              "anyOf": [
+                {},
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "runId",
+            "planSet",
+            "command"
+          ],
+          "properties": {
+            "type": {
+              "const": "phase:start",
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "planSet": {
+              "type": "string"
+            },
+            "command": {
+              "anyOf": [
+                {
+                  "const": "compile",
+                  "type": "string"
+                },
+                {
+                  "const": "build",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "runId",
+            "result"
+          ],
+          "properties": {
+            "type": {
+              "const": "phase:end",
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "result": {
+              "type": "object",
+              "required": [
+                "status",
+                "summary"
+              ],
+              "properties": {
+                "status": {
+                  "anyOf": [
+                    {
+                      "const": "completed",
+                      "type": "string"
+                    },
+                    {
+                      "const": "failed",
+                      "type": "string"
+                    },
+                    {
+                      "const": "skipped",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "message",
+            "source"
+          ],
+          "properties": {
+            "type": {
+              "const": "config:warning",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "details": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "message",
+            "source"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:warning",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "details": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "moduleId",
+            "reason",
+            "errors"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:module:build-config:invalid",
+              "type": "string"
+            },
+            "moduleId": {
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "const": "invalid-json",
+                  "type": "string"
+                },
+                {
+                  "const": "invalid-schema",
+                  "type": "string"
+                }
+              ]
+            },
+            "errors": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "source"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:start",
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "label": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:skip",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planCount",
+            "totalBodySize",
+            "hasMigrations"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:submission",
+              "type": "string"
+            },
+            "planCount": {
+              "type": "number"
+            },
+            "totalBodySize": {
+              "type": "number"
+            },
+            "hasMigrations": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:error",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "questions"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:clarification",
+              "type": "string"
+            },
+            "questions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "question"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "question": {
+                    "type": "string"
+                  },
+                  "context": {
+                    "type": "string"
+                  },
+                  "options": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "default": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "answers"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:clarification:answer",
+              "type": "string"
+            },
+            "answers": {
+              "type": "object",
+              "patternProperties": {
+                "^(.*)$": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:progress",
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "attempt",
+            "maxContinuations"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:continuation",
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxContinuations": {
+              "type": "number"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "const": "max_turns",
+                  "type": "string"
+                },
+                {
+                  "const": "dropped_submission",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "scope",
+            "compile",
+            "defaultBuild",
+            "defaultReview",
+            "rationale"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:pipeline",
+              "type": "string"
+            },
+            "scope": {
+              "type": "string"
+            },
+            "compile": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "defaultBuild": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                ]
+              }
+            },
+            "defaultReview": {
+              "type": "object",
+              "required": [
+                "strategy",
+                "perspectives",
+                "maxRounds",
+                "evaluatorStrictness"
+              ],
+              "properties": {
+                "strategy": {
+                  "anyOf": [
+                    {
+                      "const": "auto",
+                      "type": "string"
+                    },
+                    {
+                      "const": "single",
+                      "type": "string"
+                    },
+                    {
+                      "const": "parallel",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "perspectives": {
+                  "type": "array",
+                  "items": {
+                    "anyOf": [
+                      {
+                        "const": "code",
+                        "type": "string"
+                      },
+                      {
+                        "const": "security",
+                        "type": "string"
+                      },
+                      {
+                        "const": "api",
+                        "type": "string"
+                      },
+                      {
+                        "const": "docs",
+                        "type": "string"
+                      },
+                      {
+                        "const": "test",
+                        "type": "string"
+                      },
+                      {
+                        "const": "verify",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "maxRounds": {
+                  "type": "number"
+                },
+                "evaluatorStrictness": {
+                  "anyOf": [
+                    {
+                      "const": "strict",
+                      "type": "string"
+                    },
+                    {
+                      "const": "standard",
+                      "type": "string"
+                    },
+                    {
+                      "const": "lenient",
+                      "type": "string"
+                    }
+                  ]
+                }
+              }
+            },
+            "rationale": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "plans"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:complete",
+              "type": "string"
+            },
+            "plans": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "name",
+                  "dependsOn",
+                  "branch",
+                  "body",
+                  "filePath"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "dependsOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "branch": {
+                    "type": "string"
+                  },
+                  "migrations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "timestamp",
+                        "description"
+                      ],
+                      "properties": {
+                        "timestamp": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "agents": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "type": "object",
+                        "properties": {
+                          "effort": {
+                            "type": "string"
+                          },
+                          "thinking": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              }
+                            ]
+                          },
+                          "rationale": {
+                            "type": "string"
+                          },
+                          "tier": {
+                            "type": "string"
+                          },
+                          "shards": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "roots": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "files": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "filePath": {
+                    "type": "string"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            },
+            "planConfigs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "build": {
+                    "type": "array",
+                    "items": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      ]
+                    }
+                  },
+                  "review": {
+                    "type": "object",
+                    "required": [
+                      "strategy",
+                      "perspectives",
+                      "maxRounds",
+                      "evaluatorStrictness"
+                    ],
+                    "properties": {
+                      "strategy": {
+                        "anyOf": [
+                          {
+                            "const": "auto",
+                            "type": "string"
+                          },
+                          {
+                            "const": "single",
+                            "type": "string"
+                          },
+                          {
+                            "const": "parallel",
+                            "type": "string"
+                          }
+                        ]
+                      },
+                      "perspectives": {
+                        "type": "array",
+                        "items": {
+                          "anyOf": [
+                            {
+                              "const": "code",
+                              "type": "string"
+                            },
+                            {
+                              "const": "security",
+                              "type": "string"
+                            },
+                            {
+                              "const": "api",
+                              "type": "string"
+                            },
+                            {
+                              "const": "docs",
+                              "type": "string"
+                            },
+                            {
+                              "const": "test",
+                              "type": "string"
+                            },
+                            {
+                              "const": "verify",
+                              "type": "string"
+                            }
+                          ]
+                        }
+                      },
+                      "maxRounds": {
+                        "type": "number"
+                      },
+                      "evaluatorStrictness": {
+                        "anyOf": [
+                          {
+                            "const": "strict",
+                            "type": "string"
+                          },
+                          {
+                            "const": "standard",
+                            "type": "string"
+                          },
+                          {
+                            "const": "lenient",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:review:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "issues"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:review:complete",
+              "type": "string"
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "severity",
+                  "category",
+                  "file",
+                  "description"
+                ],
+                "properties": {
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warning",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suggestion",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "number"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "fix": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:evaluate:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "attempt",
+            "maxContinuations"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:evaluate:continuation",
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxContinuations": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "accepted",
+            "rejected"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:evaluate:complete",
+              "type": "string"
+            },
+            "accepted": {
+              "type": "number"
+            },
+            "rejected": {
+              "type": "number"
+            },
+            "verdicts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "action",
+                  "reason"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "anyOf": [
+                      {
+                        "const": "accept",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reject",
+                        "type": "string"
+                      },
+                      {
+                        "const": "review",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:architecture:review:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "issues"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:architecture:review:complete",
+              "type": "string"
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "severity",
+                  "category",
+                  "file",
+                  "description"
+                ],
+                "properties": {
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warning",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suggestion",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "number"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "fix": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:architecture:evaluate:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "attempt",
+            "maxContinuations"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:architecture:evaluate:continuation",
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxContinuations": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "accepted",
+            "rejected"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:architecture:evaluate:complete",
+              "type": "string"
+            },
+            "accepted": {
+              "type": "number"
+            },
+            "rejected": {
+              "type": "number"
+            },
+            "verdicts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "action",
+                  "reason"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "anyOf": [
+                      {
+                        "const": "accept",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reject",
+                        "type": "string"
+                      },
+                      {
+                        "const": "review",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:cohesion:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "issues"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:cohesion:complete",
+              "type": "string"
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "severity",
+                  "category",
+                  "file",
+                  "description"
+                ],
+                "properties": {
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warning",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suggestion",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "number"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "fix": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:cohesion:evaluate:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "attempt",
+            "maxContinuations"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:cohesion:evaluate:continuation",
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxContinuations": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "accepted",
+            "rejected"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:cohesion:evaluate:complete",
+              "type": "string"
+            },
+            "accepted": {
+              "type": "number"
+            },
+            "rejected": {
+              "type": "number"
+            },
+            "verdicts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "action",
+                  "reason"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "anyOf": [
+                      {
+                        "const": "accept",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reject",
+                        "type": "string"
+                      },
+                      {
+                        "const": "review",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:implement:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:implement:progress",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "attempt",
+            "maxContinuations"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:implement:continuation",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxContinuations": {
+              "type": "number"
+            },
+            "shardId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:implement:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "files"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:files_changed",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "diffs": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path",
+                  "diff"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "diff": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "baseBranch": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:review:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "issues"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:review:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "severity",
+                  "category",
+                  "file",
+                  "description"
+                ],
+                "properties": {
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warning",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suggestion",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "number"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "fix": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "perspectives"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:review:parallel:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "perspectives": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "const": "code",
+                    "type": "string"
+                  },
+                  {
+                    "const": "security",
+                    "type": "string"
+                  },
+                  {
+                    "const": "api",
+                    "type": "string"
+                  },
+                  {
+                    "const": "docs",
+                    "type": "string"
+                  },
+                  {
+                    "const": "test",
+                    "type": "string"
+                  },
+                  {
+                    "const": "verify",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "perspective"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:review:parallel:perspective:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "perspective": {
+              "anyOf": [
+                {
+                  "const": "code",
+                  "type": "string"
+                },
+                {
+                  "const": "security",
+                  "type": "string"
+                },
+                {
+                  "const": "api",
+                  "type": "string"
+                },
+                {
+                  "const": "docs",
+                  "type": "string"
+                },
+                {
+                  "const": "test",
+                  "type": "string"
+                },
+                {
+                  "const": "verify",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "perspective",
+            "issues"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:review:parallel:perspective:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "perspective": {
+              "anyOf": [
+                {
+                  "const": "code",
+                  "type": "string"
+                },
+                {
+                  "const": "security",
+                  "type": "string"
+                },
+                {
+                  "const": "api",
+                  "type": "string"
+                },
+                {
+                  "const": "docs",
+                  "type": "string"
+                },
+                {
+                  "const": "test",
+                  "type": "string"
+                },
+                {
+                  "const": "verify",
+                  "type": "string"
+                }
+              ]
+            },
+            "issues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "severity",
+                  "category",
+                  "file",
+                  "description"
+                ],
+                "properties": {
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warning",
+                        "type": "string"
+                      },
+                      {
+                        "const": "suggestion",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "category": {
+                    "type": "string"
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "line": {
+                    "type": "number"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "fix": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "perspective",
+            "error"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:review:parallel:perspective:error",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "perspective": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "issueCount"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:review:fix:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "issueCount": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:review:fix:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:evaluate:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "attempt",
+            "maxContinuations"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:evaluate:continuation",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxContinuations": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "accepted",
+            "rejected"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:evaluate:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "accepted": {
+              "type": "number"
+            },
+            "rejected": {
+              "type": "number"
+            },
+            "verdicts": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "file",
+                  "action",
+                  "reason"
+                ],
+                "properties": {
+                  "file": {
+                    "type": "string"
+                  },
+                  "action": {
+                    "anyOf": [
+                      {
+                        "const": "accept",
+                        "type": "string"
+                      },
+                      {
+                        "const": "reject",
+                        "type": "string"
+                      },
+                      {
+                        "const": "review",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:doc-author:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "docsAuthored"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:doc-author:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "docsAuthored": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:doc-sync:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "docsSynced"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:doc-sync:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "docsSynced": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:test:write:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "testsWritten"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:test:write:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "testsWritten": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:test:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "passed",
+            "failed",
+            "testBugsFixed",
+            "productionIssues"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:test:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "passed": {
+              "type": "number"
+            },
+            "failed": {
+              "type": "number"
+            },
+            "testBugsFixed": {
+              "type": "number"
+            },
+            "productionIssues": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "severity",
+                  "category",
+                  "file",
+                  "testFile",
+                  "description"
+                ],
+                "properties": {
+                  "severity": {
+                    "anyOf": [
+                      {
+                        "const": "critical",
+                        "type": "string"
+                      },
+                      {
+                        "const": "warning",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "category": {
+                    "anyOf": [
+                      {
+                        "const": "production-bug",
+                        "type": "string"
+                      },
+                      {
+                        "const": "missing-behavior",
+                        "type": "string"
+                      },
+                      {
+                        "const": "regression",
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "file": {
+                    "type": "string"
+                  },
+                  "testFile": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "testOutput": {
+                    "type": "string"
+                  },
+                  "fix": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "error"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:failed",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "terminalSubtype": {
+              "anyOf": [
+                {
+                  "const": "error_max_turns",
+                  "type": "string"
+                },
+                {
+                  "const": "error_max_budget_usd",
+                  "type": "string"
+                },
+                {
+                  "const": "error_max_structured_output_retries",
+                  "type": "string"
+                },
+                {
+                  "const": "error_during_execution",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:progress",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "status"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:status:change",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "const": "pending",
+                  "type": "string"
+                },
+                {
+                  "const": "running",
+                  "type": "string"
+                },
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "blocked",
+                  "type": "string"
+                },
+                {
+                  "const": "merged",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "error"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:error:set",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:error:clear",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planIds"
+          ],
+          "properties": {
+            "type": {
+              "const": "schedule:start",
+              "type": "string"
+            },
+            "planIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:schedule:ready",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:merge:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:merge:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "commitSha": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:merge:resolve:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "resolved"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:merge:resolve:complete",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "resolved": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "featureBranch",
+            "baseBranch"
+          ],
+          "properties": {
+            "type": {
+              "const": "merge:finalize:start",
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "featureBranch",
+            "baseBranch"
+          ],
+          "properties": {
+            "type": {
+              "const": "merge:finalize:complete",
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "commitSha": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "featureBranch",
+            "baseBranch",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "merge:finalize:skipped",
+              "type": "string"
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "path"
+          ],
+          "properties": {
+            "type": {
+              "const": "merge:worktree:set",
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "merge:worktree:clear",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "modules"
+          ],
+          "properties": {
+            "type": {
+              "const": "expedition:architecture:complete",
+              "type": "string"
+            },
+            "modules": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "description",
+                  "dependsOn"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "dependsOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "wave",
+            "moduleIds"
+          ],
+          "properties": {
+            "type": {
+              "const": "expedition:wave:start",
+              "type": "string"
+            },
+            "wave": {
+              "type": "number"
+            },
+            "moduleIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "wave"
+          ],
+          "properties": {
+            "type": {
+              "const": "expedition:wave:complete",
+              "type": "string"
+            },
+            "wave": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "moduleId"
+          ],
+          "properties": {
+            "type": {
+              "const": "expedition:module:start",
+              "type": "string"
+            },
+            "moduleId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "moduleId"
+          ],
+          "properties": {
+            "type": {
+              "const": "expedition:module:complete",
+              "type": "string"
+            },
+            "moduleId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "expedition:compile:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "plans"
+          ],
+          "properties": {
+            "type": {
+              "const": "expedition:compile:complete",
+              "type": "string"
+            },
+            "plans": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "id",
+                  "name",
+                  "dependsOn",
+                  "branch",
+                  "body",
+                  "filePath"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "dependsOn": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "branch": {
+                    "type": "string"
+                  },
+                  "migrations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "required": [
+                        "timestamp",
+                        "description"
+                      ],
+                      "properties": {
+                        "timestamp": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        }
+                      }
+                    }
+                  },
+                  "agents": {
+                    "type": "object",
+                    "patternProperties": {
+                      "^(.*)$": {
+                        "type": "object",
+                        "properties": {
+                          "effort": {
+                            "type": "string"
+                          },
+                          "thinking": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "object",
+                                "patternProperties": {
+                                  "^(.*)$": {}
+                                }
+                              }
+                            ]
+                          },
+                          "rationale": {
+                            "type": "string"
+                          },
+                          "tier": {
+                            "type": "string"
+                          },
+                          "shards": {
+                            "type": "array",
+                            "items": {
+                              "type": "object",
+                              "required": [
+                                "id"
+                              ],
+                              "properties": {
+                                "id": {
+                                  "type": "string"
+                                },
+                                "roots": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "files": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "body": {
+                    "type": "string"
+                  },
+                  "filePath": {
+                    "type": "string"
+                  },
+                  "warnings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agentId",
+            "agent",
+            "model",
+            "harness",
+            "harnessSource",
+            "tier",
+            "tierSource"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:start",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "agentId": {
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "model": {
+              "type": "string"
+            },
+            "harness": {
+              "anyOf": [
+                {
+                  "const": "claude-sdk",
+                  "type": "string"
+                },
+                {
+                  "const": "pi",
+                  "type": "string"
+                }
+              ]
+            },
+            "harnessSource": {
+              "const": "tier",
+              "type": "string"
+            },
+            "tier": {
+              "type": "string"
+            },
+            "tierSource": {
+              "anyOf": [
+                {
+                  "const": "tier",
+                  "type": "string"
+                },
+                {
+                  "const": "role",
+                  "type": "string"
+                },
+                {
+                  "const": "plan",
+                  "type": "string"
+                }
+              ]
+            },
+            "effort": {
+              "type": "string"
+            },
+            "effortSource": {
+              "anyOf": [
+                {
+                  "const": "tier",
+                  "type": "string"
+                },
+                {
+                  "const": "role",
+                  "type": "string"
+                },
+                {
+                  "const": "plan",
+                  "type": "string"
+                }
+              ]
+            },
+            "thinking": {
+              "type": "object",
+              "patternProperties": {
+                "^(.*)$": {}
+              }
+            },
+            "thinkingSource": {
+              "anyOf": [
+                {
+                  "const": "tier",
+                  "type": "string"
+                },
+                {
+                  "const": "role",
+                  "type": "string"
+                },
+                {
+                  "const": "plan",
+                  "type": "string"
+                }
+              ]
+            },
+            "effortClamped": {
+              "type": "boolean"
+            },
+            "effortOriginal": {
+              "type": "string"
+            },
+            "thinkingCoerced": {
+              "type": "boolean"
+            },
+            "thinkingOriginal": {
+              "type": "object",
+              "patternProperties": {
+                "^(.*)$": {}
+              }
+            },
+            "perspective": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agentId",
+            "agent",
+            "code",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:warning",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "agentId": {
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "code": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agentId",
+            "agent"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:stop",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "agentId": {
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agentId",
+            "agent",
+            "usage",
+            "costUsd",
+            "numTurns"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:usage",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "agentId": {
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "usage": {
+              "type": "object",
+              "required": [
+                "input",
+                "output",
+                "total",
+                "cacheRead",
+                "cacheCreation"
+              ],
+              "properties": {
+                "input": {
+                  "type": "number"
+                },
+                "output": {
+                  "type": "number"
+                },
+                "total": {
+                  "type": "number"
+                },
+                "cacheRead": {
+                  "type": "number"
+                },
+                "cacheCreation": {
+                  "type": "number"
+                }
+              }
+            },
+            "costUsd": {
+              "type": "number"
+            },
+            "numTurns": {
+              "type": "number"
+            },
+            "final": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agentId",
+            "agent",
+            "content"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:message",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "agentId": {
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "content": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agentId",
+            "agent",
+            "tool",
+            "toolUseId",
+            "input"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:tool_use",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "agentId": {
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "tool": {
+              "type": "string"
+            },
+            "toolUseId": {
+              "type": "string"
+            },
+            "input": {}
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agentId",
+            "agent",
+            "tool",
+            "toolUseId",
+            "output"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:tool_result",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "agentId": {
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "tool": {
+              "type": "string"
+            },
+            "toolUseId": {
+              "type": "string"
+            },
+            "output": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agent",
+            "result"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:result",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "result": {
+              "type": "object",
+              "required": [
+                "durationMs",
+                "durationApiMs",
+                "numTurns",
+                "totalCostUsd",
+                "usage",
+                "modelUsage"
+              ],
+              "properties": {
+                "durationMs": {
+                  "type": "number"
+                },
+                "durationApiMs": {
+                  "type": "number"
+                },
+                "numTurns": {
+                  "type": "number"
+                },
+                "totalCostUsd": {
+                  "type": "number"
+                },
+                "usage": {
+                  "type": "object",
+                  "required": [
+                    "input",
+                    "output",
+                    "total",
+                    "cacheRead",
+                    "cacheCreation"
+                  ],
+                  "properties": {
+                    "input": {
+                      "type": "number"
+                    },
+                    "output": {
+                      "type": "number"
+                    },
+                    "total": {
+                      "type": "number"
+                    },
+                    "cacheRead": {
+                      "type": "number"
+                    },
+                    "cacheCreation": {
+                      "type": "number"
+                    }
+                  }
+                },
+                "modelUsage": {
+                  "type": "object",
+                  "patternProperties": {
+                    "^(.*)$": {
+                      "type": "object",
+                      "required": [
+                        "inputTokens",
+                        "outputTokens",
+                        "cacheReadInputTokens",
+                        "cacheCreationInputTokens",
+                        "costUSD"
+                      ],
+                      "properties": {
+                        "inputTokens": {
+                          "type": "number"
+                        },
+                        "outputTokens": {
+                          "type": "number"
+                        },
+                        "cacheReadInputTokens": {
+                          "type": "number"
+                        },
+                        "cacheCreationInputTokens": {
+                          "type": "number"
+                        },
+                        "costUSD": {
+                          "type": "number"
+                        }
+                      }
+                    }
+                  }
+                },
+                "resultText": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agent",
+            "attempt",
+            "maxAttempts",
+            "subtype",
+            "label"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:retry",
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxAttempts": {
+              "type": "number"
+            },
+            "subtype": {
+              "anyOf": [
+                {
+                  "const": "error_max_turns",
+                  "type": "string"
+                },
+                {
+                  "const": "error_max_budget_usd",
+                  "type": "string"
+                },
+                {
+                  "const": "error_max_structured_output_retries",
+                  "type": "string"
+                },
+                {
+                  "const": "error_during_execution",
+                  "type": "string"
+                }
+              ]
+            },
+            "label": {
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "shardId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "commands"
+          ],
+          "properties": {
+            "type": {
+              "const": "validation:start",
+              "type": "string"
+            },
+            "commands": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "command"
+          ],
+          "properties": {
+            "type": {
+              "const": "validation:command:start",
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "command",
+            "exitCode",
+            "output"
+          ],
+          "properties": {
+            "type": {
+              "const": "validation:command:complete",
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            },
+            "exitCode": {
+              "type": "number"
+            },
+            "output": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "command",
+            "timeoutMs",
+            "pid"
+          ],
+          "properties": {
+            "type": {
+              "const": "validation:command:timeout",
+              "type": "string"
+            },
+            "command": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "type": "number"
+            },
+            "pid": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "passed"
+          ],
+          "properties": {
+            "type": {
+              "const": "validation:complete",
+              "type": "string"
+            },
+            "passed": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "attempt",
+            "maxAttempts"
+          ],
+          "properties": {
+            "type": {
+              "const": "validation:fix:start",
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            },
+            "maxAttempts": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "attempt"
+          ],
+          "properties": {
+            "type": {
+              "const": "validation:fix:complete",
+              "type": "string"
+            },
+            "attempt": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "prd_validation:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "passed",
+            "gaps"
+          ],
+          "properties": {
+            "type": {
+              "const": "prd_validation:complete",
+              "type": "string"
+            },
+            "passed": {
+              "type": "boolean"
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "requirement",
+                  "explanation"
+                ],
+                "properties": {
+                  "requirement": {
+                    "type": "string"
+                  },
+                  "explanation": {
+                    "type": "string"
+                  },
+                  "complexity": {
+                    "anyOf": [
+                      {
+                        "const": "trivial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "moderate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "significant",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            },
+            "completionPercent": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "gap_close:start",
+              "type": "string"
+            },
+            "gapCount": {
+              "type": "number"
+            },
+            "completionPercent": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planBody",
+            "gaps"
+          ],
+          "properties": {
+            "type": {
+              "const": "gap_close:plan_ready",
+              "type": "string"
+            },
+            "planBody": {
+              "type": "string"
+            },
+            "gaps": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "requirement",
+                  "explanation"
+                ],
+                "properties": {
+                  "requirement": {
+                    "type": "string"
+                  },
+                  "explanation": {
+                    "type": "string"
+                  },
+                  "complexity": {
+                    "anyOf": [
+                      {
+                        "const": "trivial",
+                        "type": "string"
+                      },
+                      {
+                        "const": "moderate",
+                        "type": "string"
+                      },
+                      {
+                        "const": "significant",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "gap_close:complete",
+              "type": "string"
+            },
+            "passed": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "reconciliation:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "report"
+          ],
+          "properties": {
+            "type": {
+              "const": "reconciliation:complete",
+              "type": "string"
+            },
+            "report": {
+              "type": "object",
+              "required": [
+                "valid",
+                "missing",
+                "corrupt",
+                "cleared"
+              ],
+              "properties": {
+                "valid": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "missing": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "corrupt": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "cleared": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planSet"
+          ],
+          "properties": {
+            "type": {
+              "const": "cleanup:start",
+              "type": "string"
+            },
+            "planSet": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planSet"
+          ],
+          "properties": {
+            "type": {
+              "const": "cleanup:complete",
+              "type": "string"
+            },
+            "planSet": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "action",
+            "details"
+          ],
+          "properties": {
+            "type": {
+              "const": "approval:needed",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "action": {
+              "type": "string"
+            },
+            "details": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "approved"
+          ],
+          "properties": {
+            "type": {
+              "const": "approval:response",
+              "type": "string"
+            },
+            "approved": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "source"
+          ],
+          "properties": {
+            "type": {
+              "const": "enqueue:start",
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "id",
+            "filePath",
+            "title",
+            "planSet"
+          ],
+          "properties": {
+            "type": {
+              "const": "enqueue:complete",
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            },
+            "filePath": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "planSet": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "error"
+          ],
+          "properties": {
+            "type": {
+              "const": "enqueue:failed",
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "error"
+          ],
+          "properties": {
+            "type": {
+              "const": "enqueue:commit-failed",
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "setName"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:start",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "setName": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "summary"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:summary",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "summary": {
+              "type": "object",
+              "required": [
+                "prdId",
+                "setName",
+                "featureBranch",
+                "baseBranch",
+                "plans",
+                "failingPlan",
+                "landedCommits",
+                "diffStat",
+                "modelsUsed",
+                "failedAt"
+              ],
+              "properties": {
+                "prdId": {
+                  "type": "string"
+                },
+                "setName": {
+                  "type": "string"
+                },
+                "featureBranch": {
+                  "type": "string"
+                },
+                "baseBranch": {
+                  "type": "string"
+                },
+                "plans": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "planId",
+                      "status"
+                    ],
+                    "properties": {
+                      "planId": {
+                        "type": "string"
+                      },
+                      "status": {
+                        "type": "string"
+                      },
+                      "mergedAt": {
+                        "type": "string"
+                      },
+                      "error": {
+                        "type": "string"
+                      },
+                      "terminalSubtype": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "failingPlan": {
+                  "type": "object",
+                  "required": [
+                    "planId"
+                  ],
+                  "properties": {
+                    "planId": {
+                      "type": "string"
+                    },
+                    "agentId": {
+                      "type": "string"
+                    },
+                    "agentRole": {
+                      "type": "string"
+                    },
+                    "errorMessage": {
+                      "type": "string"
+                    },
+                    "terminalSubtype": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "landedCommits": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "required": [
+                      "sha",
+                      "subject",
+                      "author",
+                      "date"
+                    ],
+                    "properties": {
+                      "sha": {
+                        "type": "string"
+                      },
+                      "subject": {
+                        "type": "string"
+                      },
+                      "author": {
+                        "type": "string"
+                      },
+                      "date": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                "diffStat": {
+                  "type": "string"
+                },
+                "modelsUsed": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "failedAt": {
+                  "type": "string"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "prdContent": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "verdict"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:complete",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "verdict": {
+              "type": "object",
+              "required": [
+                "verdict",
+                "confidence",
+                "rationale",
+                "completedWork",
+                "remainingWork",
+                "risks"
+              ],
+              "properties": {
+                "verdict": {
+                  "anyOf": [
+                    {
+                      "const": "retry",
+                      "type": "string"
+                    },
+                    {
+                      "const": "split",
+                      "type": "string"
+                    },
+                    {
+                      "const": "abandon",
+                      "type": "string"
+                    },
+                    {
+                      "const": "manual",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "confidence": {
+                  "anyOf": [
+                    {
+                      "const": "low",
+                      "type": "string"
+                    },
+                    {
+                      "const": "medium",
+                      "type": "string"
+                    },
+                    {
+                      "const": "high",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "rationale": {
+                  "type": "string"
+                },
+                "completedWork": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "remainingWork": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "risks": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "suggestedSuccessorPrd": {
+                  "type": "string"
+                },
+                "partial": {
+                  "type": "boolean"
+                },
+                "recoveryError": {
+                  "type": "string"
+                }
+              }
+            },
+            "sidecarMdPath": {
+              "type": "string"
+            },
+            "sidecarJsonPath": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "error"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:error",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            },
+            "rawOutput": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:apply:start",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "verdict",
+            "noAction"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:apply:complete",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "verdict": {
+              "anyOf": [
+                {
+                  "const": "retry",
+                  "type": "string"
+                },
+                {
+                  "const": "split",
+                  "type": "string"
+                },
+                {
+                  "const": "abandon",
+                  "type": "string"
+                },
+                {
+                  "const": "manual",
+                  "type": "string"
+                }
+              ]
+            },
+            "successorPrdId": {
+              "type": "string"
+            },
+            "noAction": {
+              "type": "boolean"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "recovery:apply:error",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "run"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:run:upsert",
+              "type": "string"
+            },
+            "run": {
+              "type": "object",
+              "required": [
+                "id",
+                "planSet",
+                "command",
+                "status",
+                "startedAt",
+                "cwd"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "planSet": {
+                  "type": "string"
+                },
+                "command": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "startedAt": {
+                  "type": "string"
+                },
+                "completedAt": {
+                  "type": "string"
+                },
+                "cwd": {
+                  "type": "string"
+                },
+                "pid": {
+                  "type": "number"
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:auto-build:paused",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "pid",
+            "port",
+            "version",
+            "mode"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:lifecycle:starting",
+              "type": "string"
+            },
+            "pid": {
+              "type": "number"
+            },
+            "port": {
+              "type": "number"
+            },
+            "version": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "pid",
+            "port",
+            "version",
+            "mode",
+            "recoveryDurationMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:lifecycle:ready",
+              "type": "string"
+            },
+            "pid": {
+              "type": "number"
+            },
+            "port": {
+              "type": "number"
+            },
+            "version": {
+              "type": "string"
+            },
+            "mode": {
+              "type": "string"
+            },
+            "recoveryDurationMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "signal",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:lifecycle:shutdown:start",
+              "type": "string"
+            },
+            "signal": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "durationMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:lifecycle:shutdown:complete",
+              "type": "string"
+            },
+            "durationMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "uptime",
+            "queueDepth",
+            "runningBuilds",
+            "autoBuild",
+            "subscribers"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:heartbeat",
+              "type": "string"
+            },
+            "uptime": {
+              "type": "number"
+            },
+            "queueDepth": {
+              "type": "number"
+            },
+            "runningBuilds": {
+              "type": "number"
+            },
+            "autoBuild": {
+              "type": "object",
+              "required": [
+                "enabled",
+                "paused"
+              ],
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "paused": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "subscribers": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "queueDepth",
+            "capacityRemaining"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:scheduler:dequeued",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "queueDepth": {
+              "type": "number"
+            },
+            "capacityRemaining": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "queueDepth",
+            "runningCount",
+            "limit"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:scheduler:capacity-blocked",
+              "type": "string"
+            },
+            "queueDepth": {
+              "type": "number"
+            },
+            "runningCount": {
+              "type": "number"
+            },
+            "limit": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "blockedBy"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:scheduler:dependency-blocked",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "blockedBy": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:auto-build:enabled",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:auto-build:resumed",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "trigger",
+            "prdsEnqueued"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:auto-build:triggered",
+              "type": "string"
+            },
+            "trigger": {
+              "type": "string"
+            },
+            "prdsEnqueued": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:recovery:start",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "runId",
+            "planSet",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:recovery:run-marked-failed",
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "planSet": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "path",
+            "pid"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:recovery:lock-removed",
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "pid": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "runsFailed",
+            "locksRemoved",
+            "durationMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:recovery:complete",
+              "type": "string"
+            },
+            "runsFailed": {
+              "type": "number"
+            },
+            "locksRemoved": {
+              "type": "number"
+            },
+            "durationMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "runId",
+            "sessionId",
+            "planSet",
+            "pid"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:orphan:reaped",
+              "type": "string"
+            },
+            "runId": {
+              "type": "string"
+            },
+            "sessionId": {
+              "type": "string"
+            },
+            "planSet": {
+              "type": "string"
+            },
+            "pid": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "source",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:warning",
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "details": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "source",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:error",
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdCount",
+            "dir"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:start",
+              "type": "string"
+            },
+            "prdCount": {
+              "type": "number"
+            },
+            "dir": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "title"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:prd:start",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "title"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:prd:discovered",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "title",
+            "verdict",
+            "justification"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:prd:stale",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "verdict": {
+              "anyOf": [
+                {
+                  "const": "proceed",
+                  "type": "string"
+                },
+                {
+                  "const": "revise",
+                  "type": "string"
+                },
+                {
+                  "const": "obsolete",
+                  "type": "string"
+                }
+              ]
+            },
+            "justification": {
+              "type": "string"
+            },
+            "revision": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:prd:skip",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "title",
+            "error"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:prd:commit-failed",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "title": {
+              "type": "string"
+            },
+            "error": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "status"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:prd:complete",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "const": "completed",
+                  "type": "string"
+                },
+                {
+                  "const": "failed",
+                  "type": "string"
+                },
+                {
+                  "const": "skipped",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "processed",
+            "skipped"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:complete",
+              "type": "string"
+            },
+            "processed": {
+              "type": "number"
+            },
+            "skipped": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "planId",
+            "decision"
+          ],
+          "properties": {
+            "type": {
+              "const": "plan:build:decision",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "decision": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "strategy",
+                    "source"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "review-strategy",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "strategy": {
+                      "anyOf": [
+                        {
+                          "const": "single",
+                          "type": "string"
+                        },
+                        {
+                          "const": "parallel",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "config",
+                          "type": "string"
+                        },
+                        {
+                          "const": "auto-threshold",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "auto": {
+                      "type": "object",
+                      "required": [
+                        "files",
+                        "lines",
+                        "threshold"
+                      ],
+                      "properties": {
+                        "files": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "lines": {
+                          "minimum": 0,
+                          "type": "integer"
+                        },
+                        "threshold": {
+                          "type": "object",
+                          "required": [
+                            "files",
+                            "lines"
+                          ],
+                          "properties": {
+                            "files": {
+                              "minimum": 0,
+                              "type": "integer"
+                            },
+                            "lines": {
+                              "minimum": 0,
+                              "type": "integer"
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "perspectives",
+                    "categories",
+                    "rules"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "perspectives-inferred",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "perspectives": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "code",
+                            "type": "string"
+                          },
+                          {
+                            "const": "security",
+                            "type": "string"
+                          },
+                          {
+                            "const": "api",
+                            "type": "string"
+                          },
+                          {
+                            "const": "docs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "test",
+                            "type": "string"
+                          },
+                          {
+                            "const": "verify",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "categories": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "rules": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "round",
+                    "reason",
+                    "issuesRemaining"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "cycle-terminated",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "round": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "anyOf": [
+                        {
+                          "const": "no-issues",
+                          "type": "string"
+                        },
+                        {
+                          "const": "max-rounds",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "issuesRemaining": {
+                      "minimum": 0,
+                      "type": "integer"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "round",
+                    "perspectives",
+                    "dropped"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "perspectives-respawned",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "round": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "perspectives": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "code",
+                            "type": "string"
+                          },
+                          {
+                            "const": "security",
+                            "type": "string"
+                          },
+                          {
+                            "const": "api",
+                            "type": "string"
+                          },
+                          {
+                            "const": "docs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "test",
+                            "type": "string"
+                          },
+                          {
+                            "const": "verify",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "dropped": {
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "code",
+                            "type": "string"
+                          },
+                          {
+                            "const": "security",
+                            "type": "string"
+                          },
+                          {
+                            "const": "api",
+                            "type": "string"
+                          },
+                          {
+                            "const": "docs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "test",
+                            "type": "string"
+                          },
+                          {
+                            "const": "verify",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "strictness",
+                    "source"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "evaluator-strictness",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "strictness": {
+                      "anyOf": [
+                        {
+                          "const": "strict",
+                          "type": "string"
+                        },
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lenient",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "config",
+                          "type": "string"
+                        },
+                        {
+                          "const": "default",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "verdict"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "recovery-verdict",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "verdict": {
+                      "anyOf": [
+                        {
+                          "const": "retry",
+                          "type": "string"
+                        },
+                        {
+                          "const": "split",
+                          "type": "string"
+                        },
+                        {
+                          "const": "abandon",
+                          "type": "string"
+                        },
+                        {
+                          "const": "manual",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "successorPrdId": {
+                      "type": "string"
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "strategy",
+                    "files"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "merge-conflict-resolution",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "strategy": {
+                      "type": "string"
+                    },
+                    "files": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "decision"
+          ],
+          "properties": {
+            "type": {
+              "const": "planning:decision",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "decision": {
+              "anyOf": [
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "scope",
+                    "source"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "scope-selected",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "anyOf": [
+                        {
+                          "const": "errand",
+                          "type": "string"
+                        },
+                        {
+                          "const": "excursion",
+                          "type": "string"
+                        },
+                        {
+                          "const": "expedition",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "source": {
+                      "anyOf": [
+                        {
+                          "const": "pipeline-composer",
+                          "type": "string"
+                        },
+                        {
+                          "const": "planner",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "defaultBuild"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "build-pipeline-chosen",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "defaultBuild": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "array",
+                            "items": {
+                              "type": "string"
+                            }
+                          }
+                        ]
+                      }
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "strategy",
+                    "perspectives",
+                    "maxRounds",
+                    "evaluatorStrictness"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "review-profile-chosen",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "strategy": {
+                      "anyOf": [
+                        {
+                          "const": "auto",
+                          "type": "string"
+                        },
+                        {
+                          "const": "single",
+                          "type": "string"
+                        },
+                        {
+                          "const": "parallel",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "perspectives": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "anyOf": [
+                          {
+                            "const": "code",
+                            "type": "string"
+                          },
+                          {
+                            "const": "security",
+                            "type": "string"
+                          },
+                          {
+                            "const": "api",
+                            "type": "string"
+                          },
+                          {
+                            "const": "docs",
+                            "type": "string"
+                          },
+                          {
+                            "const": "test",
+                            "type": "string"
+                          },
+                          {
+                            "const": "verify",
+                            "type": "string"
+                          }
+                        ]
+                      }
+                    },
+                    "maxRounds": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "evaluatorStrictness": {
+                      "anyOf": [
+                        {
+                          "const": "strict",
+                          "type": "string"
+                        },
+                        {
+                          "const": "standard",
+                          "type": "string"
+                        },
+                        {
+                          "const": "lenient",
+                          "type": "string"
+                        }
+                      ]
+                    }
+                  }
+                },
+                {
+                  "type": "object",
+                  "required": [
+                    "kind",
+                    "rationale",
+                    "planCount",
+                    "planIds"
+                  ],
+                  "properties": {
+                    "kind": {
+                      "const": "plan-set-shape",
+                      "type": "string"
+                    },
+                    "rationale": {
+                      "type": "string"
+                    },
+                    "planCount": {
+                      "minimum": 1,
+                      "type": "integer"
+                    },
+                    "planIds": {
+                      "minItems": 1,
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

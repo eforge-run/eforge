@@ -3,6 +3,8 @@
 [![npm version](https://img.shields.io/npm/v/@eforge-build/eforge)](https://www.npmjs.com/package/@eforge-build/eforge)
 [![npm pi package](https://img.shields.io/npm/v/@eforge-build/pi-eforge)](https://www.npmjs.com/package/@eforge-build/pi-eforge)
 
+> **Public docs:** [https://eforge.build/docs](https://eforge.build/docs) - Getting started, concepts, configuration, and the canonical reference docs for users and agents. Agent-readable artifacts at [/llms.txt](https://eforge.build/llms.txt).
+
 An open source agentic build system. Detailed plans go in. A planner sizes the work and shapes the pipeline - small intent runs through a fast path, large intent compiles into a dependency graph of sub-plans that build in parallel across isolated worktrees and merge in topological order. Implementation, blind review, and validation are always separated across agents and stages. The build phase runs in the background while you plan the next thing.
 
 Drive eforge from Claude Code or Pi. Pipeline stages delegate to either the Claude Agent SDK or pi-agent-core - the interface you drive and the harness that executes are independent. A Claude Max subscription covers the SDK path; an OpenAI Codex subscription covers the Pi path, which also reaches 20+ other providers including local models.

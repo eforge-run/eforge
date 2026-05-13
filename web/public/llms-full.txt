@@ -1,0 +1,647 @@
+
+<!-- section: cli -->
+<!-- Generated file. Do not edit. -->
+<!-- eforge version: 0.7.12 -->
+<!-- Commit: 92819a5c -->
+<!-- Source: packages/eforge/src/cli/index.ts -->
+
+# eforge CLI Reference
+
+Autonomous plan-build-review CLI for code generation.
+
+**Usage:** `eforge [command] [options]`
+
+## Commands
+
+### `enqueue`
+
+Normalize input and add it to the PRD queue
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--name <name>` | Override the inferred PRD title |
+| `--verbose` | Stream agent output |
+| `--no-plugins` | Disable plugin loading |
+| `--profile <name>` | Override active profile for this enqueue + build |
+
+### `build`
+
+Compile + build + validate in one step
+
+**Alias:** `run`
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--auto` | Run without approval gates |
+| `--verbose` | Stream agent output |
+| `--name <name>` | Plan set name (inferred from source if omitted) |
+| `--queue` | Process all PRDs from the queue |
+| `--max-concurrent-builds <n>` | Max parallel queue PRDs |
+| `--dry-run` | Compile only, then show execution plan without building |
+| `--foreground` | Run in-process instead of delegating to daemon |
+| `--no-cleanup` | Keep plan files after successful build |
+| `--no-monitor` | Disable web monitor |
+| `--no-plugins` | Disable plugin loading |
+| `--watch` | Watch mode: continuously poll the queue for new PRDs |
+| `--poll-interval <ms>` | Poll interval in milliseconds for watch mode |
+
+### `monitor`
+
+Start or connect to the monitor dashboard
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--port <port>` | Preferred port |
+
+### `status`
+
+Check running builds
+
+
+### `queue`
+
+Manage PRD queue
+
+
+#### `list`
+
+Show PRDs in the queue
+
+
+#### `run`
+
+Process PRDs from the queue
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--all` | Process all pending PRDs |
+| `--auto` | Run without approval gates |
+| `--verbose` | Stream agent output |
+| `--no-monitor` | Disable web monitor |
+| `--no-plugins` | Disable plugin loading |
+| `--max-concurrent-builds <n>` | Max parallel queue PRDs |
+| `--watch` | Watch mode: continuously poll the queue for new PRDs |
+| `--poll-interval <ms>` | Poll interval in milliseconds for watch mode |
+
+#### `exec`
+
+Build a single PRD directly (subprocess entry point for the queue scheduler)
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--auto` | Run without approval gates |
+| `--verbose` | Stream agent output |
+| `--no-monitor` | Disable web monitor |
+| `--no-plugins` | Disable plugin loading |
+| `--session-id <uuid>` | Session ID injected by parent scheduler (skips child session:start emission) |
+| `--profile <name>` | Override active profile for this build |
+
+### `config`
+
+Manage eforge configuration
+
+
+#### `validate`
+
+Validate eforge/config.yaml configuration
+
+
+#### `show`
+
+Show resolved eforge configuration
+
+
+### `debug-composer`
+
+Run only the pipeline-composer stage under one or more backend profiles and dump the request payload each backend constructs (system prompt, tools, model, thinking) for side-by-side diffing. Use --backend <name> to select profiles; repeat to compare multiple.
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--backend <name>` | Backend profile to test (repeatable). Defaults to the currently-active profile. |
+| `--out <dir>` | Output directory for captured payloads |
+| `--verbose` | Stream composer agent messages to stdout |
+
+### `daemon`
+
+Manage persistent daemon server
+
+
+#### `start`
+
+Start the persistent daemon server
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--port <port>` | Preferred port |
+
+#### `stop`
+
+Stop the persistent daemon server
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force` | Skip active-build safety check |
+
+#### `status`
+
+Show daemon status
+
+
+#### `kill`
+
+Force-kill the daemon (SIGKILL)
+
+
+### `recover`
+
+Analyse a failed build and write recovery sidecar files
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--cwd <cwd>` | Working directory override |
+| `--verbose` | Stream agent output |
+| `--no-monitor` | Disable web monitor |
+
+### `apply-recovery`
+
+Apply the recovery verdict for a failed build plan (requeue, enqueue successor, or abandon)
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--cwd <cwd>` | Working directory override |
+| `--no-monitor` | Disable web monitor |
+
+### `playbook`
+
+Manage playbooks
+
+
+#### `list`
+
+List all available playbooks with source and shadow chain
+
+
+#### `new`
+
+Scaffold a new playbook (non-interactive, for scripts)
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Playbook scope: user \| project-team \| project-local |
+| `--name <name>` | Playbook name (kebab-case) |
+| `--description <description>` | Short description of the playbook |
+| `--from <file>` | Read body content from this file (used as the Goal section) |
+
+#### `edit`
+
+Open a playbook in $EDITOR, validate, and save to the same tier
+
+
+#### `run`
+
+Enqueue a playbook as a PRD
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback) |
+
+#### `promote`
+
+Promote a playbook from project-local to project-team (stages with git add)
+
+
+#### `demote`
+
+Demote a playbook from project-team to project-local (.eforge/playbooks/)
+
+
+### `play`
+
+Shortcut for `eforge playbook run <name>`
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--after <queue-id>` | Queue ID that this PRD should run after (piggyback) |
+
+### `mcp-proxy`
+
+Run the MCP stdio proxy server (used by Claude Code plugin)
+
+
+## Global options
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `-V, --version` | output the version number |
+
+<!-- end-section: cli -->
+
+<!-- section: api -->
+<!-- Generated file. Do not edit. -->
+<!-- eforge version: 0.7.12 -->
+<!-- Commit: 92819a5c -->
+<!-- Source: packages/client/src/routes.ts -->
+
+# eforge Daemon HTTP API Reference
+
+The eforge daemon exposes an HTTP API at `http://localhost:{port}/api/...`.
+Clients should import route constants from `@eforge-build/client` (`API_ROUTES`) rather
+than embedding literal path strings.
+
+## Routes
+
+Total routes: 48
+
+| Route key | Path pattern |
+|-----------|-------------|
+| `applyRecovery` | `/api/recover/apply` |
+| `autoBuildGet` | `/api/auto-build` |
+| `autoBuildSet` | `/api/auto-build` |
+| `cancel` | `/api/cancel/:sessionId` |
+| `configShow` | `/api/config/show` |
+| `configValidate` | `/api/config/validate` |
+| `daemonEvents` | `/api/daemon-events` |
+| `daemonStop` | `/api/daemon/stop` |
+| `diff` | `/api/diff/:sessionId/:planId` |
+| `enqueue` | `/api/enqueue` |
+| `events` | `/api/events/:runId` |
+| `health` | `/api/health` |
+| `keepAlive` | `/api/keep-alive` |
+| `modelList` | `/api/models/list` |
+| `modelProviders` | `/api/models/providers` |
+| `plans` | `/api/plans/:runId` |
+| `playbookCopy` | `/api/playbook/copy` |
+| `playbookDemote` | `/api/playbook/demote` |
+| `playbookEnqueue` | `/api/playbook/enqueue` |
+| `playbookList` | `/api/playbook/list` |
+| `playbookPromote` | `/api/playbook/promote` |
+| `playbookSave` | `/api/playbook/save` |
+| `playbookShow` | `/api/playbook/show` |
+| `playbookValidate` | `/api/playbook/validate` |
+| `profileCreate` | `/api/profile/create` |
+| `profileDelete` | `/api/profile/:name` |
+| `profileList` | `/api/profile/list` |
+| `profileShow` | `/api/profile/show` |
+| `profileUse` | `/api/profile/use` |
+| `projectContext` | `/api/project-context` |
+| `queue` | `/api/queue` |
+| `readRecoverySidecar` | `/api/recovery/sidecar` |
+| `recover` | `/api/recover` |
+| `runs` | `/api/runs` |
+| `runState` | `/api/run-state/:id` |
+| `runSummary` | `/api/run-summary/:id` |
+| `schedulerKick` | `/api/scheduler/kick` |
+| `sessionMetadata` | `/api/session-metadata` |
+| `sessionPlanCreate` | `/api/session-plan/create` |
+| `sessionPlanList` | `/api/session-plan/list` |
+| `sessionPlanMigrateLegacy` | `/api/session-plan/migrate-legacy` |
+| `sessionPlanReadiness` | `/api/session-plan/readiness` |
+| `sessionPlanSelectDimensions` | `/api/session-plan/select-dimensions` |
+| `sessionPlanSetSection` | `/api/session-plan/set-section` |
+| `sessionPlanSetStatus` | `/api/session-plan/set-status` |
+| `sessionPlanShow` | `/api/session-plan/show` |
+| `sessionPlanSkipDimension` | `/api/session-plan/skip-dimension` |
+| `version` | `/api/version` |
+
+## SSE Streams
+
+- `GET /api/daemon-events` — daemon-wide event stream with `stream:hello` snapshot on connect.
+- `GET /api/events/:runId` — session-specific event stream with `stream:hello` snapshot on connect.
+
+Use `buildPath(pattern, params)` from `@eforge-build/client` to resolve `:param` placeholders.
+
+<!-- end-section: api -->
+
+<!-- section: events -->
+<!-- Generated file. Do not edit. -->
+<!-- eforge version: 0.7.12 -->
+<!-- Commit: 92819a5c -->
+<!-- Source: packages/client/src/events.schemas.ts -->
+
+# eforge Event Protocol Reference
+
+All events emitted on the eforge SSE stream conform to the `EforgeEvent` discriminated
+union defined in `packages/client/src/events.schemas.ts`.
+
+Each event carries an optional envelope (`sessionId`, `runId`, `timestamp`) intersected
+with one of the variant objects below. The `type` field discriminates the variant.
+
+## Event Variants
+
+Total variants: 150
+
+| Event type | Additional fields |
+|------------|-------------------|
+| `session:start` | `sessionId` |
+| `session:end` | `result`, `sessionId` |
+| `session:profile` | `config`, `profileName`, `scope`, `source` |
+| `phase:start` | `command`, `planSet`, `runId` |
+| `phase:end` | `result`, `runId` |
+| `config:warning` | `details`, `message`, `source` |
+| `planning:warning` | `details`, `message`, `planId`, `source` |
+| `planning:module:build-config:invalid` | `errors`, `moduleId`, `reason` |
+| `planning:start` | `label`, `source` |
+| `planning:skip` | `reason` |
+| `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
+| `planning:error` | `reason` |
+| `planning:clarification` | `questions` |
+| `planning:clarification:answer` | `answers` |
+| `planning:progress` | `message` |
+| `planning:continuation` | `attempt`, `maxContinuations`, `reason` |
+| `planning:pipeline` | `compile`, `defaultBuild`, `defaultReview`, `rationale`, `scope` |
+| `planning:complete` | `planConfigs`, `plans` |
+| `planning:review:start` | - |
+| `planning:review:complete` | `issues` |
+| `planning:evaluate:start` | - |
+| `planning:evaluate:continuation` | `attempt`, `maxContinuations` |
+| `planning:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
+| `planning:architecture:review:start` | - |
+| `planning:architecture:review:complete` | `issues` |
+| `planning:architecture:evaluate:start` | - |
+| `planning:architecture:evaluate:continuation` | `attempt`, `maxContinuations` |
+| `planning:architecture:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
+| `planning:cohesion:start` | - |
+| `planning:cohesion:complete` | `issues` |
+| `planning:cohesion:evaluate:start` | - |
+| `planning:cohesion:evaluate:continuation` | `attempt`, `maxContinuations` |
+| `planning:cohesion:evaluate:complete` | `accepted`, `rejected`, `verdicts` |
+| `plan:build:start` | `planId` |
+| `plan:build:implement:start` | `planId` |
+| `plan:build:implement:progress` | `message`, `planId` |
+| `plan:build:implement:continuation` | `attempt`, `maxContinuations`, `planId`, `shardId` |
+| `plan:build:implement:complete` | `planId` |
+| `plan:build:files_changed` | `baseBranch`, `diffs`, `files`, `planId` |
+| `plan:build:review:start` | `planId` |
+| `plan:build:review:complete` | `issues`, `planId` |
+| `plan:build:review:parallel:start` | `perspectives`, `planId` |
+| `plan:build:review:parallel:perspective:start` | `perspective`, `planId` |
+| `plan:build:review:parallel:perspective:complete` | `issues`, `perspective`, `planId` |
+| `plan:build:review:parallel:perspective:error` | `error`, `perspective`, `planId` |
+| `plan:build:review:fix:start` | `issueCount`, `planId` |
+| `plan:build:review:fix:complete` | `planId` |
+| `plan:build:evaluate:start` | `planId` |
+| `plan:build:evaluate:continuation` | `attempt`, `maxContinuations`, `planId` |
+| `plan:build:evaluate:complete` | `accepted`, `planId`, `rejected`, `verdicts` |
+| `plan:build:doc-author:start` | `planId` |
+| `plan:build:doc-author:complete` | `docsAuthored`, `planId` |
+| `plan:build:doc-sync:start` | `planId` |
+| `plan:build:doc-sync:complete` | `docsSynced`, `planId` |
+| `plan:build:test:write:start` | `planId` |
+| `plan:build:test:write:complete` | `planId`, `testsWritten` |
+| `plan:build:test:start` | `planId` |
+| `plan:build:test:complete` | `failed`, `passed`, `planId`, `productionIssues`, `testBugsFixed` |
+| `plan:build:complete` | `planId` |
+| `plan:build:failed` | `error`, `planId`, `terminalSubtype` |
+| `plan:build:progress` | `message`, `planId` |
+| `plan:status:change` | `planId`, `status` |
+| `plan:error:set` | `error`, `planId` |
+| `plan:error:clear` | `planId` |
+| `schedule:start` | `planIds` |
+| `plan:schedule:ready` | `planId`, `reason` |
+| `plan:merge:start` | `planId` |
+| `plan:merge:complete` | `commitSha`, `planId` |
+| `plan:merge:resolve:start` | `planId` |
+| `plan:merge:resolve:complete` | `planId`, `resolved` |
+| `merge:finalize:start` | `baseBranch`, `featureBranch` |
+| `merge:finalize:complete` | `baseBranch`, `commitSha`, `featureBranch` |
+| `merge:finalize:skipped` | `baseBranch`, `featureBranch`, `reason` |
+| `merge:worktree:set` | `path` |
+| `merge:worktree:clear` | - |
+| `expedition:architecture:complete` | `modules` |
+| `expedition:wave:start` | `moduleIds`, `wave` |
+| `expedition:wave:complete` | `wave` |
+| `expedition:module:start` | `moduleId` |
+| `expedition:module:complete` | `moduleId` |
+| `expedition:compile:start` | - |
+| `expedition:compile:complete` | `plans` |
+| `agent:start` | `agent`, `agentId`, `effort`, `effortClamped`, `effortOriginal`, `effortSource`, `harness`, `harnessSource`, `model`, `perspective`, `planId`, `thinking`, `thinkingCoerced`, `thinkingOriginal`, `thinkingSource`, `tier`, `tierSource` |
+| `agent:warning` | `agent`, `agentId`, `code`, `message`, `planId` |
+| `agent:stop` | `agent`, `agentId`, `error`, `planId` |
+| `agent:usage` | `agent`, `agentId`, `costUsd`, `final`, `numTurns`, `planId`, `usage` |
+| `agent:message` | `agent`, `agentId`, `content`, `planId` |
+| `agent:tool_use` | `agent`, `agentId`, `input`, `planId`, `tool`, `toolUseId` |
+| `agent:tool_result` | `agent`, `agentId`, `output`, `planId`, `tool`, `toolUseId` |
+| `agent:result` | `agent`, `planId`, `result` |
+| `agent:retry` | `agent`, `attempt`, `label`, `maxAttempts`, `planId`, `shardId`, `subtype` |
+| `validation:start` | `commands` |
+| `validation:command:start` | `command` |
+| `validation:command:complete` | `command`, `exitCode`, `output` |
+| `validation:command:timeout` | `command`, `pid`, `timeoutMs` |
+| `validation:complete` | `passed` |
+| `validation:fix:start` | `attempt`, `maxAttempts` |
+| `validation:fix:complete` | `attempt` |
+| `prd_validation:start` | - |
+| `prd_validation:complete` | `completionPercent`, `gaps`, `passed` |
+| `gap_close:start` | `completionPercent`, `gapCount` |
+| `gap_close:plan_ready` | `gaps`, `planBody` |
+| `gap_close:complete` | `passed` |
+| `reconciliation:start` | - |
+| `reconciliation:complete` | `report` |
+| `cleanup:start` | `planSet` |
+| `cleanup:complete` | `planSet` |
+| `approval:needed` | `action`, `details`, `planId` |
+| `approval:response` | `approved` |
+| `enqueue:start` | `source` |
+| `enqueue:complete` | `filePath`, `id`, `planSet`, `title` |
+| `enqueue:failed` | `error` |
+| `enqueue:commit-failed` | `error` |
+| `recovery:start` | `prdId`, `setName` |
+| `recovery:summary` | `prdId`, `summary` |
+| `recovery:complete` | `prdId`, `sidecarJsonPath`, `sidecarMdPath`, `verdict` |
+| `recovery:error` | `error`, `prdId`, `rawOutput` |
+| `recovery:apply:start` | `prdId` |
+| `recovery:apply:complete` | `noAction`, `prdId`, `successorPrdId`, `verdict` |
+| `recovery:apply:error` | `message`, `prdId` |
+| `daemon:run:upsert` | `run` |
+| `daemon:auto-build:paused` | `reason` |
+| `daemon:lifecycle:starting` | `mode`, `pid`, `port`, `version` |
+| `daemon:lifecycle:ready` | `mode`, `pid`, `port`, `recoveryDurationMs`, `version` |
+| `daemon:lifecycle:shutdown:start` | `reason`, `signal` |
+| `daemon:lifecycle:shutdown:complete` | `durationMs` |
+| `daemon:heartbeat` | `autoBuild`, `queueDepth`, `runningBuilds`, `subscribers`, `uptime` |
+| `daemon:scheduler:dequeued` | `capacityRemaining`, `prdId`, `queueDepth` |
+| `daemon:scheduler:capacity-blocked` | `limit`, `queueDepth`, `runningCount` |
+| `daemon:scheduler:dependency-blocked` | `blockedBy`, `prdId` |
+| `daemon:auto-build:enabled` | - |
+| `daemon:auto-build:resumed` | - |
+| `daemon:auto-build:triggered` | `prdsEnqueued`, `trigger` |
+| `daemon:recovery:start` | - |
+| `daemon:recovery:run-marked-failed` | `planSet`, `reason`, `runId` |
+| `daemon:recovery:lock-removed` | `path`, `pid` |
+| `daemon:recovery:complete` | `durationMs`, `locksRemoved`, `runsFailed` |
+| `daemon:orphan:reaped` | `pid`, `planSet`, `runId`, `sessionId` |
+| `daemon:warning` | `details`, `message`, `source` |
+| `daemon:error` | `message`, `source`, `stack` |
+| `queue:start` | `dir`, `prdCount` |
+| `queue:prd:start` | `prdId`, `title` |
+| `queue:prd:discovered` | `prdId`, `title` |
+| `queue:prd:stale` | `justification`, `prdId`, `revision`, `title`, `verdict` |
+| `queue:prd:skip` | `prdId`, `reason` |
+| `queue:prd:commit-failed` | `error`, `prdId`, `title` |
+| `queue:prd:complete` | `prdId`, `status` |
+| `queue:complete` | `processed`, `skipped` |
+| `plan:build:decision` | `decision`, `planId` |
+| `planning:decision` | `decision`, `planId` |
+
+## JSON Schema
+
+The complete machine-readable schema is at [`/schemas/events.schema.json`](/schemas/events.schema.json).
+Use `safeParseEforgeEvent(value)` from `@eforge-build/client` to validate at runtime.
+
+<!-- end-section: events -->
+
+<!-- section: config -->
+<!-- Generated file. Do not edit. -->
+<!-- eforge version: 0.7.12 -->
+<!-- Commit: 92819a5c -->
+<!-- Source: packages/engine/src/config.ts -->
+
+# eforge Configuration Reference
+
+eforge merges configuration from three tiers (highest precedence first):
+
+1. `.eforge/config.yaml` — project-local, gitignored, developer-personal
+2. `eforge/config.yaml` — project-level, committed
+3. `~/.config/eforge/config.yaml` — user-global
+
+## Top-level fields
+
+| Field | Description |
+|-------|-------------|
+| `agents` |  |
+| `build` |  |
+| `daemon` |  |
+| `hooks` |  |
+| `langfuse` |  |
+| `maxConcurrentBuilds` |  |
+| `monitor` |  |
+| `plan` |  |
+| `plugins` |  |
+| `prdQueue` |  |
+
+## JSON Schema
+
+The complete machine-readable schema is at [`/schemas/config.schema.json`](/schemas/config.schema.json).
+
+<!-- end-section: config -->
+
+<!-- section: tools -->
+<!-- Generated file. Do not edit. -->
+<!-- eforge version: 0.7.12 -->
+<!-- Commit: 92819a5c -->
+<!-- Source: packages/eforge/src/cli/mcp-proxy.ts, packages/pi-eforge/extensions/eforge/index.ts, eforge-plugin/skills/, packages/pi-eforge/skills/ -->
+
+# eforge MCP Tools and Skills Reference
+
+eforge exposes its capabilities through two integration surfaces:
+- **MCP tools** for the Claude Code plugin (`eforge-plugin/`)
+- **Native Pi commands and tools** for the Pi extension (`packages/pi-eforge/`)
+
+Both surfaces are kept in parity per `AGENTS.md`.
+
+## MCP tools (Claude Code)
+
+Total tools: 15
+
+| Tool name | Description |
+|-----------|-------------|
+| `eforge_build` | Enqueue a PRD source for the eforge daemon to build. Returns a sessionId and autoBuild status. |
+| `eforge_follow` | Follow a running eforge session: streams phase/files-changed/issue updates as progress notifications and returns the final session summary. Use after eforge_build to surface live build status in the conversation. |
+| `eforge_auto_build` | Get or set the daemon auto-build state. When enabled, the daemon automatically builds PRDs as they are enqueued. |
+| `eforge_status` | Get the current run status including plan progress, session state, event summary, and the daemon vs CLI version. |
+| `eforge_queue_list` | List all PRDs currently in the eforge queue with their metadata. |
+| `eforge_config` | Show resolved eforge configuration or validate eforge/config.yaml. Config merges three tiers: user (~/.config/eforge/config.yaml), project (eforge/config.yaml), and project-local (.eforge/config.yaml, gitignored). Pass verbose: true with action "show" to see per-tier file presence. |
+| `eforge_profile` | Manage named profiles in eforge/profiles/ (project), .eforge/profiles/ (local, gitignored), or ~/.config/eforge/profiles/ (user). Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile; "use" writes the active-profile marker to switch profiles; "create" writes a new profile (pass `agents.tiers` with self-contained tier recipes); "delete" removes a profile (refuses when active unless force: true). |
+| `eforge_models` | List providers or models available for a given harness. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first. |
+| `eforge_daemon` | Manage the eforge daemon lifecycle: start, stop, or restart the daemon. |
+| `eforge_init` | Initialize eforge in a project. The skill is responsible for picking harness/model/effort per tier interactively; the tool is a pure persister. Pass `profile.tiers` with one self-contained recipe per tier (planning/implementation/review/evaluation). Each tier carries its own harness + model + effort. |
+| `eforge_recover` | Trigger failure recovery analysis for a failed build plan. Spawns the recovery agent as a background subprocess and returns its sessionId and pid. |
+| `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
+| `eforge_apply_recovery` | Apply the recovery verdict for a failed build plan: requeue (retry), enqueue successor (split), or archive (abandon). |
+| `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook's frontmatter and body; "save" validates and writes a playbook to the target tier; "enqueue" loads a playbook and enqueues it as a PRD, optionally chained after another queue entry; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. |
+| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
+
+## Native tools (Pi extension)
+
+Total tools: 16
+
+| Tool name | Description |
+|-----------|-------------|
+| `eforge_build` | Enqueue a PRD source for the eforge daemon to build. Returns a sessionId and autoBuild status. |
+| `eforge_follow` | Follow a running eforge session: streams phase/files-changed/issue updates as tool progress messages and returns the final session summary. Use after eforge_build to surface live build status in the conversation. |
+| `eforge_status` | Get the current run status including plan progress, session state, event summary, and the daemon vs Pi-extension version. |
+| `eforge_queue_list` | List all PRDs currently in the eforge queue with their metadata. |
+| `eforge_config` | Show resolved eforge configuration or validate eforge/config.yaml. |
+| `eforge_profile` | Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with harness; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true). |
+| `eforge_models` | List providers or models available for a given harness. Actions: "providers" returns provider names (claude-sdk is implicit / returns []); "list" returns models, optionally filtered to a single provider, newest-first. |
+| `eforge_daemon` | Manage the eforge daemon lifecycle: start, stop, or restart the daemon. |
+| `eforge_auto_build` | Get or set the daemon auto-build state. When enabled, the daemon automatically builds PRDs as they are enqueued. |
+| `eforge_init` | Initialize eforge in a project. The skill is responsible for picking provider/model interactively; the tool is a pure persister. Pass `profile` with the assembled multi-runtime spec (every runtime must use harness: 'pi'). With migrate: true, extracts legacy harness config from a pre-overhaul config.yaml. |
+| `eforge_confirm_build` | Present an interactive TUI overlay for the user to confirm, edit, or cancel a build source before enqueuing. Returns the user's choice. |
+| `eforge_recover` | Trigger failure recovery analysis for a failed build plan. Spawns the recovery agent as a background subprocess and returns its sessionId and pid. |
+| `eforge_read_recovery_sidecar` | Read the recovery analysis sidecar files for a failed build plan. Returns both the markdown summary and the structured JSON verdict produced by the recovery agent. |
+| `eforge_apply_recovery` |  |
+| `eforge_playbook` | Manage playbooks in eforge. Actions: "list" returns all playbooks with source and shadow chain; "show" returns a single playbook's frontmatter and body; "save" validates and writes a playbook to the target tier; "enqueue" loads a playbook and enqueues it as a PRD, optionally chained after another queue entry; "promote" moves a playbook from project-local (.eforge/playbooks/) to project-team (eforge/playbooks/); "demote" reverses a promote; "validate" checks a raw Markdown playbook string without writing. |
+| `eforge_session_plan` | Manage session plans in eforge. Actions: "list-active" returns all active (planning/ready) session plans; "show" returns a single session plan's data and readiness detail; "create" creates a new session plan file; "set-section" writes a dimension section to the session file; "skip-dimension" records a skipped dimension with a reason; "set-status" updates the session plan status (e.g. to "ready" or "abandoned"); "select-dimensions" sets planning type and depth and populates the required/optional dimension lists from the work-type playbook; "readiness" checks whether all required dimensions are covered; "migrate-legacy" converts a legacy boolean-dimensions session file to the current shape. Pass open: true on "create" or "show" to best-effort open the session plan file in the default application. |
+
+## Skill surfaces
+
+Slash-command skills for Claude Code (plugin) and Pi are kept in parity.
+Source of truth: `scripts/check-skill-parity.mjs`.
+
+| Skill (Claude Code `/eforge:<name>`) | Skill (Pi `eforge:<name>`) | Description |
+|--------------------------------------|---------------------------|-------------|
+| `profile` | `eforge-profile` | List, inspect, and switch agent runtime profiles |
+| `profile-new` | `eforge-profile-new` | Create a new agent runtime profile in eforge/profiles/ |
+| `build` | `eforge-build` | Enqueue a source for the eforge daemon to build via MCP tool |
+| `config` | `eforge-config` | Initialize or edit eforge/config.yaml team-wide settings, with validation via MCP tool |
+| `init` | `eforge-init` | Initialize eforge in the current project with an interactive setup form |
+| `plan` | `eforge-plan` | Start or resume a structured planning conversation for changes to be built by eforge. Classifies work type and depth, selects relevant dimensions from a per-type playbook, captures acceptance criteria, and produces a session plan that /eforge:build enqueues. |
+| `restart` | `eforge-restart` | Safely restart the eforge daemon, checking for active builds first |
+| `status` | `eforge-status` | Check eforge run status and queue state via MCP tools |
+| `update` | `eforge-update` | Check for eforge updates and guide through updating the CLI package, daemon, and plugin |
+| `playbook` | `eforge-playbook` | Create, edit, run, list, and promote eforge playbooks — reusable recurring-workflow templates |
+| `recover` | `eforge-recover` | Inspect the recovery verdict for a failed PRD and apply the recommended action (retry, split, or abandon) |
+
+<!-- end-section: tools -->

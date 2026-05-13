@@ -5,11 +5,18 @@ import { fileURLToPath } from 'node:url';
 const root = fileURLToPath(new URL('.', import.meta.url));
 
 export default defineConfig({
+  define: {
+    // Stub the baked-in CLI version constant for test environments
+    EFORGE_VERSION: JSON.stringify('test'),
+  },
   test: {
     setupFiles: ['./test/setup-test-env.ts'],
     include: [
       'test/**/*.test.ts',
       'packages/engine/test/**/*.test.ts',
+      // --- eforge:region plan-02-web-site ---
+      'web/__tests__/**/*.test.ts',
+      // --- eforge:endregion plan-02-web-site ---
       // --- eforge:region plan-04-monitor-ui ---
       'packages/monitor-ui/src/**/*.test.tsx',
       'packages/monitor-ui/src/**/*.test.ts',
@@ -55,6 +62,9 @@ export default defineConfig({
         find: '@modelcontextprotocol/sdk',
         replacement: resolve(root, 'packages/eforge/node_modules/@modelcontextprotocol/sdk/dist/esm/index.js'),
       },
+      // docs-gen package source aliases
+      { find: '@eforge-build/eforge/cli', replacement: resolve(root, 'packages/eforge/src/cli/index.ts') },
+      { find: /^@eforge-build\/docs-gen\/(.*)$/, replacement: resolve(root, 'packages/docs-gen/src/$1') },
     ],
   },
 });

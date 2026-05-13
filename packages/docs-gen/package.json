@@ -1,0 +1,35 @@
+{
+  "name": "@eforge-build/docs-gen",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Internal documentation generator for eforge reference artifacts",
+  "type": "module",
+  "bin": {
+    "docs-gen": "./dist/cli.js"
+  },
+  "exports": {
+    "./check": {
+      "types": "./dist/check.d.ts",
+      "import": "./dist/check.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eforge-build/client": "workspace:*",
+    "@eforge-build/engine": "workspace:*",
+    "@eforge-build/eforge": "workspace:*",
+    "commander": "^14.0.3",
+    "ts-morph": "^25.0.1",
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
