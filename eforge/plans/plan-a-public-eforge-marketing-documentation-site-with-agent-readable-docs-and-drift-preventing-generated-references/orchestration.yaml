@@ -1,0 +1,129 @@
+name: plan-a-public-eforge-marketing-documentation-site-with-agent-readable-docs-and-drift-preventing-generated-references
+description: Public eforge.build marketing/documentation site with
+  agent-readable docs and drift-preventing generated references derived from
+  code-owned sources of truth (CLI, daemon API routes, event protocol, config
+  schema, MCP tools, Pi/Claude integration skills). Plan-01 lands a
+  deterministic `packages/docs-gen/` generator package with provenance-bearing
+  outputs (Markdown + JSON schemas + curated `llms.txt` / concatenated
+  `llms-full.txt`) checked into `web/content/` and `web/public/`, plus root
+  `docs:generate` / `docs:check` scripts and a drift-prevention test. Plan-02
+  scaffolds the Next.js app at `web/`, wires it into the pnpm workspace, ships a
+  minimal human docs shell with landing + getting-started/concepts/configuration
+  + generated-reference index, exposes stable raw `/reference/*.md` and
+  `/schemas/*.json` routes plus the agent-readable `/llms.txt` and
+  `/llms-full.txt`, adds `docs:dev` / `docs:build`, links from README, and
+  extends CI to fail on stale generated docs or a broken site build.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm build
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+  - pnpm docs:build
+plans:
+  - id: plan-01-docs-gen
+    name: Docs generator package and checked-in generated reference artifacts
+    depends_on: []
+    branch: plan-a-public-eforge-marketing-documentation-site-with-agent-readable-docs-and-drift-preventing-generated-references/plan-01-docs-gen
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Generators must extract from heterogeneous source-of-truth files
+          (Commander CLI registration, Commander-nested playbook command,
+          API_ROUTES + TypeScript wire types, TypeBox event schemas, Zod v4
+          config schemas, MCP createDaemonTool registrations, Pi extension
+          command/tool TS files, Claude/Pi skill SKILL.md frontmatter) without
+          introducing a parallel source of truth. Requires careful extraction
+          strategy choices per surface.
+      test-writer:
+        effort: medium
+        rationale: Tests are mostly happy-path on extraction plus a drift-detection
+          assertion; medium effort is sufficient.
+  - id: plan-02-web-site
+    name: Next.js web/ public site, dev/build wiring, README and CI integration
+    depends_on:
+      - plan-01-docs-gen
+    branch: plan-a-public-eforge-marketing-documentation-site-with-agent-readable-docs-and-drift-preventing-generated-references/plan-02-web-site
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Scaffolds a new Next.js app inside an existing pnpm monorepo, wires
+          it into the workspace, adds new root scripts, and updates CI. Touches
+          many files and requires careful coordination of routing for raw .md
+          artifacts under app/ vs static assets under public/.
+      doc-author:
+        effort: medium
+        rationale: Authors three hand-written docs pages (getting-started, concepts,
+          configuration) plus the landing page copy from existing README
+          content.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - docs
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "The PRD explicitly self-identifies as an Excursion and is
+    well-suited to that scope: it spans a new web/ Next.js app, a docs-gen
+    package/scripts, root workspace scripts, CI updates, and existing docs
+    links, but the architecture is straightforward with a sequential dependency
+    chain (docs-gen outputs feed web, root scripts/CI validate both). A single
+    planner can enumerate plans, file changes, and cross-plan dependencies
+    without needing delegated module planning, so expedition is not warranted.
+    Compile uses planner + plan-review-cycle because plan quality matters here -
+    the PRD has 17 acceptance criteria, multiple generators, drift-prevention CI
+    semantics, and explicit boundary constraints (no parallel source of truth,
+    provenance requirements) that a plan-review pass should catch before build.
+    defaultBuild runs implement in parallel with doc-author since this work is
+    fundamentally documentation-focused (landing page copy, getting-started,
+    concepts, configuration docs, llms.txt curation), then doc-sync sequentially
+    to reconcile existing repo docs (README.md, docs/roadmap.md, AGENTS.md
+    cross-links) against the implementation, then review-cycle for iterative
+    quality gating. Review uses parallel strategy with code/api/docs/verify
+    perspectives: code for the generator package and Next.js app, api for
+    ensuring generated reference outputs match code-owned contracts (routes,
+    events, config), docs for the human/agent-readable surface quality and
+    provenance, and verify for the drift-prevention CI checks and pnpm
+    docs:generate/check/build/dev workflows. Two rounds with standard strictness
+    fits a public-facing site that has clear acceptance criteria but no
+    security/data-sensitivity warranting strict gating. Security perspective is
+    omitted because there is no auth, no user data, and no server-side execution
+    surface; test perspective is omitted because acceptance criteria specify
+    drift checks via git diff rather than unit/integration test suites for the
+    generators."
