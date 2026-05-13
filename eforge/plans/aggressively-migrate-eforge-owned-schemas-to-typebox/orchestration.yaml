@@ -1,0 +1,136 @@
+name: aggressively-migrate-eforge-owned-schemas-to-typebox
+description: "Aggressively migrate eforge-owned domain schemas from Zod to
+  TypeBox, starting with the first coherent slice: a shared TypeBox schema
+  utility, the @eforge-build/client event/wire schemas, and the engine's
+  structured-output schemas plus custom-tool harness adapters. Zod is retained
+  only inside explicit third-party SDK compatibility adapters. Preserves JSON
+  wire shapes via parity tests and bans new Zod imports outside an allowlist."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-schema-utility
+    name: Shared TypeBox Schema Utility Layer
+    depends_on: []
+    branch: aggressively-migrate-eforge-owned-schemas-to-typebox/plan-01-schema-utility
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: Foundation module whose design (helper signatures, error format, YAML
+          stripping) cascades into the next two plans; getting the API shape
+          right is more valuable than typical.
+  - id: plan-02-client-events
+    name: Migrate @eforge-build/client Event/Wire Schemas to TypeBox
+    depends_on:
+      - plan-01-schema-utility
+    branch: aggressively-migrate-eforge-owned-schemas-to-typebox/plan-02-client-events
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: Large mechanical migration of the daemon wire-protocol source of
+          truth with a parity-test requirement; one missed optional/required
+          marker silently drifts the JSON contract.
+      reviewer:
+        effort: high
+        rationale: Reviewer must verify TypeBox optional/union/literal markers produce
+          the same JSON acceptance set as the original Zod schemas.
+  - id: plan-03-engine-schemas-and-custom-tools
+    name: Migrate Engine Structured-Output Schemas and Custom-Tool Contracts to
+      TypeBox
+    depends_on:
+      - plan-01-schema-utility
+    branch: aggressively-migrate-eforge-owned-schemas-to-typebox/plan-03-engine-schemas-and-custom-tools
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: Multi-package refactor touching schemas, harness interfaces, two
+          backend adapters (Pi and Claude SDK), four submission agents, and all
+          engine tests for those agents; the CustomTool inputSchema type swap
+          requires careful adapter design.
+      reviewer:
+        effort: high
+        rationale: Adapter correctness at third-party SDK boundaries (Claude SDK tool()
+          registration and Pi AgentTool.parameters) is subtle and easy to get
+          wrong.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - docs
+      - verify
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: "Excursion is the right scope: the PRD itself recommends 'excursion'
+    and explicitly scopes the first build to a coherent slice (schema utility +
+    client events + engine structured-output + custom-tool adapter spike). The
+    work is cross-cutting but sequentially dependent (utility layer -> client
+    events -> engine schemas -> tool adapters), which matches excursion's
+    ordered-plan pattern rather than expedition's independent-module pattern. A
+    single planner can enumerate all plans, file changes, and dependencies.
+    Compile uses planner + plan-review-cycle because plan quality matters
+    greatly here: wire-shape parity, adapter boundaries, and test-migration
+    discipline must be validated before build to avoid expensive rework. Default
+    build runs implement in parallel with doc-author (the PRD calls out
+    roadmap.md and typescript-extensibility.md doc updates, plus future
+    extensions docs), then doc-sync to catch stale references to Zod APIs in
+    existing docs, then review-cycle for quality gating, then test-cycle because
+    the PRD demands parity tests over event fixtures, structured-output
+    snapshots, and the grep/discipline test. Review uses parallel strategy with
+    code (correctness of adapter logic), api (public API impact on
+    @eforge-build/client and CustomTool contracts), test (parity-test coverage
+    and helper migration), docs (roadmap/extensibility doc updates), and verify
+    (wire-shape preservation and grep-discipline enforcement). maxRounds=3 and
+    strict evaluator reflect the high blast radius: this touches daemon wire
+    contracts, harness adapters, and a discipline gate that future code review
+    will rely on."
