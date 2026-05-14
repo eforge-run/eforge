@@ -445,6 +445,12 @@ These fields use MCP server names (e.g. `playwright`, `sourcegraph`) as they app
 
 The harness debug payload also separates server categories: `projectMcpServerNames` (filtered project servers) and `internalMcpServerNames` (engine-internal servers such as `eforge_engine`). The old single `mcpServerNames` field that conflated the two is removed.
 
+Toolbelts apply only to project MCP servers from `.mcp.json`. They do not filter Pi extensions, Claude Code plugins, engine-internal custom tools (such as `eforge_engine`), harness built-ins, or extension-contributed tools.
+
+Pi extensions and Claude Code plugins are out of scope for the profile-toolbelts MVP - toolbelts are MCP-only and declarative.
+
+Toolbelts and TypeScript extensions are complementary. Toolbelts answer "Which project MCP servers should this tier expose?" Extensions answer "What should eforge do when something happens?" Extensions may inspect toolbelt and profile metadata when making routing decisions, but extensions should not redefine toolbelts or act as a hidden profile/config layer.
+
 ## Plugins
 
 Plugins are auto-discovered from `~/.claude/plugins/installed_plugins.json`. Both user-scoped and project-scoped plugins matching the working directory are loaded. Use `plugins.include`/`plugins.exclude` in `eforge/config.yaml` to filter, or `--no-plugins` to disable entirely.
