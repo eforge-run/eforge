@@ -84,6 +84,7 @@ export interface AgentThread {
   outputTokens: number | null;
   totalTokens: number | null;
   cacheRead: number | null;
+  cacheCreation: number | null;
   costUsd: number | null;
   numTurns: number | null;
   model: string;
@@ -112,6 +113,8 @@ export interface AgentThread {
   projectMcpServerNames?: string[];
   /** Final result text from the agent:result event. */
   resultText?: string;
+  /** Error message from the agent:stop event, when the agent stopped with an error. */
+  stopError?: string;
   /** Deterministic file/diffstat facts from the agent:activity event. */
   activity?: AgentActivityFacts;
 }

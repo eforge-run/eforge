@@ -23,6 +23,7 @@ function makeThread(overrides: Partial<AgentThread> = {}): AgentThread {
     outputTokens: null,
     totalTokens: null,
     cacheRead: null,
+    cacheCreation: null,
     costUsd: null,
     numTurns: null,
     model: 'claude-sonnet',
@@ -245,6 +246,42 @@ describe('handle-agent', () => {
       expect(thread?.totalTokens).toBe(3000);
       expect(thread?.numTurns).toBe(5);
     });
+
+    it('(final) sets cacheCreation on the matched thread', () => {
+      const state = {
+        ...initialRunState,
+        agentThreads: [makeThread({ agentId: 'a1' })],
+        liveAgentUsage: { a1: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0, turns: 0 } },
+      };
+      const event = makeEvent('agent:usage', {
+        agentId: 'a1',
+        agent: 'builder',
+        usage: { input: 500, output: 250, total: 750, cacheRead: 0, cacheCreation: 300 },
+        costUsd: 0.005,
+        numTurns: 2,
+        final: true,
+      });
+      const delta = handleAgentUsage(event, state);
+      expect(delta?.agentThreads?.[0]?.cacheCreation).toBe(300);
+    });
+
+    it('(delta) accumulates cacheCreation on the matched thread additively', () => {
+      const state = {
+        ...initialRunState,
+        agentThreads: [makeThread({ agentId: 'a1', cacheCreation: 100 })],
+        liveAgentUsage: { a1: { input: 0, output: 0, cacheRead: 0, cacheCreation: 100, cost: 0, turns: 1 } },
+      };
+      const event = makeEvent('agent:usage', {
+        agentId: 'a1',
+        agent: 'builder',
+        usage: { input: 100, output: 50, total: 150, cacheRead: 0, cacheCreation: 200 },
+        costUsd: 0.001,
+        numTurns: 1,
+        // final omitted — non-final delta
+      });
+      const delta = handleAgentUsage(event, state);
+      expect(delta?.agentThreads?.[0]?.cacheCreation).toBe(300);
+    });
   });
 
   // ---------------------------------------------------------------------------
@@ -320,6 +357,46 @@ describe('handle-agent', () => {
       });
       const delta = handleAgentResult(event, state);
       expect(delta?.liveAgentUsage?.['a1']).toBeUndefined();
+    });
+
+    it('copies cacheCreation from result.usage onto the matched thread', () => {
+      const thread = makeThread({ agentId: 'a1', agent: 'builder', planId: 'plan-01', durationMs: null });
+      const state = { ...initialRunState, agentThreads: [thread] };
+      const event = makeEvent('agent:result', {
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        result: {
+          durationMs: 4000,
+          durationApiMs: 3500,
+          numTurns: 2,
+          totalCostUsd: 0.008,
+          usage: { input: 400, output: 200, total: 600, cacheRead: 50, cacheCreation: 150 },
+          modelUsage: {},
+        },
+      });
+      const delta = handleAgentResult(event, state);
+      expect(delta?.agentThreads?.[0]?.cacheCreation).toBe(150);
+    });
+
+    it('overwrites existing cacheCreation from result.usage.cacheCreation, preserving 0 (not coerced to null)', () => {
+      const thread = makeThread({ agentId: 'a1', agent: 'builder', planId: 'plan-01', durationMs: null, cacheCreation: 100 });
+      const state = { ...initialRunState, agentThreads: [thread] };
+      const event = makeEvent('agent:result', {
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        result: {
+          durationMs: 2000,
+          durationApiMs: 1800,
+          numTurns: 1,
+          totalCostUsd: 0.002,
+          usage: { input: 200, output: 100, total: 300, cacheRead: 0, cacheCreation: 0 },
+          modelUsage: {},
+        },
+      });
+      const delta = handleAgentResult(event, state);
+      expect(delta?.agentThreads?.[0]?.cacheCreation).toBe(0);
     });
 
     it('returns only token deltas when no matching thread is found', () => {
@@ -487,6 +564,42 @@ describe('handle-agent', () => {
       const event = makeEvent('agent:stop', { agentId: 'a1', agent: 'builder' });
       const delta = handleAgentStop(event, state);
       expect(Object.keys(delta?.liveAgentUsage ?? {})).not.toContain('a1');
+    });
+
+    it('sets stopError on the matched thread when event.error is provided', () => {
+      const thread = makeThread({ agentId: 'a1' });
+      const state = {
+        ...initialRunState,
+        agentThreads: [thread],
+        liveAgentUsage: { a1: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0, turns: 0 } },
+      };
+      const event = makeEvent('agent:stop', { agentId: 'a1', agent: 'builder', error: 'boom' });
+      const delta = handleAgentStop(event, state);
+      expect(delta?.agentThreads?.[0]?.stopError).toBe('boom');
+    });
+
+    it('does not set stopError when event.error is absent', () => {
+      const thread = makeThread({ agentId: 'a1' });
+      const state = {
+        ...initialRunState,
+        agentThreads: [thread],
+        liveAgentUsage: { a1: { input: 0, output: 0, cacheRead: 0, cacheCreation: 0, cost: 0, turns: 0 } },
+      };
+      const event = makeEvent('agent:stop', { agentId: 'a1', agent: 'builder' });
+      const delta = handleAgentStop(event, state);
+      expect(delta?.agentThreads?.[0]?.stopError).toBeUndefined();
+    });
+
+    it('does not overwrite an existing stopError when omitting error from a subsequent stop', () => {
+      const thread = makeThread({ agentId: 'a1', stopError: 'original error' });
+      const state = {
+        ...initialRunState,
+        agentThreads: [thread],
+        liveAgentUsage: {},
+      };
+      const event = makeEvent('agent:stop', { agentId: 'a1', agent: 'builder' });
+      const delta = handleAgentStop(event, state);
+      expect(delta?.agentThreads?.[0]?.stopError).toBe('original error');
     });
 
     it('agent:stop does not affect other agents in liveAgentUsage', () => {

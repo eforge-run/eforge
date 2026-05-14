@@ -18,6 +18,7 @@ function makeThread(overrides: Partial<AgentThread> = {}): AgentThread {
     outputTokens: 500,
     totalTokens: 1500,
     cacheRead: 200,
+    cacheCreation: null,
     costUsd: 0.015,
     numTurns: 3,
     model: 'claude-sonnet-4-5',

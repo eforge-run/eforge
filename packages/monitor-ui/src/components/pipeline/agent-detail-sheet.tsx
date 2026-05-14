@@ -156,7 +156,7 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
         </Section>
 
         {/* Usage */}
-        {(thread.inputTokens != null || thread.outputTokens != null || thread.costUsd != null) && (
+        {(thread.inputTokens != null || thread.outputTokens != null || thread.costUsd != null || thread.cacheCreation != null) && (
           <Section title="Usage">
             {thread.inputTokens != null && (
               <Row label="Input tokens" value={formatNumber(thread.inputTokens)} />
@@ -169,6 +169,9 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
             )}
             {thread.cacheRead != null && thread.cacheRead > 0 && (
               <Row label="Cache read" value={formatNumber(thread.cacheRead)} />
+            )}
+            {thread.cacheCreation != null && thread.cacheCreation > 0 && (
+              <Row label="Cache creation" value={formatNumber(thread.cacheCreation)} />
             )}
             {thread.costUsd != null && thread.costUsd > 0 && (
               <Row label="Cost" value={`$${thread.costUsd.toFixed(4)}`} />
@@ -201,6 +204,13 @@ export function AgentDetailSheet({ thread, events, open, onClose }: AgentDetailS
                 </div>
               );
             })}
+          </Section>
+        )}
+
+        {/* Stop error */}
+        {thread.stopError && (
+          <Section title="Stop error">
+            <div className="text-red-400 text-[10px] font-mono break-words">{thread.stopError}</div>
           </Section>
         )}
 

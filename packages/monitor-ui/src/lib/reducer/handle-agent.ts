@@ -81,6 +81,7 @@ export const handleAgentStart: EventHandler<'agent:start'> = (event, state) => {
     outputTokens: null,
     totalTokens: null,
     cacheRead: null,
+    cacheCreation: null,
     costUsd: null,
     numTurns: null,
     model: event.model,
@@ -129,6 +130,7 @@ export const handleAgentUsage: EventHandler<'agent:usage'> = (event, state) => {
         outputTokens: usage.output,
         totalTokens: usage.total,
         cacheRead: usage.cacheRead,
+        cacheCreation: usage.cacheCreation,
         costUsd,
         numTurns,
       },
@@ -173,6 +175,7 @@ export const handleAgentUsage: EventHandler<'agent:usage'> = (event, state) => {
             // Derive total from running sums; don't trust the delta's `total` field.
             totalTokens: nextInput + nextOutput,
             cacheRead: (lastThread.cacheRead ?? 0) + usage.cacheRead,
+            cacheCreation: (lastThread.cacheCreation ?? 0) + usage.cacheCreation,
             costUsd: (lastThread.costUsd ?? 0) + costUsd,
             numTurns: (lastThread.numTurns ?? 0) + numTurns,
           };
@@ -233,6 +236,7 @@ export const handleAgentResult: EventHandler<'agent:result'> = (event, state) =>
     outputTokens: result.usage?.output ?? null,
     totalTokens: result.usage?.total ?? null,
     cacheRead: result.usage?.cacheRead ?? null,
+    cacheCreation: result.usage?.cacheCreation ?? null,
     costUsd: result.totalCostUsd ?? null,
     numTurns: result.numTurns ?? null,
     resultText: result.resultText,
@@ -282,10 +286,14 @@ export const handleAgentActivity: EventHandler<'agent:activity'> = (event, state
 };
 
 export const handleAgentStop: EventHandler<'agent:stop'> = (event, state) => {
+  const patch: Partial<import('../reducer').AgentThread> = { endedAt: event.timestamp };
+  if (event.error !== undefined) {
+    patch.stopError = event.error;
+  }
   const agentThreads = updateThread(
     state.agentThreads,
     (t) => t.agentId === event.agentId,
-    { endedAt: event.timestamp },
+    patch,
   );
   const liveAgentUsage = { ...state.liveAgentUsage };
   delete liveAgentUsage[event.agentId];
