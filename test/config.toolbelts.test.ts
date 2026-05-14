@@ -461,8 +461,8 @@ describe('validateConfigFile toolbelt integration', () => {
 // loadConfig — toolbelt warnings
 // ---------------------------------------------------------------------------
 
-describe('loadConfig toolbelt warnings', () => {
-  it('emits a warning when toolbelt references an MCP server not in .mcp.json', async () => {
+describe('loadConfig toolbelt validation', () => {
+  it('throws ConfigValidationError when toolbelt references an MCP server not in .mcp.json', async () => {
     const projectDir = await mkdtemp(join(tmpdir(), 'eforge-loadconfig-test-'));
     try {
       await mkdir(join(projectDir, 'eforge'), { recursive: true });
@@ -483,14 +483,14 @@ describe('loadConfig toolbelt warnings', () => {
         JSON.stringify({ mcpServers: {} }),
         'utf-8',
       );
-      const result = await loadConfig(projectDir);
-      expect(result.warnings.some((w) => w.includes('missing-server'))).toBe(true);
+      await expect(loadConfig(projectDir)).rejects.toThrow(ConfigValidationError);
+      await expect(loadConfig(projectDir)).rejects.toThrow(/missing-server/);
     } finally {
       await rm(projectDir, { recursive: true });
     }
   });
 
-  it('no warnings when toolbelts and MCP servers are consistent', async () => {
+  it('succeeds with no toolbelt warnings when toolbelts and MCP servers are consistent', async () => {
     const projectDir = await mkdtemp(join(tmpdir(), 'eforge-loadconfig-test-'));
     try {
       await mkdir(join(projectDir, 'eforge'), { recursive: true });

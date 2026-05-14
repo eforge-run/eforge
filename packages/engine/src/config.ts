@@ -1034,8 +1034,8 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
   const baseMerged = mergePartialConfigs(mergePartialConfigs(globalConfig, projectConfig), localConfig);
   const merged = profileConfig ? mergePartialConfigs(baseMerged, profileConfig) : baseMerged;
 
-  // Toolbelt static validation — emit warnings rather than throwing so loadConfig
-  // stays non-fatal (same behaviour as tier reference mismatches in other tools).
+  // Toolbelt static validation — fatal: any reference error throws ConfigValidationError
+  // so the engine refuses to boot with broken toolbelt configuration.
   if (configPath) {
     let mcpProbe: { exists: boolean; names: string[] } | null = null;
     try {
@@ -1044,7 +1044,11 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
       // best-effort: if .mcp.json can't be read, skip MCP checks
     }
     const toolbeltErrors = validateToolbeltReferences(merged, mcpProbe);
-    allWarnings.push(...toolbeltErrors.map((e) => `[eforge] toolbelt: ${e}`));
+    if (toolbeltErrors.length > 0) {
+      throw new ConfigValidationError(
+        `Toolbelt reference errors:\n  - ${toolbeltErrors.join('\n  - ')}`,
+      );
+    }
   }
 
   return {
