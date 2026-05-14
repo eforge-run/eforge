@@ -18,6 +18,7 @@ import {
   piThinkingLevelSchema,
   claudeSdkConfigSchema,
   configYamlSchema,
+  extensionConfigSchema,
   sanitizeProfileName,
   parseRawConfigLegacy,
   tierConfigSchema,
@@ -68,6 +69,11 @@ describe('resolveConfig', () => {
   it('hooks defaults to empty array when not set', () => {
     const config = resolveConfig({}, {});
     expect(config.hooks).toEqual([]);
+  });
+
+  it('extensions default to enabled without project trust and absent filters', () => {
+    const config = resolveConfig({}, {});
+    expect(config.extensions).toEqual({ enabled: true, trustProjectExtensions: false });
   });
 
   it('postMergeCommands parsed from file config', () => {
@@ -158,6 +164,29 @@ describe('mergePartialConfigs', () => {
     expect(merged.agents?.roles?.builder?.effort).toBe('high');
     expect(merged.agents?.roles?.builder?.maxTurns).toBe(100);
     expect(merged.agents?.roles?.reviewer?.effort).toBe('low');
+  });
+
+  it('extensions arrays replace while scalar fields are preserved', () => {
+    const global: PartialEforgeConfig = {
+      extensions: {
+        enabled: false,
+        trustProjectExtensions: true,
+        include: ['global'],
+        exclude: ['old'],
+        paths: ['./global.ts'],
+      },
+    };
+    const project: PartialEforgeConfig = {
+      extensions: {
+        include: ['project'],
+      },
+    };
+    const merged = mergePartialConfigs(global, project);
+    expect(merged.extensions?.enabled).toBe(false);
+    expect(merged.extensions?.trustProjectExtensions).toBe(true);
+    expect(merged.extensions?.include).toEqual(['project']);
+    expect(merged.extensions?.exclude).toEqual(['old']);
+    expect(merged.extensions?.paths).toEqual(['./global.ts']);
   });
 });
 
@@ -358,6 +387,22 @@ describe('claudeSdkConfigSchema', () => {
 
   it('rejects non-boolean disableSubagents', () => {
     expect(claudeSdkConfigSchema.safeParse({ disableSubagents: 'yes' }).success).toBe(false);
+  });
+});
+
+describe('extensionConfigSchema', () => {
+  it('accepts native extension config fields', () => {
+    const result = configYamlSchema.safeParse({
+      extensions: {
+        enabled: true,
+        include: ['a'],
+        exclude: ['b'],
+        paths: ['./x.ts'],
+        trustProjectExtensions: false,
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(extensionConfigSchema.safeParse(result.success ? result.data.extensions : undefined).success).toBe(true);
   });
 });
 

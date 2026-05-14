@@ -15,6 +15,7 @@ export default defineConfig({
     "@earendil-works/pi-agent-core",
     "@earendil-works/pi-ai",
     "@sinclair/typebox",
+    "jiti",
   ],
   async onSuccess() {
     if (existsSync("src/prompts")) {

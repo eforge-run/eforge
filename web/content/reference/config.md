@@ -18,6 +18,7 @@ eforge merges configuration from three tiers (highest precedence first):
 | `agents` |  |
 | `build` |  |
 | `daemon` |  |
+| `extensions` | Native eforge extension configuration |
 | `hooks` |  |
 | `langfuse` |  |
 | `maxConcurrentBuilds` |  |

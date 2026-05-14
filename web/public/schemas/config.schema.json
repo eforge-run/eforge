@@ -465,6 +465,42 @@
       },
       "additionalProperties": false
     },
+    "extensions": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "description": "Enable native eforge extension discovery and loading",
+          "type": "boolean"
+        },
+        "include": {
+          "description": "Native extension names to include during auto-discovery",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "exclude": {
+          "description": "Native extension names to exclude during auto-discovery",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "paths": {
+          "description": "Explicit native extension module paths to load",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "trustProjectExtensions": {
+          "description": "Trust checked-in project-team native extensions",
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false,
+      "description": "Native eforge extension configuration"
+    },
     "prdQueue": {
       "type": "object",
       "properties": {

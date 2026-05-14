@@ -23,6 +23,7 @@ import type { EforgeEvent } from './events.js';
 import type { EventHookContext } from './context.js';
 import type { EventHookHandler, PolicyGateHandler, AgentRunHandler, ProfileRouterSpec, InputSourceAdapter, ReviewerPerspectiveSpec, ValidationProviderSpec } from './hooks.js';
 import type { EventPattern } from './patterns.js';
+import type { ExtensionTool } from './tools.js';
 
 /**
  * The API surface passed to an extension factory at load time.
@@ -125,6 +126,15 @@ export interface EforgeExtensionAPI {
    * @remarks Runtime not yet wired. Typed contract only in this slice.
    */
   registerValidationProvider(spec: ValidationProviderSpec): void;
+
+  // --- eforge:region plan-01-extension-runtime-foundation ---
+  /**
+   * Register a custom agent tool contributed by this extension.
+   *
+   * @remarks Runtime capture only in this slice; agent injection is not yet wired.
+   */
+  registerTool(tool: ExtensionTool): void;
+  // --- eforge:endregion plan-01-extension-runtime-foundation ---
 }
 
 /**
