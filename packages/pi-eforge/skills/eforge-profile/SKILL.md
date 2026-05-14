@@ -23,23 +23,28 @@ Inspect `$ARGUMENTS`:
 
 Call the `eforge_profile` tool with `{ action: "show" }`.
 
-Parse the response (shape: `{ active, source, resolved: { harness, profile } }`) and report:
+Parse the response (shape: `{ active, source, resolved: { harness, profile, metadata } }`) and report:
 
 - **Active profile**: `{active}` (or "(none - using team default)" when `active` is null)
 - **Source**: `{source}` (`local` when the active profile is picked via the `.eforge/.active-profile` marker, `project` when picked via the `eforge/.active-profile` marker, `missing` when the marker points at a profile file that does not exist (stale marker), `none` when no profile is configured at all)
 - **Resolved harness**: `{resolved.harness}` (e.g. `claude-sdk` or `pi`)
+- **Metadata** (when present in `resolved.metadata`):
+  - **Description**: `{resolved.metadata.description}`
+  - **Use when**: `{resolved.metadata.whenToUse}` (as a bullet list)
+  - **Tags**: `{resolved.metadata.tags}` (comma-separated)
 
 Then call `eforge_profile` with `{ action: "list" }` to show the user what other profiles are available, rendering a table with the following columns:
 
-| Name | Scope | Harness | Active |
-|------|-------|---------|--------|
-| `pi-anthropic` | `local` | `pi` | `●` |
-| `pi-glm` | `project (shadowed)` | `pi` | |
-| `claude-fast` | `user` | `claude-sdk` | |
+| Name | Scope | Harness | Description | Active |
+|------|-------|---------|-------------|--------|
+| `pi-anthropic` | `local` | `pi` | Fast multi-provider | `●` |
+| `pi-glm` | `project (shadowed)` | `pi` | | |
+| `claude-fast` | `user` | `claude-sdk` | | |
 
 - **Scope**: `local` for profiles in `.eforge/profiles/` (gitignored, project-local), `project` for profiles in `eforge/profiles/`, `user` for profiles in `~/.config/eforge/profiles/`.
 - Local entries shadow project and user entries of the same name. Project entries shadow user entries of the same name. Shadowed entries show `project (shadowed)` or `user (shadowed)` in the Scope column.
 - Mark the active profile with `●`.
+- **Description**: show `resolved.metadata.description` when present (truncated to ~60 chars). Leave blank when absent.
 
 If no profiles exist, suggest `/eforge:profile-new` to create one.
 

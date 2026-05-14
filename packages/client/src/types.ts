@@ -183,6 +183,13 @@ export interface KeepAliveResponse {
 // Agent runtime profile management (renamed from backend in DAEMON_API_VERSION 10)
 // ---------------------------------------------------------------------------
 
+/** Optional descriptive metadata carried by agent runtime profile files. */
+export interface ProfileMetadata {
+  description?: string;
+  whenToUse?: string[];
+  tags?: string[];
+}
+
 /** A single agent runtime profile entry returned by the list endpoint. */
 export interface AgentRuntimeProfileInfo {
   name: string;
@@ -190,6 +197,7 @@ export interface AgentRuntimeProfileInfo {
   path: string;
   scope: 'local' | 'project' | 'user';
   shadowedBy?: 'local' | 'project';
+  metadata?: ProfileMetadata;
 }
 
 /** Source of the active agent runtime profile resolution. */
@@ -211,6 +219,7 @@ export interface ProfileShowResponse {
     /** The parsed profile partial config. Opaque to the client. */
     profile: unknown | null;
     scope?: 'local' | 'project' | 'user';
+    metadata?: ProfileMetadata;
   };
 }
 
@@ -237,6 +246,7 @@ export interface ProfileCreateRequest {
    * under `agents.tiers` (each with self-contained harness + model + effort).
    */
   agents?: unknown;
+  metadata?: ProfileMetadata;
   overwrite?: boolean;
   scope?: 'local' | 'project' | 'user';
 }

@@ -431,20 +431,25 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_profile
   createDaemonTool(server, cwd, {
     name: 'eforge_profile',
-    description: 'Manage named profiles in eforge/profiles/ (project), .eforge/profiles/ (local, gitignored), or ~/.config/eforge/profiles/ (user). Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile; "use" writes the active-profile marker to switch profiles; "create" writes a new profile (pass `agents.tiers` with self-contained tier recipes); "delete" removes a profile (refuses when active unless force: true).',
+    description: 'Manage named profiles in eforge/profiles/ (project), .eforge/profiles/ (local, gitignored), or ~/.config/eforge/profiles/ (user). Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile; "use" writes the active-profile marker to switch profiles; "create" writes a new profile (pass `agents.tiers` with self-contained tier recipes; optionally pass `metadata` with `description`, `whenToUse`, and `tags` — descriptive only, does not affect runtime behavior); "delete" removes a profile (refuses when active unless force: true).',
     schema: {
       action: z.enum(['list', 'show', 'use', 'create', 'delete']).describe(
         "'list' enumerates profiles, 'show' returns the resolved active profile, 'use' switches the active profile, 'create' writes a new profile, 'delete' removes a profile",
       ),
       name: z.string().optional().describe('Profile name (required for "use", "create", and "delete")'),
       agents: z.record(z.string(), z.any()).optional().describe('Agents config block to embed in the profile (required for "create"; must include agents.tiers with tier recipes)'),
+      metadata: z.object({
+        description: z.string().optional().describe('Human-readable description of what this profile is for'),
+        whenToUse: z.array(z.string()).optional().describe('Scenarios when this profile should be used'),
+        tags: z.array(z.string()).optional().describe('Tags for categorizing this profile'),
+      }).optional().describe('Descriptive metadata for the profile (does not affect runtime behavior)'),
       overwrite: z.boolean().optional().describe('Overwrite an existing profile when creating. Default: false.'),
       force: z.boolean().optional().describe('Delete even if the profile is currently active. Default: false.'),
       scope: z.enum(['local', 'project', 'user', 'all']).optional().describe(
         'Scope for the operation. "list" accepts local|project|user|all (default: all). "use", "create", "delete" accept local|project|user (default: project). "local" targets .eforge/ (gitignored, dev-personal, highest precedence). "show" ignores scope (resolves via precedence).',
       ),
     },
-    handler: async ({ action, name, agents, overwrite, force, scope }, { cwd: toolCwd }) => {
+    handler: async ({ action, name, agents, metadata, overwrite, force, scope }, { cwd: toolCwd }) => {
       if (action === 'list') {
         const params = new URLSearchParams();
         if (scope) params.set('scope', scope);
@@ -470,6 +475,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         if (!name) throw new Error('"name" is required when action is "create"');
         const body: Record<string, unknown> = { name };
         if (agents !== undefined) body.agents = agents;
+        if (metadata !== undefined) body.metadata = metadata;
         if (overwrite !== undefined) body.overwrite = overwrite;
         if (scope) body.scope = scope;
         const { data } = await daemonRequest(toolCwd, 'POST', API_ROUTES.profileCreate, body);

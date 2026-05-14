@@ -582,6 +582,90 @@ describe('Remaining 6 commands still forward to skills (plan-02-native-pi-ux)', 
 // Architecture docs and README updates (plan-02-native-pi-ux)
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Metadata field parity (plan-02-consumers-and-docs)
+// ---------------------------------------------------------------------------
+
+describe('eforge_profile metadata field parity', () => {
+  const mcpSource = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
+  const piSource = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
+
+  it('MCP proxy eforge_profile schema declares optional metadata zod object with description, whenToUse, tags', () => {
+    const idx = mcpSource.indexOf("name: 'eforge_profile',");
+    expect(idx).toBeGreaterThan(-1);
+    const block = mcpSource.slice(idx, idx + 4000);
+    expect(block).toMatch(/metadata:\s*z\.object\(\{/);
+    expect(block).toContain('description: z.string().optional()');
+    expect(block).toContain('whenToUse: z.array(z.string()).optional()');
+    expect(block).toContain('tags: z.array(z.string()).optional()');
+    expect(block).toMatch(/\}\)\.optional\(\)/);
+  });
+
+  it('Pi extension eforge_profile schema declares optional metadata Type.Object with description, whenToUse, tags', () => {
+    const idx = piSource.indexOf('name: "eforge_profile"');
+    expect(idx).toBeGreaterThan(-1);
+    const block = piSource.slice(idx - 200, idx + 4000);
+    expect(block).toContain('metadata:');
+    expect(block).toMatch(/Type\.Optional\s*\(\s*Type\.Object\s*\(\s*\{/s);
+    expect(block).toMatch(/metadata:[\s\S]*?description:\s*Type\.Optional\(Type\.String/);
+    expect(block).toMatch(/metadata:[\s\S]*?whenToUse:\s*Type\.Optional\(Type\.Array\(Type\.String/);
+    expect(block).toMatch(/metadata:[\s\S]*?tags:\s*Type\.Optional\(Type\.Array\(Type\.String/);
+  });
+
+  it('MCP proxy forwards metadata to the daemon create body', () => {
+    const idx = mcpSource.indexOf("name: 'eforge_profile',");
+    expect(idx).toBeGreaterThan(-1);
+    const nextTool = mcpSource.indexOf("name: 'eforge_models',", idx + 1);
+    const block = nextTool > idx ? mcpSource.slice(idx, nextTool) : mcpSource.slice(idx);
+    expect(block).toMatch(/body\.metadata\s*=\s*metadata/);
+  });
+
+  it('Pi extension forwards metadata to the daemon create body', () => {
+    const idx = piSource.indexOf('name: "eforge_profile"');
+    expect(idx).toBeGreaterThan(-1);
+    const nextTool = piSource.indexOf('pi.registerTool(', idx + 1);
+    const block = nextTool > idx ? piSource.slice(idx - 200, nextTool) : piSource.slice(idx - 200);
+    expect(block).toMatch(/body\.metadata\s*=\s*metadata/);
+  });
+
+  it('Claude profile skill doc references description, whenToUse (or use when), and tags', () => {
+    const raw = readRepoFile('eforge-plugin/skills/profile/profile.md');
+    expect(raw.toLowerCase()).toContain('description');
+    expect(raw).toMatch(/whenToUse|use when/i);
+    expect(raw.toLowerCase()).toContain('tags');
+  });
+
+  it('Claude profile-new skill doc includes metadata in the create payload example', () => {
+    const raw = readRepoFile('eforge-plugin/skills/profile-new/profile-new.md');
+    expect(raw).toContain('metadata');
+    expect(raw.toLowerCase()).toContain('description');
+    expect(raw).toMatch(/whenToUse|use when/i);
+    expect(raw.toLowerCase()).toContain('tags');
+  });
+
+  it('Pi eforge-profile skill doc references description, whenToUse (or use when), and tags', () => {
+    const raw = readRepoFile('packages/pi-eforge/skills/eforge-profile/SKILL.md');
+    expect(raw.toLowerCase()).toContain('description');
+    expect(raw).toMatch(/whenToUse|use when/i);
+    expect(raw.toLowerCase()).toContain('tags');
+  });
+
+  it('Pi eforge-profile-new skill doc includes metadata in the create payload example', () => {
+    const raw = readRepoFile('packages/pi-eforge/skills/eforge-profile-new/SKILL.md');
+    expect(raw).toContain('metadata');
+    expect(raw.toLowerCase()).toContain('description');
+    expect(raw).toMatch(/whenToUse|use when/i);
+    expect(raw.toLowerCase()).toContain('tags');
+  });
+
+  it('plugin manifest version is greater than 0.23.5', () => {
+    const manifest = JSON.parse(readRepoFile('eforge-plugin/.claude-plugin/plugin.json')) as { version: string };
+    const [major, minor, patch] = manifest.version.split('.').map(Number);
+    const isGreater = major > 0 || minor > 23 || (minor === 23 && patch > 5);
+    expect(isGreater).toBe(true);
+  });
+});
+
 describe('docs/architecture.md - native command mentions (plan-02-native-pi-ux)', () => {
   const raw = readRepoFile('docs/architecture.md');
 

@@ -36,6 +36,12 @@ export interface ProfileCreateInput {
     review: TierSelection;
     evaluation: TierSelection;
   };
+  /** Descriptive metadata for the profile. Does not affect runtime behavior. */
+  metadata?: {
+    description?: string;
+    whenToUse?: string[];
+    tags?: string[];
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -62,6 +68,12 @@ export interface ProfileCreatePayload {
       evaluation: TierRecipeEntry;
     };
   };
+  /** Descriptive metadata for the profile. Does not affect runtime behavior. */
+  metadata?: {
+    description?: string;
+    whenToUse?: string[];
+    tags?: string[];
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -85,12 +97,13 @@ function toTierEntry(sel: TierSelection): TierRecipeEntry {
  *
  * Returns an object whose top-level keys are exactly `name`, `scope`, `agents`,
  * with `agents` containing only `tiers`. No `agentRuntimes`, no
- * `defaultAgentRuntime`, no `agents.models`.
+ * `defaultAgentRuntime`, no `agents.models`. When `metadata` is provided in
+ * the input, it is preserved as a top-level `metadata` key in the payload.
  */
 export function buildProfileCreatePayload(input: ProfileCreateInput): ProfileCreatePayload {
-  const { name, scope, tiers } = input;
+  const { name, scope, tiers, metadata } = input;
 
-  return {
+  const payload: ProfileCreatePayload = {
     name,
     scope,
     agents: {
@@ -102,4 +115,10 @@ export function buildProfileCreatePayload(input: ProfileCreateInput): ProfileCre
       },
     },
   };
+
+  if (metadata !== undefined) {
+    payload.metadata = metadata;
+  }
+
+  return payload;
 }

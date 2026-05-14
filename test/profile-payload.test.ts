@@ -170,3 +170,100 @@ describe('buildProfileCreatePayload', () => {
     expect(agentsAny['pi']).toBeUndefined();
   });
 });
+
+// ---------------------------------------------------------------------------
+// buildProfileCreatePayload — metadata pass-through
+// ---------------------------------------------------------------------------
+
+describe('metadata pass-through', () => {
+  it('includes full metadata when all fields are provided', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'meta-profile',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'claude-opus-4-7',   effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'claude-sonnet-4-6', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'claude-haiku-4-5',  effort: 'low' },
+      },
+      metadata: { description: 'My profile', whenToUse: ['ci', 'review'], tags: ['fast', 'cheap'] },
+    });
+
+    expect(payload.metadata).toEqual({
+      description: 'My profile',
+      whenToUse: ['ci', 'review'],
+      tags: ['fast', 'cheap'],
+    });
+    expect(Object.keys(payload).sort()).toEqual(['agents', 'metadata', 'name', 'scope']);
+  });
+
+  it('omits metadata key entirely when not provided', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'no-meta',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
+    });
+
+    expect((payload as Record<string, unknown>)['metadata']).toBeUndefined();
+    expect(Object.keys(payload).sort()).toEqual(['agents', 'name', 'scope']);
+  });
+
+  it('handles partial metadata (only description)', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'partial-meta',
+      scope: 'user',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
+      metadata: { description: 'Just a description' },
+    });
+
+    expect(payload.metadata).toEqual({ description: 'Just a description' });
+    expect((payload.metadata as Record<string, unknown>)['whenToUse']).toBeUndefined();
+    expect((payload.metadata as Record<string, unknown>)['tags']).toBeUndefined();
+  });
+
+  it('handles partial metadata (only tags)', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'tags-only',
+      scope: 'local',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
+      metadata: { tags: ['production', 'high-quality'] },
+    });
+
+    expect(payload.metadata).toEqual({ tags: ['production', 'high-quality'] });
+    expect((payload.metadata as Record<string, unknown>)['description']).toBeUndefined();
+    expect((payload.metadata as Record<string, unknown>)['whenToUse']).toBeUndefined();
+  });
+
+  it('metadata is preserved at top level (not nested inside agents)', () => {
+    const payload = buildProfileCreatePayload({
+      name: 'top-level-meta',
+      scope: 'project',
+      tiers: {
+        planning:       { harness: 'claude-sdk', modelId: 'model-a', effort: 'high' },
+        implementation: { harness: 'claude-sdk', modelId: 'model-b', effort: 'medium' },
+        review:         { harness: 'claude-sdk', modelId: 'model-c', effort: 'low' },
+        evaluation:     { harness: 'claude-sdk', modelId: 'model-d', effort: 'low' },
+      },
+      metadata: { description: 'top-level test' },
+    });
+
+    // Metadata is top-level, not inside agents
+    expect(payload.metadata).toBeDefined();
+    expect((payload.agents as Record<string, unknown>)['metadata']).toBeUndefined();
+  });
+});

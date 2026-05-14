@@ -378,6 +378,63 @@ export interface EforgeConfig {
 const partialEforgeConfigSchema = eforgeConfigBaseSchema.partial();
 export type PartialEforgeConfig = z.output<typeof partialEforgeConfigSchema>;
 
+// ---------------------------------------------------------------------------
+// Profile Metadata Schema — profile-only descriptive fields
+// ---------------------------------------------------------------------------
+
+/**
+ * Optional descriptive metadata for agent runtime profile files.
+ * These fields are preserved on read, accepted on create, and surfaced in wire
+ * responses but MUST NOT participate in runtime config construction.
+ */
+export const profileMetadataSchema = z.object({
+  description: z.string().optional(),
+  whenToUse: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+export type ProfileMetadata = z.output<typeof profileMetadataSchema>;
+
+/**
+ * Schema used ONLY for profile YAML file parsing. Extends partialEforgeConfigSchema
+ * to accept the three optional metadata fields at the top level. Keep
+ * partialEforgeConfigSchema unchanged so config.yaml continues to reject these
+ * keys via configYamlSchema's passthrough+superRefine knownConfigYamlKeys check.
+ */
+const profileFileSchema = partialEforgeConfigSchema.extend({
+  description: z.string().optional(),
+  whenToUse: z.array(z.string()).optional(),
+  tags: z.array(z.string()).optional(),
+});
+
+type ProfileFileData = z.output<typeof profileFileSchema>;
+
+/**
+ * Extract optional profile metadata from an opaque profile object.
+ * Returns `undefined` when none of the three metadata fields are present.
+ * Useful for the daemon to lift metadata out of opaque profile partials
+ * without re-parsing YAML.
+ */
+export function extractProfileMetadata(profile: unknown): ProfileMetadata | undefined {
+  if (!profile || typeof profile !== 'object') return undefined;
+  const obj = profile as Record<string, unknown>;
+  const description = typeof obj.description === 'string' ? obj.description : undefined;
+  const whenToUse =
+    Array.isArray(obj.whenToUse) && obj.whenToUse.every((v) => typeof v === 'string')
+      ? (obj.whenToUse as string[])
+      : undefined;
+  const tags =
+    Array.isArray(obj.tags) && obj.tags.every((v) => typeof v === 'string')
+      ? (obj.tags as string[])
+      : undefined;
+  if (description === undefined && whenToUse === undefined && tags === undefined) return undefined;
+  const result: ProfileMetadata = {};
+  if (description !== undefined) result.description = description;
+  if (whenToUse !== undefined) result.whenToUse = whenToUse;
+  if (tags !== undefined) result.tags = tags;
+  return result;
+}
+
 /**
  * Set of top-level keys recognized by config.yaml. Derived from the base schema's
  * shape so it stays in sync with the source of truth — adding a new top-level
@@ -1239,8 +1296,12 @@ export async function resolveActiveProfileName(
  * Load and parse an agent runtime profile file from a specific path. Returns null
  * when the file does not exist. Throws if the file exists but is invalid
  * (malformed YAML or schema validation failure).
+ *
+ * The returned profile object carries metadata fields (description, whenToUse, tags)
+ * at runtime alongside the config fields, so that extractProfileMetadata() works on
+ * the opaque profile value passed through the daemon boundary.
  */
-async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | null> {
+async function loadProfileFromPath(path: string): Promise<{ profile: PartialEforgeConfig; metadata?: ProfileMetadata } | null> {
   let raw: string;
   try {
     raw = await readFile(path, 'utf-8');
@@ -1249,8 +1310,61 @@ async function loadProfileFromPath(path: string): Promise<PartialEforgeConfig | 
     throw err;
   }
   const data = parseYaml(raw);
-  if (!data || typeof data !== 'object') return {};
-  return parseRawConfig(data as Record<string, unknown>, 'profile');
+  if (!data || typeof data !== 'object') return { profile: {} };
+
+  const rawData = data as Record<string, unknown>;
+
+  // Reject legacy top-level fields with a migration pointer (same as parseRawConfig).
+  const offending: string[] = [];
+  if (rawData.backend !== undefined) offending.push('backend');
+  if (rawData.pi !== undefined) offending.push('pi');
+  if (rawData.claudeSdk !== undefined) offending.push('claudeSdk');
+  if (rawData.agentRuntimes !== undefined) offending.push('agentRuntimes');
+  if (rawData.defaultAgentRuntime !== undefined) offending.push('defaultAgentRuntime');
+
+  if (offending.length > 0) {
+    const fieldList = offending.map((f) => `"${f}:"`).join(', ');
+    throw new ConfigMigrationError(
+      `Legacy field(s) ${fieldList} are no longer valid. ` +
+      `Each tier under agents.tiers is now a self-contained recipe (harness + model + effort + tuning). ` +
+      `Offending field(s): ${offending.join(', ')}. ` +
+      `See docs/config-migration.md for before/after examples.`,
+    );
+  }
+
+  // Reject legacy agents.models nested field.
+  const agentsField = rawData.agents as Record<string, unknown> | undefined;
+  if (agentsField && typeof agentsField === 'object' && 'models' in agentsField) {
+    throw new ConfigMigrationError(
+      `"agents.models" is no longer supported. Each tier under agents.tiers carries its own model. ` +
+      `See docs/config-migration.md for before/after examples.`,
+    );
+  }
+
+  // Parse with profile-aware schema that accepts metadata fields.
+  const result = profileFileSchema.safeParse(data);
+  if (!result.success) {
+    throw new ConfigValidationError(
+      'Invalid profile: ' + z.prettifyError(result.error),
+    );
+  }
+
+  const parsed = result.data as ProfileFileData;
+
+  // Build the runtime profile object: known config fields + metadata fields.
+  // Config fields are stripped of undefined values (same as stripUndefinedSections).
+  // Metadata fields are preserved so extractProfileMetadata() works on the opaque value.
+  const profileObj: Record<string, unknown> = {};
+  for (const key of Object.keys(eforgeConfigBaseSchema.shape)) {
+    const val = (parsed as Record<string, unknown>)[key];
+    if (val !== undefined) profileObj[key] = val;
+  }
+  if (parsed.description !== undefined) profileObj.description = parsed.description;
+  if (parsed.whenToUse !== undefined) profileObj.whenToUse = parsed.whenToUse;
+  if (parsed.tags !== undefined) profileObj.tags = parsed.tags;
+
+  const metadata = extractProfileMetadata(profileObj);
+  return { profile: profileObj as PartialEforgeConfig, metadata };
 }
 
 /**
@@ -1260,21 +1374,21 @@ export async function loadProfile(
   configDir: string,
   name: string,
   cwd?: string,
-): Promise<{ profile: PartialEforgeConfig; scope: 'local' | 'project' | 'user' } | null> {
+): Promise<{ profile: PartialEforgeConfig; metadata?: ProfileMetadata; scope: 'local' | 'project' | 'user' } | null> {
   const effectiveCwd = cwd ?? dirname(configDir);
   const profiles = await resolveNamedSet('profiles', { cwd: effectiveCwd, configDir, extension: 'yaml' });
   const artifact = profiles.get(name);
   if (!artifact) return null;
-  const profile = await loadProfileFromPath(artifact.path);
-  if (profile === null) return null;
+  const result = await loadProfileFromPath(artifact.path);
+  if (result === null) return null;
   const scope = artifact.scope === 'project-local' ? 'local'
     : artifact.scope === 'project-team' ? 'project'
     : 'user';
-  return { profile, scope };
+  return { profile: result.profile, metadata: result.metadata, scope };
 }
 
 /** Shared entry type returned by scanProfilesDir. */
-type ScannedProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user' };
+type ScannedProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user'; metadata?: ProfileMetadata };
 
 /**
  * Scan a profiles directory and return an entry for each `.yaml` file.
@@ -1296,6 +1410,7 @@ async function scanProfilesDir(dir: string, scope: 'local' | 'project' | 'user')
     const name = basename(entry, '.yaml');
     const path = resolve(dir, entry);
     let harness: 'claude-sdk' | 'pi' | undefined;
+    let metadata: ProfileMetadata | undefined;
     try {
       const raw = await readFile(path, 'utf-8');
       const data = parseYaml(raw);
@@ -1319,11 +1434,12 @@ async function scanProfilesDir(dir: string, scope: 'local' | 'project' | 'user')
           const parsed = harnessTypeSchema.safeParse(harnessVal);
           if (parsed.success) harness = parsed.data;
         }
+        metadata = extractProfileMetadata(raw_data);
       }
     } catch {
       // unreadable — still include the entry with harness=undefined
     }
-    out.push({ name, harness, path, scope });
+    out.push({ name, harness, path, scope, metadata });
   }
   return out;
 }
@@ -1334,8 +1450,8 @@ async function scanProfilesDir(dir: string, scope: 'local' | 'project' | 'user')
 export async function listProfiles(
   configDir: string,
   cwd?: string,
-): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user'; shadowedBy?: 'local' | 'project' }>> {
-  type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user'; shadowedBy?: 'local' | 'project' };
+): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user'; shadowedBy?: 'local' | 'project'; metadata?: ProfileMetadata }>> {
+  type ProfileEntry = { name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'local' | 'project' | 'user'; shadowedBy?: 'local' | 'project'; metadata?: ProfileMetadata };
   const effectiveCwd = cwd ?? dirname(configDir);
 
   const scopeOpts = { cwd: effectiveCwd, configDir };
@@ -1365,9 +1481,9 @@ export async function listProfiles(
 /**
  * List all profile files from only the user scope.
  */
-export async function listUserProfiles(): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'user' }>> {
+export async function listUserProfiles(): Promise<Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'user'; metadata?: ProfileMetadata }>> {
   const entries = await scanProfilesDir(userProfilesDir(), 'user');
-  return entries as Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'user' }>;
+  return entries as Array<{ name: string; harness: 'claude-sdk' | 'pi' | undefined; path: string; scope: 'user'; metadata?: ProfileMetadata }>;
 }
 
 /**
@@ -1393,10 +1509,10 @@ export async function resolveUserActiveProfile(): Promise<{ name: string | null;
 /**
  * Load a user-scope profile by name from `~/.config/eforge/profiles/`.
  */
-export async function loadUserProfile(name: string): Promise<{ profile: PartialEforgeConfig; scope: 'user' } | null> {
+export async function loadUserProfile(name: string): Promise<{ profile: PartialEforgeConfig; metadata?: ProfileMetadata; scope: 'user' } | null> {
   const result = await loadProfileFromPath(userProfilePath(name));
   if (result !== null) {
-    return { profile: result, scope: 'user' };
+    return { profile: result.profile, metadata: result.metadata, scope: 'user' };
   }
   return null;
 }
@@ -1459,6 +1575,7 @@ export async function setActiveProfile(
 export type CreateProfileInput = {
   name: string;
   agents?: PartialEforgeConfig['agents'];
+  metadata?: ProfileMetadata;
   overwrite?: boolean;
   scope?: 'local' | 'project' | 'user';
 };
@@ -1472,7 +1589,7 @@ export async function createAgentRuntimeProfile(
   input: CreateProfileInput,
   cwd?: string,
 ): Promise<{ path: string }> {
-  const { name, agents, overwrite, scope: inputScope } = input;
+  const { name, agents, metadata, overwrite, scope: inputScope } = input;
   const scope = inputScope ?? 'project';
   const effectiveCwd = cwd ?? dirname(configDir);
   if (!name || typeof name !== 'string' || !/^[A-Za-z0-9._-]+$/.test(name)) {
@@ -1494,13 +1611,24 @@ export async function createAgentRuntimeProfile(
   const partial: PartialEforgeConfig = {};
   if (agents !== undefined) partial.agents = agents as PartialEforgeConfig['agents'];
 
-  // Validate against the partial schema first
+  // Validate the config portion against the partial schema first.
   const partialResult = partialEforgeConfigSchema.safeParse(partial);
   if (!partialResult.success) {
     throw new Error(
       `Profile "${name}" failed partial-config validation: ` +
       z.prettifyError(partialResult.error),
     );
+  }
+
+  // Validate metadata separately if provided.
+  if (metadata !== undefined) {
+    const metadataResult = profileMetadataSchema.safeParse(metadata);
+    if (!metadataResult.success) {
+      throw new ConfigValidationError(
+        `Profile "${name}" failed metadata validation: ` +
+        z.prettifyError(metadataResult.error),
+      );
+    }
   }
 
   // Validate against the merged schema (global + project + profile).
@@ -1517,19 +1645,25 @@ export async function createAgentRuntimeProfile(
     );
   }
 
-  const yamlOut = stringifyYaml(stripUndefinedSections(partialResult.data));
+  // Build the YAML output: config fields + optional metadata fields.
+  const yamlData: Record<string, unknown> = { ...stripUndefinedSections(partialResult.data) };
+  if (metadata?.description !== undefined) yamlData.description = metadata.description;
+  if (metadata?.whenToUse !== undefined) yamlData.whenToUse = metadata.whenToUse;
+  if (metadata?.tags !== undefined) yamlData.tags = metadata.tags;
+
+  const yamlOut = stringifyYaml(yamlData);
 
   await mkdir(targetDir, { recursive: true });
   const tmp = `${path}.${randomBytes(6).toString('hex')}.tmp`;
   await writeFile(tmp, yamlOut, 'utf-8');
   await rename(tmp, path);
 
-  // Round-trip verify: parse the written file and re-validate
+  // Round-trip verify: parse the written file and re-validate using the profile-aware schema.
   try {
     const verifyRaw = await readFile(path, 'utf-8');
     const verifyData = parseYaml(verifyRaw);
     if (verifyData && typeof verifyData === 'object') {
-      const verifyResult = partialEforgeConfigSchema.safeParse(verifyData);
+      const verifyResult = profileFileSchema.safeParse(verifyData);
       if (!verifyResult.success) {
         throw new Error(
           `Profile "${name}" failed round-trip validation after write: ` +

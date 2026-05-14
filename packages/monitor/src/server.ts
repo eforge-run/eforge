@@ -1618,7 +1618,7 @@ export async function startServer(
 
     if (req.method === 'GET' && url === API_ROUTES.profileShow) {
       try {
-        const { getConfigDir, loadProfile, loadUserProfile, resolveActiveProfileName, resolveUserActiveProfile, loadUserConfig } =
+        const { getConfigDir, loadProfile, loadUserProfile, resolveActiveProfileName, resolveUserActiveProfile, loadUserConfig, extractProfileMetadata } =
           await import('@eforge-build/engine/config');
         const configDir = await getConfigDir(options?.cwd);
         if (!configDir) {
@@ -1633,7 +1633,8 @@ export async function startServer(
           const result = await loadUserProfile(name);
           const harness = result ? extractHarnessFromProfile(result.profile) : undefined;
           const profile = result ? result.profile : null;
-          sendJson(res, { active: name, source: 'user-local', resolved: { harness, profile, scope: 'user' } });
+          const metadata = profile ? extractProfileMetadata(profile) : undefined;
+          sendJson(res, { active: name, source: 'user-local', resolved: { harness, profile, scope: 'user', metadata } });
           return;
         }
         const projectConfig = await loadProjectPartialConfig(configDir);
@@ -1650,15 +1651,17 @@ export async function startServer(
         let profile: unknown = null;
         let harness: 'claude-sdk' | 'pi' | undefined;
         let profileScope: 'local' | 'project' | 'user' | undefined;
+        let profileMetadata: ReturnType<typeof extractProfileMetadata>;
         if (name) {
           const result = await loadProfile(configDir, name, options?.cwd);
           if (result) {
             profile = result.profile;
             profileScope = result.scope;
             harness = extractHarnessFromProfile(result.profile);
+            profileMetadata = extractProfileMetadata(result.profile);
           }
         }
-        sendJson(res, { active: name, source, resolved: { harness, profile, scope: profileScope } });
+        sendJson(res, { active: name, source, resolved: { harness, profile, scope: profileScope, metadata: profileMetadata } });
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to show agent runtime profile');
       }
@@ -1702,6 +1705,7 @@ export async function startServer(
         const body = await parseJsonBody(req) as {
           name?: unknown;
           agents?: unknown;
+          metadata?: unknown;
           overwrite?: unknown;
           scope?: unknown;
         };
@@ -1721,9 +1725,12 @@ export async function startServer(
           // Single shape: profile carries `agents` (with tier recipes under
           // agents.tiers) plus optional non-agent overrides. Tier recipes are
           // self-contained — there is no separate harness / agentRuntimes field.
+          // Optional `metadata` (description, whenToUse, tags) is forwarded as-is;
+          // the engine validates field shapes and throws ConfigValidationError on failure.
           const result = await createAgentRuntimeProfile(configDir, {
             name: body.name,
             agents: body.agents as PartialEforgeConfig['agents'],
+            metadata: body.metadata as import('@eforge-build/engine/config').ProfileMetadata | undefined,
             overwrite: body.overwrite === true,
             scope: scopeVal,
           }, options?.cwd);
