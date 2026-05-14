@@ -97,6 +97,10 @@ export const handleAgentStart: EventHandler<'agent:start'> = (event, state) => {
     tier: event.tier,
     tierSource: event.tierSource,
     perspective: event.perspective,
+    toolbelt: event.toolbelt,
+    toolbeltSource: event.toolbeltSource,
+    projectMcpSelection: event.projectMcpSelection,
+    projectMcpServerNames: event.projectMcpServerNames,
   };
   return { agentThreads: [...state.agentThreads, thread] };
 };

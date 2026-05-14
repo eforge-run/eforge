@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 27605ba6 -->
+<!-- Commit: c47c909e -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -99,7 +99,7 @@ Total variants: 150
 | `expedition:module:complete` | `moduleId` |
 | `expedition:compile:start` | - |
 | `expedition:compile:complete` | `plans` |
-| `agent:start` | `agent`, `agentId`, `effort`, `effortClamped`, `effortOriginal`, `effortSource`, `harness`, `harnessSource`, `model`, `perspective`, `planId`, `thinking`, `thinkingCoerced`, `thinkingOriginal`, `thinkingSource`, `tier`, `tierSource` |
+| `agent:start` | `agent`, `agentId`, `effort`, `effortClamped`, `effortOriginal`, `effortSource`, `harness`, `harnessSource`, `model`, `perspective`, `planId`, `projectMcpSelection`, `projectMcpServerNames`, `thinking`, `thinkingCoerced`, `thinkingOriginal`, `thinkingSource`, `tier`, `tierSource`, `toolbelt`, `toolbeltSource` |
 | `agent:warning` | `agent`, `agentId`, `code`, `message`, `planId` |
 | `agent:stop` | `agent`, `agentId`, `error`, `planId` |
 | `agent:usage` | `agent`, `agentId`, `costUsd`, `final`, `numTurns`, `planId`, `usage` |

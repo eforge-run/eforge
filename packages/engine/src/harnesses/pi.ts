@@ -293,6 +293,10 @@ export class PiHarness implements AgentHarness {
         thinkingCoerced: options.thinkingCoerced,
         thinkingOriginal: options.thinkingOriginal,
         perspective: options.perspective,
+        toolbelt: options.toolbelt,
+        toolbeltSource: options.toolbeltSource,
+        projectMcpSelection: options.projectMcpSelection,
+        projectMcpServerNames: options.projectMcpServerNames,
       });
       yield { type: 'agent:stop', planId, agent, agentId, error: 'No model configured for Pi backend. Set the model on the tier recipe in eforge/config.yaml.', timestamp: new Date().toISOString() };
       return;
@@ -317,6 +321,10 @@ export class PiHarness implements AgentHarness {
         thinkingCoerced: options.thinkingCoerced,
         thinkingOriginal: options.thinkingOriginal,
         perspective: options.perspective,
+        toolbelt: options.toolbelt,
+        toolbeltSource: options.toolbeltSource,
+        projectMcpSelection: options.projectMcpSelection,
+        projectMcpServerNames: options.projectMcpServerNames,
       });
       yield { type: 'agent:stop', planId, agent, agentId, error: `No provider in model ref for Pi backend. Tier recipes with harness "pi" must set pi.provider.`, timestamp: new Date().toISOString() };
       return;
@@ -342,6 +350,10 @@ export class PiHarness implements AgentHarness {
       thinkingCoerced: options.thinkingCoerced,
       thinkingOriginal: options.thinkingOriginal,
       perspective: options.perspective,
+      toolbelt: options.toolbelt,
+      toolbeltSource: options.toolbeltSource,
+      projectMcpSelection: options.projectMcpSelection,
+      projectMcpServerNames: options.projectMcpServerNames,
     });
 
     if (options.thinkingCoerced) {
@@ -734,7 +746,7 @@ export class PiHarness implements AgentHarness {
             toolsMode: options.tools,
             thinkingLevel,
             bare: this.bare,
-            mcpServerNames: this.mcpServers ? Object.keys(this.mcpServers) : [],
+            projectMcpServerNames: Object.keys(this.mcpServers ?? {}).sort(),
             extensionPathCount: extensionPaths.length,
             baseToolCount: filteredBaseTools.length,
             bridgedMcpToolCount: filteredBridgedMcpTools.length,
@@ -745,7 +757,7 @@ export class PiHarness implements AgentHarness {
             eforgeSkillsFiltered,
             eforgePromptsFiltered,
             eforgeThemesFiltered,
-            note: 'systemPrompt reflects what pi-coding-agent constructed: the coding-assistant preamble + tool snippets + ancestor AGENTS.md/CLAUDE.md + skills + date/cwd. Any resources contributed by @eforge-build/pi-eforge were filtered out via resourceLoader overrides to prevent eforge recursion.',
+            note: 'systemPrompt reflects what pi-coding-agent constructed: the coding-assistant preamble + tool snippets + ancestor AGENTS.md/CLAUDE.md + skills + date/cwd. projectMcpServerNames lists project MCP servers filtered by the tier toolbelt (bridged to Pi via PiMcpBridge). Any resources contributed by @eforge-build/pi-eforge were filtered out via resourceLoader overrides to prevent eforge recursion.',
           },
         };
         await this.onDebugPayload(debugPayload);

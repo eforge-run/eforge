@@ -39,6 +39,17 @@ export interface BuildAgentStartEventOptions {
   thinkingOriginal?: ThinkingConfig;
   /** The perspective this agent is reviewing from. Set only for parallel reviewer agents. */
   perspective?: string;
+  /**
+   * The toolbelt name selected for this role's tier. Undefined when the tier omits toolbelt,
+   * null when toolbelt is explicitly 'none', string when a named toolbelt is active.
+   */
+  toolbelt?: string | null;
+  /** Provenance of the toolbelt selection. */
+  toolbeltSource?: 'tier' | 'role' | 'plan' | 'default';
+  /** Which project MCP servers were selected for this tier. */
+  projectMcpSelection?: 'all' | 'none' | 'toolbelt';
+  /** Sorted names of the project MCP servers passed to this tier's harness. */
+  projectMcpServerNames?: string[];
 }
 
 /**
@@ -67,6 +78,10 @@ export function buildAgentStartEvent(opts: BuildAgentStartEventOptions): AgentSt
   if (opts.thinkingCoerced !== undefined) event.thinkingCoerced = opts.thinkingCoerced;
   if (opts.thinkingOriginal !== undefined) event.thinkingOriginal = opts.thinkingOriginal;
   if (opts.perspective !== undefined) event.perspective = opts.perspective;
+  if (opts.toolbelt !== undefined) event.toolbelt = opts.toolbelt;
+  if (opts.toolbeltSource !== undefined) event.toolbeltSource = opts.toolbeltSource;
+  if (opts.projectMcpSelection !== undefined) event.projectMcpSelection = opts.projectMcpSelection;
+  if (opts.projectMcpServerNames !== undefined) event.projectMcpServerNames = opts.projectMcpServerNames;
   return event;
 }
 

@@ -191,7 +191,7 @@ export class EforgeEngine {
 
     // Auto-load MCP servers from .mcp.json if not explicitly provided
     if (!options.mcpServers && !options.agentRuntimes) {
-      const discovered = await loadMcpServers(cwd);
+      const discovered = await loadProjectMcpServers(cwd);
       if (discovered) {
         options = { ...options, mcpServers: discovered };
       }
@@ -219,6 +219,7 @@ export class EforgeEngine {
         mcpServers: options.mcpServers,
         plugins: options.plugins,
         settingSources: (options.settingSources ?? config.agents.settingSources) as SettingSource[] | undefined,
+        toolbelts: config.tools.toolbelts,
       });
     }
     options = { ...options, agentRuntimes };
@@ -2005,10 +2006,12 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
 }
 
 /**
- * Load MCP server configs from .mcp.json in the given directory.
+ * Load project MCP server configs from .mcp.json in the given directory.
  * Returns the mcpServers record, or undefined if no .mcp.json exists.
+ * The returned map is the unfiltered source of truth for project MCP servers;
+ * per-tier filtering based on toolbelt config is applied later in the registry.
  */
-async function loadMcpServers(cwd: string): Promise<ClaudeSDKHarnessOptions['mcpServers'] | undefined> {
+async function loadProjectMcpServers(cwd: string): Promise<ClaudeSDKHarnessOptions['mcpServers'] | undefined> {
   const mcpPath = resolve(cwd, '.mcp.json');
   let content: string;
   try {
