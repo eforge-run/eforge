@@ -6,6 +6,7 @@ tmp/
 .eforge/
 .eforge-logs/
 .mcp.json
+.vercel/
 .schaake-os-track
 .orchestration-logs/
 .claude/settings.local.json
