@@ -64,6 +64,8 @@ interface TierRecipeEntry {
   pi?: { provider?: string };
   model?: string;
   effort?: string;
+  /** Toolbelt assigned to this tier. 'none' means explicitly no project MCP servers; undefined means all (default). */
+  toolbelt?: string;
 }
 
 interface ProfileConfigShape {
@@ -71,6 +73,9 @@ interface ProfileConfigShape {
   agents?: {
     tiers?: Record<string, TierRecipeEntry>;
     roles?: Record<string, unknown>;
+  };
+  tools?: {
+    toolbelts?: Record<string, { description?: string; mcpServers: string[] }>;
   };
 }
 
@@ -118,6 +123,26 @@ function ProfileSheetBody({ profile }: { profile: SessionProfile }) {
                     <span>effort: {entry.effort}</span>
                   )}
                 </div>
+                {entry.toolbelt !== undefined && (
+                  <div className="flex items-center gap-1.5 text-[10px] text-text-dim pl-2">
+                    <span>toolbelt:</span>
+                    {entry.toolbelt === 'none'
+                      ? <Badge variant="outline" className="text-[10px] px-1.5 py-0">none</Badge>
+                      : (
+                        <>
+                          <Badge variant="outline" className="text-[10px] px-1.5 py-0">{entry.toolbelt}</Badge>
+                          {(() => {
+                            const servers = cfg.tools?.toolbelts?.[entry.toolbelt as string]?.mcpServers;
+                            if (servers && servers.length > 0) {
+                              return <span>({[...servers].sort().join(', ')})</span>;
+                            }
+                            return null;
+                          })()}
+                        </>
+                      )
+                    }
+                  </div>
+                )}
               </div>
             ))}
           </div>

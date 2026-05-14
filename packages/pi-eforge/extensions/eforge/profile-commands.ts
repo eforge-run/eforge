@@ -10,7 +10,7 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { daemonRequest, API_ROUTES, buildPath } from "@eforge-build/client";
 import { showSelectOverlay, showSearchableSelectOverlay, showInfoOverlay, withLoader, type UIContext } from "./ui-helpers";
-import { buildProfileCreatePayload, type TierSelection, type ProfileCreatePayload } from "./profile-payload";
+import { buildProfileCreatePayload, type TierSelection, type ProfileCreatePayload, type TierRecipeEntry } from "./profile-payload";
 
 // ---------------------------------------------------------------------------
 // Inline response types for daemon API calls
@@ -317,8 +317,24 @@ async function pickCustomTier(
   return { harness, provider, modelId, effort };
 }
 
+// Extended types for buildYamlPreview to handle optional toolbelt assignments
+// that may be present in profile configs loaded from the daemon.
+interface TierPreviewEntry extends TierRecipeEntry {
+  toolbelt?: string;
+}
+
+interface ProfilePreviewPayload {
+  metadata?: ProfileCreatePayload['metadata'];
+  agents: {
+    tiers: Record<string, TierPreviewEntry>;
+  };
+  tools?: {
+    toolbelts?: Record<string, { description?: string; mcpServers: string[] }>;
+  };
+}
+
 /** Build a human-readable YAML preview of the profile payload. */
-function buildYamlPreview(payload: ProfileCreatePayload): string {
+function buildYamlPreview(payload: ProfilePreviewPayload): string {
   const lines: string[] = ["```yaml"];
   if (payload.metadata) {
     const m = payload.metadata;
@@ -349,6 +365,25 @@ function buildYamlPreview(payload: ProfileCreatePayload): string {
     }
     lines.push(`      model: ${entry.model}`);
     lines.push(`      effort: ${entry.effort}`);
+    if (entry.toolbelt !== undefined) {
+      lines.push(`      toolbelt: ${entry.toolbelt}`);
+    }
+  }
+  if (payload.tools?.toolbelts && Object.keys(payload.tools.toolbelts).length > 0) {
+    lines.push("tools:");
+    lines.push("  toolbelts:");
+    for (const [name, tb] of Object.entries(payload.tools.toolbelts)) {
+      lines.push(`    ${name}:`);
+      if (tb.description) {
+        lines.push(`      description: ${JSON.stringify(tb.description)}`);
+      }
+      if (tb.mcpServers.length > 0) {
+        lines.push("      mcpServers:");
+        for (const server of tb.mcpServers) {
+          lines.push(`        - ${server}`);
+        }
+      }
+    }
   }
   lines.push("```");
   return lines.join("\n");

@@ -4,6 +4,8 @@
 
 Design proposal for the `TOOLBELTS_01` work unit. This document defines the MVP model for MCP-backed toolbelts in agent runtime profiles. It is intentionally conservative: it optimizes for simple configuration, predictable runtime behavior, and maintainable UX.
 
+**Implementation status:** Runtime filtering and observability are implemented. The `tools.toolbelts` registry and per-tier `toolbelt` field are schema-valid, statically validated, and runtime-enforced. Toolbelt selection and resolved MCP server names are observable in the monitor UI agent detail surface and in profile list/show output. The canonical Playwright UI profile example (TOOLBELTS_06) is deferred.
+
 ## Goals
 
 - Let agent runtime profiles describe what kind of work they are optimized for.

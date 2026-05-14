@@ -312,6 +312,22 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                         perspective: {thread.perspective}
                       </div>
                     )}
+                    {thread.toolbelt !== undefined && (
+                      <div className="opacity-50 text-[10px]">
+                        toolbelt: {thread.toolbelt === null ? 'none' : thread.toolbelt}
+                        {thread.toolbeltSource && ` (${thread.toolbeltSource})`}
+                      </div>
+                    )}
+                    {thread.projectMcpSelection && (
+                      <div className="opacity-50 text-[10px]">
+                        project MCP: {thread.projectMcpSelection}
+                      </div>
+                    )}
+                    {thread.projectMcpServerNames && thread.projectMcpServerNames.length > 0 && (
+                      <div className="opacity-50 text-[10px]">
+                        servers: {[...thread.projectMcpServerNames].sort().join(', ')}
+                      </div>
+                    )}
                     <div className="opacity-70">{duration}</div>
                     {thread.totalTokens != null && (
                       <div className="opacity-70">
