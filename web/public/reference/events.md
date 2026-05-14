@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 030fb2f0 -->
+<!-- Commit: 55d1e496 -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -13,7 +13,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 150
+Total variants: 151
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -106,7 +106,8 @@ Total variants: 150
 | `agent:message` | `agent`, `agentId`, `content`, `planId` |
 | `agent:tool_use` | `agent`, `agentId`, `input`, `planId`, `tool`, `toolUseId` |
 | `agent:tool_result` | `agent`, `agentId`, `output`, `planId`, `tool`, `toolUseId` |
-| `agent:result` | `agent`, `planId`, `result` |
+| `agent:result` | `agent`, `agentId`, `planId`, `result` |
+| `agent:activity` | `agent`, `agentId`, `attribution`, `files`, `notes`, `planId`, `totals` |
 | `agent:retry` | `agent`, `attempt`, `label`, `maxAttempts`, `planId`, `shardId`, `subtype` |
 | `validation:start` | `commands` |
 | `validation:command:start` | `command` |

@@ -1092,8 +1092,33 @@ const EforgeEventVariantsSchema = Type.Union([
   Type.Object({
     type: Type.Literal('agent:result'),
     planId: Type.Optional(Type.String()),
+    agentId: Type.Optional(Type.String()),
     agent: AgentRoleSchema,
     result: AgentResultDataSchema,
+  }),
+  Type.Object({
+    type: Type.Literal('agent:activity'),
+    planId: Type.Optional(Type.String()),
+    agentId: Type.String(),
+    agent: AgentRoleSchema,
+    files: Type.Optional(Type.Array(Type.Object({
+      path: Type.String(),
+      status: Type.Optional(Type.String()),
+      additions: Type.Optional(Type.Number()),
+      deletions: Type.Optional(Type.Number()),
+      binary: Type.Optional(Type.Boolean()),
+    }))),
+    totals: Type.Optional(Type.Object({
+      filesChanged: Type.Number(),
+      additions: Type.Number(),
+      deletions: Type.Number(),
+    })),
+    attribution: Type.Union([
+      Type.Literal('exact'),
+      Type.Literal('best_effort'),
+      Type.Literal('unavailable'),
+    ]),
+    notes: Type.Optional(Type.Array(Type.String())),
   }),
 
   // Generic retry notification
@@ -1430,6 +1455,7 @@ export function isAlwaysYieldedAgentEvent(event: EforgeEvent): boolean {
     event.type === 'agent:warning' ||
     event.type === 'agent:stop' ||
     event.type === 'agent:result' ||
+    event.type === 'agent:activity' ||
     event.type === 'agent:usage' ||
     event.type === 'agent:tool_use' ||
     event.type === 'agent:tool_result'

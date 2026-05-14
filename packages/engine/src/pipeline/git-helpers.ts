@@ -7,11 +7,12 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
-import type { EforgeEvent } from '../events.js';
+import type { EforgeEvent, AgentRole } from '../events.js';
 import type { BuildStageContext } from './types.js';
 import { forgeCommit } from '../git.js';
 import type { ModelTracker } from '../model-tracker.js';
 import { composeCommitMessage } from '../model-tracker.js';
+import { collectDiffStats, type DiffStatFile } from '../git-diff-stats.js';
 
 const exec = promisify(execFile);
 
@@ -154,6 +155,65 @@ export async function* emitFilesChanged(ctx: BuildStageContext): AsyncGenerator<
   } catch {
     // Non-critical - skip silently
   }
+}
+
+/**
+ * Compute and return an `agent:activity` event for a completed agent run.
+ *
+ * Calls `collectDiffStats` to gather file-level and summary statistics. By
+ * default, diffs `baseRef...HEAD` (commit-range). Pass `mode: 'working-tree'`
+ * for agents that leave changes unstaged (e.g., review-fixer), which diffs
+ * `baseRef` against the current working tree instead.
+ *
+ * An optional `filter` predicate restricts the reported files to a subset
+ * (e.g., files claimed by a specific shard). Totals are re-derived from the
+ * filtered set. Returns `undefined` when no (matching) changes are detected or
+ * on git failure (caller skips emission — non-critical).
+ */
+export async function emitAgentActivity(opts: {
+  cwd: string;
+  baseRef: string;
+  planId?: string;
+  agentId: string;
+  agent: AgentRole;
+  attribution: 'exact' | 'best_effort' | 'unavailable';
+  notes?: string[];
+  mode?: 'working-tree';
+  filter?: (file: DiffStatFile) => boolean;
+}): Promise<EforgeEvent | undefined> {
+  const { cwd, baseRef, planId, agentId, agent, attribution, notes, mode, filter } = opts;
+  const stats = await collectDiffStats({ cwd, fromRef: baseRef, ...(mode ? { mode } : {}) });
+  if (stats.totals.filesChanged === 0) return undefined;
+
+  const files = filter ? stats.files.filter(filter) : stats.files;
+  if (files.length === 0) return undefined;
+
+  const totals = filter
+    ? {
+        filesChanged: files.length,
+        additions: files.reduce((n, f) => n + f.additions, 0),
+        deletions: files.reduce((n, f) => n + f.deletions, 0),
+      }
+    : stats.totals;
+
+  const event: EforgeEvent = {
+    timestamp: new Date().toISOString(),
+    type: 'agent:activity',
+    ...(planId !== undefined ? { planId } : {}),
+    agentId,
+    agent,
+    files: files.map((f) => ({
+      path: f.path,
+      status: f.status,
+      additions: f.additions,
+      deletions: f.deletions,
+      binary: f.binary,
+    })),
+    totals,
+    attribution,
+    ...(notes && notes.length > 0 ? { notes } : {}),
+  };
+  return event;
 }
 
 /**

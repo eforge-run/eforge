@@ -3842,6 +3842,9 @@
             "planId": {
               "type": "string"
             },
+            "agentId": {
+              "type": "string"
+            },
             "agent": {
               "anyOf": [
                 {
@@ -4031,6 +4034,198 @@
                 "resultText": {
                   "type": "string"
                 }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "agentId",
+            "agent",
+            "attribution"
+          ],
+          "properties": {
+            "type": {
+              "const": "agent:activity",
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "agentId": {
+              "type": "string"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
+            },
+            "files": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "required": [
+                  "path"
+                ],
+                "properties": {
+                  "path": {
+                    "type": "string"
+                  },
+                  "status": {
+                    "type": "string"
+                  },
+                  "additions": {
+                    "type": "number"
+                  },
+                  "deletions": {
+                    "type": "number"
+                  },
+                  "binary": {
+                    "type": "boolean"
+                  }
+                }
+              }
+            },
+            "totals": {
+              "type": "object",
+              "required": [
+                "filesChanged",
+                "additions",
+                "deletions"
+              ],
+              "properties": {
+                "filesChanged": {
+                  "type": "number"
+                },
+                "additions": {
+                  "type": "number"
+                },
+                "deletions": {
+                  "type": "number"
+                }
+              }
+            },
+            "attribution": {
+              "anyOf": [
+                {
+                  "const": "exact",
+                  "type": "string"
+                },
+                {
+                  "const": "best_effort",
+                  "type": "string"
+                },
+                {
+                  "const": "unavailable",
+                  "type": "string"
+                }
+              ]
+            },
+            "notes": {
+              "type": "array",
+              "items": {
+                "type": "string"
               }
             }
           }

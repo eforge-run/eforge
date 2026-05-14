@@ -11,6 +11,8 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
+import { parseNameStatusZ, parseNumstatZ } from './git-diff-stats.js';
+
 const exec = promisify(execFile);
 
 const GIT_MAX_BUFFER = 100 * 1024 * 1024;
@@ -243,91 +245,3 @@ export async function buildPrdValidatorDiff(
   };
 }
 
-// -----------------------------------------------------------------------------
-// Parsers for NUL-delimited `git diff` output
-// -----------------------------------------------------------------------------
-
-/**
- * Parse `git diff --name-status -z` output into a map keyed by (new) path.
- *
- * Token layout (NUL-separated):
- *   `<status>\0<path>\0`                 for M/A/D/T/U
- *   `<status>\0<old-path>\0<new-path>\0` for R<score>/C<score>
- */
-function parseNameStatusZ(raw: string): Map<string, string> {
-  const tokens = raw.split('\0');
-  // `.split` on trailing NUL leaves an empty last element — drop trailing empties
-  while (tokens.length > 0 && tokens[tokens.length - 1] === '') tokens.pop();
-
-  const map = new Map<string, string>();
-  let i = 0;
-  while (i < tokens.length) {
-    const status = tokens[i];
-    if (!status) { i++; continue; }
-    const isRenameOrCopy = status.startsWith('R') || status.startsWith('C');
-    if (isRenameOrCopy) {
-      const newPath = tokens[i + 2];
-      if (newPath) map.set(newPath, status);
-      i += 3;
-    } else {
-      const path = tokens[i + 1];
-      if (path) map.set(path, status);
-      i += 2;
-    }
-  }
-  return map;
-}
-
-interface NumstatEntry {
-  path: string;
-  added: number;
-  deleted: number;
-  binary: boolean;
-}
-
-/**
- * Parse `git diff --numstat -z` output.
- *
- * Token layout:
- *   `<added>\t<deleted>\t<path>\0`                     for non-renames
- *   `<added>\t<deleted>\t\0<old-path>\0<new-path>\0`   for renames
- *
- * Binary files report `-\t-` for added/deleted.
- */
-function parseNumstatZ(raw: string): NumstatEntry[] {
-  const tokens = raw.split('\0');
-  while (tokens.length > 0 && tokens[tokens.length - 1] === '') tokens.pop();
-
-  const out: NumstatEntry[] = [];
-  let i = 0;
-  while (i < tokens.length) {
-    const token = tokens[i];
-    if (!token) { i++; continue; }
-    // Split only on the first two tabs — the path itself may contain tabs
-    const firstTab = token.indexOf('\t');
-    if (firstTab < 0) { i++; continue; }
-    const secondTab = token.indexOf('\t', firstTab + 1);
-    if (secondTab < 0) { i++; continue; }
-
-    const addedStr = token.slice(0, firstTab);
-    const deletedStr = token.slice(firstTab + 1, secondTab);
-    const pathInline = token.slice(secondTab + 1);
-    const binary = addedStr === '-' && deletedStr === '-';
-    const added = binary ? 0 : parseInt(addedStr, 10);
-    const deleted = binary ? 0 : parseInt(deletedStr, 10);
-
-    let path: string;
-    if (pathInline === '') {
-      // Rename: next two tokens are old-path, new-path
-      path = tokens[i + 2] ?? '';
-      i += 3;
-    } else {
-      path = pathInline;
-      i += 1;
-    }
-    if (!path) continue;
-
-    out.push({ path, added, deleted, binary });
-  }
-  return out;
-}

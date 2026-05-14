@@ -417,3 +417,79 @@ describe('safeParseEforgeEvent — pre-existing variant spot-checks', () => {
     expect(result.success).toBe(false);
   });
 });
+
+// ---------------------------------------------------------------------------
+// agent:activity — new discriminant variant
+// ---------------------------------------------------------------------------
+
+describe('safeParseEforgeEvent — agent:activity variant', () => {
+  it('accepts agent:activity as a recognized discriminant of EforgeEventSchema', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:activity',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      agentId: 'agt-abc123',
+      agent: 'builder',
+      files: [
+        { path: 'src/foo.ts', status: 'M', additions: 10, deletions: 3, binary: false },
+      ],
+      totals: { filesChanged: 1, additions: 10, deletions: 3 },
+      attribution: 'exact',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.type).toBe('agent:activity');
+    }
+  });
+
+  it('accepts agent:activity with attribution: best_effort and notes', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:activity',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'agt-def456',
+      agent: 'review-fixer',
+      totals: { filesChanged: 3, additions: 20, deletions: 5 },
+      attribution: 'best_effort',
+      notes: ['Unclaimed files outside shard scope: lib/utils.ts'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts agent:result without agentId (backward compatibility)', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:result',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agent: 'builder',
+      result: {
+        durationMs: 5000,
+        durationApiMs: 4500,
+        numTurns: 10,
+        totalCostUsd: 0.05,
+        usage: { input: 1000, output: 500, total: 1500, cacheRead: 0, cacheCreation: 0 },
+        modelUsage: {},
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts agent:result with agentId', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:result',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'agt-xyz789',
+      agent: 'builder',
+      result: {
+        durationMs: 5000,
+        durationApiMs: 4500,
+        numTurns: 10,
+        totalCostUsd: 0.05,
+        usage: { input: 1000, output: 500, total: 1500, cacheRead: 0, cacheCreation: 0 },
+        modelUsage: {},
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success && result.data.type === 'agent:result') {
+      expect(result.data.agentId).toBe('agt-xyz789');
+    }
+  });
+});

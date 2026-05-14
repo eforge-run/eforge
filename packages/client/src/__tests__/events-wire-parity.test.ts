@@ -734,7 +734,32 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
     },
   },
   {
-    label: 'agent:result',
+    label: 'agent:result (with agentId)',
+    payload: {
+      type: 'agent:result',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'agt-123e4567-e89b-12d3-a456-426614174000',
+      agent: 'builder',
+      result: {
+        durationMs: 5000,
+        durationApiMs: 4500,
+        numTurns: 10,
+        totalCostUsd: 0.05,
+        usage: { input: 1000, output: 500, total: 1500, cacheRead: 0, cacheCreation: 0 },
+        modelUsage: {
+          'claude-sonnet-4-5': {
+            inputTokens: 1000,
+            outputTokens: 500,
+            cacheReadInputTokens: 0,
+            cacheCreationInputTokens: 0,
+            costUSD: 0.05,
+          },
+        },
+      },
+    },
+  },
+  {
+    label: 'agent:result (without agentId, backward compatibility)',
     payload: {
       type: 'agent:result',
       timestamp: '2025-01-01T00:00:00.000Z',
@@ -755,6 +780,23 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
           },
         },
       },
+    },
+  },
+  {
+    label: 'agent:activity (exact attribution)',
+    payload: {
+      type: 'agent:activity',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      agentId: 'agt-123e4567-e89b-12d3-a456-426614174000',
+      agent: 'builder',
+      files: [
+        { path: 'src/foo.ts', status: 'M', additions: 10, deletions: 3, binary: false },
+        { path: 'src/bar.ts', status: 'A', additions: 42, deletions: 0, binary: false },
+      ],
+      totals: { filesChanged: 2, additions: 52, deletions: 3 },
+      attribution: 'exact',
+      notes: [],
     },
   },
   {
@@ -1419,6 +1461,18 @@ describe('events-wire-parity — invalid payloads (wrong literal)', () => {
       timestamp: '2025-01-01T00:00:00.000Z',
       prdId: 'prd-1',
       status: 'in-progress',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects agent:activity missing required attribution field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:activity',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'agt-abc',
+      agent: 'builder',
+      totals: { filesChanged: 1, additions: 5, deletions: 0 },
+      // attribution intentionally omitted
     });
     expect(result.success).toBe(false);
   });

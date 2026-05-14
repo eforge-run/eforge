@@ -258,6 +258,12 @@ export const IGNORED_EVENT_TYPES = [
   'queue:prd:commit-failed',
   'queue:prd:complete',
   'queue:complete',
+  // --- eforge:region plan-01-event-contract-and-engine-emission ---
+  // agent:activity is a new engine-scoped event type. Monitor UI consumption
+  // (AgentThread fields, reducer handler, drawer) lands in plan-02.
+  // Listed here so the exhaustive check passes without requiring plan-02 to land first.
+  'agent:activity',
+  // --- eforge:endregion plan-01-event-contract-and-engine-emission ---
   // --- eforge:region plan-01-types-and-daemon-emission ---
   // New daemon-scoped event types — monitor UI handling is plan-03's responsibility.
   // Listed here so the exhaustive check passes without requiring plan-03 to land first.
