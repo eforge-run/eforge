@@ -14,9 +14,14 @@
     "next": "^15",
     "react": "^19",
     "react-dom": "^19",
+    "rehype-pretty-code": "^0.14",
+    "rehype-stringify": "^10",
     "remark": "^15",
     "remark-gfm": "^4",
-    "remark-html": "^16"
+    "remark-parse": "^11",
+    "remark-rehype": "^11",
+    "shiki": "^1",
+    "unified": "^11"
   },
   "devDependencies": {
     "@types/node": "^20",

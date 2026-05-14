@@ -14,6 +14,20 @@ describe('loadDocPage', () => {
   it('throws a typed error for unknown doc slugs', async () => {
     await expect(loadDocPage('nonexistent-page-xyz')).rejects.toThrow('Page not found: nonexistent-page-xyz');
   });
+
+  it('applies syntax highlighting to TypeScript fenced blocks', async () => {
+    const page = await loadDocPage('extensions');
+    // rehype-pretty-code emits data-language attribute on the pre/code element
+    expect(page.html).toMatch(/data-language="ts"/);
+    // At least one token span should have inline Shiki theme styles (dual-theme uses CSS custom properties)
+    expect(page.html).toMatch(/style="[^"]*--shiki-light:/);
+  });
+
+  it('still renders plain Markdown headings and paragraphs', async () => {
+    const page = await loadDocPage('getting-started');
+    expect(page.html).toMatch(/<h1[\s>]/);
+    expect(page.html).toMatch(/<p[\s>]/);
+  });
 });
 
 describe('loadReferencePage', () => {
