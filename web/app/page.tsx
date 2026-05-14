@@ -10,12 +10,17 @@ export default function HomePage() {
     <main style={{ maxWidth: 'var(--max-width)', margin: '0 auto', padding: 'var(--spacing-2xl) var(--spacing-xl)' }}>
       {/* Hero */}
       <section style={{ textAlign: 'center', paddingBottom: 'var(--spacing-2xl)' }}>
+        <img
+          src="https://avatars.githubusercontent.com/u/272340669?v=4"
+          alt="eforge logo"
+          style={{ width: '64px', height: '64px', borderRadius: '12px', marginBottom: 'var(--spacing-md)' }}
+        />
         <h1
           style={{
             fontSize: '3rem',
             fontWeight: 800,
             marginBottom: 'var(--spacing-md)',
-            background: 'linear-gradient(135deg, var(--color-accent), #7c3aed)',
+            background: 'linear-gradient(135deg, var(--color-accent), #22c55e)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',

@@ -13,6 +13,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <nav className="site-nav">
           <a href="/" className="nav-brand">
+            <img
+              src="https://avatars.githubusercontent.com/u/272340669?v=4"
+              alt="eforge logo"
+              style={{ width: '28px', height: '28px', borderRadius: '4px', marginRight: '0.5rem' }}
+            />
             eforge
           </a>
           <ul className="nav-links">
