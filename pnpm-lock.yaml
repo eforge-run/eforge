@@ -214,6 +214,25 @@ importers:
         specifier: ^5.9.3
         version: 5.9.3
 
+  packages/extension-sdk:
+    dependencies:
+      '@eforge-build/client':
+        specifier: workspace:*
+        version: link:../client
+      '@sinclair/typebox':
+        specifier: ^0.34.49
+        version: 0.34.49
+    devDependencies:
+      '@types/node':
+        specifier: ^25.7.0
+        version: 25.7.0
+      tsup:
+        specifier: ^8.5.1
+        version: 8.5.1(jiti@2.7.0)(postcss@8.5.14)(tsx@4.21.0)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
   packages/input:
     dependencies:
       '@eforge-build/scopes':
