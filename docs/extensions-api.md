@@ -18,7 +18,7 @@ The factory is called once when the extension is loaded. All registrations must 
 
 ### `defineEforgeExtension(factory)`
 
-A no-op identity helper for TypeScript inference. Useful when you prefer named-export style or want parameter inference without explicitly importing `EforgeExtensionAPI`:
+A no-op identity helper for TypeScript inference. Useful when you want parameter inference without explicitly importing `EforgeExtensionAPI`:
 
 ```ts
 import { defineEforgeExtension } from "@eforge-build/extension-sdk";
@@ -54,8 +54,13 @@ eforge.onEvent("plan:build:*", async (event, ctx) => {
 
 ```ts
 onEvent<TType extends EforgeEvent["type"]>(
-  pattern: EventPattern,
+  pattern: TType,
   handler: EventHookHandler<TType>,
+): void
+
+onEvent(
+  pattern: EventPattern,
+  handler: (event: EforgeEvent, ctx: EventHookContext) => void | Promise<void>,
 ): void
 ```
 
@@ -70,7 +75,7 @@ type EventHookHandler<T extends EforgeEvent["type"]> = (
 
 The `event` parameter is narrowed to `EventOfType<T>` when the pattern is an exact event type string. For glob patterns (containing `*`), the event type is `EforgeEvent`.
 
-**Runtime status:** EXTEND_02 (type contract ships in EXTEND_01).
+**Runtime status:** registration is captured at load time; event dispatch is deferred.
 
 ---
 
@@ -125,7 +130,36 @@ interface AgentRunAugmentation {
 }
 ```
 
-**Runtime status:** EXTEND_02 (type contract ships in EXTEND_01).
+**Runtime status:** registration is captured at load time; agent augmentation execution is deferred.
+
+---
+
+### `registerTool(tool)`
+
+Register a custom agent tool independently of an `onAgentRun` return value. This is useful for extensions that want their tool contribution to appear in loader-time provenance even before agent-run execution is active.
+
+```ts
+import { Type, defineExtensionTool } from "@eforge-build/extension-sdk";
+
+const lookupComponent = defineExtensionTool({
+  name: "lookup-component",
+  description: "Looks up a design-system component by name",
+  inputSchema: Type.Object({
+    name: Type.String(),
+  }),
+  handler: async ({ name }) => `Component: ${name}`,
+});
+
+eforge.registerTool(lookupComponent);
+```
+
+**Signature:**
+
+```ts
+registerTool(tool: ExtensionTool): void
+```
+
+**Runtime status:** registration is captured at load time; agent tool injection and execution are deferred.
 
 ---
 
@@ -172,7 +206,7 @@ interface ExtensionDiff {
 }
 ```
 
-**Runtime status:** EXTEND_03 (type contract ships in EXTEND_01).
+**Runtime status:** registration is captured at load time; policy-gate execution is deferred.
 
 ---
 
@@ -203,7 +237,7 @@ interface ProfileRouterResult {
 
 Return `null` or `undefined` from `resolve` to defer to the next registered router (or the default profile).
 
-**Runtime status:** EXTEND_03 (type contract ships in EXTEND_01).
+**Runtime status:** registration is captured at load time; profile routing execution is deferred.
 
 ---
 
@@ -230,7 +264,7 @@ interface InputSourceAdapter {
 }
 ```
 
-**Runtime status:** EXTEND_04 (type contract ships in EXTEND_01).
+**Runtime status:** registration is captured at load time; input-source execution is deferred.
 
 ---
 
@@ -257,7 +291,7 @@ interface ReviewerPerspectiveSpec {
 }
 ```
 
-**Runtime status:** EXTEND_04 (type contract ships in EXTEND_01).
+**Runtime status:** registration is captured at load time; reviewer-perspective execution is deferred.
 
 ---
 
@@ -291,7 +325,7 @@ interface ValidationProviderSpec {
 }
 ```
 
-**Runtime status:** EXTEND_04 (type contract ships in EXTEND_01).
+**Runtime status:** registration is captured at load time; validation-provider execution is deferred.
 
 ---
 
@@ -444,24 +478,26 @@ const lookupTool = defineExtensionTool({
 });
 ```
 
-`ExtensionTool` is a narrower public type than the engine's internal `CustomTool`. The engine adapts extension tools at load time; the public shape stays narrow so the engine's internal representation can evolve without breaking extension authors.
+`ExtensionTool` is a narrower public type than the engine's internal `CustomTool`. The loader captures `ExtensionTool` registrations at load time. Agent injection and execution are deferred; the public shape stays narrow so the engine's internal representation can evolve without breaking extension authors.
 
 ---
 
 ## Runtime support status
 
-| Capability | Type contract ships | Runtime ships | Planned epic |
-|-----------|--------------------|--------------:|-------------|
-| `onEvent` | EXTEND_01 | EXTEND_02 | EXTEND_02 |
-| `onAgentRun` | EXTEND_01 | EXTEND_02 | EXTEND_02 |
-| `ExtensionTool` in agent runs | EXTEND_01 | EXTEND_02 | EXTEND_02 |
-| `beforePlanMerge` policy gate | EXTEND_01 | EXTEND_03 | EXTEND_03 |
-| `registerProfileRouter` | EXTEND_01 | EXTEND_03 | EXTEND_03 |
-| `registerInputSource` | EXTEND_01 | EXTEND_04 | EXTEND_04 |
-| `registerReviewerPerspective` | EXTEND_01 | EXTEND_04 | EXTEND_04 |
-| `registerValidationProvider` | EXTEND_01 | EXTEND_04 | EXTEND_04 |
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and blocking/capability execution are intentionally deferred for later phases.
 
-In EXTEND_01, all capabilities above have full TypeScript type contracts so extensions can be authored, type-checked, and tested against the API shape now. Runtime dispatch lands in subsequent epics.
+| Capability | Type contract | Loader-time registration capture | Runtime execution today |
+|-----------|---------------|----------------------------------|-------------------------|
+| `onEvent` | Yes | Yes | Deferred |
+| `onAgentRun` | Yes | Yes | Deferred |
+| `registerTool` / `ExtensionTool` | Yes | Yes | Deferred |
+| `beforePlanMerge` policy gate | Yes | Yes | Deferred |
+| `registerProfileRouter` | Yes | Yes | Deferred |
+| `registerInputSource` | Yes | Yes | Deferred |
+| `registerReviewerPerspective` | Yes | Yes | Deferred |
+| `registerValidationProvider` | Yes | Yes | Deferred |
+
+Loaded extensions therefore appear in provenance and validation output today, including registration summaries and diagnostics. Event dispatch, agent augmentation, custom tool injection/execution, blocking policy enforcement, profile routing, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
 
 ---
 

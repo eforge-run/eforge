@@ -9,9 +9,9 @@
  * - Typed event narrowing via `EventOfType`
  * - Access to `ctx.logger` for structured logging
  *
- * Runtime status: Phase 1 target. The `onEvent` hook type contract is fully
- * defined in this release. Runtime dispatch is not yet wired — this module
- * serves as a compile-checked type demonstration.
+ * Runtime status: the factory can be loaded by the daemon and this `onEvent`
+ * registration is captured in extension provenance. Event dispatch remains
+ * deferred until the event-hook runtime is implemented.
  */
 
 import type { EforgeExtensionAPI, EventOfType } from '@eforge-build/extension-sdk';

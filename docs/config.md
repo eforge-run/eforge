@@ -19,6 +19,13 @@ plugins:
   # exclude:                  # Denylist - skip these from auto-discovery
   # paths:                    # Additional local plugin directories
 
+extensions:
+  enabled: true               # Discover and load native eforge extensions
+  trustProjectExtensions: false # Trust checked-in eforge/extensions/ modules (user/local config only)
+  # include:                  # Allowlist by native extension name
+  # exclude:                  # Denylist by native extension name
+  # paths:                    # Additional explicit extension files/directories
+
 agents:
   maxTurns: 30                # Max agent turns before stopping
   maxContinuations: 3         # Max continuation attempts after maxTurns hit
@@ -90,6 +97,36 @@ monitor:
 ```
 
 Each command in `postMergeCommands` and the planner-generated validate commands runs under a wall-clock timeout. On expiry the full subprocess tree is killed and the validation-fixer loop is invoked as if the command had exited non-zero. Default 300000 ms (5 minutes). Values below 10000 ms are clamped and emit a `config:warning` event.
+
+## Native extensions
+
+The top-level `extensions` block controls native eforge TypeScript/JavaScript extension discovery and loader-time registration capture. See [extensions.md](extensions.md) for discovery, trust, diagnostics, and runtime limitations.
+
+```yaml
+extensions:
+  enabled: true
+  include:
+    - build-notifier
+  exclude:
+    - experimental-policy
+  paths:
+    - ./tools/eforge-audit.ts
+  trustProjectExtensions: false
+```
+
+| Field | Default | Description |
+|-------|---------|-------------|
+| `extensions.enabled` | `true` | Enables native extension discovery and loading. When `false`, no extension directories or explicit paths are loaded. |
+| `extensions.include` | unset | Optional allowlist for auto-discovered extension names. Only listed names are considered. |
+| `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
+| `extensions.paths` | unset | Explicit extension files or directories to validate/load in addition to auto-discovery. Relative paths resolve from the project root. |
+| `extensions.trustProjectExtensions` | `false` | Allows checked-in project/team extensions from `eforge/extensions/` to load. User and project-local extensions load when enabled. |
+
+Auto-discovery scans `~/.config/eforge/extensions/`, `eforge/extensions/`, and `.eforge/extensions/` with precedence `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript entrypoints load through `jiti`; JavaScript entrypoints use dynamic import.
+
+Project/team extensions are committed code and are skipped unless `extensions.trustProjectExtensions: true` is set from a trusted layer (user config or project-local config). Extensions execute in the eforge daemon/worker Node process without a sandbox.
+
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, and registration capture. Event dispatch, blocking policy enforcement, agent augmentation, and other registered capability execution are deferred runtime phases.
 
 ## Tiers
 
@@ -469,7 +506,7 @@ Config merges from three levels (lowest to highest priority):
 
 Scope discovery and precedence are implemented in `@eforge-build/scopes`. Engine code calls `getScopeDirectory(scope)` for tier directory lookup, `resolveLayeredSingletons('config.yaml')` for the layered-singleton merge order, and `resolveNamedSet('profiles')` for active-profile resolution. Engine retains parsing, schema validation, `mergePartialConfigs()`, and active-profile semantics.
 
-Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `prdQueue`, `daemon`, `monitor`) shallow-merge per-field. Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
+Object sections (`langfuse`, `agents`, `build`, `plan`, `plugins`, `extensions`, `prdQueue`, `daemon`, `monitor`) shallow-merge per-field. Scalar top-level fields like `maxConcurrentBuilds` override. `hooks` arrays concatenate (global fires first). Arrays inside objects (like `postMergeCommands`) replace rather than merge. CLI flags and environment variables override everything.
 
 ### Lookup modes
 
