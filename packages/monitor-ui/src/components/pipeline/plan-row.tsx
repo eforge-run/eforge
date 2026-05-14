@@ -45,6 +45,7 @@ interface PlanRowProps {
   perspectiveErrors?: Array<{ perspective: string; error: string; timestamp: string }>;
   issuesByPerspective?: Record<string, ReviewIssue[]>;
   decisions?: DecisionPoint[];
+  onAgentSelect?: (agentId: string) => void;
 }
 
 export function IssuesSummary({ issues }: { issues: ReviewIssue[] }) {
@@ -79,7 +80,7 @@ export function DepthBars({ depth }: { depth: number }) {
   );
 }
 
-function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions }: PlanRowProps) {
+function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues, disablePreview, hoveredStage, onStageHover, eventsByAgent, buildStages, currentStage, prdSource, planArtifact, dependsOn, depth, compileStages, compileActiveStages, compileCompletedStages, validationCommands, perspectiveErrors, issuesByPerspective, decisions, onAgentSelect }: PlanRowProps) {
   const { openPreview, openContentPreview } = usePlanPreview();
 
   const sortedThreads = useMemo(
@@ -250,7 +251,7 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                 <Tooltip>
                   <TooltipTrigger asChild>
                     <div
-                      className={`absolute inset-y-0 rounded-sm border transition-all duration-150 ${color.bg} ${color.border} flex items-center overflow-hidden cursor-default${isStripHighlighted ? ' brightness-150 ring-1 ring-foreground/30' : ''}${isStripDimmed ? ' opacity-30' : ''}`}
+                      className={`absolute inset-y-0 rounded-sm border transition-all duration-150 ${color.bg} ${color.border} flex items-center overflow-hidden cursor-pointer${isStripHighlighted ? ' brightness-150 ring-1 ring-foreground/30' : ''}${isStripDimmed ? ' opacity-30' : ''}`}
                       style={{
                         left: `${leftPercent}%`,
                         width: `max(2px, ${widthPercent}%)`,
@@ -258,6 +259,8 @@ function PlanRowImpl({ planId, threads, sessionStart, totalSpan, endTime, issues
                       }}
                       onMouseEnter={() => onStageHover(stripStage ?? null)}
                       onMouseLeave={() => onStageHover(null)}
+                      onClick={() => onAgentSelect?.(thread.agentId)}
+                      aria-label={`Open detail for ${thread.agent}`}
                     >
                       <ActivityOverlay
                         agentEvents={eventsByAgent.get(thread.agentId) ?? EMPTY_EVENTS}

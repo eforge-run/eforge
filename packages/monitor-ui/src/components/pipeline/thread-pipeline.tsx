@@ -8,6 +8,7 @@ import { AGENT_TO_STAGE, MIN_TIMELINE_WINDOW_MS } from './agent-stage-map';
 import { ACTIVITY_STREAMING_TYPES } from './activity-overlay';
 import { computeDepthMap } from './compute-depth-map';
 import { PlanRow } from './plan-row';
+import { AgentDetailSheet } from './agent-detail-sheet';
 
 interface ThreadPipelineProps {
   agentThreads: AgentThread[];
@@ -27,6 +28,7 @@ interface ThreadPipelineProps {
 
 function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, reviewIssues, events, orchestration, prdSource, planArtifacts, validationCommands, perspectiveErrors, reviewIssuesByPerspective, decisions }: ThreadPipelineProps) {
   const [hoveredStage, setHoveredStage] = useState<string | null>(null);
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
   const entries = Object.entries(planStatuses);
 
   const planArtifactMap = useMemo(() => {
@@ -144,6 +146,8 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
     return map;
   }, [events]);
 
+  const selectedThread = agentThreads.find((t) => t.agentId === selectedAgentId) ?? null;
+
   return (
     <TooltipProvider delayDuration={0}>
       <div>
@@ -178,6 +182,7 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 compileActiveStages={activeStages}
                 compileCompletedStages={completedStages}
                 validationCommands={validationCommands}
+                onAgentSelect={setSelectedAgentId}
               />
             )}
             {entries.map(([planId]) => (
@@ -200,10 +205,18 @@ function ThreadPipelineImpl({ agentThreads, startTime, endTime, planStatuses, re
                 perspectiveErrors={perspectiveErrors?.[planId]}
                 issuesByPerspective={reviewIssuesByPerspective?.[planId]}
                 decisions={decisions?.[planId]}
+                onAgentSelect={setSelectedAgentId}
               />
             ))}
           </div>
         )}
+
+        <AgentDetailSheet
+          thread={selectedThread}
+          events={events}
+          open={selectedAgentId !== null}
+          onClose={() => setSelectedAgentId(null)}
+        />
       </div>
     </TooltipProvider>
   );

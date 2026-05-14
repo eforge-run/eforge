@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { handleAgentStart, handleAgentUsage, handleAgentResult, handleAgentStop } from '../handle-agent';
+import { handleAgentStart, handleAgentUsage, handleAgentResult, handleAgentStop, handleAgentActivity } from '../handle-agent';
 import { initialRunState } from '../../reducer';
 import type { AgentThread } from '../../reducer';
 import type { EforgeEvent } from '../../types';
@@ -340,6 +340,124 @@ describe('handle-agent', () => {
       expect(delta?.tokensIn).toBe(100);
       // No thread changes
       expect(delta?.agentThreads).toBeUndefined();
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // agent:result — agentId-preferred matching and resultText
+  // ---------------------------------------------------------------------------
+  describe('handleAgentResult — agentId matching and resultText', () => {
+    it('(1) matches by agentId when present and stores resultText', () => {
+      const thread = makeThread({ agentId: 'a1', agent: 'builder', planId: 'plan-01', durationMs: null });
+      const state = { ...initialRunState, agentThreads: [thread] };
+      const event = makeEvent('agent:result', {
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        result: {
+          durationMs: 5000,
+          durationApiMs: 4500,
+          numTurns: 2,
+          totalCostUsd: 0.01,
+          usage: { input: 500, output: 250, total: 750, cacheRead: 0, cacheCreation: 0 },
+          modelUsage: {},
+          resultText: 'Agent completed successfully.',
+        },
+      });
+      const delta = handleAgentResult(event, state);
+      expect(delta?.agentThreads?.[0]?.durationMs).toBe(5000);
+      expect(delta?.agentThreads?.[0]?.resultText).toBe('Agent completed successfully.');
+    });
+
+    it('(2) falls back to (agent, planId, durationMs === null) when agentId is absent, still stores resultText', () => {
+      const thread = makeThread({ agentId: 'a1', agent: 'builder', planId: 'plan-01', durationMs: null });
+      const state = { ...initialRunState, agentThreads: [thread] };
+      // No agentId on the event — legacy wire format
+      const event = makeEvent('agent:result', {
+        agent: 'builder',
+        planId: 'plan-01',
+        result: {
+          durationMs: 3000,
+          durationApiMs: 2800,
+          numTurns: 1,
+          totalCostUsd: 0.005,
+          usage: { input: 300, output: 150, total: 450, cacheRead: 0, cacheCreation: 0 },
+          modelUsage: {},
+          resultText: 'Legacy result text.',
+        },
+      });
+      const delta = handleAgentResult(event, state);
+      expect(delta?.agentThreads?.[0]?.durationMs).toBe(3000);
+      expect(delta?.agentThreads?.[0]?.resultText).toBe('Legacy result text.');
+    });
+
+    it('(3) agentId match takes precedence over durationMs === null filter (updates thread even when durationMs is already set)', () => {
+      // Thread already has durationMs set — legacy match would miss it, agentId match finds it
+      const thread = makeThread({ agentId: 'a1', agent: 'builder', planId: 'plan-01', durationMs: 1000 });
+      const state = { ...initialRunState, agentThreads: [thread] };
+      const event = makeEvent('agent:result', {
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        result: {
+          durationMs: 8000,
+          durationApiMs: 7500,
+          numTurns: 3,
+          totalCostUsd: 0.02,
+          usage: { input: 1000, output: 500, total: 1500, cacheRead: 0, cacheCreation: 0 },
+          modelUsage: {},
+          resultText: 'Updated result.',
+        },
+      });
+      const delta = handleAgentResult(event, state);
+      // agentId match should find the thread and update it
+      expect(delta?.agentThreads?.[0]?.durationMs).toBe(8000);
+      expect(delta?.agentThreads?.[0]?.resultText).toBe('Updated result.');
+    });
+  });
+
+  // ---------------------------------------------------------------------------
+  // agent:activity — storing facts on matched thread
+  // ---------------------------------------------------------------------------
+  describe('handleAgentActivity', () => {
+    it('(4a) stores agent:activity payload on the matched thread by agentId', () => {
+      const thread = makeThread({ agentId: 'a1', agent: 'builder', planId: 'plan-01' });
+      const state = { ...initialRunState, agentThreads: [thread] };
+      const event = makeEvent('agent:activity', {
+        agentId: 'a1',
+        agent: 'builder',
+        planId: 'plan-01',
+        attribution: 'exact',
+        files: [
+          { path: 'src/index.ts', additions: 10, deletions: 2 },
+          { path: 'src/utils.ts', additions: 5, deletions: 0 },
+        ],
+        totals: { filesChanged: 2, additions: 15, deletions: 2 },
+      });
+      const delta = handleAgentActivity(event, state);
+      expect(delta?.agentThreads?.[0]?.activity).toEqual({
+        files: [
+          { path: 'src/index.ts', additions: 10, deletions: 2 },
+          { path: 'src/utils.ts', additions: 5, deletions: 0 },
+        ],
+        totals: { filesChanged: 2, additions: 15, deletions: 2 },
+        attribution: 'exact',
+        notes: undefined,
+      });
+    });
+
+    it('(4b) agent:activity whose agentId matches no thread is a no-op (no crash, no state mutation)', () => {
+      const thread = makeThread({ agentId: 'a1', agent: 'builder', planId: 'plan-01' });
+      const state = { ...initialRunState, agentThreads: [thread] };
+      const event = makeEvent('agent:activity', {
+        agentId: 'unknown-agent-id',
+        agent: 'builder',
+        planId: 'plan-01',
+        attribution: 'best_effort',
+      });
+      const delta = handleAgentActivity(event, state);
+      // Should return undefined — no state mutation
+      expect(delta).toBeUndefined();
     });
   });
 

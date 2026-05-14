@@ -15,7 +15,7 @@
  * Private helpers:
  *   updateThread — finds and immutably patches a thread in the array.
  */
-import type { AgentThread } from '../reducer';
+import type { AgentThread, AgentActivityFacts } from '../reducer';
 import type { EventHandler } from './handler-types';
 import { formatThinking } from '../format';
 
@@ -197,15 +197,27 @@ export const handleAgentResult: EventHandler<'agent:result'> = (event, state) =>
   const cacheCreation = state.cacheCreation + (result.usage?.cacheCreation ?? 0);
   const totalCost = state.totalCost + (result.totalCostUsd ?? 0);
 
-  // Reverse-walk: find most recent thread matching (agent, planId) where durationMs === null
-  const agentRole = event.agent;
-  const eventPlanId = event.planId;
+  // Thread matching: prefer agentId when present (new wire format), fall back
+  // to reverse-walk by (agent, planId, durationMs === null) for legacy logs.
   let matchIdx = -1;
-  for (let i = state.agentThreads.length - 1; i >= 0; i--) {
-    const t = state.agentThreads[i];
-    if (t.agent === agentRole && t.planId === eventPlanId && t.durationMs === null) {
-      matchIdx = i;
-      break;
+  if (event.agentId !== undefined) {
+    // agentId-preferred match: find any thread with this agentId (ignores durationMs)
+    for (let i = state.agentThreads.length - 1; i >= 0; i--) {
+      if (state.agentThreads[i].agentId === event.agentId) {
+        matchIdx = i;
+        break;
+      }
+    }
+  } else {
+    // Legacy fallback: reverse-walk by (agent, planId) where durationMs === null
+    const agentRole = event.agent;
+    const eventPlanId = event.planId;
+    for (let i = state.agentThreads.length - 1; i >= 0; i--) {
+      const t = state.agentThreads[i];
+      if (t.agent === agentRole && t.planId === eventPlanId && t.durationMs === null) {
+        matchIdx = i;
+        break;
+      }
     }
   }
 
@@ -223,6 +235,7 @@ export const handleAgentResult: EventHandler<'agent:result'> = (event, state) =>
     cacheRead: result.usage?.cacheRead ?? null,
     costUsd: result.totalCostUsd ?? null,
     numTurns: result.numTurns ?? null,
+    resultText: result.resultText,
   };
 
   const agentThreads = [
@@ -236,6 +249,36 @@ export const handleAgentResult: EventHandler<'agent:result'> = (event, state) =>
   delete liveAgentUsage[matchedThread.agentId];
 
   return { tokensIn, tokensOut, cacheRead, cacheCreation, totalCost, agentThreads, liveAgentUsage };
+};
+
+export const handleAgentActivity: EventHandler<'agent:activity'> = (event, state) => {
+  // Locate the matching thread by agentId. If no match, this is a no-op.
+  let matchIdx = -1;
+  for (let i = state.agentThreads.length - 1; i >= 0; i--) {
+    if (state.agentThreads[i].agentId === event.agentId) {
+      matchIdx = i;
+      break;
+    }
+  }
+
+  if (matchIdx === -1) {
+    return undefined;
+  }
+
+  const activity: AgentActivityFacts = {
+    files: event.files,
+    totals: event.totals,
+    attribution: event.attribution,
+    notes: event.notes,
+  };
+
+  const agentThreads = [
+    ...state.agentThreads.slice(0, matchIdx),
+    { ...state.agentThreads[matchIdx], activity },
+    ...state.agentThreads.slice(matchIdx + 1),
+  ];
+
+  return { agentThreads };
 };
 
 export const handleAgentStop: EventHandler<'agent:stop'> = (event, state) => {

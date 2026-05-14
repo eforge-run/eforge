@@ -30,6 +30,28 @@
  */
 import type { EforgeEvent, ExpeditionModule, OrchestrationConfig, SessionProfile, ReviewIssue, ValidationCommandSpan } from './types';
 import type { BuildDecision, PlanningDecision } from '@eforge-build/client/browser';
+
+/**
+ * Mirrors the `agent:activity` wire shape minus the envelope fields
+ * (sessionId, runId, timestamp, type, agentId, agent, planId).
+ * Stored on `AgentThread` after an `agent:activity` event arrives.
+ */
+export interface AgentActivityFacts {
+  files?: Array<{
+    path: string;
+    status?: string;
+    additions?: number;
+    deletions?: number;
+    binary?: boolean;
+  }>;
+  totals?: {
+    filesChanged: number;
+    additions: number;
+    deletions: number;
+  };
+  attribution: 'exact' | 'best_effort' | 'unavailable';
+  notes?: string[];
+}
 import type { PipelineStage } from './types';
 
 /** Union of all decision kinds that can appear in the decisions timeline. */
@@ -88,6 +110,10 @@ export interface AgentThread {
   projectMcpSelection?: string;
   /** Sorted names of the project MCP servers passed to this tier's harness. */
   projectMcpServerNames?: string[];
+  /** Final result text from the agent:result event. */
+  resultText?: string;
+  /** Deterministic file/diffstat facts from the agent:activity event. */
+  activity?: AgentActivityFacts;
 }
 
 export interface RunState {
