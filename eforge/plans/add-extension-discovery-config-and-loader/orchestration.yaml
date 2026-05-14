@@ -1,0 +1,152 @@
+name: add-extension-discovery-config-and-loader
+description: Add native eforge extension discovery, configuration,
+  loading/validation, registry capture, and provenance visibility across engine,
+  daemon, CLI, integrations, and docs.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm build
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-engine-extension-foundation
+    name: Engine Extension Config, Discovery, and Loader
+    depends_on: []
+    branch: add-extension-discovery-config-and-loader/plan-01-engine-extension-foundation
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Introduces a new trusted-code loading path, config schema fields,
+          cross-scope precedence, runtime TypeScript import support, and
+          registry capture in the engine.
+      reviewer:
+        effort: high
+        rationale: The loader executes extension modules and needs careful review for
+          trust gating, path handling, and non-catastrophic failure behavior.
+  - id: plan-02-daemon-client-cli-extension-visibility
+    name: Daemon, Client, and CLI Extension Visibility
+    depends_on:
+      - plan-01-engine-extension-foundation
+    branch: add-extension-discovery-config-and-loader/plan-02-daemon-client-cli-extension-visibility
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Adds a new daemon API surface and CLI commands that must preserve
+          route-contract discipline and wire-type consistency.
+      reviewer:
+        effort: high
+        rationale: Review must check HTTP route validation, wire shapes, CLI exit
+          semantics, and absence of inline /api literals outside API_ROUTES.
+  - id: plan-03-consumer-extension-tools
+    name: Claude Code and Pi Extension Tooling Parity
+    depends_on:
+      - plan-02-daemon-client-cli-extension-visibility
+    branch: add-extension-discovery-config-and-loader/plan-03-consumer-extension-tools
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - docs
+        - test
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: medium
+        rationale: Adds a thin parity layer over the daemon/client API in both consumer
+          integrations plus source-inspection tests.
+      reviewer:
+        effort: high
+        rationale: Consumer-facing tool parity and plugin versioning require careful
+          review against AGENTS.md conventions.
+  - id: plan-04-extension-docs-and-generated-reference
+    name: Extension Runtime Documentation and Generated Reference
+    depends_on:
+      - plan-03-consumer-extension-tools
+    branch: add-extension-discovery-config-and-loader/plan-04-extension-docs-and-generated-reference
+    build:
+      - implement
+      - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - docs
+        - api
+        - verify
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      doc-author:
+        effort: high
+        rationale: Docs must describe runtime support, trust boundaries, config
+          semantics, and distinctions between several extension-adjacent
+          mechanisms.
+      reviewer:
+        effort: medium
+        rationale: Review focuses on documentation accuracy and generated-reference drift.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test-write
+    - review-cycle
+    - test-cycle
+    - validate
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+      - api
+      - docs
+      - test
+      - verify
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is a cross-package foundation feature touching config,
+    discovery/loading, daemon/client/CLI surfaces, docs, and tests, but it is
+    cohesive enough for one planner rather than delegated expedition module
+    planning. Plan review is included to catch scope and dependency issues
+    before build. Implementation runs alongside doc authoring because the
+    feature changes public configuration and extension docs; doc sync and test
+    writing follow implementation, then strict multi-perspective review and
+    iterative testing validate security-sensitive dynamic loading, API
+    contracts, docs, and behavior.
