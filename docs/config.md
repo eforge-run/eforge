@@ -119,6 +119,10 @@ agents:
       effort: high             # Required: 'low', 'medium', 'high', 'xhigh', 'max'
       thinking: true           # Optional: enable thinking; coerced to adaptive for adaptive-only models
       maxTurns: 30             # Optional: max turns override for all roles in this tier
+      toolbelt: browser-ui     # Optional: named toolbelt from tools.toolbelts, or 'none' to pass no MCP servers
+                               #   Omitting toolbelt (current default) passes all discovered .mcp.json servers.
+                               #   Runtime per-tier MCP filtering is not yet implemented; this field is parsed
+                               #   and validated but has no effect on the servers agents currently receive.
       pi:                      # Optional: Pi-specific config (ignored unless harness: pi)
         provider: openrouter   # Provider name (openrouter, google, openai, etc.)
         # thinkingLevel: xhigh # Pi only: 'off', 'low', 'medium', 'high', 'xhigh'
@@ -366,7 +370,53 @@ All three fields (`description`, `whenToUse`, `tags`) are optional. Metadata can
 
 ## MCP Servers
 
-MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). All `eforge` agents receive the same MCP servers.
+MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). By default - when no `toolbelt` is assigned on a tier - all eforge agents receive the same set of discovered MCP servers. Named toolbelts and `toolbelt: none` are now schema-valid tier assignments for forthcoming runtime per-tier MCP filtering; see [Toolbelts](#toolbelts) below.
+
+### Toolbelts
+
+Toolbelts are named registries that declare which MCP servers a tier should receive. Define them under `tools.toolbelts` in `eforge/config.yaml` (or a profile), then reference them by name on individual tiers.
+
+```yaml
+tools:
+  toolbelts:
+    browser-ui:
+      description: Browser automation for UI work.   # Optional
+      mcpServers:                                     # Required, non-empty
+        - playwright
+    code-search:
+      mcpServers:
+        - sourcegraph
+        - ripgrep-mcp
+
+agents:
+  tiers:
+    implementation:
+      harness: claude-sdk
+      model: claude-sonnet-4-6
+      effort: medium
+      toolbelt: browser-ui   # Use the 'browser-ui' toolbelt for this tier
+    review:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+      toolbelt: none         # Pass no MCP servers to reviewers
+    planning:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+                             # toolbelt omitted - planning agents receive all .mcp.json servers
+```
+
+**Toolbelt name rules:**
+- Names must match `^[A-Za-z0-9._-]+$`.
+- `none` is reserved and cannot be used as a toolbelt name (it is a tier-assignment sentinel meaning "no MCP servers").
+
+**Tier `toolbelt` field:**
+- Omitted (default) - all discovered `.mcp.json` servers are passed to agents in this tier.
+- `toolbelt: <name>` - references a named entry in `tools.toolbelts`; `eforge config validate` checks that the name exists and that every listed `mcpServers` entry appears in `.mcp.json`.
+- `toolbelt: none` - explicitly passes no MCP servers to agents in this tier.
+
+**Important:** Runtime per-tier MCP filtering is not yet implemented. The `toolbelt` field is fully parsed and statically validated today, but agents still receive the full set of discovered MCP servers regardless of the `toolbelt` assignment. The filtering behavior will be enforced in a follow-up release.
 
 ## Plugins
 

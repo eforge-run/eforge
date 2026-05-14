@@ -2000,6 +2000,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     daemon: overrides.daemon ? { ...base.daemon, ...overrides.daemon } : base.daemon,
     monitor: overrides.monitor ? { ...base.monitor, ...overrides.monitor } : base.monitor,
     hooks: overrides.hooks ?? base.hooks,
+    tools: overrides.tools ? { ...base.tools, ...overrides.tools, toolbelts: { ...base.tools.toolbelts, ...overrides.tools.toolbelts } } : base.tools,
   };
 }
 

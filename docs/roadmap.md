@@ -20,7 +20,7 @@
 
 **Goal**: Make eforge a platform that agent runtime profiles and TypeScript modules can extend without forking the engine.
 
-- **Profile toolbelts** - MCP-backed capability bundles selected per agent tier in runtime profiles. A profile can say "the implementation tier uses the browser-ui toolbelt" so each tier only sees MCP servers relevant to its role. MVP is intentionally conservative: one toolbelt per tier, MCP-only, no Pi extension or Claude plugin backing, no composition. Design in `docs/prd/profile-toolbelts.md`.
+- **Profile toolbelts - runtime filtering** - The `tools.toolbelts` registry and per-tier `toolbelt` field are now schema-valid and statically validated (name/reference checks against `.mcp.json`). Remaining work: wire the validated `tier.toolbelt` assignment into `loadMcpServers()` / `buildAgentRuntimeRegistry()` so agents in each tier only receive the MCP servers declared in their toolbelt. `toolbelt: none` should pass an empty server list; omitting `toolbelt` should preserve the current all-servers default. Design in `docs/prd/profile-toolbelts.md`.
 - **Native TypeScript extensions** - Typed event hooks, agent context/tool injection, policy gates, input transformers, and limited stage-like APIs (e.g. custom reviewer perspectives) authored as TypeScript modules and discoverable in user/project/project-local scopes. Includes an extension SDK package, a `/eforge:extend` skill in both Pi and Claude Code, CLI/daemon management commands, and event-replay testing. Multi-phase rollout starting with typed event hooks. Depends on TypeBox schema unification. Design in `docs/prd/typescript-extensibility.md`.
 
 ---

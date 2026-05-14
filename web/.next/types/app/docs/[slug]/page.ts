@@ -1,4 +1,4 @@
-// File: /Users/markschaake/projects/eforge-build/eforge-plan-a-public-eforge-marketing-documentation-site-with-agent-readable-docs-and-drift-preventing-generated-references-worktrees/__merge__/web/app/docs/[slug]/page.tsx
+// File: /Users/markschaake/projects/eforge-build/eforge-toolbelts-03-add-mcp-toolbelt-schema-and-static-validation-worktrees/__merge__/web/app/docs/[slug]/page.tsx
 import * as entry from '../../../../../app/docs/[slug]/page.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

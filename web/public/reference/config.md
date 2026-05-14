@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 92819a5c -->
+<!-- Commit: 27605ba6 -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -25,6 +25,7 @@ eforge merges configuration from three tiers (highest precedence first):
 | `plan` |  |
 | `plugins` |  |
 | `prdQueue` |  |
+| `tools` |  |
 
 ## JSON Schema
 

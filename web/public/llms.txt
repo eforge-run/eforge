@@ -16,4 +16,4 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 - [Config schema (JSON Schema)](/schemas/config.schema.json)
 
 eforge version: 0.7.12
-Docs commit: 92819a5c
+Docs commit: 27605ba6
