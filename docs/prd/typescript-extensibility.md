@@ -86,6 +86,8 @@ eforge extension demote <name>
 eforge extension reload
 ```
 
+Build this surface incrementally. The first eforge task should deliver the management MVP (`new`, `list`, `show`, `validate`, `reload`) plus shared daemon/client plumbing. Event replay testing belongs with the validation/replay harness task, and promote/demote plus richer enable/disable behavior can follow once the scoped loader and trust model are proven.
+
 Expose matching daemon API/client helpers and MCP/Pi tools, for example:
 
 - `eforge_extension_scaffold`
@@ -171,13 +173,10 @@ Properties:
 
 ### Phase 2: Agent context and tool extensions
 
-Let extensions adjust agent runs in controlled ways:
+Let extensions adjust agent runs in controlled ways, but split implementation into two eforge-sized slices:
 
-- append prompt context,
-- add custom tools,
-- tune allowed/disallowed tools,
-- inspect role, tier, profile, plan, and changed files,
-- emit observable decisions.
+1. **Prompt/context hooks** - append role-, tier-, or phase-specific prompt context; inspect role, tier, profile, plan, and changed files; emit observable provenance/decisions.
+2. **Extension-contributed tools and tool availability** - add custom tools and tune allowed/disallowed tools after the prompt/context hook path is established.
 
 ```ts
 eforge.onAgentRun("builder", async (run, ctx) => ({
@@ -186,7 +185,7 @@ eforge.onAgentRun("builder", async (run, ctx) => ({
 }));
 ```
 
-This maps naturally to the existing `AgentHarness` abstraction and custom tool support.
+The second slice maps naturally to the existing `AgentHarness` abstraction and custom tool support. In both slices, extension-contributed tools must remain distinct from engine-internal tools and toolbelt-selected project MCP tools.
 
 ### Phase 3: Policy gates
 
@@ -243,7 +242,7 @@ eforge.registerInputSource("linear", {
 
 ### Phase 5: Limited stage-like APIs
 
-Avoid full `registerBuildStage` initially. Start with safer high-level extension points:
+Avoid full `registerBuildStage` initially. Start with safer high-level extension points and keep them as separate eforge tasks:
 
 - custom reviewer perspectives,
 - custom validation providers,
@@ -259,7 +258,7 @@ eforge.registerReviewerPerspective("accessibility", {
 });
 ```
 
-Full compile/build stage registration can be reconsidered once lower-risk extension APIs are proven.
+Reviewer perspectives and validation providers should be delivered independently because they touch different orchestration and monitor/CLI surfaces. Full compile/build stage registration can be reconsidered once lower-risk extension APIs are proven.
 
 ## Profile Routing / Usage-Aware Model Fallback
 
@@ -450,7 +449,7 @@ examples/extensions/
 packages/extension-sdk/
 ```
 
-Example templates should include:
+Example templates should be added as the matching APIs land:
 
 - `event-logger.ts`,
 - `slack-notifier.ts`,
@@ -461,6 +460,8 @@ Example templates should include:
 - `input-transformer.ts`,
 - `profile-router.ts`,
 - `validation-provider.ts`.
+
+The phase-1 docs/examples task should only promise examples for supported capabilities. Future examples should ship with the feature epic that introduces the API.
 
 ## Security / Trust Model
 
@@ -511,19 +512,42 @@ This lets `/eforge:extend` report concrete behavior:
 7. How should profile usage/quota state be normalized across Claude SDK, Pi providers, OAuth providers, and local models?
 8. What failure policy should blocking hooks use by default: fail closed or fail open?
 
+## Eforge Task Boundaries
+
+The Schaake OS epics for this PRD should stay small enough for eforge to build and recover independently. The preferred epic boundaries are:
+
+- **EXTEND_01**: Extension API design + SDK package.
+- **EXTEND_02**: Extension discovery, config, and loader.
+- **EXTEND_03**: Typed event extension runtime.
+- **EXTEND_04**: Management surface MVP (`new`, `list`, `show`, `validate`, `reload`) plus daemon/client plumbing. Defer replay testing and broad lifecycle commands.
+- **EXTEND_05**: Phase-1 docs/examples for capabilities that exist at that point only.
+- **EXTEND_06**: `/eforge:extend` authoring UX in Pi and Claude Code.
+- **EXTEND_07**: Static validation and event replay test harness.
+- **EXTEND_08A**: Agent prompt/context extension hooks.
+- **EXTEND_08B**: Extension-contributed custom tools and tool availability.
+- **EXTEND_09**: Usage-aware pre-build profile router.
+- **EXTEND_10**: Blocking policy gates.
+- **EXTEND_11**: Input transformers and PRD enrichers.
+- **EXTEND_12A**: Reviewer perspective extension point.
+- **EXTEND_12B**: Validation provider extension point.
+- **EXTEND_13A**: Trust model hardening for arbitrary TypeScript execution.
+- **EXTEND_13B**: Extension packaging/install support after trust and local/project workflows are proven.
+
+Avoid combining these into one expedition-scale build. Add docs/examples acceptance criteria to each capability epic, and use the docs epic as a phase-specific sweep rather than a promise to document APIs that do not exist yet.
+
 ## Preferred Roadmap Summary
 
 1. **TypeBox schema unification** - migration is in progress. The first slice (client wire schemas in `@eforge-build/client`, engine structured-output schemas in `packages/engine/src/schemas.ts`, and custom-tool contracts in `harness.ts`) is complete. Config (`config.ts`), input artifact (`packages/input/`), and MCP proxy schemas (`mcp-tool-factory.ts`, `mcp-proxy.ts`) remain Zod until a follow-up PRD. No shared tool registry prerequisite is required before beginning phase 1 of the extension roadmap.
 2. **Extension SDK + loader** with scoped discovery and config.
 3. **Typed event extensions** as the first supported capability.
-4. **CLI/daemon extension manager** for list/new/validate/test/reload.
+4. **CLI/daemon extension manager MVP** for list/new/show/validate/reload, followed by validation/replay testing.
 5. **`/eforge:extend` skill/tooling** in both Pi and Claude Code integrations.
-6. **Agent context/tool extensions** for prompt/tool augmentation.
+6. **Agent prompt/context extensions**, then **extension-contributed custom tools and tool availability**.
 7. **Pre-build profile router** for quota/cost/provider-aware profile selection.
 8. **Policy gates** with explicit decisions and event emission.
 9. **Input transformers** for issue trackers and PRD enrichment.
-10. **Limited stage-like APIs** such as reviewer perspectives and validation providers.
-11. **Package/install support** after local/project workflows are proven.
+10. **Limited stage-like APIs** delivered separately, starting with reviewer perspectives and then validation providers.
+11. **Trust model hardening**, then **package/install support** after local/project workflows are proven.
 
 ## Acceptance Criteria for Initial Delivery
 
@@ -531,6 +555,6 @@ This lets `/eforge:extend` report concrete behavior:
 2. The generated extension is validated and listed by `eforge extension list`.
 3. Event extensions can subscribe to typed eforge event patterns and run timeout-bounded handlers.
 4. Extension failures are visible but do not crash successful builds unless the hook is explicitly blocking.
-5. At least five example extensions ship, including a profile router example.
-6. Pi and Claude Code integrations expose matching extension scaffold/validate/test/reload capabilities.
+5. At least five example extensions ship across the supported capability set; the profile router example ships with or after EXTEND_09 rather than in the phase-1 docs sweep.
+6. Pi and Claude Code integrations expose matching extension scaffold/validate/test/reload capabilities once the management and validation/replay epics have landed.
 7. Documentation clearly explains scopes, trust/security, APIs, examples, and limitations.
