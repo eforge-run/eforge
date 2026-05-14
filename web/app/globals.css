@@ -5,8 +5,8 @@
   --color-bg-secondary: #f8f9fa;
   --color-text: #1a1a2e;
   --color-text-muted: #6b7280;
-  --color-accent: #16a34a;
-  --color-accent-hover: #15803d;
+  --color-accent: #67f553;
+  --color-accent-hover: #4ee63f;
   --color-border: #e5e7eb;
   --color-code-bg: #f3f4f6;
   --color-code-text: #111827;
@@ -27,9 +27,9 @@
     --color-bg: #0a0a0a;
     --color-bg-secondary: #141414;
     --color-text: #f0fdf4;
-    --color-text-muted: #86efac;
-    --color-accent: #4ade80;
-    --color-accent-hover: #86efac;
+    --color-text-muted: #a1a1aa;
+    --color-accent: #67f553;
+    --color-accent-hover: #8aff78;
     --color-border: #2a2a2a;
     --color-code-bg: #1a1a1a;
     --color-code-text: #f3f4f6;
@@ -193,7 +193,7 @@ a:hover {
   align-items: center;
   font-weight: 700;
   font-size: 1.1rem;
-  color: var(--color-text);
+  color: var(--color-accent-hover);
   text-decoration: none;
 }
 
@@ -208,7 +208,7 @@ a:hover {
 }
 
 .site-nav .nav-links a {
-  color: var(--color-text-muted);
+  color: var(--color-accent-hover);
   font-size: 0.9rem;
 }
 

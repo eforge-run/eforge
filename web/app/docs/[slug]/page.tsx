@@ -29,11 +29,8 @@ export default async function DocPage({ params }: Props) {
     notFound();
   }
 
-  const title = (page.frontmatter.title as string | undefined) ?? slug;
-
   return (
     <article className="prose">
-      <h1>{title}</h1>
       <div dangerouslySetInnerHTML={{ __html: page.html }} />
     </article>
   );

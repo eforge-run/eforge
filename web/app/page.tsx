@@ -10,17 +10,12 @@ export default function HomePage() {
     <main style={{ maxWidth: 'var(--max-width)', margin: '0 auto', padding: 'var(--spacing-2xl) var(--spacing-xl)' }}>
       {/* Hero */}
       <section style={{ textAlign: 'center', paddingBottom: 'var(--spacing-2xl)' }}>
-        <img
-          src="https://avatars.githubusercontent.com/u/272340669?v=4"
-          alt="eforge logo"
-          style={{ width: '64px', height: '64px', borderRadius: '12px', marginBottom: 'var(--spacing-md)' }}
-        />
         <h1
           style={{
             fontSize: '3rem',
             fontWeight: 800,
             marginBottom: 'var(--spacing-md)',
-            background: 'linear-gradient(135deg, var(--color-accent), #22c55e)',
+            background: 'linear-gradient(135deg, var(--color-accent), var(--color-accent-hover))',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
@@ -36,7 +31,7 @@ export default function HomePage() {
             margin: '0 auto var(--spacing-xl)',
           }}
         >
-          Autonomous plan-build-review orchestration for agentic code generation.
+          Plan the work. Hand off implementation. Let eforge run the engineering loop in the background.
         </p>
         <div style={{ display: 'flex', gap: 'var(--spacing-md)', justifyContent: 'center', flexWrap: 'wrap' }}>
           <a
@@ -45,7 +40,7 @@ export default function HomePage() {
               display: 'inline-block',
               padding: '0.75rem 1.5rem',
               background: 'var(--color-accent)',
-              color: '#ffffff',
+              color: '#0a0a0a',
               borderRadius: 'var(--border-radius)',
               fontWeight: 600,
               textDecoration: 'none',
@@ -69,6 +64,170 @@ export default function HomePage() {
           >
             View on GitHub
           </a>
+        </div>
+      </section>
+
+      {/* Product screenshot */}
+      <section style={{ marginBottom: 'var(--spacing-2xl)' }}>
+        <figure style={{ maxWidth: '980px', margin: '0 auto' }}>
+          <div
+            style={{
+              border: '1px solid var(--color-border)',
+              borderRadius: '12px',
+              background: 'var(--color-bg-secondary)',
+              boxShadow: '0 0 48px rgba(74, 222, 128, 0.08)',
+              overflow: 'hidden',
+            }}
+          >
+            <img
+              src="/screenshots/monitor-dashboard.png"
+              alt="eforge monitor showing build history, plan timelines, agent activity, model usage, and review cycles"
+              style={{ display: 'block', width: '100%', height: 'auto' }}
+            />
+          </div>
+          <figcaption
+            style={{
+              color: 'var(--color-text-muted)',
+              fontSize: '0.9rem',
+              marginTop: 'var(--spacing-sm)',
+              textAlign: 'center',
+            }}
+          >
+            Track delegated builds, inspect agent activity, and follow review cycles while eforge runs engineering work in the background.
+          </figcaption>
+        </figure>
+      </section>
+
+      {/* Product positioning */}
+      <section style={{ marginBottom: 'var(--spacing-2xl)' }}>
+        <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
+          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Background engineering for planned work</h2>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
+            eforge picks up where planning leaves off. Define the intent and acceptance criteria, then let eforge
+            manage implementation, review, retries, and merge flow.
+          </p>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 420px), 1fr))',
+            gap: 'var(--spacing-lg)',
+          }}
+        >
+          {[
+            {
+              title: 'Hand off implementation',
+              description:
+                'Give eforge a PRD, issue, or structured session plan once the direction and acceptance criteria are clear.',
+            },
+            {
+              title: 'Let execution run',
+              description:
+                'eforge decomposes the work, schedules build plans, and runs implementation in isolated git worktrees.',
+            },
+            {
+              title: 'Trust the engineering loop',
+              description:
+                'Implementation, review, retries, conflict handling, and merge flow are managed without constant babysitting.',
+            },
+            {
+              title: 'Review real outputs',
+              description:
+                'You stay focused on direction and final judgment with traceable commits, logs, and build decisions.',
+            },
+          ].map((item) => (
+            <div
+              key={item.title}
+              style={{
+                padding: 'var(--spacing-lg)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--border-radius)',
+                background: 'var(--color-bg-secondary)',
+              }}
+            >
+              <div
+                style={{
+                  width: '2rem',
+                  height: '0.25rem',
+                  background: 'var(--color-accent)',
+                  borderRadius: '999px',
+                  marginBottom: 'var(--spacing-md)',
+                }}
+              />
+              <h3 style={{ margin: '0 0 var(--spacing-sm)' }}>{item.title}</h3>
+              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{item.description}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Configurable handoffs */}
+      <section style={{ marginBottom: 'var(--spacing-2xl)' }}>
+        <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
+          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Built for repeatable engineering handoffs</h2>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
+            Standardize how work is delegated, which agents run it, and what tools they can use.
+          </p>
+        </div>
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))',
+            gap: 'var(--spacing-lg)',
+          }}
+        >
+          {[
+            {
+              title: 'Build profiles',
+              description:
+                'Choose agent runtimes, model tiers, and execution defaults for planning, building, review, and validation.',
+            },
+            {
+              title: 'Playbooks',
+              description:
+                'Capture recurring workflows as reusable templates so common engineering tasks start with the right structure.',
+            },
+            {
+              title: 'Toolbelts',
+              description:
+                'Scope each agent to the MCP servers and tools it needs, keeping delegated work constrained and auditable.',
+            },
+            {
+              title: 'Extensions',
+              badge: 'Planned',
+              description:
+                'Native TypeScript hooks, policy gates, custom reviewers, and workflow integrations are on the roadmap.',
+            },
+          ].map((item) => (
+            <div
+              key={item.title}
+              style={{
+                padding: 'var(--spacing-lg)',
+                border: '1px solid var(--color-border)',
+                borderRadius: 'var(--border-radius)',
+                background: 'var(--color-bg-secondary)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-sm)' }}>
+                <h3 style={{ margin: 0 }}>{item.title}</h3>
+                {'badge' in item ? (
+                  <span
+                    style={{
+                      border: '1px solid var(--color-border)',
+                      borderRadius: '999px',
+                      color: 'var(--color-accent)',
+                      fontFamily: 'var(--font-mono)',
+                      fontSize: '0.7rem',
+                      padding: '0.1rem 0.4rem',
+                    }}
+                  >
+                    {item.badge}
+                  </span>
+                ) : null}
+              </div>
+              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{item.description}</p>
+            </div>
+          ))}
         </div>
       </section>
 
@@ -165,70 +324,6 @@ export default function HomePage() {
               CLI setup guide
             </a>
           </div>
-        </div>
-      </section>
-
-      {/* Feature highlights */}
-      <section style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h2 style={{ textAlign: 'center', marginBottom: 'var(--spacing-xl)' }}>How it works</h2>
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-            gap: 'var(--spacing-lg)',
-          }}
-        >
-          {[
-            {
-              title: 'Plan',
-              description: 'Decomposes your PRD or issue into parallelizable build plans with dependency graphs.',
-              icon: '1',
-            },
-            {
-              title: 'Build',
-              description:
-                'Each plan runs in an isolated git worktree with a scoped AI agent, producing a real commit.',
-              icon: '2',
-            },
-            {
-              title: 'Review',
-              description: 'An independent review agent validates the output against acceptance criteria.',
-              icon: '3',
-            },
-            {
-              title: 'Merge',
-              description: 'Passing builds are merged back automatically, with conflict resolution when needed.',
-              icon: '4',
-            },
-          ].map((step) => (
-            <div
-              key={step.icon}
-              style={{
-                padding: 'var(--spacing-lg)',
-                border: '1px solid var(--color-border)',
-                borderRadius: 'var(--border-radius)',
-              }}
-            >
-              <div
-                style={{
-                  width: '2rem',
-                  height: '2rem',
-                  background: 'var(--color-accent)',
-                  color: '#fff',
-                  borderRadius: '50%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 700,
-                  marginBottom: 'var(--spacing-sm)',
-                }}
-              >
-                {step.icon}
-              </div>
-              <h3 style={{ margin: '0 0 var(--spacing-sm)' }}>{step.title}</h3>
-              <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{step.description}</p>
-            </div>
-          ))}
         </div>
       </section>
 
