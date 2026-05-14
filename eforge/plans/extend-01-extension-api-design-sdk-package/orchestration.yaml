@@ -1,0 +1,83 @@
+name: extend-01-extension-api-design-sdk-package
+description: "Introduce the public `@eforge-build/extension-sdk` package as the
+  type-first API foundation for native TypeScript extensions: extension factory,
+  context/hook/policy/agent types, TypeBox-backed tool helpers, event pattern
+  matcher, a compile-checked minimal example, and supporting docs. Reuses
+  `@eforge-build/client` event types as the wire source of truth; no runtime
+  loader or daemon/CLI changes."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm -r type-check
+  - pnpm -r build
+  - pnpm test
+plans:
+  - id: plan-01-extension-sdk
+    name: Extension SDK package, example, and docs
+    depends_on: []
+    branch: extend-01-extension-api-design-sdk-package/plan-01-extension-sdk
+    build:
+      - - implement
+        - doc-author
+      - - test-cycle
+        - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - docs
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      reviewer:
+        effort: high
+        rationale: Public API surface that later loader/runtime epics depend on;
+          reviewer must validate type stability, dependency direction (no engine
+          internals), TypeBox alignment, and the toolbelt-vs-extension boundary.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - docs
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "The PRD explicitly recommends Excursion profile and frames this as a
+    cohesive multi-file public API/package/docs change that a single planner can
+    enumerate (package scaffolding, public types, example, docs). It is not
+    Expedition because there are no 4+ independent subsystems requiring
+    delegated module planning - this is a foundation layer (the SDK) that
+    defines shared contracts, which the PRD's foundation-module heuristic
+    explicitly calls out as excursion territory. It is not Errand because the
+    public SDK boundary, TypeBox direction, hook/policy contract design, and
+    future compatibility implications require careful review. Compile stages
+    include plan-review-cycle because the public API surface is durable and
+    worth a planning-quality gate before build. Build pipeline runs implement in
+    parallel with doc-author (the PRD explicitly requires new
+    docs/extensions.md, docs/extensions-api.md, and an examples README -
+    doc-author has no predecessors so it can run in parallel with implement),
+    then doc-sync sequentially to reconcile any nav/manifest/README references
+    against the post-implement diff, then review-cycle for iterative quality
+    review of a new public package. Review perspectives are code (correctness of
+    new package, tsup/tsconfig wiring, example compile coverage), api (this is
+    fundamentally a public API design epic - stability, naming, layering,
+    dependency direction, no engine-internal leakage), and docs (TypeBox
+    direction, runtime-vs-compile-time status labeling, toolbelt boundary, trust
+    caveat all required by acceptance criteria). Skipped security perspective
+    because there is no runtime execution in this slice (loader/CLI/daemon are
+    explicitly out of scope) and skipped test/verify because the example's
+    compile check via type-check is the validation contract, not runtime
+    testing. Standard strictness fits a new-package API design (rigorous but not
+    security-critical), and maxRounds: 2 balances quality on a durable public
+    surface against build cost."
