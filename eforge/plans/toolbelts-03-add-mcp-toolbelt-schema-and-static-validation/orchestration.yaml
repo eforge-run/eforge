@@ -1,0 +1,76 @@
+name: toolbelts-03-add-mcp-toolbelt-schema-and-static-validation
+description: "Add MCP toolbelt schema and static validation. Extends the engine
+  config schema in `packages/engine/src/config.ts` with a
+  `tools.toolbelts.<name>` registry and per-tier optional `toolbelt: <name |
+  none>` field, deep-merges toolbelt definitions across config layers, and adds
+  static cross-reference validation against `.mcp.json` (parse-only, no MCP
+  server startup) wired into `validateConfigFile`, `loadConfig`,
+  `setActiveProfile`, and `createAgentRuntimeProfile`. Reserves `none` as a
+  tier-assignment sentinel, enforces the existing `^[A-Za-z0-9._-]+$` name
+  pattern, requires non-empty `mcpServers`. Updates `docs/config.md` with
+  minimal examples and adds focused tests including a no-runtime-change
+  regression. Explicitly does not modify `eforge.ts`,
+  `agent-runtime-registry.ts`, or any harness — runtime per-tier MCP filtering
+  is deferred to a follow-up unit."
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-toolbelt-schema-and-static-validation
+    name: Toolbelt schema and static validation
+    depends_on: []
+    branch: toolbelts-03-add-mcp-toolbelt-schema-and-static-validation/plan-01-toolbelt-schema-and-static-validation
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - code
+      - api
+      - docs
+      - test
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This PRD is a cohesive, single-subsystem change centered on
+    packages/engine/src/config.ts plus focused tests and minimal docs updates -
+    the planner explicitly recommends Excursion. A single planner session can
+    enumerate all affected files (config schema, validation helpers, tests,
+    docs/config.md) and order them, so expedition's delegated module planning is
+    unnecessary. plan-review-cycle is included because the PRD has nuanced
+    design decisions (name pattern, reserved 'none', merge semantics, optional
+    description, .mcp.json static checks) and explicit no-runtime-change
+    boundaries that benefit from a quality gate before build. Build runs
+    implement in parallel with doc-author (no predecessors) so docs/config.md
+    examples are drafted alongside the schema work, then doc-sync reconciles any
+    stale references in existing docs after implementation, then review-cycle
+    iterates on quality. Review perspectives are code (schema/validation
+    correctness), api (config schema is a user-facing API contract), docs (PRD
+    explicitly requires minimal docs examples and accurate phrasing), and test
+    (PRD lists extensive validation acceptance criteria requiring thorough test
+    coverage). Two rounds with standard strictness fits a config/schema change
+    that is user-facing but not security- or data-sensitive.
+    test-write/test-cycle are omitted because the PRD already specifies focused
+    vitest files written as part of implement, and the engine harness runs pnpm
+    test/type-check via post-merge validation.
