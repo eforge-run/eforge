@@ -31,6 +31,78 @@ export interface ConfigValidateResponse {
   config?: unknown;
 }
 
+// --- eforge:region plan-02-extension-tooling-surfaces ---
+export type ExtensionScope = 'user' | 'project-team' | 'project-local' | 'external';
+export type ExtensionSource = 'auto' | 'explicit';
+export type ExtensionStatus = 'pending' | 'loaded' | 'shadowed' | 'skipped' | 'error' | 'excluded';
+export type ExtensionDiagnosticSeverity = 'warning' | 'error';
+export type ExtensionFormat = 'js' | 'mjs' | 'ts' | 'mts';
+export type ExtensionLayout = 'file' | 'directory';
+export type ExtensionTrust = 'trusted' | 'untrusted';
+
+export interface ExtensionDiagnostic {
+  severity: ExtensionDiagnosticSeverity;
+  code: string;
+  message: string;
+  name?: string;
+  path?: string;
+  scope?: ExtensionScope;
+  source?: ExtensionSource;
+}
+
+export interface ExtensionShadow {
+  name: string;
+  path: string;
+  entrypoint?: string;
+  scope: Exclude<ExtensionScope, 'external'>;
+  format?: ExtensionFormat;
+  layout?: ExtensionLayout;
+}
+
+export interface ExtensionRegistrationSummary {
+  eventHooks: number;
+  agentRunHooks: number;
+  policyGates: number;
+  profileRouters: number;
+  inputSources: number;
+  reviewerPerspectives: number;
+  validationProviders: number;
+  tools: number;
+}
+
+export interface ExtensionEntry {
+  name: string;
+  path: string;
+  entrypoint?: string;
+  scope: ExtensionScope;
+  source: ExtensionSource;
+  status: ExtensionStatus;
+  trust?: ExtensionTrust;
+  format?: ExtensionFormat;
+  layout?: ExtensionLayout;
+  strategy?: string;
+  shadows: ExtensionShadow[];
+  registrations: ExtensionRegistrationSummary;
+  diagnostics: ExtensionDiagnostic[];
+}
+
+export interface ExtensionListResponse {
+  extensions: ExtensionEntry[];
+  diagnostics: ExtensionDiagnostic[];
+  totals: ExtensionRegistrationSummary;
+}
+
+export interface ExtensionShowResponse {
+  extension: ExtensionEntry;
+}
+
+export interface ExtensionValidateResponse {
+  valid: boolean;
+  extensions: ExtensionEntry[];
+  diagnostics: ExtensionDiagnostic[];
+}
+// --- eforge:endregion plan-02-extension-tooling-surfaces ---
+
 // GET /api/queue (array of these)
 export interface QueueItem {
   id: string;

@@ -44,6 +44,9 @@ import {
   aggregateSessionSummary,
   eventToProgress,
   apiGetRuns,
+  apiListExtensions,
+  apiShowExtension,
+  apiValidateExtensions,
   LOCKFILE_POLL_INTERVAL_MS,
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
@@ -985,6 +988,62 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }
     },
   });
+
+  // ------------------------------------------------------------------
+  // Tool: eforge_extension
+  // ------------------------------------------------------------------
+  // --- eforge:region plan-02-extension-tooling-surfaces ---
+  pi.registerTool({
+    name: "eforge_extension",
+    label: "eforge extension",
+    description:
+      'List, show, or validate native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path.',
+    parameters: Type.Object({
+      action: StringEnum(["list", "show", "validate"] as const, {
+        description: "Extension operation to perform",
+      }),
+      name: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: 'Extension name (required for "show", optional for "validate")',
+        }),
+      ),
+      path: Type.Optional(
+        Type.String({
+          minLength: 1,
+          description: 'Ad-hoc extension file/directory path to validate ("validate" only)',
+        }),
+      ),
+    }),
+    async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      if (params.action === "list") {
+        if (params.name !== undefined || params.path !== undefined) {
+          throw new Error('"name" and "path" are not supported when action is "list"');
+        }
+        const { data } = await apiListExtensions({ cwd: ctx.cwd });
+        return jsonResult(data);
+      }
+      if (params.action === "show") {
+        if (!params.name) {
+          throw new Error('"name" is required when action is "show"');
+        }
+        if (params.path !== undefined) {
+          throw new Error('"path" is not supported when action is "show"');
+        }
+        const { data } = await apiShowExtension({ cwd: ctx.cwd, name: params.name });
+        return jsonResult(data);
+      }
+      if (params.name !== undefined && params.path !== undefined) {
+        throw new Error('Specify only one of "name" or "path" for validate');
+      }
+      const request: { cwd: string; name?: string; path?: string } = { cwd: ctx.cwd };
+      if (params.name !== undefined) request.name = params.name;
+      if (params.path !== undefined) request.path = params.path;
+      const { data } = await apiValidateExtensions(request);
+      return jsonResult(data);
+    },
+  });
+  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
   // ------------------------------------------------------------------
   // Tool: eforge_models

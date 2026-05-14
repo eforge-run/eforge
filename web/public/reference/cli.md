@@ -109,6 +109,44 @@ Build a single PRD directly (subprocess entry point for the queue scheduler)
 | `--session-id <uuid>` | Session ID injected by parent scheduler (skips child session:start emission) |
 | `--profile <name>` | Override active profile for this build |
 
+### `extension`
+
+Inspect and validate native eforge extensions
+
+
+#### `list`
+
+List discovered native extensions
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output JSON |
+
+#### `show`
+
+Show one native extension by name
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output JSON |
+
+#### `validate`
+
+Validate configured native extensions, or a single extension name/path
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output JSON |
+
 ### `config`
 
 Manage eforge configuration
