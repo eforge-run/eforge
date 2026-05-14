@@ -1,0 +1,42 @@
+{
+  "name": "@eforge-build/extension-sdk",
+  "version": "0.7.12",
+  "description": "TypeScript SDK for authoring eforge extensions — typed event hooks, policy gates, and tool registration contracts.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist/"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eforge-build/eforge.git"
+  },
+  "homepage": "https://eforge.build",
+  "scripts": {
+    "build": "tsup",
+    "type-check": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@eforge-build/client": "workspace:*",
+    "@sinclair/typebox": "^0.34.49"
+  },
+  "devDependencies": {
+    "@types/node": "^25.7.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  },
+  "author": "Schaake Solutions LLC"
+}

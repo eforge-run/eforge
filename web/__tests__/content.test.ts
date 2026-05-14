@@ -3,7 +3,7 @@ import { loadDocPage, loadReferencePage } from '../lib/content.js';
 
 describe('loadDocPage', () => {
   it('returns non-empty HTML for known doc slugs', async () => {
-    const slugs = ['getting-started', 'concepts', 'configuration', 'glossary'];
+    const slugs = ['getting-started', 'concepts', 'configuration', 'extensions', 'extensions-api', 'glossary'];
     for (const slug of slugs) {
       const page = await loadDocPage(slug);
       expect(page.html, `Expected HTML for slug "${slug}"`).toBeTruthy();

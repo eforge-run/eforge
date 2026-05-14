@@ -46,6 +46,8 @@ export default defineConfig({
       { find: '@eforge-build/client', replacement: resolve(root, 'packages/client/src/index.ts') },
       { find: /^@eforge-build\/scopes\/(.*)$/, replacement: resolve(root, 'packages/scopes/src/$1') },
       { find: '@eforge-build/scopes', replacement: resolve(root, 'packages/scopes/src/index.ts') },
+      { find: /^@eforge-build\/extension-sdk\/(.*)$/, replacement: resolve(root, 'packages/extension-sdk/src/$1') },
+      { find: '@eforge-build/extension-sdk', replacement: resolve(root, 'packages/extension-sdk/src/index.ts') },
       { find: /^@eforge-build\/input\/(.*)$/, replacement: resolve(root, 'packages/input/src/$1') },
       { find: '@eforge-build/input', replacement: resolve(root, 'packages/input/src/index.ts') },
       // --- eforge:region plan-04-monitor-ui ---
