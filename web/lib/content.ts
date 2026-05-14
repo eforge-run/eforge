@@ -1,9 +1,12 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import matter from 'gray-matter';
-import { remark } from 'remark';
+import { unified, type Processor } from 'unified';
+import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
-import remarkHtml from 'remark-html';
+import remarkRehype from 'remark-rehype';
+import rehypePrettyCode from 'rehype-pretty-code';
+import rehypeStringify from 'rehype-stringify';
 import { DOCS_CONTENT_DIR, REFERENCE_CONTENT_DIR } from './paths';
 
 export interface DocPage {
@@ -19,8 +22,30 @@ export interface ReferencePage {
 
 const PROVENANCE_RE = /^(?:<!--[^>]*-->\s*\n?)+/;
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let processorPromise: Promise<Processor<any, any, any, any, string>> | null = null;
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function getProcessor(): Promise<Processor<any, any, any, any, string>> {
+  if (!processorPromise) {
+    processorPromise = Promise.resolve(
+      unified()
+        .use(remarkParse)
+        .use(remarkGfm)
+        .use(remarkRehype, { allowDangerousHtml: true })
+        .use(rehypePrettyCode, {
+          theme: { light: 'github-light', dark: 'github-dark' },
+          keepBackground: false,
+        })
+        .use(rehypeStringify, { allowDangerousHtml: true }),
+    );
+  }
+  return processorPromise;
+}
+
 async function renderMarkdown(content: string): Promise<string> {
-  const result = await remark().use(remarkGfm).use(remarkHtml, { sanitize: false }).process(content);
+  const processor = await getProcessor();
+  const result = await processor.process(content);
   return result.toString();
 }
 

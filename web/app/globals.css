@@ -134,6 +134,35 @@ a:hover {
   font-size: 0.875rem;
 }
 
+/* Shiki / rehype-pretty-code integration */
+.prose pre[data-language] {
+  background-color: var(--color-code-bg);
+}
+
+.prose figure[data-rehype-pretty-code-figure] {
+  margin: 1rem 0;
+}
+
+/* Dual-theme: consume Shiki CSS variables emitted by rehype-pretty-code */
+.prose code[data-theme*=' '],
+.prose code[data-theme*=' '] span {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+}
+
+@media (prefers-color-scheme: dark) {
+  .prose code[data-theme*=' '],
+  .prose code[data-theme*=' '] span {
+    color: var(--shiki-dark);
+    background-color: var(--shiki-dark-bg);
+  }
+}
+
+/* Ensure code tokens inherit color correctly */
+.prose pre[data-language] code {
+  color: inherit;
+}
+
 .prose blockquote {
   border-left: 4px solid var(--color-accent);
   padding-left: var(--spacing-md);
