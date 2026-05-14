@@ -16,7 +16,19 @@ import { registerPlaybookCommand } from './playbook.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
 import { registerDebugComposerCommand } from './debug-composer.js';
 import { ensureMonitor, signalMonitorShutdown, type Monitor } from '@eforge-build/monitor';
-import { readLockfile, isServerAlive, isPidAlive, killPidIfAlive, lockfilePath, removeLockfile, isAgentWorktreeCwd } from '@eforge-build/client';
+import {
+  readLockfile,
+  isServerAlive,
+  isPidAlive,
+  killPidIfAlive,
+  lockfilePath,
+  removeLockfile,
+  isAgentWorktreeCwd,
+  apiListExtensions,
+  apiShowExtension,
+  apiValidateExtensions,
+  type ExtensionEntry,
+} from '@eforge-build/client';
 import { runOrDelegate } from './run-or-delegate.js';
 import { formatCliError } from './errors.js';
 
@@ -122,6 +134,67 @@ async function consumeEvents(
   return result;
 }
 
+// --- eforge:region plan-02-extension-tooling-surfaces ---
+function extensionRegistrationSummary(entry: ExtensionEntry): string {
+  const parts = Object.entries(entry.registrations)
+    .filter(([, count]) => count > 0)
+    .map(([kind, count]) => `${kind}:${count}`);
+  return parts.length > 0 ? parts.join(',') : '-';
+}
+
+function renderExtensionTable(extensions: ExtensionEntry[]): void {
+  if (extensions.length === 0) {
+    console.log(chalk.dim('No extensions found'));
+    return;
+  }
+  const rows = extensions.map((entry) => ({
+    name: entry.name,
+    status: entry.status,
+    scope: entry.scope,
+    source: entry.source,
+    registrations: extensionRegistrationSummary(entry),
+    path: entry.path,
+  }));
+  const headers = ['name', 'status', 'scope', 'source', 'registrations', 'path'] as const;
+  const widths = Object.fromEntries(headers.map((header) => [
+    header,
+    Math.max(header.length, ...rows.map((row) => String(row[header]).length)),
+  ])) as Record<typeof headers[number], number>;
+  console.log(headers.map((header) => header.padEnd(widths[header])).join('  '));
+  console.log(headers.map((header) => '-'.repeat(widths[header])).join('  '));
+  for (const row of rows) {
+    console.log(headers.map((header) => String(row[header]).padEnd(widths[header])).join('  '));
+  }
+}
+
+function renderExtensionDetail(entry: ExtensionEntry): void {
+  console.log(chalk.bold(entry.name));
+  console.log(`  Status:        ${entry.status}`);
+  console.log(`  Scope:         ${entry.scope}`);
+  console.log(`  Source:        ${entry.source}`);
+  console.log(`  Path:          ${entry.path}`);
+  if (entry.entrypoint) console.log(`  Entrypoint:    ${entry.entrypoint}`);
+  if (entry.strategy) console.log(`  Strategy:      ${entry.strategy}`);
+  console.log(`  Registrations: ${extensionRegistrationSummary(entry)}`);
+  if (entry.shadows.length > 0) {
+    console.log('  Shadows:');
+    for (const shadow of entry.shadows) {
+      console.log(`    - ${shadow.scope}: ${shadow.path}`);
+    }
+  }
+  if (entry.diagnostics.length > 0) {
+    console.log('  Diagnostics:');
+    for (const diagnostic of entry.diagnostics) {
+      const color = diagnostic.severity === 'error' ? chalk.red : chalk.yellow;
+      console.log(color(`    - ${diagnostic.code}: ${diagnostic.message}`));
+    }
+  }
+}
+
+function isExtensionPathArg(value: string): boolean {
+  return /[\\/]/.test(value) || /\.(?:mjs|mts|js|ts)$/.test(value);
+}
+// --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
 export function createProgram(abortController?: AbortController, version?: string): Command {
   const program = new Command();
@@ -463,6 +536,84 @@ export function createProgram(abortController?: AbortController, version?: strin
         process.exit(exitCode);
       },
     );
+
+  // --- eforge:region plan-02-extension-tooling-surfaces ---
+  const extension = program
+    .command('extension')
+    .description('Inspect and validate native eforge extensions');
+
+  extension
+    .command('list')
+    .description('List discovered native extensions')
+    .option('--json', 'Output JSON')
+    .action(async (options: { json?: boolean }) => {
+      try {
+        const { data } = await apiListExtensions({ cwd: process.cwd() });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          renderExtensionTable(data.extensions);
+          for (const diagnostic of data.diagnostics) {
+            const color = diagnostic.severity === 'error' ? chalk.red : chalk.yellow;
+            process.stderr.write(color(`${diagnostic.code}: ${diagnostic.message}\n`));
+          }
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('show <name>')
+    .description('Show one native extension by name')
+    .option('--json', 'Output JSON')
+    .action(async (name: string, options: { json?: boolean }) => {
+      try {
+        const { data } = await apiShowExtension({ cwd: process.cwd(), name });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          renderExtensionDetail(data.extension);
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('validate [nameOrPath]')
+    .description('Validate configured native extensions, or a single extension name/path')
+    .option('--json', 'Output JSON')
+    .action(async (nameOrPath: string | undefined, options: { json?: boolean }) => {
+      try {
+        const request = nameOrPath
+          ? isExtensionPathArg(nameOrPath)
+            ? { cwd: process.cwd(), path: nameOrPath }
+            : { cwd: process.cwd(), name: nameOrPath }
+          : { cwd: process.cwd() };
+        const { data } = await apiValidateExtensions(request);
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else if (data.valid) {
+          console.log(chalk.green('✔') + ' Extensions valid');
+        } else {
+          console.error(chalk.red('✘') + ' Extensions invalid:');
+          for (const diagnostic of data.diagnostics) {
+            console.error(chalk.red(`  - ${diagnostic.code}: ${diagnostic.message}`));
+          }
+        }
+        if (!data.valid) process.exit(1);
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
   // Config commands
   const config = program

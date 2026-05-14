@@ -18,8 +18,17 @@ import minimalEventLogger from '../examples/extensions/minimal-event-logger.js';
 import protectedPaths from '../examples/extensions/protected-paths.js';
 const _factoryCheck1: sdk.EforgeExtensionFactory = minimalEventLogger;
 const _factoryCheck2: sdk.EforgeExtensionFactory = protectedPaths;
+const _factoryCheck3: sdk.EforgeExtensionFactory = (api) => {
+  api.registerTool({
+    name: 'test:noop',
+    description: 'No-op test tool',
+    inputSchema: sdk.Type.Object({}),
+    handler: () => 'ok',
+  });
+};
 void _factoryCheck1;
 void _factoryCheck2;
+void _factoryCheck3;
 
 // ---------------------------------------------------------------------------
 // Type-level barrel surface check — references every documented type-only

@@ -5,11 +5,9 @@
  * requires human approval for changes to `packages/engine/`. All other
  * changes are allowed automatically.
  *
- * RUNTIME STATUS: The `beforePlanMerge` hook type contract is fully defined in
- * this release. Runtime dispatch (policy-gate evaluation before merge) is NOT
- * yet wired into the engine pipeline. This module serves as a compile-checked
- * type demonstration only — it will have no runtime effect until the policy-gate
- * runtime is implemented.
+ * RUNTIME STATUS: The daemon can load this factory and capture the policy-gate
+ * registration in extension provenance. Policy enforcement before merge remains
+ * deferred until the policy-gate runtime is implemented.
  *
  * Demonstrates:
  * - `beforePlanMerge` registration

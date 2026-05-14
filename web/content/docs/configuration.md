@@ -97,6 +97,34 @@ The active profile is resolved highest-priority-first. Set one with:
 
 Or from the CLI: `eforge profile use <name>`.
 
+## Native Extensions
+
+Native eforge extensions are TypeScript/JavaScript modules discovered from three scopes:
+
+| Scope | Directory | Trust default |
+|-------|-----------|---------------|
+| User | `~/.config/eforge/extensions/` | trusted |
+| Project/team | `eforge/extensions/` | skipped unless trusted |
+| Project-local | `.eforge/extensions/` | trusted |
+
+Precedence is `project-local > project-team > user`. Use project-local extensions for experiments, then promote to `eforge/extensions/` when the team should share them. Project/team extensions require an explicit trust opt-in because they are committed code.
+
+```yaml
+extensions:
+  enabled: true                  # default
+  include:
+    - build-notifier             # optional allowlist by name
+  exclude:
+    - experimental-policy        # optional denylist by name
+  paths:
+    - ./tools/eforge-audit.ts    # explicit file/directory paths
+  trustProjectExtensions: false  # default
+```
+
+Supported extension entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. The loader executes the default-export factory in the eforge daemon/worker Node process without a sandbox, records registrations, and surfaces status, diagnostics, shadows, trust, source, strategy, and registration counts through `eforge extension list/show/validate` and extension API routes.
+
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, and registration capture. Event dispatch, policy enforcement, agent augmentation, custom tool execution, profile routing, input sources, reviewer perspectives, and validation providers are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
+
 ## Profile Toolbelts for UI Work
 
 Toolbelts let a tier opt into a named bundle of project MCP servers from `.mcp.json`. When a profile targets UI-heavy or browser-validation work, pair it with a `browser-ui` toolbelt backed by the Playwright MCP server. For the full field reference, see the [Toolbelts](/reference/config#toolbelts) section in the Configuration Reference.

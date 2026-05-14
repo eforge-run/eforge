@@ -37,10 +37,12 @@ import { emitBuildDecisionForPlan } from './decisions.js';
 import { runFormatter } from './agents/formatter.js';
 import { runDependencyDetector, type QueueItemSummary, type RunningBuildSummary } from './agents/dependency-detector.js';
 import type { EforgeConfig, PluginConfig, ReviewProfileConfig, BuildStageSpec } from './config.js';
+import type { NativeExtensionDiagnostic, NativeExtensionRegistry } from './extensions/index.js';
 import type { AgentHarness } from './harness.js';
 import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
-import { loadConfig, DEFAULT_REVIEW } from './config.js';
+import { loadConfig, DEFAULT_REVIEW, getConfigDir, getConventionalConfigDir } from './config.js';
+import { loadNativeExtensions } from './extensions/index.js';
 import { setPromptDir } from './prompts.js';
 import { type AgentRuntimeRegistry, singletonRegistry, buildAgentRuntimeRegistry } from './agent-runtime-registry.js';
 import { createTracingContext } from './tracing.js';
@@ -156,11 +158,21 @@ export class EforgeEngine {
   private readonly configWarnings: string[];
   /** Profile data collected during loadConfig — emitted as session:profile event. */
   private readonly configProfile: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null };
+  // --- eforge:region plan-01-extension-runtime-foundation ---
+  private readonly extensionRegistry: NativeExtensionRegistry;
+  private readonly extensionDiagnostics: NativeExtensionDiagnostic[];
+  // --- eforge:endregion plan-01-extension-runtime-foundation ---
 
-  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }) {
+  private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }, extensionRegistry?: NativeExtensionRegistry, extensionDiagnostics: NativeExtensionDiagnostic[] = []) {
     this.config = config;
     this.configWarnings = configWarnings;
     this.configProfile = configProfile ?? { name: null, source: 'none', scope: null, config: null };
+    // --- eforge:region plan-01-extension-runtime-foundation ---
+    this.extensionRegistry = extensionRegistry ?? {
+      extensions: [], candidates: [], eventHooks: [], agentRunHooks: [], policyGates: [], profileRouters: [], inputSources: [], reviewerPerspectives: [], validationProviders: [], tools: [], diagnostics: [],
+    };
+    this.extensionDiagnostics = extensionDiagnostics;
+    // --- eforge:endregion plan-01-extension-runtime-foundation ---
     this.cwd = options.cwd ?? process.cwd();
     // agentRuntimes is always resolved to a registry by create() before reaching the constructor
     this.agentRuntimes = options.agentRuntimes as AgentRuntimeRegistry;
@@ -172,6 +184,29 @@ export class EforgeEngine {
   get resolvedConfig(): EforgeConfig {
     return this.config;
   }
+
+  // --- eforge:region plan-01-extension-runtime-foundation ---
+  get nativeExtensionRegistry(): NativeExtensionRegistry {
+    return this.extensionRegistry;
+  }
+
+  get nativeExtensionDiagnostics(): readonly NativeExtensionDiagnostic[] {
+    return this.extensionDiagnostics;
+  }
+
+  private startupWarnings(): Array<{ message: string; source: string; details?: string }> {
+    return [
+      ...this.configWarnings.map((message) => ({ message, source: 'loadConfig' })),
+      ...this.extensionDiagnostics
+        .filter((diagnostic) => diagnostic.severity === 'warning' || diagnostic.severity === 'error')
+        .map((diagnostic) => ({
+          message: diagnostic.message,
+          source: 'extensions',
+          details: [diagnostic.code, diagnostic.path].filter(Boolean).join(' '),
+        })),
+    ];
+  }
+  // --- eforge:endregion plan-01-extension-runtime-foundation ---
 
   /**
    * Async factory — loads config, applies overrides, returns engine.
@@ -188,6 +223,15 @@ export class EforgeEngine {
 
     // Wire project-level prompt directory override
     setPromptDir(config.agents.promptDir, cwd);
+
+    // --- eforge:region plan-01-extension-runtime-foundation ---
+    const extensionConfigDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+    const extensionLoadResult = await loadNativeExtensions({
+      cwd,
+      configDir: extensionConfigDir,
+      config: config.extensions,
+    });
+    // --- eforge:endregion plan-01-extension-runtime-foundation ---
 
     // Auto-load MCP servers from .mcp.json if not explicitly provided
     if (!options.mcpServers && !options.agentRuntimes) {
@@ -224,7 +268,7 @@ export class EforgeEngine {
     }
     options = { ...options, agentRuntimes };
 
-    return new EforgeEngine(config, options, configWarnings, configProfile);
+    return new EforgeEngine(config, options, configWarnings, configProfile, extensionLoadResult.registry, extensionLoadResult.diagnostics);
   }
 
   /**
@@ -247,8 +291,8 @@ export class EforgeEngine {
     yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
 
     // Emit any config warnings collected during engine creation
-    for (const warning of this.configWarnings) {
-      yield { timestamp: new Date().toISOString(), type: 'config:warning', message: warning, source: 'loadConfig' };
+    for (const warning of this.startupWarnings()) {
+      yield { timestamp: new Date().toISOString(), type: 'config:warning', message: warning.message, source: warning.source, details: warning.details };
     }
 
     try {
@@ -472,8 +516,8 @@ export class EforgeEngine {
     yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
 
     // Emit any config warnings collected during engine creation
-    for (const warning of this.configWarnings) {
-      yield { timestamp: new Date().toISOString(), type: 'config:warning', message: warning, source: 'loadConfig' };
+    for (const warning of this.startupWarnings()) {
+      yield { timestamp: new Date().toISOString(), type: 'config:warning', message: warning.message, source: warning.source, details: warning.details };
     }
 
     try {
@@ -1418,6 +1462,9 @@ export class EforgeEngine {
           config: this.configProfile.config,
           timestamp: new Date().toISOString(),
         } as EforgeEvent);
+        for (const warning of this.startupWarnings()) {
+          eventQueue.push({ timestamp: new Date().toISOString(), type: 'config:warning', message: warning.message, source: warning.source, details: warning.details } as EforgeEvent);
+        }
 
         eventQueue.addProducer();
 
@@ -1673,6 +1720,9 @@ export class EforgeEngine {
     // Always emit recovery:start first
     yield { timestamp: new Date().toISOString(), type: 'recovery:start', prdId, setName };
     yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
+    for (const warning of this.startupWarnings()) {
+      yield { timestamp: new Date().toISOString(), type: 'config:warning', message: warning.message, source: warning.source, details: warning.details };
+    }
 
     try {
       // Try to read PRD file
@@ -1890,6 +1940,9 @@ export class EforgeEngine {
       prdId,
     };
     yield { timestamp: new Date().toISOString(), type: 'session:profile', profileName: this.configProfile.name, source: this.configProfile.source, scope: this.configProfile.scope, config: this.configProfile.config };
+    for (const warning of this.startupWarnings()) {
+      yield { timestamp: new Date().toISOString(), type: 'config:warning', message: warning.message, source: warning.source, details: warning.details };
+    }
 
     try {
       // Read the recovery sidecar JSON
@@ -1997,6 +2050,7 @@ function mergeConfig(base: EforgeConfig, overrides: Partial<EforgeConfig>): Efor
     build: overrides.build ? { ...base.build, ...overrides.build } : base.build,
     plan: overrides.plan ? { ...base.plan, ...overrides.plan } : base.plan,
     plugins: overrides.plugins ? { ...base.plugins, ...overrides.plugins } : base.plugins,
+    extensions: overrides.extensions ? { ...base.extensions, ...overrides.extensions } : base.extensions,
     prdQueue: overrides.prdQueue ? { ...base.prdQueue, ...overrides.prdQueue } : base.prdQueue,
     daemon: overrides.daemon ? { ...base.daemon, ...overrides.daemon } : base.daemon,
     monitor: overrides.monitor ? { ...base.monitor, ...overrides.monitor } : base.monitor,

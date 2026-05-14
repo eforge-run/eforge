@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: b6852740 -->
+<!-- Commit: f8057f14 -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -18,6 +18,7 @@ eforge merges configuration from three tiers (highest precedence first):
 | `agents` |  |
 | `build` |  |
 | `daemon` |  |
+| `extensions` | Native eforge extension configuration |
 | `hooks` |  |
 | `langfuse` |  |
 | `maxConcurrentBuilds` |  |

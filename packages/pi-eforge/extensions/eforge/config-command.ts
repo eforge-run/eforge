@@ -93,6 +93,29 @@ export async function handleConfigCommand(
     sections.push("");
   }
 
+  // --- eforge:region plan-02-extension-tooling-surfaces ---
+  // Native extensions
+  const extensions = config.extensions as Record<string, unknown> | undefined;
+  if (extensions) {
+    sections.push("## Extensions\n");
+    if (extensions.enabled !== undefined) sections.push(`- Enabled: ${extensions.enabled}`);
+    if (extensions.trustProjectExtensions !== undefined) sections.push(`- Trust project extensions: ${extensions.trustProjectExtensions}`);
+    if (Array.isArray(extensions.include) && extensions.include.length > 0) {
+      sections.push(`- Include: ${extensions.include.map((v) => `\`${v}\``).join(", ")}`);
+    }
+    if (Array.isArray(extensions.exclude) && extensions.exclude.length > 0) {
+      sections.push(`- Exclude: ${extensions.exclude.map((v) => `\`${v}\``).join(", ")}`);
+    }
+    if (Array.isArray(extensions.paths) && extensions.paths.length > 0) {
+      sections.push("- Paths:");
+      for (const path of extensions.paths) {
+        sections.push(`  - \`${path}\``);
+      }
+    }
+    sections.push("");
+  }
+  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
+
   // Queue
   const prdQueue = config.prdQueue as Record<string, unknown> | undefined;
   if (prdQueue) {

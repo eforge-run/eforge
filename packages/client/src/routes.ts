@@ -127,6 +127,11 @@ export const API_ROUTES = {
   version: '/api/version',
   configShow: '/api/config/show',
   configValidate: '/api/config/validate',
+  // --- eforge:region plan-02-extension-tooling-surfaces ---
+  extensionList: '/api/extensions/list',
+  extensionShow: '/api/extensions/show',
+  extensionValidate: '/api/extensions/validate',
+  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
   queue: '/api/queue',
   sessionMetadata: '/api/session-metadata',
   runs: '/api/runs',

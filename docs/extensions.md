@@ -1,55 +1,178 @@
 # Extensions
 
-Extensions are TypeScript modules that observe or influence eforge lifecycle behavior. They are the typed, programmatic counterpart to shell hooks: where hooks fire shell commands on events, extensions can subscribe to typed events, augment agent runs, enforce policy gates, route profiles, and contribute custom tools - all with full TypeScript inference.
+Native eforge extensions are TypeScript or JavaScript modules loaded by the eforge daemon/worker Node process. They are the typed, programmatic counterpart to shell hooks: extension factories can register event hooks, agent-run augmenters, policy gates, profile routers, input sources, reviewer perspectives, validation providers, and custom tools with full TypeScript inference.
 
-This is different from shell hooks, which are fire-and-forget and cannot influence the pipeline. Extensions registered as policy gates can block or require approval; extensions registered as agent-run augmenters can contribute tools and prompt context. See [Relationship to shell hooks](#relationship-to-shell-hooks-playbooks-and-toolbelts) for a full boundary comparison.
+Extensions are **not sandboxed**. A loaded extension executes in the same Node process as eforge and has the same filesystem, environment, and network access as the daemon. Only enable extensions from sources you trust.
 
-## Scopes
+## What native extensions are (and are not)
 
-Extensions follow the same three-tier scope model as profiles and playbooks:
+Native eforge extensions are distinct from other extensibility mechanisms:
 
-| Scope | Directory | Purpose |
-|-------|-----------|---------|
-| User | `~/.config/eforge/extensions/` | Personal extensions reusable across projects |
-| Project/team | `eforge/extensions/` | Shared, committed team extensions |
-| Project-local | `.eforge/extensions/` | Local experiments and personal project overrides |
+| Mechanism | Language/shape | Runtime owner | Purpose |
+|-----------|----------------|---------------|---------|
+| Native eforge extensions | TypeScript/JavaScript modules in `extensions/` | eforge daemon/worker | Typed lifecycle registrations and future runtime capabilities |
+| Claude Code plugins | Claude Code plugin package | Claude Code host | Slash commands, MCP proxy wiring, Claude Code UX |
+| Pi extensions | Pi extension package | Pi host | Native Pi commands, tools, and overlays |
+| Shell hooks | YAML + shell command | eforge hook runner | Fire-and-forget notifications/integrations |
+| Playbooks/session plans | Markdown input artifacts | `@eforge-build/input` then engine queue | Reusable build sources and planning artifacts |
+| Profile toolbelts | YAML MCP server bundles | agent runtime registry | Declarative project MCP server selection |
 
-Precedence order: `project-local > project-team > user`
+Toolbelts answer "which project MCP servers should this tier expose?" Extensions answer "what should eforge do when something happens?" Extensions should not redefine toolbelts or act as a hidden profile/config layer.
 
-Project-local is the recommended starting point for new extensions. Use `eforge/extensions/` (committed) once an extension has been validated and is intended for the whole team.
+## Configuration
 
-## Minimal example
+Native extension loading is controlled by the top-level `extensions` block in `eforge/config.yaml`, `~/.config/eforge/config.yaml`, or `.eforge/config.yaml`:
 
-An extension is a TypeScript module with a default-export factory function that receives the eforge extension API:
+```yaml
+extensions:
+  enabled: true                  # default: true
+  # include: [build-notifier]    # optional allowlist by extension name
+  # exclude: [experimental]      # optional denylist by extension name
+  # paths:                       # optional explicit extension modules/directories
+  #   - ./tools/eforge-audit.ts
+  trustProjectExtensions: false  # default: false
+```
+
+Fields:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `extensions.enabled` | `true` | Enables native extension discovery and loading. When `false`, no extensions are discovered and `paths` are ignored. |
+| `extensions.include` | unset | Optional allowlist for auto-discovered extension names. If set, only listed auto-discovered names are considered. |
+| `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
+| `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |
+| `extensions.trustProjectExtensions` | `false` | Trust gate for checked-in project/team extensions under `eforge/extensions/`. User and project-local extensions are trusted when loading is enabled. |
+
+The trust flag is intentionally restricted: checked-in `eforge/config.yaml` cannot silently turn on trust for checked-in extensions. Set `extensions.trustProjectExtensions: true` in user config (`~/.config/eforge/config.yaml`) or project-local config (`.eforge/config.yaml`) when you intentionally trust this project's committed extensions.
+
+## Discovery scopes and precedence
+
+Auto-discovery scans three directories:
+
+| Scope | Directory | Trust default | Purpose |
+|-------|-----------|---------------|---------|
+| User | `~/.config/eforge/extensions/` | trusted | Personal extensions reusable across projects |
+| Project/team | `eforge/extensions/` | untrusted unless `extensions.trustProjectExtensions: true` | Shared, committed team extensions |
+| Project-local | `.eforge/extensions/` | trusted | Local experiments and personal project overrides |
+
+Precedence for same-name auto-discovered extensions is:
+
+```text
+project-local > project-team > user
+```
+
+The highest-precedence candidate wins; lower-precedence candidates with the same name are reported as `shadowed`. Project-local is the recommended starting point for new extensions. Promote an extension to `eforge/extensions/` only once it is intended for the team and document that users must opt in to trusting project extensions.
+
+## Supported layouts
+
+Auto-discovered and explicit extension paths support file and directory layouts.
+
+### File layout
+
+```text
+eforge/extensions/build-notifier.ts
+eforge/extensions/build-notifier.mts
+eforge/extensions/build-notifier.js
+eforge/extensions/build-notifier.mjs
+```
+
+The extension name is the filename without the known extension.
+
+### Directory layout
+
+```text
+eforge/extensions/build-notifier/index.ts
+eforge/extensions/build-notifier/index.mts
+eforge/extensions/build-notifier/index.js
+eforge/extensions/build-notifier/index.mjs
+```
+
+A directory may also provide `package.json` with a supported root `exports`, `exports["."].import`, `exports["."].default`, or `main` entrypoint pointing at `.ts`, `.mts`, `.js`, or `.mjs`. The extension name is the directory name.
+
+Unsupported files or directories are skipped during auto-discovery with a warning diagnostic. Unsupported explicit paths are errors.
+
+## Loader strategy
+
+The loader chooses a strategy from the resolved entrypoint format:
+
+| Format | Strategy |
+|--------|----------|
+| `.js`, `.mjs` | native dynamic `import()` |
+| `.ts`, `.mts` | `jiti` runtime loader |
+
+The module must default-export an extension factory function. The factory is called once at load time with an `EforgeExtensionAPI` recorder. Registration methods must be called during factory execution; registrations made later are not guaranteed to be captured.
 
 ```ts
-// eforge/extensions/build-notifier.ts
 import type { EforgeExtensionAPI } from "@eforge-build/extension-sdk";
 
 export default function extension(eforge: EforgeExtensionAPI) {
-  eforge.onEvent("plan:build:failed", async (event, ctx) => {
-    ctx.logger.warn(`Plan failed: ${event.planId}`);
+  eforge.onEvent("plan:build:*", async (event, ctx) => {
+    ctx.logger.info(`Build event: ${event.type}`);
   });
 }
 ```
 
-The factory receives an `EforgeExtensionAPI` instance. Call registration methods on it during the factory invocation. You can also use the `defineEforgeExtension` helper for named-export style with parameter inference:
+You can also use `defineEforgeExtension` for parameter inference.
 
-```ts
-import { defineEforgeExtension } from "@eforge-build/extension-sdk";
+## Statuses, diagnostics, and provenance
 
-export default defineEforgeExtension((eforge) => {
-  eforge.onEvent("plan:build:*", async (event, ctx) => {
-    ctx.logger.info(`Build event: ${event.type}`);
-  });
-});
+The daemon and CLI expose candidates, loaded extensions, diagnostics, shadows, and registration summaries through `eforge extension` commands and daemon API routes.
+
+Statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Candidate discovered and awaiting load. Usually transient in internal results. |
+| `loaded` | Factory loaded successfully and registration capture completed. |
+| `shadowed` | Auto-discovered candidate lost to a higher-precedence extension with the same name. |
+| `skipped` | Candidate was intentionally skipped, most commonly because it is an untrusted project/team extension. |
+| `error` | Discovery, validation, import, export, or factory execution failed. |
+
+Diagnostics include severity (`warning` or `error`), stable code, message, and when available name/path/scope/source. Common diagnostics include unsupported layouts, duplicate explicit names, untrusted project extensions, invalid default exports, and factory errors.
+
+Provenance fields identify where an extension came from:
+
+- `scope`: `user`, `project-team`, `project-local`, or `external`
+- `source`: `auto` or `explicit`
+- `path` and `entrypoint`
+- `format`, `layout`, and `strategy`
+- `trust`: `trusted` or `untrusted`
+- `shadows`: lower-precedence candidates hidden by this candidate
+- `registrations`: counts captured by registration family
+
+Use:
+
+```bash
+eforge extension list
+eforge extension show build-notifier
+eforge extension validate
+eforge extension validate ./tools/eforge-audit.ts
 ```
 
-`defineEforgeExtension` is a no-op identity helper; it exists solely so TypeScript can infer the factory parameter type without an explicit import of `EforgeExtensionAPI`.
+Add `--json` to CLI commands for machine-readable provenance. The same data is exposed via `/api/extensions/list`, `/api/extensions/show`, and `/api/extensions/validate`.
+
+## Runtime support today
+
+The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, and CLI/API/MCP/Pi inspection tooling are available.
+
+Runtime dispatch and capability execution are intentionally deferred for later phases. Loading an extension records registrations; most registered handlers are not yet invoked by the engine pipeline.
+
+| Capability | Type contract | Loader-time registration capture | Runtime execution today |
+|-----------|---------------|----------------------------------|-------------------------|
+| `onEvent` - typed event subscriptions | Yes | Yes | Deferred |
+| `onAgentRun` - agent augmentation | Yes | Yes | Deferred |
+| `registerTool` - custom agent tool | Yes | Yes | Deferred |
+| `beforePlanMerge` - policy gate | Yes | Yes | Deferred |
+| `registerProfileRouter` | Yes | Yes | Deferred |
+| `registerInputSource` | Yes | Yes | Deferred |
+| `registerReviewerPerspective` | Yes | Yes | Deferred |
+| `registerValidationProvider` | Yes | Yes | Deferred |
+
+This means examples can now be loaded and validated, and their registration summaries appear in provenance output. Event dispatch, blocking policy enforcement, agent augmentation, custom tool execution, profile routing, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
 
 ## Schema language
 
-The SDK uses [TypeBox](https://github.com/sinclairzx81/typebox) as its schema language. TypeBox types are used when defining custom tool input schemas:
+The SDK uses [TypeBox](https://github.com/sinclairzx81/typebox) as its schema language for custom tools:
 
 ```ts
 import { defineExtensionTool, Type } from "@eforge-build/extension-sdk";
@@ -57,21 +180,16 @@ import { defineExtensionTool, Type } from "@eforge-build/extension-sdk";
 const myTool = defineExtensionTool({
   name: "my-tool",
   description: "Does something useful",
-  inputSchema: Type.Object({
-    path: Type.String(),
-    verbose: Type.Optional(Type.Boolean()),
-  }),
-  handler: async ({ path, verbose }) => {
-    return `processed: ${path}`;
-  },
+  inputSchema: Type.Object({ path: Type.String() }),
+  handler: async ({ path }) => `processed: ${path}`,
 });
 ```
 
-Zod does not appear anywhere in the SDK's public surface. If you use Zod in your extension's internal implementation, you are responsible for any type adaption at the boundary.
+Zod does not appear in the SDK public surface. If you use Zod internally, adapt it at the extension boundary.
 
 ## Event patterns
 
-Event subscriptions accept glob-style patterns using `*` as a wildcard. The `*` wildcard matches any characters including `:`, so it can span segments:
+Event subscriptions accept glob-style patterns using `*` as a wildcard. The wildcard matches any characters including `:`:
 
 | Pattern | Matches |
 |---------|---------|
@@ -80,58 +198,17 @@ Event subscriptions accept glob-style patterns using `*` as a wildcard. The `*` 
 | `*:complete` | `planning:complete`, `plan:build:complete`, `expedition:wave:complete`, etc. |
 | `*` | Every event |
 
-These semantics are identical to shell hook patterns in `eforge/config.yaml`. Extensions and shell hooks share one mental model for event targeting. See [`docs/hooks.md`](./hooks.md) for the full event type list.
-
-You can also use the SDK's pattern helpers directly:
-
-```ts
-import { matchesEventPattern, compileEventPattern } from "@eforge-build/extension-sdk";
-
-matchesEventPattern("plan:build:*", "plan:build:failed"); // true
-matchesEventPattern("*:complete", "expedition:wave:complete"); // true
-```
-
-## Relationship to shell hooks, playbooks, and toolbelts
-
-Each mechanism has a distinct role:
-
-| Mechanism | Language | Can block pipeline | Can augment agents |
-|-----------|----------|-------------------|-------------------|
-| Shell hooks | Bash | No (fire-and-forget) | No |
-| Playbooks | Markdown | No | Indirectly (prompt context) |
-| Profile toolbelts | YAML (declarative) | No | Indirectly (MCP tools) |
-| Extensions | TypeScript | Yes (policy gates) | Yes (agent run augmentation) |
-
-**Toolbelts vs extensions:** Toolbelts are declarative MCP capability bundles selected by agent runtime profiles. They answer "which MCP servers should this tier expose?" Extensions are imperative TypeScript modules. They answer "what should eforge do when something happens?" Extensions may inspect profile metadata when making decisions (e.g. routing to a specific profile), but they should not redefine toolbelts or become a hidden profile/config layer.
-
-Extension-contributed custom tools and toolbelt-selected MCP tools remain distinct categories in the effective tool surface:
-
-```
-engine-internal tools
-+ profile/toolbelt-selected project MCP tools
-+ extension-contributed custom tools
-- explicit allowed/disallowed filters
-```
-
-## Runtime support today
-
-The `@eforge-build/extension-sdk` package is the type contract for the extension API. The table below shows what ships in this release (EXTEND_01) versus what is planned in future epics:
-
-| Capability | Type contract | Runtime today | Planned epic |
-|-----------|--------------|---------------|--------------|
-| `onEvent` - typed event subscriptions | Yes | EXTEND_02 | EXTEND_02 |
-| `onAgentRun` - agent augmentation | Yes | No | EXTEND_02 |
-| `beforePlanMerge` - policy gate | Yes | No | EXTEND_03 |
-| `registerProfileRouter` | Yes | No | EXTEND_03 |
-| `registerInputSource` | Yes | No | EXTEND_04 |
-| `registerReviewerPerspective` | Yes | No | EXTEND_04 |
-| `registerValidationProvider` | Yes | No | EXTEND_04 |
-
-In EXTEND_01, the SDK package exists and is type-checkable. Writing extensions now lets you verify your types and example logic. Runtime loading, daemon integration, and the `/eforge:extend` skill ship in subsequent epics.
+Pattern semantics match shell hooks. See [`docs/hooks.md`](./hooks.md) for event types.
 
 ## Trust and security
 
-Extension loading is not yet implemented. When runtime loading ships, extensions will require explicit trust (via `eforge extension trust <name>` or equivalent) before they run. Extensions are TypeScript modules executed in the same Node.js process as the daemon - they are not sandboxed. Only load extensions from sources you trust.
+- Extensions run in the eforge daemon/worker Node process without a sandbox.
+- User (`~/.config/eforge/extensions/`) and project-local (`.eforge/extensions/`) extensions load when `extensions.enabled` is true.
+- Project/team extensions (`eforge/extensions/`) are skipped unless `extensions.trustProjectExtensions: true` is set from user or project-local config.
+- Explicit paths outside standard scopes are treated as `external` and trusted when enabled, so use them only for code you control.
+- Do not load extensions from unreviewed repositories or package artifacts.
+
+Hash-based trust prompts/stores are not shipped behavior in this slice.
 
 ## API reference
 

@@ -25,7 +25,7 @@ export default function extension(eforge: EforgeExtensionAPI) {
 }
 ```
 
-Use `defineEforgeExtension` for named-export style with parameter inference:
+Use `defineEforgeExtension` when you want factory parameter inference:
 
 ```ts
 import { defineEforgeExtension } from "@eforge-build/extension-sdk";
@@ -37,27 +37,34 @@ export default defineEforgeExtension((eforge) => {
 });
 ```
 
-## Extension scopes
+## Runtime loading
 
-| Scope | Directory | Purpose |
-|-------|-----------|---------|
-| User | `~/.config/eforge/extensions/` | Personal, cross-project |
-| Project/team | `eforge/extensions/` | Shared, committed |
-| Project-local | `.eforge/extensions/` | Local experiments |
+The eforge daemon discovers and loads native extensions from three scopes:
+
+| Scope | Directory | Trust default | Purpose |
+|-------|-----------|---------------|---------|
+| User | `~/.config/eforge/extensions/` | trusted | Personal, cross-project |
+| Project/team | `eforge/extensions/` | skipped unless `extensions.trustProjectExtensions: true` | Shared, committed |
+| Project-local | `.eforge/extensions/` | trusted | Local experiments |
+
+Precedence is `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. Extensions run in the eforge daemon/worker Node process without a sandbox.
+
+Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch/execution of registered capabilities is deferred.
 
 ## Registration methods
 
-| Method | Description | Runtime status |
-|--------|-------------|----------------|
-| `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | EXTEND_02 |
-| `onAgentRun(handler)` | Augment agent runs with tools and prompt context (scope by `ctx.role`) | EXTEND_02 |
-| `beforePlanMerge(handler)` | Policy gate before plan branch is merged | EXTEND_03 |
-| `registerProfileRouter(spec)` | Select agent runtime profile per build | EXTEND_03 |
-| `registerInputSource(adapter)` | Produce PRD/build-source artifacts | EXTEND_04 |
-| `registerReviewerPerspective(spec)` | Add custom review perspective | EXTEND_04 |
-| `registerValidationProvider(spec)` | Add custom validation step | EXTEND_04 |
+| Method | Description | Loader-time capture | Runtime execution |
+|--------|-------------|---------------------|-------------------|
+| `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | Yes | Deferred |
+| `onAgentRun(handler)` | Augment agent runs with tools and prompt context (scope by `ctx.role`) | Yes | Deferred |
+| `registerTool(tool)` | Register a custom agent tool for provenance and future injection | Yes | Deferred |
+| `beforePlanMerge(handler)` | Policy gate before plan branch is merged | Yes | Deferred |
+| `registerProfileRouter(spec)` | Select agent runtime profile per build | Yes | Deferred |
+| `registerInputSource(adapter)` | Produce PRD/build-source artifacts | Yes | Deferred |
+| `registerReviewerPerspective(spec)` | Add custom review perspective | Yes | Deferred |
+| `registerValidationProvider(spec)` | Add custom validation step | Yes | Deferred |
 
-All capabilities have full TypeScript type contracts in EXTEND_01. Runtime dispatch lands in subsequent epics.
+All capabilities have full TypeScript type contracts. Loading and registration capture are wired; event dispatch, blocking gates, agent augmentation, tool execution, routing, and provider execution land in subsequent runtime phases.
 
 ## Policy decisions
 
@@ -122,4 +129,4 @@ Local docs: [`docs/extensions.md`](../../docs/extensions.md) and [`docs/extensio
 
 ## Stability
 
-Public exports are stability-promised within a major version. The runtime loading, daemon integration, and CLI management commands ship in subsequent epics; the type surface defined here is the stable contract they will implement against.
+Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, and registration capture are available. Runtime execution of deferred capability families will build on this stable contract.

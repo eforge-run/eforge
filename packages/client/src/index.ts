@@ -59,6 +59,14 @@ export {
   apiValidateConfigIfRunning,
 } from './api/config.js';
 
+// --- eforge:region plan-02-extension-tooling-surfaces ---
+export {
+  apiListExtensions,
+  apiShowExtension,
+  apiValidateExtensions,
+} from './api/extensions.js';
+// --- eforge:endregion plan-02-extension-tooling-surfaces ---
+
 export { apiListModelProviders, apiListModels } from './api/models.js';
 
 export { apiStopDaemon } from './api/daemon.js';
@@ -239,6 +247,20 @@ export type {
   ProjectContext,
   ConfigShowResponse,
   ConfigValidateResponse,
+  ExtensionScope,
+  ExtensionSource,
+  ExtensionStatus,
+  ExtensionDiagnosticSeverity,
+  ExtensionFormat,
+  ExtensionLayout,
+  ExtensionTrust,
+  ExtensionDiagnostic,
+  ExtensionShadow,
+  ExtensionRegistrationSummary,
+  ExtensionEntry,
+  ExtensionListResponse,
+  ExtensionShowResponse,
+  ExtensionValidateResponse,
   QueueItem,
   SessionMetadata,
   RunInfo,

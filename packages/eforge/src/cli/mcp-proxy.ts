@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetLatestRunFromRuns } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetLatestRunFromRuns, apiListExtensions, apiShowExtension, apiValidateExtensions } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   RunInfo,
@@ -510,6 +510,38 @@ export async function runMcpProxy(cwd: string): Promise<void> {
       return data;
     },
   });
+
+  // --- eforge:region plan-02-extension-tooling-surfaces ---
+  // Tool: eforge_extension
+  createDaemonTool(server, cwd, {
+    name: 'eforge_extension',
+    description: 'List, show, or validate native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path.',
+    schema: {
+      action: z.enum(['list', 'show', 'validate']).describe('Extension operation to perform'),
+      name: z.string().min(1).optional().describe('Extension name (required for "show", optional for "validate")'),
+      path: z.string().min(1).optional().describe('Ad-hoc extension file/directory path to validate ("validate" only)'),
+    },
+    handler: async ({ action, name, path }, { cwd: toolCwd }) => {
+      if (action === 'list') {
+        if (name !== undefined || path !== undefined) throw new Error('"name" and "path" are not supported when action is "list"');
+        const { data } = await apiListExtensions({ cwd: toolCwd });
+        return data;
+      }
+      if (action === 'show') {
+        if (!name) throw new Error('"name" is required when action is "show"');
+        if (path !== undefined) throw new Error('"path" is not supported when action is "show"');
+        const { data } = await apiShowExtension({ cwd: toolCwd, name });
+        return data;
+      }
+      if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for validate');
+      const request: { cwd: string; name?: string; path?: string } = { cwd: toolCwd };
+      if (name !== undefined) request.name = name;
+      if (path !== undefined) request.path = path;
+      const { data } = await apiValidateExtensions(request);
+      return data;
+    },
+  });
+  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
   // Tool: eforge_models
   createDaemonTool(server, cwd, {

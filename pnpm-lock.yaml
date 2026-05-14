@@ -179,6 +179,9 @@ importers:
       '@eforge-build/client':
         specifier: workspace:*
         version: link:../client
+      '@eforge-build/extension-sdk':
+        specifier: workspace:*
+        version: link:../extension-sdk
       '@eforge-build/scopes':
         specifier: workspace:*
         version: link:../scopes
@@ -191,6 +194,9 @@ importers:
       chalk:
         specifier: ^5.6.2
         version: 5.6.2
+      jiti:
+        specifier: ^2.7.0
+        version: 2.7.0
       langfuse:
         specifier: ^3.38.20
         version: 3.38.20

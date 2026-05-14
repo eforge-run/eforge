@@ -6,7 +6,7 @@ import {
 } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, readdir, stat } from 'node:fs/promises';
+import { readFile, readdir, stat, realpath } from 'node:fs/promises';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, extname, join, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -15,7 +15,16 @@ import { parse as parseYaml } from 'yaml';
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
 import type { EforgeConfig, PartialEforgeConfig } from '@eforge-build/engine/config';
-import type { BuildStageSpec, ReviewProfileConfig, QueueItem, AutoBuildState } from '@eforge-build/client';
+import type {
+  BuildStageSpec,
+  ReviewProfileConfig,
+  QueueItem,
+  AutoBuildState,
+  ExtensionDiagnostic,
+  ExtensionEntry,
+  ExtensionListResponse,
+  ExtensionRegistrationSummary,
+} from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent, parseWithSchema } from '@eforge-build/client';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
@@ -1168,6 +1177,148 @@ export async function startServer(
     return {};
   }
 
+  // --- eforge:region plan-02-extension-tooling-surfaces ---
+  const EXTENSION_NAME_RE = /^[A-Za-z0-9._-]+$/;
+
+  const EMPTY_EXTENSION_REGISTRATIONS: ExtensionRegistrationSummary = {
+    eventHooks: 0,
+    agentRunHooks: 0,
+    policyGates: 0,
+    profileRouters: 0,
+    inputSources: 0,
+    reviewerPerspectives: 0,
+    validationProviders: 0,
+    tools: 0,
+  };
+
+  function normalizeExtensionDiagnostic(diagnostic: unknown): ExtensionDiagnostic {
+    const d = diagnostic as ExtensionDiagnostic;
+    const result: ExtensionDiagnostic = {
+      severity: d.severity,
+      code: d.code,
+      message: d.message,
+    };
+    if (d.name !== undefined) result.name = d.name;
+    if (d.path !== undefined) result.path = d.path;
+    if (d.scope !== undefined) result.scope = d.scope;
+    if (d.source !== undefined) result.source = d.source;
+    return result;
+  }
+
+  async function validateExtensionQueryPath(rawPath: string): Promise<string | null> {
+    if (!cwd || rawPath.length === 0 || rawPath.includes('\0')) return null;
+    const resolvedPath = resolve(cwd, rawPath);
+    if (!isWithinDir(resolvedPath, cwd)) return null;
+    try {
+      const [realCwd, realResolvedPath] = await Promise.all([realpath(cwd), realpath(resolvedPath)]);
+      return isWithinDir(realResolvedPath, realCwd) ? realResolvedPath : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function selectExtensionByName(extensions: ExtensionEntry[], name: string): ExtensionEntry | undefined {
+    const matches = extensions.filter((entry) => entry.name === name);
+    return matches.find((entry) => entry.status === 'loaded')
+      ?? matches.find((entry) => entry.status !== 'shadowed')
+      ?? matches[0];
+  }
+
+  async function loadExtensionResponse(opts: { path?: string } = {}): Promise<ExtensionListResponse> {
+    if (!cwd) throw new Error('Working directory not configured');
+    const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
+    const { loadNativeExtensions, discoverNativeExtensions, projectExtensionRegistry } = await import('@eforge-build/engine/extensions/index');
+
+    const { config, warnings } = await loadConfig(cwd);
+    for (const warning of warnings) {
+      process.stderr.write(`${warning}\n`);
+    }
+    const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+    const extensionConfig = opts.path
+      ? {
+        enabled: true,
+        trustProjectExtensions: config.extensions.trustProjectExtensions,
+        include: ['__eforge_no_auto_extensions__'],
+        paths: [opts.path],
+      }
+      : config.extensions;
+
+    const loadResult = await loadNativeExtensions({ cwd, configDir, config: extensionConfig });
+    const projection = projectExtensionRegistry(loadResult.registry);
+    const loadedByKey = new Map(projection.extensions.map((extension) => [`${extension.name}\0${extension.path}`, extension]));
+
+    const extensions: ExtensionEntry[] = loadResult.candidates.map((candidate) => {
+      const loaded = loadedByKey.get(`${candidate.name}\0${candidate.path}`);
+      return {
+        name: candidate.name,
+        path: candidate.path,
+        ...(candidate.entrypoint !== undefined && { entrypoint: candidate.entrypoint }),
+        scope: candidate.scope as ExtensionEntry['scope'],
+        source: candidate.source,
+        status: candidate.status,
+        trust: candidate.trust,
+        ...(candidate.format !== undefined && { format: candidate.format }),
+        ...(candidate.layout !== undefined && { layout: candidate.layout }),
+        ...(loaded?.strategy !== undefined && { strategy: loaded.strategy }),
+        shadows: candidate.shadows.map((shadow) => ({
+          name: shadow.name,
+          path: shadow.path,
+          ...(shadow.entrypoint !== undefined && { entrypoint: shadow.entrypoint }),
+          scope: shadow.scope,
+          ...(shadow.format !== undefined && { format: shadow.format }),
+          ...(shadow.layout !== undefined && { layout: shadow.layout }),
+        })),
+        registrations: (loaded?.registrations as ExtensionRegistrationSummary | undefined) ?? { ...EMPTY_EXTENSION_REGISTRATIONS },
+        diagnostics: candidate.diagnostics.map(normalizeExtensionDiagnostic),
+      };
+    });
+
+    if (!opts.path && config.extensions.enabled && (config.extensions.include || config.extensions.exclude)) {
+      const discoveredAll = await discoverNativeExtensions({
+        cwd,
+        configDir,
+        config: {
+          enabled: true,
+          trustProjectExtensions: config.extensions.trustProjectExtensions,
+          paths: [],
+        },
+      });
+      const configuredPaths = new Set(loadResult.candidates.map((candidate) => candidate.path));
+      for (const candidate of discoveredAll.candidates) {
+        if (candidate.source !== 'auto' || configuredPaths.has(candidate.path)) continue;
+        extensions.push({
+          name: candidate.name,
+          path: candidate.path,
+          ...(candidate.entrypoint !== undefined && { entrypoint: candidate.entrypoint }),
+          scope: candidate.scope as ExtensionEntry['scope'],
+          source: candidate.source,
+          status: 'excluded',
+          trust: candidate.trust,
+          ...(candidate.format !== undefined && { format: candidate.format }),
+          ...(candidate.layout !== undefined && { layout: candidate.layout }),
+          shadows: candidate.shadows.map((shadow) => ({
+            name: shadow.name,
+            path: shadow.path,
+            ...(shadow.entrypoint !== undefined && { entrypoint: shadow.entrypoint }),
+            scope: shadow.scope,
+            ...(shadow.format !== undefined && { format: shadow.format }),
+            ...(shadow.layout !== undefined && { layout: shadow.layout }),
+          })),
+          registrations: { ...EMPTY_EXTENSION_REGISTRATIONS },
+          diagnostics: [],
+        });
+      }
+    }
+
+    extensions.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+    return {
+      extensions,
+      diagnostics: loadResult.diagnostics.map(normalizeExtensionDiagnostic),
+      totals: projection.totals as ExtensionRegistrationSummary,
+    };
+  }
+  // --- eforge:endregion plan-02-extension-tooling-surfaces ---
+
   let keepAliveCallback: (() => void) | null = null;
 
   function broadcast(eventName: string, data: string): void {
@@ -1794,6 +1945,95 @@ export async function startServer(
       }
       return;
     }
+
+    // --- eforge:region plan-02-extension-tooling-surfaces ---
+    if (req.method === 'GET' && (url === API_ROUTES.extensionList || url.startsWith(`${API_ROUTES.extensionList}?`))) {
+      try {
+        const data = await loadExtensionResponse();
+        sendJson(res, data);
+      } catch (err) {
+        sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to list extensions');
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && (url === API_ROUTES.extensionShow || url.startsWith(`${API_ROUTES.extensionShow}?`))) {
+      const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+      const qParams = new URLSearchParams(queryString);
+      const name = qParams.get('name');
+      if (!name) {
+        sendJsonError(res, 400, 'Missing required query param: name');
+        return;
+      }
+      if (!EXTENSION_NAME_RE.test(name)) {
+        sendJsonError(res, 400, 'Invalid extension name');
+        return;
+      }
+      try {
+        const data = await loadExtensionResponse();
+        const extension = selectExtensionByName(data.extensions, name);
+        if (!extension) {
+          sendJsonError(res, 404, `Extension not found: ${name}`);
+          return;
+        }
+        sendJson(res, { extension });
+      } catch (err) {
+        sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to show extension');
+      }
+      return;
+    }
+
+    if (req.method === 'GET' && (url === API_ROUTES.extensionValidate || url.startsWith(`${API_ROUTES.extensionValidate}?`))) {
+      const queryString = url.includes('?') ? url.slice(url.indexOf('?') + 1) : '';
+      const qParams = new URLSearchParams(queryString);
+      const hasName = qParams.has('name');
+      const hasPath = qParams.has('path');
+      const name = hasName ? qParams.get('name') ?? '' : undefined;
+      const rawPath = hasPath ? qParams.get('path') ?? '' : undefined;
+      if (hasName && hasPath) {
+        sendJsonError(res, 400, 'Specify only one of name or path');
+        return;
+      }
+      if (hasName && (!name || !EXTENSION_NAME_RE.test(name))) {
+        sendJsonError(res, 400, 'Invalid extension name');
+        return;
+      }
+      const validatedPath = hasPath ? await validateExtensionQueryPath(rawPath ?? '') : undefined;
+      if (hasPath && !validatedPath) {
+        sendJsonError(res, 400, 'Invalid extension path');
+        return;
+      }
+      try {
+        const data = await loadExtensionResponse(validatedPath ? { path: validatedPath } : undefined);
+        const extensions = name ? data.extensions.filter((entry) => entry.name === name) : data.extensions;
+        if (name && extensions.length === 0) {
+          sendJsonError(res, 404, `Extension not found: ${name}`);
+          return;
+        }
+        const selectedKeys = name
+          ? new Set(extensions.flatMap((entry) => [entry.name, entry.path]))
+          : undefined;
+        const diagnosticEntries = [
+          ...data.diagnostics.filter((diagnostic) => !selectedKeys || selectedKeys.has(diagnostic.name ?? '') || selectedKeys.has(diagnostic.path ?? '')),
+          ...extensions.flatMap((entry) => entry.diagnostics),
+        ].filter((diagnostic) => diagnostic.severity === 'error');
+        const diagnostics = [...new Map(
+          diagnosticEntries.map((diagnostic) => [
+            `${diagnostic.code}\0${diagnostic.path ?? ''}\0${diagnostic.message}`,
+            diagnostic,
+          ]),
+        ).values()];
+        sendJson(res, {
+          valid: extensions.every((entry) => entry.status !== 'error') && diagnostics.length === 0,
+          extensions,
+          diagnostics,
+        });
+      } catch (err) {
+        sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to validate extensions');
+      }
+      return;
+    }
+    // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
     // --- eforge:region plan-02-daemon-http-and-mcp-tool ---
     // Playbook names must be kebab-case (mirrors `playbookFrontmatterSchema.name`).

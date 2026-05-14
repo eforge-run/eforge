@@ -167,6 +167,16 @@ const pluginConfigSchema = z.object({
   paths: z.array(z.string()).optional(),
 });
 
+// --- eforge:region plan-01-extension-runtime-foundation ---
+export const extensionConfigSchema = z.object({
+  enabled: z.boolean().optional().describe('Enable native eforge extension discovery and loading'),
+  include: z.array(z.string()).optional().describe('Native extension names to include during auto-discovery'),
+  exclude: z.array(z.string()).optional().describe('Native extension names to exclude during auto-discovery'),
+  paths: z.array(z.string()).optional().describe('Explicit native extension module paths to load'),
+  trustProjectExtensions: z.boolean().optional().describe('Trust checked-in project-team native extensions'),
+}).describe('Native eforge extension configuration');
+// --- eforge:endregion plan-01-extension-runtime-foundation ---
+
 const SETTING_SOURCES = ['user', 'project', 'local'] as const;
 
 /** Harness kind for a tier recipe. */
@@ -301,6 +311,9 @@ const eforgeConfigBaseSchema = z.object({
     outputDir: z.string().optional(),
   }).optional(),
   plugins: pluginConfigSchema.optional(),
+  // --- eforge:region plan-01-extension-runtime-foundation ---
+  extensions: extensionConfigSchema.optional(),
+  // --- eforge:endregion plan-01-extension-runtime-foundation ---
   prdQueue: z.object({
     dir: z.string().optional(),
     autoBuild: z.boolean().optional(),
@@ -328,6 +341,12 @@ export type ToolPresetConfig = z.output<typeof toolPresetConfigSchema>;
 // and re-exported at the top of this file.
 export type HookConfig = z.output<typeof hookConfigSchema>;
 export type PluginConfig = z.output<typeof pluginConfigSchema>;
+// --- eforge:region plan-01-extension-runtime-foundation ---
+export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {
+  enabled: boolean;
+  trustProjectExtensions: boolean;
+};
+// --- eforge:endregion plan-01-extension-runtime-foundation ---
 export type TierConfig = z.output<typeof tierConfigSchema>;
 
 /**
@@ -419,6 +438,9 @@ export interface EforgeConfig {
   build: { worktreeDir?: string; postMergeCommands?: string[]; postMergeCommandTimeoutMs?: number; maxValidationRetries: number; cleanupPlanFiles: boolean };
   plan: { outputDir: string };
   plugins: PluginConfig;
+  // --- eforge:region plan-01-extension-runtime-foundation ---
+  extensions: ExtensionConfig;
+  // --- eforge:endregion plan-01-extension-runtime-foundation ---
   prdQueue: { dir: string; autoBuild: boolean; watchPollIntervalMs: number };
   daemon: { idleShutdownMs: number };
   monitor: { retentionCount: number };
@@ -594,6 +616,9 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   build: Object.freeze({ worktreeDir: undefined, postMergeCommands: undefined, postMergeCommandTimeoutMs: 300_000, maxValidationRetries: 2, cleanupPlanFiles: true }),
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
   plugins: Object.freeze({ enabled: true }),
+  // --- eforge:region plan-01-extension-runtime-foundation ---
+  extensions: Object.freeze({ enabled: true, trustProjectExtensions: false }),
+  // --- eforge:endregion plan-01-extension-runtime-foundation ---
   prdQueue: Object.freeze({ dir: 'eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   monitor: Object.freeze({ retentionCount: 20 }),
@@ -676,6 +701,15 @@ export function resolveConfig(
       exclude: fileConfig.plugins?.exclude,
       paths: fileConfig.plugins?.paths,
     }),
+    // --- eforge:region plan-01-extension-runtime-foundation ---
+    extensions: Object.freeze({
+      enabled: fileConfig.extensions?.enabled ?? DEFAULT_CONFIG.extensions.enabled,
+      trustProjectExtensions: fileConfig.extensions?.trustProjectExtensions ?? DEFAULT_CONFIG.extensions.trustProjectExtensions,
+      include: fileConfig.extensions?.include,
+      exclude: fileConfig.extensions?.exclude,
+      paths: fileConfig.extensions?.paths,
+    }),
+    // --- eforge:endregion plan-01-extension-runtime-foundation ---
     prdQueue: Object.freeze({
       dir: fileConfig.prdQueue?.dir ?? DEFAULT_CONFIG.prdQueue.dir,
       autoBuild: fileConfig.prdQueue?.autoBuild ?? DEFAULT_CONFIG.prdQueue.autoBuild,
@@ -784,6 +818,29 @@ function stripUndefinedSections(config: PartialEforgeConfig): PartialEforgeConfi
   return out as PartialEforgeConfig;
 }
 
+function dropUntrustedProjectExtensionTrust(config: PartialEforgeConfig, source: string): { config: PartialEforgeConfig; warnings: string[] } {
+  if (config.extensions?.trustProjectExtensions === undefined) {
+    return { config, warnings: [] };
+  }
+
+  const extensions = { ...config.extensions };
+  delete extensions.trustProjectExtensions;
+  const sanitized: PartialEforgeConfig = { ...config };
+  if (Object.keys(extensions).length > 0) {
+    sanitized.extensions = extensions;
+  } else {
+    delete sanitized.extensions;
+  }
+
+  return {
+    config: stripUndefinedSections(sanitized),
+    warnings: [
+      `[eforge] Ignoring extensions.trustProjectExtensions from ${source}. ` +
+      'Set it in ~/.config/eforge/config.yaml or .eforge/config.yaml to trust checked-in project-team extensions.',
+    ],
+  };
+}
+
 /**
  * Return the path to the user-level (global) config file.
  * Respects $XDG_CONFIG_HOME when set, else falls back to ~/.config.
@@ -800,7 +857,7 @@ export function getUserConfigPath(
  * - Scalar fields: project wins over global
  * - Object sections: shallow merge per-field, project overrides global
  * - `hooks`: concatenate (global first, then project)
- * - Other arrays (postMergeCommands, plugins.include/exclude/paths, settingSources): project replaces
+ * - Other arrays (postMergeCommands, plugins.include/exclude/paths, extensions.include/exclude/paths, settingSources): project replaces
  */
 export function mergePartialConfigs(
   global: PartialEforgeConfig,
@@ -874,6 +931,11 @@ export function mergePartialConfigs(
   if (global.plugins || project.plugins) {
     result.plugins = { ...global.plugins, ...project.plugins };
   }
+  // --- eforge:region plan-01-extension-runtime-foundation ---
+  if (global.extensions || project.extensions) {
+    result.extensions = { ...global.extensions, ...project.extensions };
+  }
+  // --- eforge:endregion plan-01-extension-runtime-foundation ---
   if (global.prdQueue || project.prdQueue) {
     result.prdQueue = { ...global.prdQueue, ...project.prdQueue };
   }
@@ -1006,8 +1068,11 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
     if (data && typeof data === 'object') {
       const partial = parseRawConfig(data as Record<string, unknown>);
       if (scope === 'user') globalConfig = partial;
-      else if (scope === 'project-team') projectConfig = partial;
-      else localConfig = partial;
+      else if (scope === 'project-team') {
+        const sanitized = dropUntrustedProjectExtensionTrust(partial, `project-team config ${path}`);
+        projectConfig = sanitized.config;
+        allWarnings.push(...sanitized.warnings);
+      } else localConfig = partial;
     }
   }
 
@@ -1026,7 +1091,13 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
     }
     resolvedProfileName = overrideName;
     resolvedProfileSource = 'override';
-    profileConfig = result.profile;
+    if (result.scope === 'project') {
+      const sanitized = dropUntrustedProjectExtensionTrust(result.profile, `project-team profile "${overrideName}"`);
+      profileConfig = sanitized.config;
+      allWarnings.push(...sanitized.warnings);
+    } else {
+      profileConfig = result.profile;
+    }
     resolvedProfileScope = result.scope;
   } else {
     const { name, source, warnings } = await resolveActiveProfileName(configDir, projectConfig, globalConfig, projectRoot);
@@ -1036,7 +1107,13 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
     if (name) {
       const result = await loadProfile(configDir, name, projectRoot);
       if (result) {
-        profileConfig = result.profile;
+        if (result.scope === 'project') {
+          const sanitized = dropUntrustedProjectExtensionTrust(result.profile, `project-team profile "${name}"`);
+          profileConfig = sanitized.config;
+          allWarnings.push(...sanitized.warnings);
+        } else {
+          profileConfig = result.profile;
+        }
         resolvedProfileScope = result.scope;
       }
     }
