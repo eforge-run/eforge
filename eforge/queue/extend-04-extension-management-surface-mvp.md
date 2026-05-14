@@ -1,7 +1,7 @@
 ---
 title: EXTEND_04: Extension Management Surface MVP
 created: 2026-05-14
-depends_on: ["extend-03-typed-event-extension-runtime"]
+depends_on: ["recover-extend-03-typed-event-runtime-from-websocket-close"]
 profile: pi-codex-5-5
 ---
 
