@@ -15,7 +15,7 @@
  * Private helpers:
  *   updateThread — finds and immutably patches a thread in the array.
  */
-import type { AgentThread } from '../reducer';
+import type { AgentThread, AgentActivityFacts } from '../reducer';
 import type { EventHandler } from './handler-types';
 import { formatThinking } from '../format';
 
@@ -81,6 +81,7 @@ export const handleAgentStart: EventHandler<'agent:start'> = (event, state) => {
     outputTokens: null,
     totalTokens: null,
     cacheRead: null,
+    cacheCreation: null,
     costUsd: null,
     numTurns: null,
     model: event.model,
@@ -129,6 +130,7 @@ export const handleAgentUsage: EventHandler<'agent:usage'> = (event, state) => {
         outputTokens: usage.output,
         totalTokens: usage.total,
         cacheRead: usage.cacheRead,
+        cacheCreation: usage.cacheCreation,
         costUsd,
         numTurns,
       },
@@ -173,6 +175,7 @@ export const handleAgentUsage: EventHandler<'agent:usage'> = (event, state) => {
             // Derive total from running sums; don't trust the delta's `total` field.
             totalTokens: nextInput + nextOutput,
             cacheRead: (lastThread.cacheRead ?? 0) + usage.cacheRead,
+            cacheCreation: (lastThread.cacheCreation ?? 0) + usage.cacheCreation,
             costUsd: (lastThread.costUsd ?? 0) + costUsd,
             numTurns: (lastThread.numTurns ?? 0) + numTurns,
           };
@@ -197,15 +200,27 @@ export const handleAgentResult: EventHandler<'agent:result'> = (event, state) =>
   const cacheCreation = state.cacheCreation + (result.usage?.cacheCreation ?? 0);
   const totalCost = state.totalCost + (result.totalCostUsd ?? 0);
 
-  // Reverse-walk: find most recent thread matching (agent, planId) where durationMs === null
-  const agentRole = event.agent;
-  const eventPlanId = event.planId;
+  // Thread matching: prefer agentId when present (new wire format), fall back
+  // to reverse-walk by (agent, planId, durationMs === null) for legacy logs.
   let matchIdx = -1;
-  for (let i = state.agentThreads.length - 1; i >= 0; i--) {
-    const t = state.agentThreads[i];
-    if (t.agent === agentRole && t.planId === eventPlanId && t.durationMs === null) {
-      matchIdx = i;
-      break;
+  if (event.agentId !== undefined) {
+    // agentId-preferred match: find any thread with this agentId (ignores durationMs)
+    for (let i = state.agentThreads.length - 1; i >= 0; i--) {
+      if (state.agentThreads[i].agentId === event.agentId) {
+        matchIdx = i;
+        break;
+      }
+    }
+  } else {
+    // Legacy fallback: reverse-walk by (agent, planId) where durationMs === null
+    const agentRole = event.agent;
+    const eventPlanId = event.planId;
+    for (let i = state.agentThreads.length - 1; i >= 0; i--) {
+      const t = state.agentThreads[i];
+      if (t.agent === agentRole && t.planId === eventPlanId && t.durationMs === null) {
+        matchIdx = i;
+        break;
+      }
     }
   }
 
@@ -221,8 +236,10 @@ export const handleAgentResult: EventHandler<'agent:result'> = (event, state) =>
     outputTokens: result.usage?.output ?? null,
     totalTokens: result.usage?.total ?? null,
     cacheRead: result.usage?.cacheRead ?? null,
+    cacheCreation: result.usage?.cacheCreation ?? null,
     costUsd: result.totalCostUsd ?? null,
     numTurns: result.numTurns ?? null,
+    resultText: result.resultText,
   };
 
   const agentThreads = [
@@ -238,11 +255,45 @@ export const handleAgentResult: EventHandler<'agent:result'> = (event, state) =>
   return { tokensIn, tokensOut, cacheRead, cacheCreation, totalCost, agentThreads, liveAgentUsage };
 };
 
+export const handleAgentActivity: EventHandler<'agent:activity'> = (event, state) => {
+  // Locate the matching thread by agentId. If no match, this is a no-op.
+  let matchIdx = -1;
+  for (let i = state.agentThreads.length - 1; i >= 0; i--) {
+    if (state.agentThreads[i].agentId === event.agentId) {
+      matchIdx = i;
+      break;
+    }
+  }
+
+  if (matchIdx === -1) {
+    return undefined;
+  }
+
+  const activity: AgentActivityFacts = {
+    files: event.files,
+    totals: event.totals,
+    attribution: event.attribution,
+    notes: event.notes,
+  };
+
+  const agentThreads = [
+    ...state.agentThreads.slice(0, matchIdx),
+    { ...state.agentThreads[matchIdx], activity },
+    ...state.agentThreads.slice(matchIdx + 1),
+  ];
+
+  return { agentThreads };
+};
+
 export const handleAgentStop: EventHandler<'agent:stop'> = (event, state) => {
+  const patch: Partial<import('../reducer').AgentThread> = { endedAt: event.timestamp };
+  if (event.error !== undefined) {
+    patch.stopError = event.error;
+  }
   const agentThreads = updateThread(
     state.agentThreads,
     (t) => t.agentId === event.agentId,
-    { endedAt: event.timestamp },
+    patch,
   );
   const liveAgentUsage = { ...state.liveAgentUsage };
   delete liveAgentUsage[event.agentId];

@@ -489,12 +489,12 @@ export async function* mapSDKMessages(
             numTurns: resultData.numTurns,
             final: true,
           };
-          yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: resultData };
+          yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agentId, agent, result: resultData };
         } else {
           const errorResult = result as SDKResultMessage & { errors?: string[] };
           const detail = errorResult.errors?.join('; ') || `Agent ${agent} failed`;
           // Yield result data even on error (usage is still tracked)
-          yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: extractResultData(result) };
+          yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agentId, agent, result: extractResultData(result) };
           throw new AgentTerminalError(result.subtype as AgentTerminalSubtype, detail);
         }
         break;

@@ -842,7 +842,7 @@ export class PiHarness implements AgentHarness {
         final: true,
       };
 
-      yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agent, result: resultData };
+      yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agentId, agent, result: resultData };
 
       if (error) {
         throw new Error(error);

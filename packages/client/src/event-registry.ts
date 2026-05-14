@@ -749,6 +749,12 @@ const eventRegistry = {
     persist: false,
   },
 
+  'agent:activity': {
+    scope: 'session',
+    persist: false,
+    summary: (e) => `Agent ${e.agent} activity (${e.totals?.filesChanged ?? 0} files, ${e.attribution})`,
+  },
+
   'agent:retry': {
     scope: 'session',
     persist: false,

@@ -42,6 +42,7 @@ import {
   handleAgentUsage,
   handleAgentResult,
   handleAgentStop,
+  handleAgentActivity,
 } from './handle-agent';
 import {
   handleExpeditionArchitectureComplete,
@@ -135,6 +136,7 @@ export const handlerRegistry = {
   'agent:usage': handleAgentUsage,
   'agent:result': handleAgentResult,
   'agent:stop': handleAgentStop,
+  'agent:activity': handleAgentActivity,
 
   // Expedition planning
   'expedition:architecture:complete': handleExpeditionArchitectureComplete,

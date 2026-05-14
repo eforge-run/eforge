@@ -34,7 +34,7 @@ import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
 import { resolveAgentConfig } from '../agent-config.js';
 import { createToolTracker } from '../span-wiring.js';
-import { hasUnstagedChanges, withPeriodicFileCheck, emitFilesChanged } from '../git-helpers.js';
+import { hasUnstagedChanges, withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../git-helpers.js';
 import { toBuildFailedEvent } from '../error-translator.js';
 
 const exec = promisify(execFile);
@@ -229,11 +229,22 @@ async function* evaluateStageInner(
 
 async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
   if (ctx.reviewIssues.length === 0) return;
+
+  // Snapshot HEAD at stage entry — used as baseRef for agent:activity attribution
+  let fixerBaseRef: string | undefined;
+  try {
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd: ctx.worktreePath });
+    fixerBaseRef = stdout.trim();
+  } catch {
+    // Not available — skip activity emission
+  }
+
   const { harness: fixerHarness, toolbeltSummary: fixerTb } = ctx.agentRuntimes.forRoleResolved('review-fixer', ctx.planFile);
   const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile, fixerTb);
   const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
   const fixTracker = createToolTracker(fixSpan);
+  let fixerAgentId: string | undefined;
   try {
     for await (const event of withPeriodicFileCheck(runReviewFixer({
       planId: ctx.planId,
@@ -244,16 +255,45 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
       ...fixerConfig,
       harness: fixerHarness,
     }), ctx)) {
+      if (event.type === 'agent:start' && event.agent === 'review-fixer') {
+        fixerAgentId = event.agentId;
+      }
       fixTracker.handleEvent(event);
       yield event;
     }
     fixTracker.cleanup();
+    if (!fixerAgentId) {
+      fixSpan.setOutput({ activitySkipped: true, reason: 'no-agent-id' });
+    }
     fixSpan.end();
   } catch (err) {
     fixTracker.cleanup();
+    if (!fixerAgentId) {
+      fixSpan.setOutput({ activitySkipped: true, reason: 'no-agent-id' });
+    }
     fixSpan.error(err as Error);
     if (err instanceof Error && err.name === 'AbortError') throw err;
     // Review fixer failures are non-fatal
+  }
+
+  // Emit agent:activity for the review fixer with exact attribution.
+  // The review-fixer does NOT commit — its changes live in the working tree,
+  // so we must diff against the working tree (not baseRef...HEAD).
+  if (fixerAgentId && fixerBaseRef) {
+    try {
+      const activityEvent = await emitAgentActivity({
+        cwd: ctx.worktreePath,
+        baseRef: fixerBaseRef,
+        planId: ctx.planId,
+        agentId: fixerAgentId,
+        agent: 'review-fixer',
+        attribution: 'exact',
+        mode: 'working-tree',
+      });
+      if (activityEvent) yield activityEvent;
+    } catch {
+      // Non-critical — skip silently
+    }
   }
 }
 
@@ -461,12 +501,17 @@ registerBuildStage({
       maxAttempts: maxContinuations + 1,
     };
 
+    let lastBuilderAgentId: string | undefined;
+
     try {
       for await (const event of withRetry(
         (input) => runBuilderAttempt(input, ctx, agentConfig, parallelStages, verificationScope),
         builderPolicy,
         initialInput,
       )) {
+        if (event.type === 'agent:start' && event.agent === 'builder') {
+          lastBuilderAgentId = event.agentId;
+        }
         if (event.type === 'plan:build:failed') {
           yield event;
           ctx.buildFailed = true;
@@ -479,16 +524,45 @@ registerBuildStage({
       ctx.buildFailed = true;
       return;
     }
+
+    // Emit agent:activity for the single builder with exact attribution
+    if (lastBuilderAgentId && ctx.preImplementCommit) {
+      try {
+        const activityEvent = await emitAgentActivity({
+          cwd: ctx.worktreePath,
+          baseRef: ctx.preImplementCommit,
+          planId: ctx.planId,
+          agentId: lastBuilderAgentId,
+          agent: 'builder',
+          attribution: 'exact',
+        });
+        if (activityEvent) yield activityEvent;
+      } catch {
+        // Non-critical — skip silently
+      }
+    }
   } else {
     // -----------------------------------------------------------------------
     // Sharded flow: fan out to N parallel builders, then coordinator phase
     // -----------------------------------------------------------------------
     let anyShardFailed = false;
 
+    // Track the last builder agentId seen per shard for agent:activity emission
+    const shardAgentIds = new Map<string, string>();
+
     const tasks = shards.map((shard) => ({
       id: shard.id,
-      run: (): AsyncGenerator<EforgeEvent> =>
-        runShardAttempt(shard, ctx, agentConfig, parallelStages, maxContinuations),
+      run: (): AsyncGenerator<EforgeEvent> => {
+        async function* trackShardAgentId() {
+          for await (const event of runShardAttempt(shard, ctx, agentConfig, parallelStages, maxContinuations)) {
+            if (event.type === 'agent:start' && event.agent === 'builder') {
+              shardAgentIds.set(shard.id, event.agentId);
+            }
+            yield event;
+          }
+        }
+        return trackShardAgentId();
+      },
     }));
 
     // Fan out: run all shards concurrently, collecting events
@@ -555,6 +629,32 @@ registerBuildStage({
       yield toBuildFailedEvent(ctx.planId, err);
       ctx.buildFailed = true;
       return;
+    }
+
+    // Emit agent:activity for each shard after the coordinator commit.
+    // Scope enforcement already verified that every staged file belongs to exactly
+    // one shard, so we filter to this shard's files and attribute them as 'exact'.
+    // Totals are re-derived from the filtered set so each shard only reports its own
+    // contribution rather than the whole-build total.
+    if (ctx.preImplementCommit) {
+      for (const shard of shards) {
+        const shardAgentId = shardAgentIds.get(shard.id);
+        if (!shardAgentId) continue;
+        try {
+          const activityEvent = await emitAgentActivity({
+            cwd: ctx.worktreePath,
+            baseRef: ctx.preImplementCommit,
+            planId: ctx.planId,
+            agentId: shardAgentId,
+            agent: 'builder',
+            attribution: 'exact',
+            filter: (f) => shardClaimsFile(shard, f.path),
+          });
+          if (activityEvent) yield activityEvent;
+        } catch {
+          // Non-critical — skip silently
+        }
+      }
     }
 
     yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: ctx.planId };
