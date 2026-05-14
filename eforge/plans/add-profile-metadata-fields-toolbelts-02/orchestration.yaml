@@ -1,7 +1,8 @@
 name: add-profile-metadata-fields-toolbelts-02
-description: Add optional descriptive metadata (description, whenToUse, tags) to
-  agent runtime profiles and surface it through profile list/show and creation
-  APIs across Claude Code and Pi integrations, without affecting active profile
+description: Add optional profile metadata fields (description, whenToUse, tags)
+  to agent runtime profiles, surfaced through profile list/show/create across
+  the daemon API, Claude Code MCP/skills, Pi tool/native commands, and
+  documentation. Metadata is descriptive only and does not affect active profile
   selection or runtime behavior.
 base_branch: main
 mode: excursion
@@ -9,35 +10,36 @@ validate:
   - pnpm type-check
   - pnpm test
 plans:
-  - id: plan-01-profile-metadata
-    name: Add profile metadata fields (description, whenToUse, tags)
+  - id: plan-01-engine-and-api
+    name: Profile metadata schema, parsing, and daemon API
     depends_on: []
-    branch: add-profile-metadata-fields-toolbelts-02/plan-01-profile-metadata
+    branch: add-profile-metadata-fields-toolbelts-02/plan-01-engine-and-api
     build:
       - implement
-      - doc-sync
       - test-cycle
       - review-cycle
     review:
-      strategy: parallel
+      strategy: single
       perspectives:
         - code
-        - api
       maxRounds: 1
       evaluatorStrictness: standard
-    agents:
-      builder:
-        effort: high
-        rationale: Cross-file feature touching engine config schema, wire types, daemon
-          routes, two consumer integrations (Pi + Claude), docs, and tests.
-          Requires careful coordination so metadata is descriptive-only and
-          parity stays in sync. Not a refactor or novel architecture, but high
-          enough surface area to warrant high effort over the default.
-      reviewer:
-        effort: high
-        rationale: Must verify metadata does not leak into runtime resolution and that
-          Pi/Claude wire/tool schemas stay in parity. Multi-file change with
-          subtle semantics.
+  - id: plan-02-consumers-and-docs
+    name: Surface profile metadata in MCP, Pi, skills, and docs
+    depends_on:
+      - plan-01-engine-and-api
+    branch: add-profile-metadata-fields-toolbelts-02/plan-02-consumers-and-docs
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
 pipeline:
   scope: excursion
   compile:
@@ -57,25 +59,25 @@ pipeline:
       - test
     maxRounds: 2
     evaluatorStrictness: standard
-  rationale: The PRD itself classifies this as a feature/focused change and
-    explicitly recommends an Excursion build profile - it is a cohesive,
-    multi-file slice across engine config parsing, daemon/client wire types,
-    Claude Code and Pi integration UX, docs, and tests, but a single planner can
-    enumerate all the work and dependencies (no genuinely independent subsystems
-    requiring delegated module planning). Compile uses planner plus
-    plan-review-cycle because plan quality matters across many files (config +
-    two integrations + docs + tests) and the PRD lists explicit acceptance
-    criteria and parity requirements that benefit from a pre-build quality gate.
-    The build pipeline runs implement in parallel with doc-author (the PRD
-    requires new metadata documentation in docs/config.md, which is greenfield
-    content with no implement predecessor), then doc-sync sequentially to
-    reconcile any references in existing docs/skill markdown affected by
-    API/wire-shape changes, then review-cycle for iterative quality assurance.
-    Review uses parallel strategy with code/api/docs/test perspectives because
-    the change spans typed wire APIs (api), user-facing skill/UX docs and config
-    docs (docs), parsing/validation logic and Pi/Claude parity (code), and
-    explicit test coverage requirements across config-backend-profile,
-    profile-wiring, and profile-payload (test); security is omitted since
-    metadata is descriptive only and adds no auth/data-flow surface. maxRounds=2
-    with standard strictness fits a medium-risk, well-scoped feature without
-    over-iterating.
+  rationale: "The PRD explicitly classifies itself as a feature/focused change and
+    recommends the Excursion build profile. It is multi-file (engine config
+    parsing, daemon/client wire types, Claude Code MCP/skills, Pi
+    extension/tools/skills, docs, tests) but the work is a single cohesive slice
+    with sequential dependencies (types defined in engine flow through to
+    daemon/client to consumers) - exactly the pattern that fits excursion, not
+    expedition. A single planner session can enumerate plans and cross-file
+    dependencies. Compile uses planner plus plan-review-cycle because parity
+    across Claude Code and Pi integrations and explicit out-of-scope guardrails
+    (no automatic selection, no toolbelt behavior) make plan quality important.
+    Build runs implement in parallel with doc-author since docs/config.md needs
+    new metadata documentation (named in acceptance criteria) and has no
+    predecessor, then doc-sync to catch any stale references after
+    implementation (skill docs, MCP tool schemas), then review-cycle for the
+    quality gate. Review uses parallel strategy with code (config
+    parsing/type-safety), api (wire shape parity between Claude/Pi and daemon
+    routes), docs (config.md examples and skill doc accuracy), and test
+    (parsing/wiring/payload coverage) perspectives - matching the explicit
+    acceptance criteria. 2 rounds with standard strictness is appropriate: this
+    is descriptive metadata with no runtime behavior, no security or data
+    integrity risk, but parity across two consumer integrations warrants more
+    than a single pass."
