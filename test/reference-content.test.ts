@@ -21,7 +21,7 @@ describe('plan-01 reference and raw mirror content', () => {
       expect(raw).toContain('## Hooks');
 
       const toolbeltsSection = raw.split('## Toolbelts')[1]?.split('## Hooks')[0] ?? '';
-      for (const expected of ['tools.toolbelts', 'toolbelt: none', 'omitted', '.mcp.json', 'validation']) {
+      for (const expected of ['tools.toolbelts', 'toolbelt: none', 'omitted', '.mcp.json', 'Validation']) {
         expect(toolbeltsSection).toContain(expected);
       }
 

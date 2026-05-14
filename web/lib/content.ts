@@ -6,6 +6,7 @@ import remarkParse from 'remark-parse';
 import remarkGfm from 'remark-gfm';
 import remarkRehype from 'remark-rehype';
 import rehypePrettyCode from 'rehype-pretty-code';
+import rehypeSlug from 'rehype-slug';
 import rehypeStringify from 'rehype-stringify';
 import { DOCS_CONTENT_DIR, REFERENCE_CONTENT_DIR } from './paths';
 
@@ -33,6 +34,7 @@ function getProcessor(): Promise<Processor<any, any, any, any, string>> {
         .use(remarkParse)
         .use(remarkGfm)
         .use(remarkRehype, { allowDangerousHtml: true })
+        .use(rehypeSlug)
         .use(rehypePrettyCode, {
           theme: { light: 'github-light', dark: 'github-dark' },
           keepBackground: false,

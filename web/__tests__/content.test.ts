@@ -28,6 +28,12 @@ describe('loadDocPage', () => {
     expect(page.html).toMatch(/<h1[\s>]/);
     expect(page.html).toMatch(/<p[\s>]/);
   });
+
+  it('adds stable heading IDs to rendered docs pages', async () => {
+    const page = await loadDocPage('extensions');
+    expect(page.html).toContain('id="event-patterns"');
+    expect(page.html).toContain('id="trust-and-security"');
+  });
 });
 
 describe('loadReferencePage', () => {
@@ -55,5 +61,11 @@ describe('loadReferencePage', () => {
     // But they should be in the provenance field
     expect(page.provenance).toBeTruthy();
     expect(page.provenance).toContain('<!--');
+  });
+
+  it('adds stable heading IDs to rendered reference pages', async () => {
+    const page = await loadReferencePage('config');
+    expect(page.html).toContain('id="toolbelts"');
+    expect(page.html).toContain('id="hooks"');
   });
 });

@@ -20,9 +20,10 @@
   },
   "dependencies": {
     "@eforge-build/client": "workspace:*",
-    "@eforge-build/engine": "workspace:*",
     "@eforge-build/eforge": "workspace:*",
+    "@eforge-build/engine": "workspace:*",
     "commander": "^14.0.3",
+    "github-slugger": "^2.0.0",
     "ts-morph": "^25.0.1",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
