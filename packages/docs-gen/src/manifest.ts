@@ -107,6 +107,11 @@ export const LLMS_MANIFEST: LlmsManifest = {
   ],
   optional: [
     {
+      title: 'Why eforge',
+      url: '/why',
+      description: 'Positioning and product thesis: asynchronous engineering for planned work',
+    },
+    {
       title: 'Core concepts',
       url: '/docs/concepts.md',
       description: 'Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts',

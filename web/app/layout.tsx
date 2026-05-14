@@ -22,6 +22,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           </a>
           <ul className="nav-links">
             <li>
+              <a href="/why">Why eforge</a>
+            </li>
+            <li>
               <a href="/docs">Docs</a>
             </li>
             <li>

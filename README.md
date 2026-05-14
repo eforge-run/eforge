@@ -7,7 +7,7 @@
 
 An open source agentic build system. Detailed plans go in. A planner sizes the work and shapes the pipeline - small intent runs through a fast path, large intent compiles into a dependency graph of sub-plans that build in parallel across isolated worktrees and merge in topological order. Implementation, blind review, and validation are always separated across agents and stages. The build phase runs in the background while you plan the next thing.
 
-Drive eforge from Claude Code or Pi. Pipeline stages delegate to either the Claude Agent SDK or pi-agent-core - the interface you drive and the harness that executes are independent. A Claude Max subscription covers the SDK path; an OpenAI Codex subscription covers the Pi path, which also reaches 20+ other providers including local models.
+Drive eforge from Pi, Claude Code, or the CLI. Pipeline stages delegate to either pi-agent-core or the Claude Agent SDK - the interface you drive and the harness that executes are independent. The project direction is Pi-centric: provider-flexible, local, inspectable agent orchestration where runtime choice, cost, and token efficiency stay visible.
 
 Harness engineering - the discipline of designing everything around an LLM that makes it a reliable system - applies at two levels here: each pipeline stage delegates to a harness for its agent loop, and the pipeline itself is a higher-order harness across planning, building, review, and validation.
 
@@ -37,10 +37,10 @@ Plan a feature interactively, then hand it off to eforge with `/eforge:build`. A
 
 Because the coding agent you drive from and the agent library eforge delegates to are independent, a few ways this plays out:
 
-- **Plan and execute on Claude.** Drive eforge from Claude Code and delegate to the Claude Agent SDK. Your Claude Max subscription covers both sides.
-- **Plan and execute on OpenAI.** Drive eforge from Pi and delegate to pi-agent-core with GPT. Your OpenAI Codex subscription covers both sides.
-- **Plan with GPT in Pi, build on Claude with Opus and Sonnet.** Drive eforge from Pi for planning, then hand off to the Claude Agent SDK so the build runs against your Max subscription.
-- **Run builds on local models when subscription limits hit.** Switch to a profile that delegates to a local model like Qwen 3.6 27B via pi-agent-core - work keeps moving while quotas reset, with no API spend.
+- **Plan and execute in Pi.** Drive eforge from Pi and delegate to pi-agent-core across OpenAI, Anthropic, OpenRouter, local models, and more.
+- **Use Claude Code as the host surface.** Drive eforge from Claude Code while choosing the execution harness separately in your active profile.
+- **Mix planning and build runtimes.** Plan in Pi with one provider, then execute specific tiers through another provider or through the Claude Agent SDK when that tradeoff makes sense.
+- **Run builds on local models when API spend matters.** Switch to a profile that delegates to a local model like Qwen 3.6 27B via pi-agent-core - work keeps moving with no per-token API cost.
 
 <img src="docs/images/claude-code-handoff.png" alt="eforge invoked from Claude Code" width="800">
 
@@ -69,17 +69,9 @@ For a deeper look at the engine internals, see the [architecture docs](docs/arch
 
 ## Install
 
-**Prerequisites:** Node.js 22+, [Claude Code](https://claude.ai/code) or [Pi](https://github.com/earendil-works/pi-mono), and an LLM provider credential - Anthropic API key or [Claude subscription](https://claude.ai/upgrade) for the `claude-sdk` harness, or a provider-specific API key or OAuth token for the `pi` harness
+**Prerequisites:** Node.js 22+, [Pi](https://github.com/earendil-works/pi-mono), [Claude Code](https://claude.ai/code), or an npm-capable shell, plus an LLM provider credential for your chosen runtime - a provider-specific API key or OAuth token for the `pi` harness, or an Anthropic API key for the `claude-sdk` harness
 
-Claude Code plugin:
-
-```
-/plugin marketplace add eforge-build/eforge
-/plugin install eforge@eforge
-/eforge:init
-```
-
-Pi package:
+Pi package (recommended):
 
 ```bash
 pi install npm:@eforge-build/pi-eforge
@@ -90,6 +82,14 @@ Add `-l` to `pi install` if you want to write to project settings (`.pi/settings
 
 ```bash
 pi install -l npm:@eforge-build/pi-eforge
+```
+
+Claude Code plugin:
+
+```
+/plugin marketplace add eforge-build/eforge
+/plugin install eforge@eforge
+/eforge:init
 ```
 
 The main `@eforge-build/eforge` npm package is the standalone CLI and daemon runtime. The Pi integration is published separately as `@eforge-build/pi-eforge`.

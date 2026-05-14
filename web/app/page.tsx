@@ -49,6 +49,20 @@ export default function HomePage() {
             Get Started
           </a>
           <a
+            href="/why"
+            style={{
+              display: 'inline-block',
+              padding: '0.75rem 1.5rem',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--border-radius)',
+              fontWeight: 600,
+              textDecoration: 'none',
+              color: 'var(--color-text)',
+            }}
+          >
+            Why eforge
+          </a>
+          <a
             href="https://github.com/eforge-build/eforge"
             target="_blank"
             rel="noopener noreferrer"
@@ -103,8 +117,8 @@ export default function HomePage() {
         <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
           <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Background engineering for planned work</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
-            eforge picks up where planning leaves off. Define the intent and acceptance criteria, then let eforge
-            manage implementation, review, retries, and merge flow.
+            eforge is for work where the intent is clear enough to delegate. Define the goal, constraints, and acceptance criteria;
+            eforge manages implementation, review, retries, conflict handling, and merge flow.
           </p>
         </div>
         <div
@@ -116,24 +130,24 @@ export default function HomePage() {
         >
           {[
             {
-              title: 'Hand off implementation',
+              title: 'Plan the change',
               description:
-                'Give eforge a PRD, issue, or structured session plan once the direction and acceptance criteria are clear.',
+                'Use a PRD, issue, rough prompt, playbook, or structured session plan to make intent explicit before implementation starts.',
             },
             {
-              title: 'Let execution run',
+              title: 'Hand off execution',
               description:
                 'eforge decomposes the work, schedules build plans, and runs implementation in isolated git worktrees.',
             },
             {
-              title: 'Trust the engineering loop',
+              title: 'Automate the engineering loop',
               description:
-                'Implementation, review, retries, conflict handling, and merge flow are managed without constant babysitting.',
+                'Implementation, blind review, retries, conflict handling, merge flow, and validation are managed without constant babysitting.',
             },
             {
               title: 'Review real outputs',
               description:
-                'You stay focused on direction and final judgment with traceable commits, logs, and build decisions.',
+                'You stay focused on direction and final judgment with traceable commits, logs, costs, and build decisions.',
             },
           ].map((item) => (
             <div
@@ -164,9 +178,9 @@ export default function HomePage() {
       {/* Configurable handoffs */}
       <section style={{ marginBottom: 'var(--spacing-2xl)' }}>
         <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
-          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Built for repeatable engineering handoffs</h2>
+          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Built for repeatable, provider-flexible handoffs</h2>
           <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
-            Standardize how work is delegated, which agents run it, and what tools they can use.
+            Standardize how work is delegated, which agent runtimes run it, and what cost/performance tradeoffs you want.
           </p>
         </div>
         <div
@@ -193,10 +207,9 @@ export default function HomePage() {
                 'Scope each agent to the MCP servers and tools it needs, keeping delegated work constrained and auditable.',
             },
             {
-              title: 'Extensions',
-              badge: 'Planned',
+              title: 'Bring your own credentials',
               description:
-                'Native TypeScript hooks, policy gates, custom reviewers, and workflow integrations are on the roadmap.',
+                'Run against your chosen providers directly. No subscription wrapper, no hidden inference markup, and no single-runtime lock-in.',
             },
           ].map((item) => (
             <div
@@ -208,23 +221,7 @@ export default function HomePage() {
                 background: 'var(--color-bg-secondary)',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-sm)' }}>
-                <h3 style={{ margin: 0 }}>{item.title}</h3>
-                {'badge' in item ? (
-                  <span
-                    style={{
-                      border: '1px solid var(--color-border)',
-                      borderRadius: '999px',
-                      color: 'var(--color-accent)',
-                      fontFamily: 'var(--font-mono)',
-                      fontSize: '0.7rem',
-                      padding: '0.1rem 0.4rem',
-                    }}
-                  >
-                    {item.badge}
-                  </span>
-                ) : null}
-              </div>
+              <h3 style={{ margin: '0 0 var(--spacing-sm)' }}>{item.title}</h3>
               <p style={{ margin: 0, color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>{item.description}</p>
             </div>
           ))}
@@ -233,7 +230,13 @@ export default function HomePage() {
 
       {/* Install paths */}
       <section style={{ marginBottom: 'var(--spacing-2xl)' }}>
-        <h2 style={{ textAlign: 'center', marginBottom: 'var(--spacing-xl)' }}>Three ways to use eforge</h2>
+        <div style={{ textAlign: 'center', maxWidth: '760px', margin: '0 auto var(--spacing-xl)' }}>
+          <h2 style={{ marginBottom: 'var(--spacing-md)' }}>Choose your surface</h2>
+          <p style={{ color: 'var(--color-text-muted)', fontSize: '1.1rem', margin: 0 }}>
+            eforge is one engine with multiple host surfaces. Start with Pi for the direction eforge is heading; use Claude Code
+            or the CLI when those fit your workflow better.
+          </p>
+        </div>
         <div
           style={{
             display: 'grid',
@@ -244,42 +247,29 @@ export default function HomePage() {
           <div
             style={{
               padding: 'var(--spacing-lg)',
-              border: '1px solid var(--color-border)',
+              border: '1px solid var(--color-accent)',
               borderRadius: 'var(--border-radius)',
               background: 'var(--color-bg-secondary)',
+              boxShadow: '0 0 32px rgba(103, 245, 83, 0.08)',
             }}
           >
-            <h3 style={{ marginTop: 0 }}>Claude Code plugin</h3>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--spacing-sm)', marginBottom: 'var(--spacing-sm)' }}>
+              <h3 style={{ margin: 0 }}>Pi extension</h3>
+              <span
+                style={{
+                  border: '1px solid var(--color-accent)',
+                  borderRadius: '999px',
+                  color: 'var(--color-accent)',
+                  fontFamily: 'var(--font-mono)',
+                  fontSize: '0.7rem',
+                  padding: '0.1rem 0.4rem',
+                }}
+              >
+                Recommended
+              </span>
+            </div>
             <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-              Install eforge as a Claude Code plugin for seamless integration with your AI-assisted workflow.
-            </p>
-            <pre
-              style={{
-                background: 'var(--color-code-bg)',
-                padding: 'var(--spacing-sm)',
-                borderRadius: '4px',
-                fontSize: '0.8rem',
-                overflow: 'auto',
-              }}
-            >
-              <code>{`/plugin marketplace add eforge-build/eforge\n/plugin install eforge@eforge`}</code>
-            </pre>
-            <a href="/docs/getting-started" style={{ fontSize: '0.9rem' }}>
-              Claude Code setup guide
-            </a>
-          </div>
-
-          <div
-            style={{
-              padding: 'var(--spacing-lg)',
-              border: '1px solid var(--color-border)',
-              borderRadius: 'var(--border-radius)',
-              background: 'var(--color-bg-secondary)',
-            }}
-          >
-            <h3 style={{ marginTop: 0 }}>Pi extension</h3>
-            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-              Use eforge as a Pi extension for native, rich UX integration with Pi&apos;s agent runtime.
+              Use eforge as a Pi extension for provider-flexible, local, inspectable agent orchestration with Pi&apos;s native UX.
             </p>
             <pre
               style={{
@@ -305,9 +295,37 @@ export default function HomePage() {
               background: 'var(--color-bg-secondary)',
             }}
           >
+            <h3 style={{ marginTop: 0 }}>Claude Code plugin</h3>
+            <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+              Use eforge from Claude Code when that is already your daily environment. The engine and execution profile remain separate.
+            </p>
+            <pre
+              style={{
+                background: 'var(--color-code-bg)',
+                padding: 'var(--spacing-sm)',
+                borderRadius: '4px',
+                fontSize: '0.8rem',
+                overflow: 'auto',
+              }}
+            >
+              <code>{`/plugin marketplace add eforge-build/eforge\n/plugin install eforge@eforge`}</code>
+            </pre>
+            <a href="/docs/getting-started" style={{ fontSize: '0.9rem' }}>
+              Claude Code setup guide
+            </a>
+          </div>
+
+          <div
+            style={{
+              padding: 'var(--spacing-lg)',
+              border: '1px solid var(--color-border)',
+              borderRadius: 'var(--border-radius)',
+              background: 'var(--color-bg-secondary)',
+            }}
+          >
             <h3 style={{ marginTop: 0 }}>Standalone CLI</h3>
             <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
-              Use eforge as a standalone CLI tool for scripting, CI/CD pipelines, and programmatic workflows.
+              Use eforge as a standalone CLI tool for scripting, automation, and direct engine usage.
             </p>
             <pre
               style={{
@@ -330,10 +348,18 @@ export default function HomePage() {
       {/* Links */}
       <section style={{ textAlign: 'center', padding: 'var(--spacing-xl) 0' }}>
         <p style={{ color: 'var(--color-text-muted)' }}>
-          <a href="/docs">Read the docs</a> &nbsp;|&nbsp; <a href="/reference">Browse the reference</a> &nbsp;|&nbsp;
+          <a href="/why">Read why eforge exists</a> &nbsp;|&nbsp; <a href="/docs">Read the docs</a> &nbsp;|&nbsp;{' '}
+          <a href="/reference">Browse the reference</a> &nbsp;|&nbsp;
           <a href="https://github.com/eforge-build/eforge" target="_blank" rel="noopener noreferrer">
             Contribute on GitHub
           </a>
+        </p>
+        <p style={{ color: 'var(--color-text-muted)', fontSize: '0.9rem' }}>
+          Built by{' '}
+          <a href="https://schaake.solutions" target="_blank" rel="noopener noreferrer">
+            Mark Schaake
+          </a>
+          .
         </p>
       </section>
     </main>

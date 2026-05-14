@@ -10,24 +10,14 @@ eforge is an agentic build system that turns specifications into code. You descr
 ## Prerequisites
 
 - **Node.js 22+**
-- One of: [Claude Code](https://claude.ai/code), [Pi](https://github.com/earendil-works/pi-mono), or an npm-capable shell
-- An LLM credential - Anthropic API key or Claude Max subscription for the `claude-sdk` harness; a provider-specific API key or OAuth token for the `pi` harness
+- One of: [Pi](https://github.com/earendil-works/pi-mono), [Claude Code](https://claude.ai/code), or an npm-capable shell
+- An LLM credential for the runtime you choose: a provider-specific API key or OAuth token for the `pi` harness, or an Anthropic API key for the `claude-sdk` harness
 
 ## Install
 
-### Claude Code plugin (recommended)
+### Pi package (recommended)
 
-Run these three commands inside Claude Code:
-
-```
-/plugin marketplace add eforge-build/eforge
-/plugin install eforge@eforge
-/eforge:init
-```
-
-The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. It walks you through a Quick setup (one harness and model for every tier) or a Mix-and-match flow (different harness, provider, or model per tier).
-
-### Pi package
+Start with Pi if you want the direction eforge is heading: provider-flexible, local, inspectable agent orchestration.
 
 ```bash
 pi install npm:@eforge-build/pi-eforge
@@ -39,6 +29,20 @@ Add `-l` to write to project settings (`.pi/settings.json`) instead of your glob
 ```bash
 pi install -l npm:@eforge-build/pi-eforge
 ```
+
+### Claude Code plugin
+
+Use the Claude Code plugin if Claude Code is already your daily environment. The surface you use to drive eforge and the runtime profile that executes builds are separate choices.
+
+Run these three commands inside Claude Code:
+
+```
+/plugin marketplace add eforge-build/eforge
+/plugin install eforge@eforge
+/eforge:init
+```
+
+The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. It walks you through a Quick setup (one harness and model for every tier) or a Mix-and-match flow (different harness, provider, or model per tier).
 
 ### Standalone CLI
 
