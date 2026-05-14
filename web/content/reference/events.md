@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 39e0201e -->
+<!-- Commit: 37b52dad -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
