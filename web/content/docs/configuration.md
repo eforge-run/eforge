@@ -97,6 +97,86 @@ The active profile is resolved highest-priority-first. Set one with:
 
 Or from the CLI: `eforge profile use <name>`.
 
+## Profile Toolbelts for UI Work
+
+Toolbelts let a tier opt into a named bundle of project MCP servers from `.mcp.json`. When a profile targets UI-heavy or browser-validation work, pair it with a `browser-ui` toolbelt backed by the Playwright MCP server. For the full field reference, see the [Toolbelts](/reference/config#toolbelts) section in the Configuration Reference.
+
+**Step 1 - Register the toolbelt in `eforge/config.yaml`:**
+
+```yaml
+tools:
+  toolbelts:
+    browser-ui:
+      description: Browser automation for UI implementation and review.
+      mcpServers:
+        - playwright
+```
+
+**Step 2 - Create `eforge/profiles/ui.yaml`:**
+
+```yaml
+# eforge/profiles/ui.yaml
+description: UI-heavy feature work with browser validation.
+whenToUse:
+  - Frontend features
+  - Layout bugs
+  - Screenshot-driven UI fixes
+tags:
+  - ui
+  - frontend
+  - browser
+
+agents:
+  tiers:
+    planning:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+      toolbelt: none
+
+    implementation:
+      harness: claude-sdk
+      model: claude-sonnet-4-6
+      effort: medium
+      toolbelt: browser-ui
+
+    review:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+      toolbelt: browser-ui
+
+    evaluation:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+      toolbelt: none
+```
+
+**Step 3 - Add the Playwright MCP server to `.mcp.json`:**
+
+```json
+{
+  "mcpServers": {
+    "playwright": {
+      "command": "npx",
+      "args": ["-y", "@playwright/mcp@latest"]
+    }
+  }
+}
+```
+
+**MVP constraints:**
+
+1. Toolbelts filter only project MCP servers from `.mcp.json` - they do not affect Pi extensions, Claude Code plugins, engine-internal tools, or harness built-ins.
+2. Each tier picks at most one toolbelt via the singular `toolbelt` field.
+3. `toolbelt: none` passes no project MCP servers to agents in that tier.
+4. An omitted `toolbelt` keeps the default: all servers from `.mcp.json` are passed through.
+5. Pi extensions and Claude Code plugins are out of scope for this MVP - toolbelts are MCP-only and declarative.
+6. Toolbelts are declarative MCP bundles; extensions are imperative lifecycle behavior. Extensions may inspect toolbelt and profile metadata when making routing decisions, but extensions should not redefine toolbelts or act as a hidden config layer.
+
+For the complete field schema, see the [Toolbelts](/reference/config#toolbelts) section in the Configuration Reference and `docs/prd/profile-toolbelts.md` for the design rationale.
+
 ## Post-Merge Commands
 
 Commands to run after all plans merge - compile, test, lint, or any validation step:
