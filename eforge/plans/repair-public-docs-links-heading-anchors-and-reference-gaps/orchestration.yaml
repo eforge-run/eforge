@@ -1,0 +1,78 @@
+name: repair-public-docs-links-heading-anchors-and-reference-gaps
+description: Repair public docs heading IDs, generated config reference gaps,
+  raw Markdown mirrors, llms manifest entries, profile-new skill links, and add
+  docs link/anchor validation to docs checks.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm docs:check
+  - pnpm test
+plans:
+  - id: plan-01-reference-and-mirror-content
+    name: Enrich Generated Reference Content and Raw Mirrors
+    depends_on: []
+    branch: repair-public-docs-links-heading-anchors-and-reference-gaps/plan-01-reference-and-mirror-content
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - docs
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+  - id: plan-02-rendered-anchors-and-link-check
+    name: Add Rendered Anchors and Docs Link Checking
+    depends_on:
+      - plan-01-reference-and-mirror-content
+    branch: repair-public-docs-links-heading-anchors-and-reference-gaps/plan-02-rendered-anchors-and-link-check
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+        - docs
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test-write
+    - review-cycle
+    - test-cycle
+    - validate
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - docs
+      - test
+      - verify
+    maxRounds: 3
+    evaluatorStrictness: standard
+  rationale: This is a multi-file documentation, generator, renderer, and
+    validation-tooling repair, but a single planner can enumerate the required
+    changes and dependencies, so excursion is appropriate. Plan review is
+    included because the acceptance criteria span generated docs, public
+    mirrors, anchors, link checking, and skill docs. Implementation runs
+    alongside doc authoring, then existing docs are synced and tests are written
+    before iterative review and test cycles. A final validate stage is included
+    to cover docs:generate/docs:check style pre-merge gates. Parallel review
+    uses code, docs, test, and verify perspectives to cover renderer/tooling
+    correctness, public documentation integrity, regression tests, and
+    acceptance criteria verification.
