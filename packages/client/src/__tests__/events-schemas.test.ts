@@ -347,4 +347,73 @@ describe('safeParseEforgeEvent — pre-existing variant spot-checks', () => {
     });
     expect(result.success).toBe(true);
   });
+
+  it('accepts an agent:start event WITHOUT toolbelt observability fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'a1',
+      agent: 'builder',
+      model: 'claude-sonnet-4-6',
+      harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'implementation',
+      tierSource: 'tier',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts an agent:start event WITH toolbelt observability fields (named toolbelt)', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'a1',
+      agent: 'builder',
+      model: 'claude-sonnet-4-6',
+      harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'implementation',
+      tierSource: 'tier',
+      toolbelt: 'browser-ui',
+      toolbeltSource: 'tier',
+      projectMcpSelection: 'toolbelt',
+      projectMcpServerNames: ['playwright'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts agent:start with toolbelt: null when projectMcpSelection is none', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'a2',
+      agent: 'evaluator',
+      model: 'claude-opus-4-7',
+      harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'evaluation',
+      tierSource: 'tier',
+      toolbelt: null,
+      toolbeltSource: 'tier',
+      projectMcpSelection: 'none',
+      projectMcpServerNames: [],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects agent:start with an invalid projectMcpSelection literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'agent:start',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      agentId: 'a3',
+      agent: 'builder',
+      model: 'claude-sonnet-4-6',
+      harness: 'claude-sdk',
+      harnessSource: 'tier',
+      tier: 'implementation',
+      tierSource: 'tier',
+      projectMcpSelection: 'something-else',
+    });
+    expect(result.success).toBe(false);
+  });
 });

@@ -460,6 +460,25 @@ export async function runMcpProxy(cwd: string): Promise<void> {
 
       if (action === 'show') {
         const { data } = await daemonRequest(toolCwd, 'GET', API_ROUTES.profileShow);
+        // Derive a tier toolbelt summary from the resolved profile config so
+        // Claude Code skill consumers can easily surface it without digging
+        // through the full profile config object.
+        const resolvedProfile = (data as { resolved?: { profile?: unknown } }).resolved?.profile as {
+          agents?: { tiers?: Record<string, { toolbelt?: string }> };
+          tools?: { toolbelts?: Record<string, { description?: string; mcpServers: string[] }> };
+        } | null | undefined;
+        if (resolvedProfile?.agents?.tiers) {
+          const toolbeltsRegistry = resolvedProfile.tools?.toolbelts ?? {};
+          const tierToolbelts: Record<string, { toolbelt: string; mcpServers: string[] }> = {};
+          for (const [tierName, tier] of Object.entries(resolvedProfile.agents.tiers)) {
+            const tb = tier.toolbelt;
+            tierToolbelts[tierName] = {
+              toolbelt: tb === undefined ? 'all (default)' : tb,
+              mcpServers: tb && tb !== 'none' ? [...(toolbeltsRegistry[tb]?.mcpServers ?? [])].sort() : [],
+            };
+          }
+          return { ...(data as Record<string, unknown>), tierToolbelts };
+        }
         return data;
       }
 

@@ -2952,6 +2952,58 @@
             },
             "perspective": {
               "type": "string"
+            },
+            "toolbelt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "toolbeltSource": {
+              "anyOf": [
+                {
+                  "const": "tier",
+                  "type": "string"
+                },
+                {
+                  "const": "role",
+                  "type": "string"
+                },
+                {
+                  "const": "plan",
+                  "type": "string"
+                },
+                {
+                  "const": "default",
+                  "type": "string"
+                }
+              ]
+            },
+            "projectMcpSelection": {
+              "anyOf": [
+                {
+                  "const": "all",
+                  "type": "string"
+                },
+                {
+                  "const": "none",
+                  "type": "string"
+                },
+                {
+                  "const": "toolbelt",
+                  "type": "string"
+                }
+              ]
+            },
+            "projectMcpServerNames": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
             }
           }
         },

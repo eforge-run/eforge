@@ -228,6 +228,10 @@ export class ClaudeSDKHarness implements AgentHarness {
       thinkingCoerced: options.thinkingCoerced,
       thinkingOriginal: options.thinkingOriginal,
       perspective: options.perspective,
+      toolbelt: options.toolbelt,
+      toolbeltSource: options.toolbeltSource,
+      projectMcpSelection: options.projectMcpSelection,
+      projectMcpServerNames: options.projectMcpServerNames,
     });
 
     if (options.thinkingCoerced) {
@@ -295,12 +299,13 @@ export class ClaudeSDKHarness implements AgentHarness {
             usesPreset,
             disableSubagents: this.disableSubagents,
             bare: this.bare,
-            mcpServerNames: mergedMcpServers ? Object.keys(mergedMcpServers) : [],
+            projectMcpServerNames: Object.keys(this.mcpServers ?? {}).sort(),
+            internalMcpServerNames: customMcpServers.eforge_engine ? ['eforge_engine'] : [],
             pluginCount: this.plugins?.length ?? 0,
             settingSources: usesPreset ? (this.settingSources ?? null) : null,
             customToolCount: options.customTools?.length ?? 0,
             eforgeDisallowedPatterns: [...EFORGE_DISALLOWED_TOOL_PATTERNS],
-            note: 'systemPrompt is empty because eforge does not set one; the Claude Code CLI may inject its preset preamble downstream when usesPreset=true. disallowedTools always includes mcp__eforge__* to block the eforge Claude Code plugin; the engine hosts its own tools (e.g. planner submissions) under mcp__eforge_engine__* which remain callable.',
+            note: 'systemPrompt is empty because eforge does not set one; the Claude Code CLI may inject its preset preamble downstream when usesPreset=true. projectMcpServerNames lists project MCP servers filtered by the tier toolbelt; internalMcpServerNames lists engine-internal MCP servers (eforge_engine custom tools) which are always preserved regardless of toolbelt filtering.',
           },
         };
         await this.onDebugPayload(debugPayload);

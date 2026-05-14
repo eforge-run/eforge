@@ -1,4 +1,4 @@
-// File: /Users/markschaake/projects/eforge-build/eforge-toolbelts-03-add-mcp-toolbelt-schema-and-static-validation-worktrees/__merge__/web/app/reference/layout.tsx
+// File: /Users/markschaake/projects/eforge-build/eforge-resolve-tier-toolbelts-into-harness-mcp-config-and-expose-toolbelt-observability-worktrees/__merge__/web/app/reference/layout.tsx
 import * as entry from '../../../../app/reference/layout.js'
 import type { ResolvingMetadata, ResolvingViewport } from 'next/dist/lib/metadata/types/metadata-interface.js'
 

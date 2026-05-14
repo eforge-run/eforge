@@ -29,6 +29,8 @@ Parse the response (shape: `{ active, source, resolved: { harness, profile, meta
   - **Description**: `{resolved.metadata.description}`
   - **Use when**: `{resolved.metadata.whenToUse}` (as a bullet list)
   - **Tags**: `{resolved.metadata.tags}` (comma-separated)
+- **Tier toolbelts** (when `tierToolbelts` is present in the response): render a per-tier summary under a `Tier toolbelts:` sub-header:
+  - For each tier in `tierToolbelts`, show `  <tier>: <toolbelt>` followed by the sorted MCP server names in parentheses when non-empty, e.g. `  implementation: browser-ui (playwright)` or `  planning: none` or `  review: all (default)`.
 
 Then call `mcp__eforge__eforge_profile` with `{ action: "list" }` to show the user what other profiles are available, rendering a table with the following columns:
 

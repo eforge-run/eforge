@@ -80,6 +80,14 @@ export interface AgentThread {
   tier?: string;
   tierSource?: string;
   perspective?: string;
+  /** The toolbelt name selected for this tier. Null when explicitly 'none', string when named. */
+  toolbelt?: string | null;
+  /** Provenance of the toolbelt selection ('tier', 'role', 'plan', or 'default'). */
+  toolbeltSource?: string;
+  /** Which project MCP servers were selected ('all', 'none', or 'toolbelt'). */
+  projectMcpSelection?: string;
+  /** Sorted names of the project MCP servers passed to this tier's harness. */
+  projectMcpServerNames?: string[];
 }
 
 export interface RunState {

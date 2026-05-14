@@ -120,9 +120,9 @@ agents:
       thinking: true           # Optional: enable thinking; coerced to adaptive for adaptive-only models
       maxTurns: 30             # Optional: max turns override for all roles in this tier
       toolbelt: browser-ui     # Optional: named toolbelt from tools.toolbelts, or 'none' to pass no MCP servers
-                               #   Omitting toolbelt (current default) passes all discovered .mcp.json servers.
-                               #   Runtime per-tier MCP filtering is not yet implemented; this field is parsed
-                               #   and validated but has no effect on the servers agents currently receive.
+                               #   Omitting toolbelt (default) passes all discovered .mcp.json servers.
+                               #   'none' passes no project MCP servers (engine-internal tools are unaffected).
+                               #   Named toolbelt passes only the servers declared in tools.toolbelts.<name>.
       pi:                      # Optional: Pi-specific config (ignored unless harness: pi)
         provider: openrouter   # Provider name (openrouter, google, openai, etc.)
         # thinkingLevel: xhigh # Pi only: 'off', 'low', 'medium', 'high', 'xhigh'
@@ -370,7 +370,7 @@ All three fields (`description`, `whenToUse`, `tags`) are optional. Metadata can
 
 ## MCP Servers
 
-MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). By default - when no `toolbelt` is assigned on a tier - all eforge agents receive the same set of discovered MCP servers. Named toolbelts and `toolbelt: none` are now schema-valid tier assignments for forthcoming runtime per-tier MCP filtering; see [Toolbelts](#toolbelts) below.
+MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). By default - when no `toolbelt` is assigned on a tier - all eforge agents receive the same set of discovered MCP servers. Use named toolbelts or `toolbelt: none` on individual tiers to control which project MCP servers each tier's agents receive; see [Toolbelts](#toolbelts) below.
 
 ### Toolbelts
 
@@ -416,7 +416,34 @@ agents:
 - `toolbelt: <name>` - references a named entry in `tools.toolbelts`; `eforge config validate` checks that the name exists and that every listed `mcpServers` entry appears in `.mcp.json`.
 - `toolbelt: none` - explicitly passes no MCP servers to agents in this tier.
 
-**Important:** Runtime per-tier MCP filtering is not yet implemented. The `toolbelt` field is fully parsed and statically validated today, but agents still receive the full set of discovered MCP servers regardless of the `toolbelt` assignment. The filtering behavior will be enforced in a follow-up release.
+**Runtime semantics:**
+
+The registry resolves each tier's effective project MCP server set when the daemon starts and constructs one harness instance per unique `(harness, provider, effectiveServers, disableSubagents)` combination. Two tiers that resolve to the same effective set share a harness instance; tiers that differ get distinct instances.
+
+| `toolbelt` value | Agents receive |
+|-----------------|----------------|
+| Omitted (default) | All servers discovered from `.mcp.json` |
+| `toolbelt: none` | No project MCP servers |
+| `toolbelt: <name>` | Only the servers listed in `tools.toolbelts.<name>.mcpServers` |
+
+Filtering applies **only to project MCP servers from `.mcp.json`**. Engine-internal tools (such as `eforge_engine` custom tools), Claude built-ins, Pi built-ins, and extension-contributed tools are never filtered regardless of the toolbelt setting.
+
+If a named toolbelt cannot be resolved against the loaded `tools.toolbelts` map at registry construction time, the daemon throws a path-specific error (`agents.tiers.<tierName>.toolbelt references "<name>"`) rather than silently falling back to all servers.
+
+**Observability - `agent:start` toolbelt fields:**
+
+Each `agent:start` event carries the following optional fields that reflect the resolved toolbelt selection for that run:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `toolbelt` | `string \| null` | Toolbelt name when `projectMcpSelection === 'toolbelt'`; `null` when `toolbelt: none` |
+| `toolbeltSource` | `'tier' \| 'role' \| 'plan' \| 'default'` | Where the toolbelt setting was resolved from (`default` = omitted) |
+| `projectMcpSelection` | `'all' \| 'none' \| 'toolbelt'` | Which selection rule applied |
+| `projectMcpServerNames` | `string[]` | Sorted list of project MCP server names the agent actually received |
+
+These fields use MCP server names (e.g. `playwright`, `sourcegraph`) as they appear in `.mcp.json` - not backend tool names (e.g. `mcp__playwright__browser_navigate`).
+
+The harness debug payload also separates server categories: `projectMcpServerNames` (filtered project servers) and `internalMcpServerNames` (engine-internal servers such as `eforge_engine`). The old single `mcpServerNames` field that conflated the two is removed.
 
 ## Plugins
 

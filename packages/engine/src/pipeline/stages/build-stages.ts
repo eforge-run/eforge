@@ -61,16 +61,18 @@ async function* runBuilderAttempt(
   const implSpan = ctx.tracing.createSpan('builder', { planId: ctx.planId, phase: 'implement' });
   implSpan.setInput({ planId: ctx.planId, phase: 'implement' });
   const implTracker = createToolTracker(implSpan);
+  const { harness: builderHarness, toolbeltSummary: builderTb } = ctx.agentRuntimes.forRoleResolved('builder', ctx.planFile);
   try {
     for await (const event of withPeriodicFileCheck(builderImplement(ctx.planFile, {
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      ...builderTb,
       parallelStages,
       verificationScope,
       ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
-      harness: ctx.agentRuntimes.forRole('builder', ctx.planFile),
+      harness: builderHarness,
     }), ctx)) {
       implTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') implSpan.error('Implementation failed');
@@ -95,6 +97,7 @@ async function* runEvaluatorAttempt(
   const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId });
   evalSpan.setInput({ planId: ctx.planId });
   const evalTracker = createToolTracker(evalSpan);
+  const { harness: evaluatorHarness, toolbeltSummary: evaluatorTb } = ctx.agentRuntimes.forRoleResolved('evaluator', ctx.planFile);
   try {
     const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
     for await (const event of builderEvaluate(ctx.planFile, {
@@ -102,10 +105,11 @@ async function* runEvaluatorAttempt(
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...evalAgentConfig,
+      ...evaluatorTb,
       strictness,
       ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
       preImplementCommit: ctx.preImplementCommit,
-      harness: ctx.agentRuntimes.forRole('evaluator', ctx.planFile),
+      harness: evaluatorHarness,
     })) {
       evalTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') evalSpan.error('Evaluation failed');
@@ -154,7 +158,8 @@ async function* reviewStageInner(
     });
   }
 
-  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.planFile);
+  const { harness: reviewerHarness, toolbeltSummary: reviewerTb } = ctx.agentRuntimes.forRoleResolved('reviewer', ctx.planFile);
+  const reviewerAgentConfig = resolveAgentConfig('reviewer', ctx.config, ctx.planFile, reviewerTb);
   const reviewSpan = ctx.tracing.createSpan('reviewer', { planId: ctx.planId, phase: 'review' });
   reviewSpan.setInput({ planId: ctx.planId, phase: 'review' });
   const reviewTracker = createToolTracker(reviewSpan);
@@ -169,7 +174,7 @@ async function* reviewStageInner(
       strategy,
       perspectives,
       ...reviewerAgentConfig,
-      harness: ctx.agentRuntimes.forRole('reviewer', ctx.planFile),
+      harness: reviewerHarness,
     })) {
       reviewTracker.handleEvent(event);
       yield event;
@@ -224,7 +229,8 @@ async function* evaluateStageInner(
 
 async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
   if (ctx.reviewIssues.length === 0) return;
-  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile);
+  const { harness: fixerHarness, toolbeltSummary: fixerTb } = ctx.agentRuntimes.forRoleResolved('review-fixer', ctx.planFile);
+  const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile, fixerTb);
   const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
   const fixTracker = createToolTracker(fixSpan);
@@ -236,7 +242,7 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...fixerConfig,
-      harness: ctx.agentRuntimes.forRole('review-fixer', ctx.planFile),
+      harness: fixerHarness,
     }), ctx)) {
       fixTracker.handleEvent(event);
       yield event;
@@ -252,7 +258,8 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
 }
 
 async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEvent> {
-  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.planFile);
+  const { harness: testerHarness, toolbeltSummary: testerTb } = ctx.agentRuntimes.forRoleResolved('tester', ctx.planFile);
+  const agentConfig = resolveAgentConfig('tester', ctx.config, ctx.planFile, testerTb);
   const span = ctx.tracing.createSpan('tester', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -264,7 +271,7 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-      harness: ctx.agentRuntimes.forRole('tester', ctx.planFile),
+      harness: testerHarness,
     }), ctx)) {
       tracker.handleEvent(event);
       yield event;
@@ -350,17 +357,19 @@ async function* runBuilderShardAttempt(
   const implSpan = ctx.tracing.createSpan('builder', { planId: ctx.planId, phase: 'implement', shardId: input.shardId });
   implSpan.setInput({ planId: ctx.planId, phase: 'implement', shardId: input.shardId });
   const implTracker = createToolTracker(implSpan);
+  const { harness: shardBuilderHarness, toolbeltSummary: shardBuilderTb } = ctx.agentRuntimes.forRoleResolved('builder');
   try {
     for await (const event of withPeriodicFileCheck(builderImplement(ctx.planFile, {
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      ...shardBuilderTb,
       parallelStages,
       // verificationScope is intentionally omitted: shardScope instructs the agent not to verify
       shardScope: input.shardScope,
       ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
-      harness: ctx.agentRuntimes.forRole('builder'),
+      harness: shardBuilderHarness,
     }), ctx)) {
       implTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') implSpan.error('Shard implementation failed');
@@ -666,7 +675,8 @@ registerBuildStage({
   whenToUse: 'When the plan names new documentation files to create, or describes specific docs to update.',
   costHint: 'medium',
 }, async function* docAuthorStage(ctx) {
-  const agentConfig = resolveAgentConfig('doc-author', ctx.config, ctx.planFile);
+  const { harness: docAuthorHarness, toolbeltSummary: docAuthorTb } = ctx.agentRuntimes.forRoleResolved('doc-author', ctx.planFile);
+  const agentConfig = resolveAgentConfig('doc-author', ctx.config, ctx.planFile, docAuthorTb);
   const docSpan = ctx.tracing.createSpan('doc-author', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -678,7 +688,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-      harness: ctx.agentRuntimes.forRole('doc-author', ctx.planFile),
+      harness: docAuthorHarness,
     }), ctx)) {
       docTracker.handleEvent(event);
       yield event;
@@ -720,7 +730,8 @@ registerBuildStage({
     return;
   }
 
-  const agentConfig = resolveAgentConfig('doc-syncer', ctx.config, ctx.planFile);
+  const { harness: docSyncerHarness, toolbeltSummary: docSyncerTb } = ctx.agentRuntimes.forRoleResolved('doc-syncer', ctx.planFile);
+  const agentConfig = resolveAgentConfig('doc-syncer', ctx.config, ctx.planFile, docSyncerTb);
   const docSpan = ctx.tracing.createSpan('doc-syncer', { planId: ctx.planId });
   docSpan.setInput({ planId: ctx.planId });
   const docTracker = createToolTracker(docSpan);
@@ -733,7 +744,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-      harness: ctx.agentRuntimes.forRole('doc-syncer', ctx.planFile),
+      harness: docSyncerHarness,
     }), ctx)) {
       docTracker.handleEvent(event);
       yield event;
@@ -767,7 +778,8 @@ registerBuildStage({
   costHint: 'medium',
   predecessors: ['implement'],
 }, async function* testWriteStage(ctx) {
-  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.planFile);
+  const { harness: testWriterHarness, toolbeltSummary: testWriterTb } = ctx.agentRuntimes.forRoleResolved('test-writer', ctx.planFile);
+  const agentConfig = resolveAgentConfig('test-writer', ctx.config, ctx.planFile, testWriterTb);
   const span = ctx.tracing.createSpan('test-writer', { planId: ctx.planId });
   span.setInput({ planId: ctx.planId });
   const tracker = createToolTracker(span);
@@ -790,7 +802,7 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
-      harness: ctx.agentRuntimes.forRole('test-writer', ctx.planFile),
+      harness: testWriterHarness,
     }), ctx)) {
       tracker.handleEvent(event);
       yield event;

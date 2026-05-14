@@ -942,13 +942,33 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         } else if ("resolved" in data) {
           const active = (data as { active?: string | null }).active ?? null;
           const source = (data as { source?: string }).source ?? "none";
-          const resolved = (data as { resolved?: { harness?: string } }).resolved;
+          const resolved = (data as { resolved?: { harness?: string; profile?: unknown } }).resolved;
           lines.push(
             theme.fg("accent", `active: ${active ?? "(none)"}`) +
               theme.fg("dim", `  source: ${source}`),
           );
           if (resolved?.harness) {
             lines.push(theme.fg("dim", `  harness: ${resolved.harness}`));
+          }
+          // Show tier toolbelt assignments when present in the resolved profile config
+          const profileCfg = resolved?.profile as {
+            agents?: { tiers?: Record<string, { toolbelt?: string }> };
+            tools?: { toolbelts?: Record<string, { mcpServers?: string[] }> };
+          } | null | undefined;
+          const tiers = profileCfg?.agents?.tiers;
+          if (tiers && Object.keys(tiers).length > 0) {
+            const toolbeltsRegistry = profileCfg?.tools?.toolbelts ?? {};
+            const hasTierToolbelts = Object.values(tiers).some((t) => t.toolbelt !== undefined);
+            if (hasTierToolbelts) {
+              lines.push(theme.fg("dim", "  tier toolbelts:"));
+              for (const [tierName, tier] of Object.entries(tiers)) {
+                if (tier.toolbelt === undefined) continue;
+                const tb = tier.toolbelt;
+                const servers = tb !== 'none' ? (toolbeltsRegistry[tb]?.mcpServers ?? []) : [];
+                const serverSuffix = servers.length > 0 ? ` (${[...servers].sort().join(', ')})` : '';
+                lines.push(theme.fg("dim", `    ${tierName}: ${tb}${serverSuffix}`));
+              }
+            }
           }
         } else if ("active" in data) {
           lines.push(theme.fg("success", `✓ active: ${String((data as { active?: unknown }).active)}`));

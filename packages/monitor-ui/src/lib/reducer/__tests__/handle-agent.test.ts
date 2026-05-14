@@ -107,6 +107,67 @@ describe('handle-agent', () => {
       const delta = handleAgentStart(event, state);
       expect(delta?.agentThreads).toHaveLength(2);
     });
+
+    it('captures toolbelt observability fields when present on the event', () => {
+      const event = makeEvent('agent:start', {
+        agentId: 'a1',
+        agent: 'builder',
+        model: 'claude-sonnet',
+        harness: 'claude-sdk',
+        harnessSource: 'tier',
+        tier: 'implementation',
+        tierSource: 'tier',
+        toolbelt: 'browser-ui',
+        toolbeltSource: 'tier',
+        projectMcpSelection: 'toolbelt',
+        projectMcpServerNames: ['playwright'],
+      });
+      const delta = handleAgentStart(event, initialRunState);
+      const thread = delta?.agentThreads?.[0];
+      expect(thread?.toolbelt).toBe('browser-ui');
+      expect(thread?.toolbeltSource).toBe('tier');
+      expect(thread?.projectMcpSelection).toBe('toolbelt');
+      expect(thread?.projectMcpServerNames).toEqual(['playwright']);
+    });
+
+    it('captures toolbelt=null when toolbelt is explicitly none', () => {
+      const event = makeEvent('agent:start', {
+        agentId: 'a2',
+        agent: 'evaluator',
+        model: 'claude-opus',
+        harness: 'claude-sdk',
+        harnessSource: 'tier',
+        tier: 'evaluation',
+        tierSource: 'tier',
+        toolbelt: null,
+        toolbeltSource: 'tier',
+        projectMcpSelection: 'none',
+        projectMcpServerNames: [],
+      });
+      const delta = handleAgentStart(event, initialRunState);
+      const thread = delta?.agentThreads?.[0];
+      expect(thread?.toolbelt).toBeNull();
+      expect(thread?.projectMcpSelection).toBe('none');
+      expect(thread?.projectMcpServerNames).toEqual([]);
+    });
+
+    it('leaves toolbelt fields undefined when event does not carry them', () => {
+      const event = makeEvent('agent:start', {
+        agentId: 'a3',
+        agent: 'builder',
+        model: 'claude-sonnet',
+        harness: 'claude-sdk',
+        harnessSource: 'tier',
+        tier: 'implementation',
+        tierSource: 'tier',
+      });
+      const delta = handleAgentStart(event, initialRunState);
+      const thread = delta?.agentThreads?.[0];
+      expect(thread?.toolbelt).toBeUndefined();
+      expect(thread?.toolbeltSource).toBeUndefined();
+      expect(thread?.projectMcpSelection).toBeUndefined();
+      expect(thread?.projectMcpServerNames).toBeUndefined();
+    });
   });
 
   // ---------------------------------------------------------------------------

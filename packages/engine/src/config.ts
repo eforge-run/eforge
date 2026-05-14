@@ -373,6 +373,18 @@ export interface ResolvedAgentConfig {
   thinkingOriginal?: import('./harness.js').ThinkingConfig;
   /** Parallel implementation shards for the builder role. When present, the implement stage fans out. */
   shards?: ShardScope[];
+  /**
+   * The toolbelt name selected for this role's tier. Undefined when the tier omits toolbelt
+   * (default = all project MCP servers), null when toolbelt is explicitly 'none',
+   * string when a named toolbelt is active.
+   */
+  toolbelt?: string | null;
+  /** Provenance of the toolbelt selection. */
+  toolbeltSource?: 'tier' | 'role' | 'plan' | 'default';
+  /** Which project MCP servers were selected for this tier. */
+  projectMcpSelection?: 'all' | 'none' | 'toolbelt';
+  /** Sorted names of the project MCP servers passed to this tier's harness. */
+  projectMcpServerNames?: string[];
 }
 
 export interface PiConfig {

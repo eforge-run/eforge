@@ -18,6 +18,7 @@
 import type { AgentRole } from '../events.js';
 import type { EforgeConfig, ModelRef, ResolvedAgentConfig, AgentTier, ShardScope, TierConfig } from '../config.js';
 import type { EffortLevel, ThinkingConfig } from '../harness.js';
+import type { ToolbeltSummary } from '../agent-runtime-registry.js';
 import { clampEffort, lookupCapabilities } from '../model-capabilities.js';
 
 /**
@@ -149,6 +150,7 @@ export function resolveAgentConfig(
   role: AgentRole,
   config: EforgeConfig,
   planEntry?: PlanEntry,
+  toolbeltSummary?: ToolbeltSummary,
 ): ResolvedAgentConfig {
   // Step 1: tier
   const { tier, tierSource } = resolveTierForRole(role, config, planEntry);
@@ -246,6 +248,14 @@ export function resolveAgentConfig(
   // Step 5: clamp effort + coerce thinking
   applyEffortClamp(result);
   applyThinkingCoercion(result);
+
+  // Stamp registry-derived toolbelt summary fields if provided.
+  if (toolbeltSummary !== undefined) {
+    if (toolbeltSummary.toolbelt !== undefined) result.toolbelt = toolbeltSummary.toolbelt;
+    result.toolbeltSource = toolbeltSummary.toolbeltSource;
+    result.projectMcpSelection = toolbeltSummary.projectMcpSelection;
+    result.projectMcpServerNames = toolbeltSummary.projectMcpServerNames;
+  }
 
   // Thread shards from plan / role for builder.
   if (role === 'builder') {

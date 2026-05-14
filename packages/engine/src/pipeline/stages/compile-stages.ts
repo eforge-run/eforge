@@ -48,6 +48,7 @@ async function* runPlannerAttempt(
   agentConfig: ResolvedAgentConfig,
 ): AsyncGenerator<EforgeEvent> {
   const { tracker, end, error } = createStageSpanWiring('planner', ctx.tracing, { source: ctx.sourceContent, planSet: ctx.planSetName });
+  const { harness: plannerHarness, toolbeltSummary: plannerTb } = ctx.agentRuntimes.forRoleResolved('planner');
   try {
     for await (const event of runPlanner(ctx.sourceContent, {
       cwd: ctx.cwd,
@@ -62,8 +63,9 @@ async function* runPlannerAttempt(
       defaultBuild: ctx.pipeline.defaultBuild,
       defaultReview: ctx.pipeline.defaultReview,
       ...agentConfig,
+      ...plannerTb,
       ...(input.plannerOptions.continuationContext && { continuationContext: input.plannerOptions.continuationContext }),
-      harness: ctx.agentRuntimes.forRole('planner'),
+      harness: plannerHarness,
     })) {
       // Capture expedition modules from the planner's architecture submission.
       // The planner emits this event directly after writing architecture.md +
@@ -151,6 +153,7 @@ async function* runModulePlannerAttempt(
   modSpan.setInput({ moduleId: mod.id, description: mod.description });
   const modTracker = createToolTracker(modSpan);
 
+  const { harness: modulePlannerHarness, toolbeltSummary: modulePlannerTb } = ctx.agentRuntimes.forRoleResolved('module-planner');
   try {
     for await (const event of runModulePlanner({
       cwd: ctx.cwd,
@@ -166,7 +169,8 @@ async function* runModulePlannerAttempt(
       abortController: ctx.abortController,
       outputDir: ctx.config.plan.outputDir,
       ...agentConfig,
-      harness: ctx.agentRuntimes.forRole('module-planner'),
+      ...modulePlannerTb,
+      harness: modulePlannerHarness,
     })) {
       modTracker.handleEvent(event);
 
@@ -214,14 +218,15 @@ registerCompileStage({
   parallelizable: false,
 }, async function* plannerStage(ctx) {
   // Run pipeline composition first (fast LLM call to determine scope and stages)
-  const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config);
+  const { harness: composerHarness, toolbeltSummary: composerTb } = ctx.agentRuntimes.forRoleResolved('pipeline-composer');
+  const composerConfig = resolveAgentConfig('pipeline-composer', ctx.config, undefined, composerTb);
   for await (const event of composePipeline({
     source: ctx.sourceContent,
     cwd: ctx.cwd,
     verbose: ctx.verbose,
     abortController: ctx.abortController,
     ...composerConfig,
-    harness: ctx.agentRuntimes.forRole('pipeline-composer'),
+    harness: composerHarness,
   })) {
     if (event.type === 'planning:pipeline') {
       // Update the context pipeline from the composer result
@@ -242,7 +247,8 @@ registerCompileStage({
     return;
   }
 
-  const agentConfig = resolveAgentConfig('planner', ctx.config);
+  const { toolbeltSummary: plannerTbStage } = ctx.agentRuntimes.forRoleResolved('planner');
+  const agentConfig = resolveAgentConfig('planner', ctx.config, undefined, plannerTbStage);
   const initialInput: PlannerContinuationInput = {
     sideEffects: {
       cwd: ctx.cwd,
@@ -279,8 +285,10 @@ registerCompileStage({
 }, async function* planReviewCycleStage(ctx) {
   const verbose = ctx.verbose;
   const abortController = ctx.abortController;
-  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config);
-  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config);
+  const { harness: planReviewerHarness, toolbeltSummary: planReviewerTb } = ctx.agentRuntimes.forRoleResolved('plan-reviewer');
+  const { harness: planEvaluatorHarness, toolbeltSummary: planEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('plan-evaluator');
+  const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config, undefined, planReviewerTb);
+  const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config, undefined, planEvaluatorTb);
 
   try {
     yield* runReviewCycle({
@@ -297,7 +305,7 @@ registerCompileStage({
           verbose,
           abortController,
           outputDir: ctx.config.plan.outputDir,
-          harness: ctx.agentRuntimes.forRole('plan-reviewer'),
+          harness: planReviewerHarness,
         }),
       },
       evaluator: {
@@ -312,7 +320,7 @@ registerCompileStage({
           abortController,
           outputDir: ctx.config.plan.outputDir,
           continuationContext,
-          harness: ctx.agentRuntimes.forRole('plan-evaluator'),
+          harness: planEvaluatorHarness,
         }),
       },
     });
@@ -350,8 +358,10 @@ registerCompileStage({
     return;
   }
 
-  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config);
-  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config);
+  const { harness: archReviewerHarness, toolbeltSummary: archReviewerTb } = ctx.agentRuntimes.forRoleResolved('architecture-reviewer');
+  const { harness: archEvaluatorHarness, toolbeltSummary: archEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('architecture-evaluator');
+  const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config, undefined, archReviewerTb);
+  const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config, undefined, archEvaluatorTb);
 
   try {
     yield* runReviewCycle({
@@ -360,12 +370,12 @@ registerCompileStage({
       reviewer: {
         role: 'architecture-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureReview({ ...archReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, harness: ctx.agentRuntimes.forRole('architecture-reviewer') }),
+        run: () => runArchitectureReview({ ...archReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, harness: archReviewerHarness }),
       },
       evaluator: {
         role: 'architecture-evaluator',
         metadata: { planSet: planSetName },
-        run: (continuationContext) => runArchitectureEvaluate({ ...archEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, harness: ctx.agentRuntimes.forRole('architecture-evaluator') }),
+        run: (continuationContext) => runArchitectureEvaluate({ ...archEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, harness: archEvaluatorHarness }),
       },
     });
   } catch (err) {
@@ -406,7 +416,8 @@ registerCompileStage({
   const { waves } = resolveDependencyGraph(plansForGraph);
   const moduleMap = new Map(ctx.expeditionModules.map((m) => [m.id, m]));
   const completedPlans = new Map<string, string>(); // moduleId -> plan file content
-  const agentConfig = resolveAgentConfig('module-planner', ctx.config);
+  const { toolbeltSummary: modulePlannerTbStage } = ctx.agentRuntimes.forRoleResolved('module-planner');
+  const agentConfig = resolveAgentConfig('module-planner', ctx.config, undefined, modulePlannerTbStage);
 
   // 2. Plan each wave (parallel within wave, sequential across waves)
   for (let waveIdx = 0; waveIdx < waves.length; waveIdx++) {
@@ -461,8 +472,10 @@ registerCompileStage({
     // Architecture file may not exist
   }
 
-  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config);
-  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config);
+  const { harness: cohesionReviewerHarness, toolbeltSummary: cohesionReviewerTb } = ctx.agentRuntimes.forRoleResolved('cohesion-reviewer');
+  const { harness: cohesionEvaluatorHarness, toolbeltSummary: cohesionEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('cohesion-evaluator');
+  const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config, undefined, cohesionReviewerTb);
+  const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config, undefined, cohesionEvaluatorTb);
 
   try {
     yield* runReviewCycle({
@@ -471,12 +484,12 @@ registerCompileStage({
       reviewer: {
         role: 'cohesion-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runCohesionReview({ ...cohesionReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, harness: ctx.agentRuntimes.forRole('cohesion-reviewer') }),
+        run: () => runCohesionReview({ ...cohesionReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, harness: cohesionReviewerHarness }),
       },
       evaluator: {
         role: 'cohesion-evaluator',
         metadata: { planSet: planSetName },
-        run: (continuationContext) => runCohesionEvaluate({ ...cohesionEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, harness: ctx.agentRuntimes.forRole('cohesion-evaluator') }),
+        run: (continuationContext) => runCohesionEvaluate({ ...cohesionEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, harness: cohesionEvaluatorHarness }),
       },
     });
   } catch (err) {
