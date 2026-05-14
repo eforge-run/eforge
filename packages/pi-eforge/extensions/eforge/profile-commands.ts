@@ -22,6 +22,11 @@ interface ProfileEntry {
   path: string;
   scope: "project" | "user";
   shadowedBy?: string;
+  metadata?: {
+    description?: string;
+    whenToUse?: string[];
+    tags?: string[];
+  };
 }
 
 interface ProfileListData {
@@ -100,15 +105,40 @@ export async function handleProfileCommand(
     const activeMarker = p.name === active ? "●" : "○";
     const scopeBadge = p.shadowedBy ? `${p.scope} (shadowed)` : p.scope;
     const harnessType = p.harness ?? "unknown";
+    const descPart = p.metadata?.description ? ` - ${p.metadata.description}` : '';
     return {
       value: p.name,
       label: `${activeMarker} ${p.name}`,
-      description: `${scopeBadge} - ${harnessType}`,
+      description: `${scopeBadge} - ${harnessType}${descPart}`,
     };
   });
 
   const selected = await showSelectOverlay(ctx, "eforge - Profiles", items);
   if (!selected) return;
+
+  // Show metadata info overlay before action items when metadata is present
+  const selectedProfile = profiles.find((p) => p.name === selected);
+  if (
+    selectedProfile?.metadata &&
+    (selectedProfile.metadata.description ||
+      (selectedProfile.metadata.whenToUse?.length ?? 0) > 0 ||
+      (selectedProfile.metadata.tags?.length ?? 0) > 0)
+  ) {
+    const metaLines: string[] = [];
+    if (selectedProfile.metadata.description) {
+      metaLines.push(`**Description:** ${selectedProfile.metadata.description}`);
+    }
+    if (selectedProfile.metadata.whenToUse?.length) {
+      metaLines.push(`\n**Use when:**`);
+      for (const w of selectedProfile.metadata.whenToUse) {
+        metaLines.push(`- ${w}`);
+      }
+    }
+    if (selectedProfile.metadata.tags?.length) {
+      metaLines.push(`\n**Tags:** ${selectedProfile.metadata.tags.join(', ')}`);
+    }
+    await showInfoOverlay(ctx, `eforge - Profile: ${selected}`, metaLines.join('\n'));
+  }
 
   // Show detail actions for the selected profile
   const isActive = selected === active;
@@ -290,6 +320,24 @@ async function pickCustomTier(
 /** Build a human-readable YAML preview of the profile payload. */
 function buildYamlPreview(payload: ProfileCreatePayload): string {
   const lines: string[] = ["```yaml"];
+  if (payload.metadata) {
+    const m = payload.metadata;
+    if (m.description) {
+      lines.push(`description: ${JSON.stringify(m.description)}`);
+    }
+    if (m.whenToUse?.length) {
+      lines.push('whenToUse:');
+      for (const w of m.whenToUse) {
+        lines.push(`  - ${JSON.stringify(w)}`);
+      }
+    }
+    if (m.tags?.length) {
+      lines.push('tags:');
+      for (const t of m.tags) {
+        lines.push(`  - ${JSON.stringify(t)}`);
+      }
+    }
+  }
   lines.push("agents:");
   lines.push("  tiers:");
   for (const [tier, entry] of Object.entries(payload.agents.tiers)) {

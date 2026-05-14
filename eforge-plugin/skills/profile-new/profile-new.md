@@ -121,11 +121,18 @@ Call `mcp__eforge__eforge_profile` with:
       evaluation:     { harness, model: { id }, effort, provider? },
     }
   },
+  metadata: {          // optional — descriptive only, does not affect runtime behavior
+    description: "<human-readable description of what this profile is for>",
+    whenToUse: ["<scenario 1>", "<scenario 2>"],
+    tags: ["<tag1>", "<tag2>"],
+  },
   overwrite: false,
 }
 ```
 
 Omit `provider` for the `claude-sdk` harness. Include it for the `pi` harness.
+
+The `metadata` field is **optional and descriptive only** — it surfaces in profile list/show UX but does not affect active profile selection or runtime behavior. You may omit it entirely or include only the fields that are useful. Users can also edit the YAML file directly to add or update metadata later.
 
 If the tool reports the profile already exists, ask the user whether to retry with `overwrite: true`.
 

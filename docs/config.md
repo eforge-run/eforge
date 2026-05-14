@@ -321,6 +321,49 @@ The `scope` parameter is available on `create`, `use`, and `delete` operations:
 
 When listing profiles, all three scopes are shown. Entries shadowed by a higher-priority profile of the same name are annotated with `shadowedBy: local` or `shadowedBy: project`.
 
+### Profile metadata
+
+Profile metadata is descriptive only. It surfaces in profile list/show UX and `eforge_profile` create payloads but does not affect active profile selection or runtime behavior.
+
+Metadata fields are stored at the **top level** of the profile YAML file (flat, not nested under a `metadata:` wrapper):
+
+```yaml
+# eforge/profiles/my-profile.yaml — metadata fields are top-level
+description: "High-capability profile for complex planning and implementation tasks"
+whenToUse:
+  - "Complex multi-file refactors"
+  - "Architecture planning sessions"
+tags:
+  - "production"
+  - "high-quality"
+agents:
+  tiers:
+    planning:
+      harness: claude-sdk
+      model: claude-opus-4-7
+      effort: high
+```
+
+When creating a profile via `POST /api/profile/create` or the `eforge_profile` tool, the metadata fields are passed as a **nested `metadata` object** in the request payload (different from the flat file shape):
+
+Example `eforge_profile` tool call with metadata:
+
+```json
+{
+  "action": "create",
+  "name": "claude-max",
+  "scope": "project",
+  "agents": { "tiers": { "..." : "..." } },
+  "metadata": {
+    "description": "High-capability profile for complex tasks",
+    "whenToUse": ["Architecture planning", "Complex refactors"],
+    "tags": ["production", "high-quality"]
+  }
+}
+```
+
+All three fields (`description`, `whenToUse`, `tags`) are optional. Metadata can also be edited directly in the profile YAML file.
+
 ## MCP Servers
 
 MCP servers are auto-loaded from `.mcp.json` in the project root (same format Claude Code uses). All `eforge` agents receive the same MCP servers.

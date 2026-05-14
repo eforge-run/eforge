@@ -778,7 +778,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_profile",
     label: "eforge profile",
     description:
-      'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with harness; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml; "delete" removes a profile (refuses when active unless force: true).',
+      'Manage named profiles in eforge/profiles/. Actions: "list" enumerates profiles and reports which is active; "show" returns the resolved active profile with harness; "use" writes eforge/.active-profile to switch profiles; "create" writes a new eforge/profiles/<name>.yaml (optionally pass `metadata` with `description`, `whenToUse`, and `tags` — descriptive only, does not affect runtime behavior); "delete" removes a profile (refuses when active unless force: true).',
     parameters: Type.Object({
       action: StringEnum(["list", "show", "use", "create", "delete"] as const, {
         description:
@@ -807,6 +807,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             'Agents config block to embed in the profile (optional, "create" only)',
         }),
       ),
+      metadata: Type.Optional(
+        Type.Object({
+          description: Type.Optional(Type.String({ description: 'Human-readable description of what this profile is for' })),
+          whenToUse: Type.Optional(Type.Array(Type.String(), { description: 'Scenarios when this profile should be used' })),
+          tags: Type.Optional(Type.Array(Type.String(), { description: 'Tags for categorizing this profile' })),
+        }, { description: 'Descriptive metadata for the profile (does not affect runtime behavior)' }),
+      ),
       overwrite: Type.Optional(
         Type.Boolean({
           description:
@@ -827,7 +834,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       ),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const { action, name, harness, pi: piCfg, agents, overwrite, force, scope } =
+      const { action, name, harness, pi: piCfg, agents, metadata, overwrite, force, scope } =
         params;
 
       if (action === "list") {
@@ -871,6 +878,7 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const body: Record<string, unknown> = { name, harness };
         if (piCfg !== undefined) body.pi = piCfg;
         if (agents !== undefined) body.agents = agents;
+        if (metadata !== undefined) body.metadata = metadata;
         if (overwrite !== undefined) body.overwrite = overwrite;
         if (scope) body.scope = scope;
         const { data } = await daemonRequest(
