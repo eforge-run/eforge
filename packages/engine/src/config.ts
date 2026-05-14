@@ -1,7 +1,7 @@
 import { readFile, readdir, rename, rm, unlink, writeFile, mkdir, access } from 'node:fs/promises';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { resolve, dirname, basename, extname } from 'node:path';
+import { resolve, dirname, basename, extname, join as pathJoin } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
 
@@ -50,6 +50,43 @@ export type AgentTier = (typeof AGENT_TIERS)[number];
 export const agentTierSchema = z.enum(AGENT_TIERS).describe('Agent tier for grouping roles by workload type');
 
 const toolPresetConfigSchema = z.enum(['coding', 'none']);
+
+// ---------------------------------------------------------------------------
+// Toolbelt Schemas
+// ---------------------------------------------------------------------------
+
+/** Reserved toolbelt names that users cannot declare in tools.toolbelts. */
+export const RESERVED_TOOLBELT_NAMES = new Set(['none']);
+
+/** Valid toolbelt name pattern: letters, digits, dot, underscore, or dash. */
+const toolbeltNameSchema = z.string().regex(/^[A-Za-z0-9._-]+$/);
+
+const toolbeltConfigSchema = z.object({
+  description: z.string().optional(),
+  mcpServers: z.array(z.string().min(1)).nonempty(),
+});
+
+const toolsConfigSchema = z.object({
+  toolbelts: z.record(z.string(), toolbeltConfigSchema).optional(),
+}).superRefine((data, ctx) => {
+  if (data.toolbelts) {
+    for (const name of Object.keys(data.toolbelts)) {
+      if (RESERVED_TOOLBELT_NAMES.has(name)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Toolbelt name "${name}" is reserved`,
+          path: ['toolbelts', name],
+        });
+      } else if (!toolbeltNameSchema.safeParse(name).success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Toolbelt name "${name}" does not match pattern ^[A-Za-z0-9._-]+$`,
+          path: ['toolbelts', name],
+        });
+      }
+    }
+  }
+});
 
 // ---------------------------------------------------------------------------
 // ModelRef — model references
@@ -182,6 +219,7 @@ export const tierConfigSchema = z.object({
   allowedTools: z.array(z.string()).optional().describe('Whitelist of allowed tool names'),
   disallowedTools: z.array(z.string()).optional().describe('Blacklist of disallowed tool names'),
   promptAppend: z.string().optional().describe('Text appended to every agent prompt in this tier after variable substitution'),
+  toolbelt: z.string().optional().describe('Toolbelt name to activate for roles in this tier (must be declared in tools.toolbelts, or "none" to disable)'),
 }).superRefine((data, ctx) => {
   if (data.harness === 'pi' && data.claudeSdk !== undefined) {
     ctx.addIssue({
@@ -275,6 +313,7 @@ const eforgeConfigBaseSchema = z.object({
     retentionCount: z.number().int().positive().optional(),
   }).optional(),
   hooks: z.array(hookConfigSchema).optional(),
+  tools: toolsConfigSchema.optional(),
 });
 
 /** Exported schema. Cross-field validation is performed in tierConfigSchema. */
@@ -372,6 +411,9 @@ export interface EforgeConfig {
   daemon: { idleShutdownMs: number };
   monitor: { retentionCount: number };
   hooks: readonly HookConfig[];
+  tools: {
+    toolbelts: Record<string, { description?: string; mcpServers: string[] }>;
+  };
 }
 
 /** Deep-partial version of EforgeConfig used for parsing and merging — derived from the zod schema. */
@@ -544,6 +586,7 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
   monitor: Object.freeze({ retentionCount: 20 }),
   hooks: Object.freeze([]),
+  tools: Object.freeze({ toolbelts: {} }),
 });
 
 /**
@@ -633,6 +676,9 @@ export function resolveConfig(
       retentionCount: fileConfig.monitor?.retentionCount ?? DEFAULT_CONFIG.monitor.retentionCount,
     }),
     hooks: Object.freeze(fileConfig.hooks ?? DEFAULT_CONFIG.hooks) as HookConfig[],
+    tools: Object.freeze({
+      toolbelts: fileConfig.tools?.toolbelts ?? DEFAULT_CONFIG.tools.toolbelts,
+    }),
   });
 }
 
@@ -831,6 +877,15 @@ export function mergePartialConfigs(
     result.hooks = [...(global.hooks ?? []), ...(project.hooks ?? [])];
   }
 
+  // tools.toolbelts: deep-merge by name (project wins per toolbelt)
+  if (global.tools || project.tools) {
+    const globalToolbelts = global.tools?.toolbelts ?? {};
+    const projectToolbelts = project.tools?.toolbelts ?? {};
+    result.tools = {
+      toolbelts: { ...globalToolbelts, ...projectToolbelts },
+    };
+  }
+
   return result;
 }
 
@@ -978,6 +1033,20 @@ export async function loadConfig(cwd?: string, options?: { profileOverride?: str
   // Merge sequence: user → project → local (three-tier deep merge)
   const baseMerged = mergePartialConfigs(mergePartialConfigs(globalConfig, projectConfig), localConfig);
   const merged = profileConfig ? mergePartialConfigs(baseMerged, profileConfig) : baseMerged;
+
+  // Toolbelt static validation — emit warnings rather than throwing so loadConfig
+  // stays non-fatal (same behaviour as tier reference mismatches in other tools).
+  if (configPath) {
+    let mcpProbe: { exists: boolean; names: string[] } | null = null;
+    try {
+      mcpProbe = await loadProjectMcpServerNames(projectRoot);
+    } catch {
+      // best-effort: if .mcp.json can't be read, skip MCP checks
+    }
+    const toolbeltErrors = validateToolbeltReferences(merged, mcpProbe);
+    allWarnings.push(...toolbeltErrors.map((e) => `[eforge] toolbelt: ${e}`));
+  }
+
   return {
     config: resolveConfig(merged),
     warnings: allWarnings,
@@ -1557,6 +1626,22 @@ export async function setActiveProfile(
     );
   }
 
+  // Toolbelt cross-reference validation
+  const projectRoot = dirname(configDir);
+  let mcpProbe: { exists: boolean; names: string[] } | null = null;
+  try {
+    mcpProbe = await loadProjectMcpServerNames(projectRoot);
+  } catch {
+    // best-effort
+  }
+  const toolbeltErrors = validateToolbeltReferences(merged, mcpProbe);
+  if (toolbeltErrors.length > 0) {
+    throw new Error(
+      `Profile "${name}" has toolbelt reference errors:\n` +
+      toolbeltErrors.map((e) => `  - ${e}`).join('\n'),
+    );
+  }
+
   const target = scope === 'user' ? userMarkerPath()
     : scope === 'local' ? localMarkerPath(effectiveCwd)
     : markerPath(configDir);
@@ -1642,6 +1727,22 @@ export async function createAgentRuntimeProfile(
     throw new Error(
       `Profile "${name}" produces an invalid merged config: ` +
       z.prettifyError(mergedResult.error),
+    );
+  }
+
+  // Toolbelt cross-reference validation
+  const createProfileProjectRoot = dirname(configDir);
+  let createProfileMcpProbe: { exists: boolean; names: string[] } | null = null;
+  try {
+    createProfileMcpProbe = await loadProjectMcpServerNames(createProfileProjectRoot);
+  } catch {
+    // best-effort
+  }
+  const createToolbeltErrors = validateToolbeltReferences(merged, createProfileMcpProbe);
+  if (createToolbeltErrors.length > 0) {
+    throw new Error(
+      `Profile "${name}" has toolbelt reference errors:\n` +
+      createToolbeltErrors.map((e) => `  - ${e}`).join('\n'),
     );
   }
 
@@ -1837,6 +1938,92 @@ export async function deleteAgentRuntimeProfile(
 }
 
 // ---------------------------------------------------------------------------
+// Toolbelt Static Validation Helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Read `.mcp.json` from the project root and return the declared MCP server names.
+ * Returns `{ exists: false, names: [] }` when the file does not exist.
+ * Throws `ConfigValidationError` when the file exists but contains malformed JSON.
+ */
+export async function loadProjectMcpServerNames(projectRoot: string): Promise<{ exists: boolean; names: string[] }> {
+  const mcpJsonPath = pathJoin(projectRoot, '.mcp.json');
+  try {
+    const content = await readFile(mcpJsonPath, 'utf-8');
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      throw new ConfigValidationError([`Malformed JSON in ${mcpJsonPath}`].join(''));
+    }
+    if (typeof parsed !== 'object' || parsed === null || !('mcpServers' in parsed)) {
+      return { exists: true, names: [] };
+    }
+    const mcpServers = (parsed as Record<string, unknown>).mcpServers;
+    if (typeof mcpServers !== 'object' || mcpServers === null) {
+      return { exists: true, names: [] };
+    }
+    return { exists: true, names: Object.keys(mcpServers) };
+  } catch (err: unknown) {
+    if (typeof err === 'object' && err !== null && 'code' in err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
+      return { exists: false, names: [] };
+    }
+    throw err;
+  }
+}
+
+/**
+ * Validate toolbelt references in a merged config against a known set of MCP server names.
+ *
+ * Checks:
+ * 1. Every `agents.tiers.<tier>.toolbelt` value (unless "none") must be declared in `tools.toolbelts`.
+ * 2. Every MCP server referenced in `tools.toolbelts.<name>.mcpServers` must be declared
+ *    in `.mcp.json` (when the file exists).
+ *
+ * When `mcpProbe` is null, MCP server presence checks are skipped (e.g. in non-project contexts).
+ * Returns an array of human-readable error strings (empty array = valid).
+ */
+export function validateToolbeltReferences(
+  merged: PartialEforgeConfig,
+  mcpProbe: { exists: boolean; names: string[] } | null,
+): string[] {
+  const errors: string[] = [];
+  const toolbelts = merged.tools?.toolbelts ?? {};
+
+  // Check tier references
+  const tiers = merged.agents?.tiers ?? {};
+  for (const [tierName, tier] of Object.entries(tiers)) {
+    if (!tier) continue;
+    const toolbelt = (tier as { toolbelt?: string }).toolbelt;
+    if (toolbelt !== undefined && toolbelt !== 'none') {
+      if (!(toolbelt in toolbelts)) {
+        errors.push(`agents.tiers.${tierName}.toolbelt references "${toolbelt}", but no tools.toolbelts.${toolbelt} is defined.`);
+      }
+    }
+  }
+
+  // Check MCP server references
+  for (const [name, toolbelt] of Object.entries(toolbelts)) {
+    if (!toolbelt?.mcpServers?.length) continue;
+
+    if (mcpProbe === null) continue;
+
+    if (!mcpProbe.exists) {
+      errors.push(`tools.toolbelts.${name} declares MCP servers, but .mcp.json was not found.`);
+      continue;
+    }
+
+    for (const server of toolbelt.mcpServers) {
+      if (!mcpProbe.names.includes(server)) {
+        errors.push(`tools.toolbelts.${name} references MCP server "${server}", but .mcp.json has no mcpServers.${server} entry.`);
+      }
+    }
+  }
+
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
 // Config File Validation
 // ---------------------------------------------------------------------------
 
@@ -1878,6 +2065,20 @@ export async function validateConfigFile(
       const path = issue.path.map(String).join('.');
       errors.push(`${path}: ${issue.message}`);
     }
+  }
+
+  // Toolbelt static cross-reference validation (only when schema parsing succeeded)
+  if (result.success) {
+    const projectRoot = dirname(dirname(configPath));
+    let mcpProbe: { exists: boolean; names: string[] } | null = null;
+    try {
+      mcpProbe = await loadProjectMcpServerNames(projectRoot);
+    } catch {
+      // best-effort: if .mcp.json can't be read, skip MCP checks
+    }
+    const partial = result.data as PartialEforgeConfig;
+    const toolbeltErrors = validateToolbeltReferences(partial, mcpProbe);
+    errors.push(...toolbeltErrors);
   }
 
   return { configFound: true, valid: errors.length === 0, errors };

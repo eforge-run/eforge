@@ -99,7 +99,7 @@
         "transform": "lodash/{{member}}"
       }
     },
-    "outputFileTracingRoot": "/Users/markschaake/projects/eforge-build/eforge-plan-a-public-eforge-marketing-documentation-site-with-agent-readable-docs-and-drift-preventing-generated-references-worktrees/__merge__",
+    "outputFileTracingRoot": "/Users/markschaake/projects/eforge-build/eforge-toolbelts-03-add-mcp-toolbelt-schema-and-static-validation-worktrees/__merge__",
     "experimental": {
       "useSkewCookie": false,
       "cacheLife": {
@@ -289,10 +289,10 @@
     "bundlePagesRouterDependencies": false,
     "configFileName": "next.config.mjs",
     "turbopack": {
-      "root": "/Users/markschaake/projects/eforge-build/eforge-plan-a-public-eforge-marketing-documentation-site-with-agent-readable-docs-and-drift-preventing-generated-references-worktrees/__merge__"
+      "root": "/Users/markschaake/projects/eforge-build/eforge-toolbelts-03-add-mcp-toolbelt-schema-and-static-validation-worktrees/__merge__"
     }
   },
-  "appDir": "/Users/markschaake/projects/eforge-build/eforge-plan-a-public-eforge-marketing-documentation-site-with-agent-readable-docs-and-drift-preventing-generated-references-worktrees/__merge__/web",
+  "appDir": "/Users/markschaake/projects/eforge-build/eforge-toolbelts-03-add-mcp-toolbelt-schema-and-static-validation-worktrees/__merge__/web",
   "relativeAppDir": "web",
   "files": [
     ".next/routes-manifest.json",

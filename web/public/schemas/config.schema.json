@@ -232,6 +232,10 @@
               "promptAppend": {
                 "description": "Text appended to every agent prompt in this tier after variable substitution",
                 "type": "string"
+              },
+              "toolbelt": {
+                "description": "Toolbelt name to activate for roles in this tier (must be declared in tools.toolbelts, or \"none\" to disable)",
+                "type": "string"
               }
             },
             "required": [
@@ -524,6 +528,38 @@
         ],
         "additionalProperties": false
       }
+    },
+    "tools": {
+      "type": "object",
+      "properties": {
+        "toolbelts": {
+          "type": "object",
+          "propertyNames": {
+            "type": "string"
+          },
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string"
+              },
+              "mcpServers": {
+                "minItems": 1,
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            },
+            "required": [
+              "mcpServers"
+            ],
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
