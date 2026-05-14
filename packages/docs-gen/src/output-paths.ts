@@ -55,6 +55,10 @@ export function getOutputPaths(repoRoot: string) {
     publicDocsGettingStarted: join(webPublicDocs, 'getting-started.md'),
     publicDocsConcepts: join(webPublicDocs, 'concepts.md'),
     publicDocsConfiguration: join(webPublicDocs, 'configuration.md'),
+    // --- eforge:region plan-01-reference-and-mirror-content ---
+    publicDocsExtensions: join(webPublicDocs, 'extensions.md'),
+    publicDocsExtensionsApi: join(webPublicDocs, 'extensions-api.md'),
+    // --- eforge:endregion plan-01-reference-and-mirror-content ---
     publicDocsGlossary: join(webPublicDocs, 'glossary.md'),
 
     // JSON Schemas

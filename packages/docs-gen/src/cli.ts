@@ -3,7 +3,7 @@
  *
  * Subcommands:
  *   generate [--all | --surface <name>]   — run surface generators
- *   check                                  — drift check (compare with checked-in)
+ *   check                                  — drift and link check
  */
 
 import { Command } from 'commander';
@@ -15,7 +15,7 @@ import { generateEvents } from './generators/events.js';
 import { generateConfig } from './generators/config.js';
 import { generateTools } from './generators/tools.js';
 import { generateLlms } from './generators/llms.js';
-import { runDriftCheck } from './check.js';
+import { runDocsCheck } from './check.js';
 
 const SURFACES = ['cli', 'api', 'events', 'config', 'tools', 'llms'] as const;
 type Surface = (typeof SURFACES)[number];
@@ -92,21 +92,32 @@ program
 
 program
   .command('check')
-  .description('Check for docs drift (compare generated output with checked-in files)')
+  .description('Check for docs drift and broken internal links')
   .action(async () => {
     const repoRoot = findRepoRoot();
-    console.log('Checking docs for drift…');
-    const result = await runDriftCheck(repoRoot);
-    if (result.ok) {
-      console.log('No drift detected. Docs are up-to-date.');
-    } else {
-      console.error(`Docs drift detected in ${result.changed.length} file(s):`);
-      for (const key of result.changed) {
+    console.log('Checking docs for drift and internal links…');
+    const result = await runDocsCheck(repoRoot);
+
+    if (!result.drift.ok) {
+      console.error(`Docs drift detected in ${result.drift.changed.length} file(s):`);
+      for (const key of result.drift.changed) {
         console.error(`  - ${key}`);
       }
       console.error('Run `pnpm docs:generate` to regenerate.');
+    }
+
+    if (!result.links.ok) {
+      console.error(`Docs link issues detected in ${result.links.issues.length} link(s):`);
+      for (const issue of result.links.issues) {
+        console.error(`  - ${issue.sourceFile}: ${issue.href} — ${issue.reason}`);
+      }
+    }
+
+    if (!result.ok) {
       process.exit(1);
     }
+
+    console.log('No drift or link issues detected. Docs are up-to-date.');
   });
 
 await program.parseAsync(process.argv);

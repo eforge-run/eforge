@@ -21,11 +21,20 @@ import { generateEvents } from './generators/events.js';
 import { generateConfig } from './generators/config.js';
 import { generateTools } from './generators/tools.js';
 import { generateLlms } from './generators/llms.js';
+import { runLinkCheck, type LinkCheckResult } from './link-check.js';
+
+export { runLinkCheck, type LinkCheckIssue, type LinkCheckResult } from './link-check.js';
 
 export interface DriftCheckResult {
   ok: boolean;
   /** Keys (from OutputPaths) of files that differ from the checked-in copies. */
   changed: string[];
+}
+
+export interface DocsCheckResult {
+  ok: boolean;
+  drift: DriftCheckResult;
+  links: LinkCheckResult;
 }
 
 /** Run all generators against `outputPaths`. */
@@ -72,6 +81,12 @@ function normalizeForDrift(content: string): string {
  * @returns `{ ok: true, changed: [] }` when all files are byte-identical,
  *          `{ ok: false, changed: ['contentCli', ...] }` on drift.
  */
+export async function runDocsCheck(repoRoot?: string): Promise<DocsCheckResult> {
+  const root = repoRoot ?? findRepoRoot();
+  const [drift, links] = await Promise.all([runDriftCheck(root), runLinkCheck({ repoRoot: root })]);
+  return { ok: drift.ok && links.ok, drift, links };
+}
+
 export async function runDriftCheck(repoRoot?: string): Promise<DriftCheckResult> {
   const root = repoRoot ?? findRepoRoot();
   const checkedInPaths = getOutputPaths(root);

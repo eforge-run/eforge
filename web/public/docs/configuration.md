@@ -203,7 +203,7 @@ agents:
 5. Pi extensions and Claude Code plugins are out of scope for this MVP - toolbelts are MCP-only and declarative.
 6. Toolbelts are declarative MCP bundles; extensions are imperative lifecycle behavior. Extensions may inspect toolbelt and profile metadata when making routing decisions, but extensions should not redefine toolbelts or act as a hidden config layer.
 
-For the complete field schema, see the [Toolbelts](/reference/config#toolbelts) section in the Configuration Reference and `docs/prd/profile-toolbelts.md` for the design rationale.
+For the complete field schema and validation behavior, see the [Toolbelts](/reference/config#toolbelts) section in the Configuration Reference. For the extension/toolbelt boundary, see the [Extensions API Reference](/docs/extensions-api#toolbelt-vs-extension-boundary).
 
 ## Post-Merge Commands
 
@@ -267,13 +267,14 @@ Hooks are fire-and-forget shell commands triggered by eforge events - useful for
 
 ```yaml
 hooks:
-  - event: build:complete
-    run: "notify-send 'Build complete'"
-  - event: build:failed
-    run: "curl -X POST $SLACK_WEBHOOK -d '{\"text\": \"Build failed\"}'"
+  - event: plan:build:complete
+    command: "notify-send 'Build complete'"
+    timeout: 5000
+  - event: plan:build:failed
+    command: "curl -X POST $SLACK_WEBHOOK -d '{\"text\": \"Build failed\"}'"
 ```
 
-Hooks do not block the pipeline. See the [hooks reference](/reference/config#hooks) for the full event list.
+Hooks do not block the pipeline. See the [Hooks](/reference/config#hooks) section in the Configuration Reference for field details.
 
 ## Full Reference
 

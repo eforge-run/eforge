@@ -82,6 +82,62 @@ export async function generateConfig(opts: {
   }
 
   lines.push('');
+  // --- eforge:region plan-01-reference-and-mirror-content ---
+  lines.push('## Toolbelts');
+  lines.push('');
+  lines.push('`tools.toolbelts` declares named bundles of project MCP servers that tiers can opt into with `agents.tiers.<tier>.toolbelt`. Toolbelts are intended for profiles that need a focused capability set, such as browser automation for UI implementation and review.');
+  lines.push('');
+  lines.push('```yaml');
+  lines.push('tools:');
+  lines.push('  toolbelts:');
+  lines.push('    browser-ui:');
+  lines.push('      description: Browser automation for UI implementation and review.');
+  lines.push('      mcpServers:');
+  lines.push('        - playwright');
+  lines.push('');
+  lines.push('agents:');
+  lines.push('  tiers:');
+  lines.push('    implementation:');
+  lines.push('      harness: claude-sdk');
+  lines.push('      model: claude-sonnet-4-6');
+  lines.push('      effort: medium');
+  lines.push('      toolbelt: browser-ui');
+  lines.push('    planning:');
+  lines.push('      harness: claude-sdk');
+  lines.push('      model: claude-opus-4-7');
+  lines.push('      effort: high');
+  lines.push('      toolbelt: none');
+  lines.push('```');
+  lines.push('');
+  lines.push('- `tools.toolbelts.<name>.description` is optional human-readable prose for list/show surfaces.');
+  lines.push('- `tools.toolbelts.<name>.mcpServers` is a non-empty list of server names from `.mcp.json`.');
+  lines.push('- `agents.tiers.<tier>.toolbelt` names one declared toolbelt, or uses `toolbelt: none` to pass no project MCP servers to that tier.');
+  lines.push('- An omitted `toolbelt` keeps the default behavior: all project MCP servers from `.mcp.json` are passed through.');
+  lines.push('- Toolbelts filter only project MCP servers from `.mcp.json`; they do not affect Pi extensions, Claude Code plugins, engine-internal tools, extension-contributed custom tools, or harness built-ins.');
+  lines.push('- Validation rejects reserved toolbelt names such as `none`, invalid toolbelt names, tier references to undeclared toolbelts, missing `.mcp.json` files when a toolbelt declares MCP servers, and toolbelt server names that are not present under `.mcp.json` `mcpServers`.');
+  lines.push('');
+  lines.push('## Hooks');
+  lines.push('');
+  lines.push('`hooks` is an optional list of fire-and-forget shell commands triggered by eforge events. Hooks are for notifications, logging, and external integrations; they do not block the build pipeline.');
+  lines.push('');
+  lines.push('```yaml');
+  lines.push('hooks:');
+  lines.push('  - event: plan:build:complete');
+  lines.push('    command: "notify-send \'Build complete\'"');
+  lines.push('    timeout: 5000');
+  lines.push('  - event: plan:build:failed');
+  lines.push('    command: "curl -X POST $SLACK_WEBHOOK -d \'{\\"text\\": \\"Build failed\\"}\'"');
+  lines.push('```');
+  lines.push('');
+  lines.push('| Field | Description |');
+  lines.push('|-------|-------------|');
+  lines.push('| `event` | Event name or pattern that triggers the hook command. |');
+  lines.push('| `command` | Shell command executed when the event matches. |');
+  lines.push('| `timeout` | Optional positive timeout in milliseconds; defaults to `5000`. |');
+  lines.push('');
+  lines.push('Hook commands run asynchronously from the pipeline path. Use them for best-effort side effects, not required validation or build steps.');
+  lines.push('');
+  // --- eforge:endregion plan-01-reference-and-mirror-content ---
   lines.push('## JSON Schema');
   lines.push('');
   lines.push(
