@@ -150,7 +150,7 @@ When a profile is aimed at UI-heavy / frontend / layout / screenshot / browser-v
 
 The canonical pattern: define a `browser-ui` toolbelt under `tools.toolbelts` in `eforge/config.yaml` referencing the `playwright` MCP server (configured in `.mcp.json` with `npx -y @playwright/mcp@latest`), and assign `toolbelt: browser-ui` to the tiers that need browser automation (typically `implementation` and `review`). Use `toolbelt: none` for tiers that should not receive project MCP servers (typically `planning` and `evaluation`).
 
-See [Profile Toolbelts for UI Work](web/content/docs/configuration.md#profile-toolbelts-for-ui-work) in the public docs and the [Toolbelts](docs/config.md#toolbelts) section in the repo docs for full configuration details. MCP server commands live in `.mcp.json`; profiles reference only server names via toolbelts - never use backend MCP tool names (such as `mcp__playwright__browser_navigate`) in profile YAML.
+See [Profile Toolbelts for UI Work](https://eforge.build/docs/configuration#profile-toolbelts-for-ui-work) in the public docs and the [Toolbelts](https://eforge.build/reference/config#toolbelts) section in the Configuration Reference for full configuration details. MCP server commands live in `.mcp.json`; profiles reference only server names via toolbelts - never use backend MCP tool names (such as `mcp__playwright__browser_navigate`) in profile YAML.
 
 **Constraints (MVP):** One toolbelt per tier. Pi extensions and Claude Code plugins are out of scope - toolbelts are MCP-only and declarative.
 

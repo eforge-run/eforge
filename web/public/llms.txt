@@ -8,6 +8,8 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 
 - [Getting Started](/docs/getting-started.md): Install eforge, initialize a project, and run your first build
 - [Configuration guide](/docs/configuration.md): Practical setup and tuning guidance before using the full config reference
+- [Extensions guide](/docs/extensions.md): How native eforge extensions are discovered, trusted, loaded, and authored
+- [Extensions API reference](/docs/extensions-api.md): Typed extension SDK concepts, hook registration, context objects, and runtime boundaries
 
 ## Canonical reference
 
@@ -36,4 +38,4 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 - [Project README](https://github.com/eforge-build/eforge#readme): Broader project narrative, screenshots, install notes, and examples
 
 eforge version: 0.7.12
-Docs commit: f8057f14
+Docs commit: 030fb2f0

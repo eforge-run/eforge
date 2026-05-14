@@ -116,6 +116,16 @@ async function mirrorGuideMarkdown(repoRoot: string, outputPaths: OutputPaths): 
       source: join(repoRoot, 'web', 'content', 'docs', 'configuration.md'),
       target: outputPaths.publicDocsConfiguration,
     },
+    // --- eforge:region plan-01-reference-and-mirror-content ---
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'extensions.md'),
+      target: outputPaths.publicDocsExtensions,
+    },
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'extensions-api.md'),
+      target: outputPaths.publicDocsExtensionsApi,
+    },
+    // --- eforge:endregion plan-01-reference-and-mirror-content ---
     {
       source: join(repoRoot, 'web', 'content', 'docs', 'glossary.md'),
       target: outputPaths.publicDocsGlossary,
