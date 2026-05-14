@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 37b52dad -->
+<!-- Commit: b6852740 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference

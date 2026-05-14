@@ -15,6 +15,7 @@ export const DOCS_NAV: DocNavItem[] = [
   { slug: 'getting-started', title: 'Getting Started', group: 'Guides' },
   { slug: 'concepts', title: 'Core Concepts', group: 'Guides' },
   { slug: 'configuration', title: 'Configuration', group: 'Guides' },
+  { slug: 'glossary', title: 'Glossary', group: 'Reference' },
 ];
 
 export const REFERENCE_NAV: ReferenceNavItem[] = [

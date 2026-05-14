@@ -1,6 +1,13 @@
 # eforge
 
-eforge is an autonomous build-and-review orchestration engine for code generation. It accepts a PRD (Product Requirements Document) as input, plans implementation steps using AI agents, builds in parallel worktrees, reviews the result, and merges to the base branch. The daemon keeps a persistent HTTP server for queue management and live SSE event streaming.
+> eforge turns prompts, plans, playbooks, or PRDs into reviewed code through a multi-agent build pipeline.
+
+eforge is an autonomous build-and-review orchestration engine for code generation. It accepts build intent from CLI prompts, rough notes, session plans, playbooks, or PRD files; normalizes that input into build source; plans implementation steps using AI agents; builds in parallel worktrees; reviews the result; and merges to the base branch. The daemon keeps a persistent HTTP server for queue management and live SSE event streaming.
+
+## Getting started
+
+- [Getting Started](/docs/getting-started.md): Install eforge, initialize a project, and run your first build
+- [Configuration guide](/docs/configuration.md): Practical setup and tuning guidance before using the full config reference
 
 ## Canonical reference
 
@@ -10,10 +17,22 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 - [Configuration](/reference/config.md): eforge/config.yaml schema with all fields and defaults
 - [MCP tools and skills](/reference/tools.md): MCP tools (Claude Code plugin) and native commands (Pi extension) plus skill parity table
 
+## Packages and source
+
+- [GitHub repository](https://github.com/eforge-build/eforge): Source repository for the engine, daemon, docs, Claude Code plugin, and Pi extension
+- [Standalone CLI npm package](https://www.npmjs.com/package/@eforge-build/eforge): npm package for the eforge CLI and daemon runtime
+- [Pi extension npm package](https://www.npmjs.com/package/@eforge-build/pi-eforge): npm package for the native Pi integration
+
 ## Schemas
 
 - [Event schema (JSON Schema)](/schemas/events.schema.json)
 - [Config schema (JSON Schema)](/schemas/config.schema.json)
 
+## Optional
+
+- [Core concepts](/docs/concepts.md): Pipeline concepts, harnesses, tiers, queues, and agent-readable artifacts
+- [Glossary](/docs/glossary.md): eforge-specific terms such as profile, worktree, planner, reviewer, recovery sidecar, and playbook
+- [Project README](https://github.com/eforge-build/eforge#readme): Broader project narrative, screenshots, install notes, and examples
+
 eforge version: 0.7.12
-Docs commit: 37b52dad
+Docs commit: b6852740

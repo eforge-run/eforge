@@ -33,6 +33,7 @@ export function getOutputPaths(repoRoot: string) {
   const webContent = join(repoRoot, 'web', 'content', 'reference');
   const webPublicRef = join(repoRoot, 'web', 'public', 'reference');
   const webPublicSchemas = join(repoRoot, 'web', 'public', 'schemas');
+  const webPublicDocs = join(repoRoot, 'web', 'public', 'docs');
   const webPublicRoot = join(repoRoot, 'web', 'public');
 
   return {
@@ -49,6 +50,12 @@ export function getOutputPaths(repoRoot: string) {
     publicEvents: join(webPublicRef, 'events.md'),
     publicConfig: join(webPublicRef, 'config.md'),
     publicTools: join(webPublicRef, 'tools.md'),
+
+    // Raw public guide mirror (for agents and direct linking)
+    publicDocsGettingStarted: join(webPublicDocs, 'getting-started.md'),
+    publicDocsConcepts: join(webPublicDocs, 'concepts.md'),
+    publicDocsConfiguration: join(webPublicDocs, 'configuration.md'),
+    publicDocsGlossary: join(webPublicDocs, 'glossary.md'),
 
     // JSON Schemas
     schemaEvents: join(webPublicSchemas, 'events.schema.json'),

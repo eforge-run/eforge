@@ -1,12 +1,14 @@
 /**
  * LLMs.txt generator.
  *
- * Produces two files:
- *   - llms.txt: curated index (overview + links to reference docs and schemas)
+ * Produces agent-facing files:
+ *   - llms.txt: curated index (summary + guides + reference docs + packages + schemas)
  *   - llms-full.txt: deterministic concatenation of all reference Markdown files
+ *   - public docs/*.md: raw Markdown mirror of hand-authored guide pages
  *
- * Both files are generated from LLMS_MANIFEST and the reference files written
- * by the other surface generators. Run this generator last.
+ * llms.txt is generated from LLMS_MANIFEST and the reference files written
+ * by the other surface generators; guide mirrors are copied from web/content/docs.
+ * Run this generator last.
  */
 
 import { mkdir, writeFile, readFile } from 'node:fs/promises';
@@ -24,14 +26,32 @@ function buildLlmsTxt(provenance: ProvenanceInfo): string {
   const lines: string[] = [
     '# eforge',
     '',
+    `> ${LLMS_MANIFEST.summary}`,
+    '',
     LLMS_MANIFEST.overview,
     '',
-    '## Canonical reference',
+    '## Getting started',
     '',
   ];
 
+  for (const guide of LLMS_MANIFEST.guides) {
+    lines.push(`- [${guide.title}](${guide.url}): ${guide.description}`);
+  }
+
+  lines.push('');
+  lines.push('## Canonical reference');
+  lines.push('');
+
   for (const entry of LLMS_MANIFEST.entries) {
     lines.push(`- [${entry.title}](${entry.rawUrl}): ${entry.description}`);
+  }
+
+  lines.push('');
+  lines.push('## Packages and source');
+  lines.push('');
+
+  for (const pkg of LLMS_MANIFEST.packages) {
+    lines.push(`- [${pkg.title}](${pkg.url}): ${pkg.description}`);
   }
 
   lines.push('');
@@ -40,6 +60,14 @@ function buildLlmsTxt(provenance: ProvenanceInfo): string {
 
   for (const schema of LLMS_MANIFEST.schemas) {
     lines.push(`- [${schema.title}](${schema.url})`);
+  }
+
+  lines.push('');
+  lines.push('## Optional');
+  lines.push('');
+
+  for (const optional of LLMS_MANIFEST.optional) {
+    lines.push(`- [${optional.title}](${optional.url}): ${optional.description}`);
   }
 
   lines.push('');
@@ -74,11 +102,39 @@ async function buildLlmsFullTxt(outputPaths: OutputPaths): Promise<string> {
   return chunks.join('');
 }
 
+async function mirrorGuideMarkdown(repoRoot: string, outputPaths: OutputPaths): Promise<void> {
+  const guideMirrors: Array<{ source: string; target: string }> = [
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'getting-started.md'),
+      target: outputPaths.publicDocsGettingStarted,
+    },
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'concepts.md'),
+      target: outputPaths.publicDocsConcepts,
+    },
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'configuration.md'),
+      target: outputPaths.publicDocsConfiguration,
+    },
+    {
+      source: join(repoRoot, 'web', 'content', 'docs', 'glossary.md'),
+      target: outputPaths.publicDocsGlossary,
+    },
+  ];
+
+  for (const mirror of guideMirrors) {
+    const content = await readFile(mirror.source, 'utf-8');
+    await writeToPath(content, mirror.target);
+  }
+}
+
 export async function generateLlms(opts: {
   outputPaths: OutputPaths;
   provenance: ProvenanceInfo;
   repoRoot: string;
 }): Promise<void> {
+  await mirrorGuideMarkdown(opts.repoRoot, opts.outputPaths);
+
   const llmsTxt = buildLlmsTxt(opts.provenance);
   await writeToPath(llmsTxt, opts.outputPaths.llmsTxt);
 
