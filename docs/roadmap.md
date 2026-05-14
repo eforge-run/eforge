@@ -20,7 +20,6 @@
 
 **Goal**: Make eforge a platform that agent runtime profiles and TypeScript modules can extend without forking the engine.
 
-- **Profile toolbelts - runtime filtering** - The `tools.toolbelts` registry and per-tier `toolbelt` field are schema-valid, statically validated, and runtime-enforced. Agents in each tier receive only the MCP servers declared in their toolbelt; `toolbelt: none` passes an empty list; omitting `toolbelt` preserves the all-servers default. Runtime filtering and observability have shipped: toolbelt selection and resolved server names are visible in the monitor UI agent detail surface and in profile list/show output. Design in `docs/prd/profile-toolbelts.md`.
 - **Native TypeScript extensions** - Typed event hooks, agent context/tool injection, policy gates, input transformers, and limited stage-like APIs (e.g. custom reviewer perspectives) authored as TypeScript modules and discoverable in user/project/project-local scopes. Includes an extension SDK package, a `/eforge:extend` skill in both Pi and Claude Code, CLI/daemon management commands, and event-replay testing. Multi-phase rollout starting with typed event hooks. Depends on TypeBox schema unification. Design in `docs/prd/typescript-extensibility.md`.
 
 ---
@@ -33,12 +32,3 @@
 - **Schema library unification on TypeBox** - TypeBox is canonical for eforge-owned domain schemas; Zod is isolated to third-party SDK compatibility adapters. The first migration slice (client wire schemas, engine structured output, and custom-tool contracts) is complete. Config, input artifact, and MCP proxy schemas remain Zod until a follow-up PRD lands.
 - **TypeScript project references** - Adopt `tsconfig.json` `references` across workspace members for automatic topological ordering.
 
----
-
-## Marketing Site (eforge.build)
-
-**Goal**: Public-facing site for docs, demos, and project visibility.
-
-- **Next.js app** - `web/` directory, deployed to Vercel at eforge.build
-- **Landing page** - Value prop, feature overview, getting-started guide
-- **Documentation** - Usage docs, configuration reference, examples
