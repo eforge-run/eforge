@@ -26,6 +26,7 @@ import type {
   ExtensionNewRequest,
   ExtensionReloadWatcherMetadata,
   ExtensionRegistrationSummary,
+  RunSummary,
 } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent, parseWithSchema } from '@eforge-build/client';
 import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
@@ -243,6 +244,179 @@ interface SSESubscriber {
 interface DaemonSSESubscriber {
   res: ServerResponse;
   lastSeenId: number;
+}
+
+/**
+ * Derive a RunSummary for the given sessionId from the monitor DB.
+ *
+ * Seeds the plan map from the latest `planning:complete` event (status
+ * `'pending'`), then overlays `plan:build:start/complete/failed` events.
+ * Falls back to build-event-only derivation when no `planning:complete` event
+ * is present, preserving backward compatibility.
+ */
+export function buildRunSummary(db: MonitorDB, sessionId: string): RunSummary {
+  const sessionRuns = db.getSessionRuns(sessionId);
+
+  // Compute session-level status
+  let status: RunSummary['status'];
+  if (sessionRuns.length === 0) {
+    status = 'unknown';
+  } else if (sessionRuns.some((r) => r.status === 'running')) {
+    status = 'running';
+  } else if (sessionRuns.some((r) => r.status === 'failed')) {
+    status = 'failed';
+  } else {
+    status = 'completed';
+  }
+
+  // Build runs array
+  const runs = sessionRuns.map((r) => ({
+    id: r.id,
+    command: r.command,
+    status: r.status,
+    startedAt: r.startedAt,
+    completedAt: r.completedAt ?? null,
+  }));
+
+  // Extract plan progress
+  const planStatusMap = new Map<string, { id: string; status: 'pending' | 'running' | 'completed' | 'failed'; branch: string | null; dependsOn: string[] }>();
+
+  // Seed from latest planning:complete event (if any)
+  const planningCompleteEvents = db.getEventsByTypeForSession(sessionId, 'planning:complete');
+  if (planningCompleteEvents.length > 0) {
+    const latestPlanningEvent = planningCompleteEvents[planningCompleteEvents.length - 1];
+    try {
+      const data = JSON.parse(latestPlanningEvent.data);
+      if (Array.isArray(data.plans)) {
+        for (const planFile of data.plans) {
+          if (planFile.id) {
+            planStatusMap.set(planFile.id, {
+              id: planFile.id,
+              status: 'pending',
+              branch: planFile.branch ?? null,
+              dependsOn: planFile.dependsOn ?? [],
+            });
+          }
+        }
+      }
+    } catch { /* skip malformed event */ }
+  }
+
+  // Overlay build lifecycle events
+  const buildStartEvents = db.getEventsByTypeForSession(sessionId, 'plan:build:start');
+  const buildCompleteEvents = db.getEventsByTypeForSession(sessionId, 'plan:build:complete');
+  const buildFailedEvents = db.getEventsByTypeForSession(sessionId, 'plan:build:failed');
+
+  for (const evt of buildStartEvents) {
+    try {
+      const data = JSON.parse(evt.data);
+      if (data.planId) {
+        // Note: the current plan:build:start schema only carries { type, planId }.
+        // branch/dependsOn are read defensively here — they are always undefined in
+        // practice, so the fallback is null/[] for plans not seeded by planning:complete.
+        if (planStatusMap.has(data.planId)) {
+          const entry = planStatusMap.get(data.planId)!;
+          entry.status = 'running';
+          if (data.branch !== undefined) entry.branch = data.branch ?? null;
+          if (data.dependsOn !== undefined) entry.dependsOn = data.dependsOn ?? [];
+        } else {
+          planStatusMap.set(data.planId, {
+            id: data.planId,
+            status: 'running',
+            branch: data.branch ?? null,
+            dependsOn: data.dependsOn ?? [],
+          });
+        }
+      }
+    } catch { /* skip */ }
+  }
+  for (const evt of buildCompleteEvents) {
+    try {
+      const data = JSON.parse(evt.data);
+      if (data.planId && planStatusMap.has(data.planId)) {
+        planStatusMap.get(data.planId)!.status = 'completed';
+      }
+    } catch { /* skip */ }
+  }
+  for (const evt of buildFailedEvents) {
+    try {
+      const data = JSON.parse(evt.data);
+      if (data.planId && planStatusMap.has(data.planId)) {
+        planStatusMap.get(data.planId)!.status = 'failed';
+      }
+    } catch { /* skip */ }
+  }
+
+  // Current phase from latest phase:start
+  const phaseStartEvents = db.getEventsByTypeForSession(sessionId, 'phase:start');
+  let currentPhase: string | null = null;
+  if (phaseStartEvents.length > 0) {
+    try {
+      const data = JSON.parse(phaseStartEvents[phaseStartEvents.length - 1].data);
+      currentPhase = data.phase ?? null;
+    } catch { /* skip */ }
+  }
+
+  // Current agent from latest agent:start without matching agent:stop
+  const agentStartEvents = db.getEventsByTypeForSession(sessionId, 'agent:start');
+  const agentStopEvents = db.getEventsByTypeForSession(sessionId, 'agent:stop');
+  const stoppedAgentIds = new Set<string>();
+  for (const evt of agentStopEvents) {
+    try {
+      const data = JSON.parse(evt.data);
+      if (data.agentId) stoppedAgentIds.add(data.agentId);
+    } catch { /* skip */ }
+  }
+  let currentAgent: string | null = null;
+  for (let i = agentStartEvents.length - 1; i >= 0; i--) {
+    try {
+      const data = JSON.parse(agentStartEvents[i].data);
+      if (data.agentId && !stoppedAgentIds.has(data.agentId)) {
+        currentAgent = data.agent ?? data.agentId;
+        break;
+      }
+    } catch { /* skip */ }
+  }
+
+  // Event counts
+  const allEvents = db.getEventsBySession(sessionId);
+  const totalEvents = allEvents.length;
+  let errorCount = 0;
+  for (const evt of allEvents) {
+    if (evt.type.endsWith(':failed') || evt.type.endsWith(':error')) {
+      errorCount++;
+    }
+  }
+
+  // Duration
+  let duration: { startedAt: string | null; completedAt: string | null; seconds: number | null } = {
+    startedAt: null,
+    completedAt: null,
+    seconds: null,
+  };
+  if (sessionRuns.length > 0) {
+    const startedAt = sessionRuns[0].startedAt;
+    const lastRun = sessionRuns[sessionRuns.length - 1];
+    const completedAt = lastRun.completedAt ?? null;
+    duration = {
+      startedAt,
+      completedAt,
+      seconds: completedAt
+        ? Math.round((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000)
+        : Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
+    };
+  }
+
+  return {
+    sessionId,
+    status,
+    runs,
+    plans: Array.from(planStatusMap.values()),
+    currentPhase,
+    currentAgent,
+    eventCounts: { total: totalEvents, errors: errorCount },
+    duration,
+  };
 }
 
 export async function startServer(
@@ -3184,136 +3358,7 @@ export async function startServer(
         return;
       }
       const sessionId = resolveSessionId(id);
-      const sessionRuns = db.getSessionRuns(sessionId);
-
-      // Compute session-level status
-      let status: string;
-      if (sessionRuns.length === 0) {
-        status = 'unknown';
-      } else if (sessionRuns.some((r) => r.status === 'running')) {
-        status = 'running';
-      } else if (sessionRuns.some((r) => r.status === 'failed')) {
-        status = 'failed';
-      } else {
-        status = 'completed';
-      }
-
-      // Build runs array
-      const runs = sessionRuns.map((r) => ({
-        id: r.id,
-        command: r.command,
-        status: r.status,
-        startedAt: r.startedAt,
-        completedAt: r.completedAt ?? null,
-      }));
-
-      // Extract plan progress from build events
-      const buildStartEvents = db.getEventsByTypeForSession(sessionId, 'plan:build:start');
-      const buildCompleteEvents = db.getEventsByTypeForSession(sessionId, 'plan:build:complete');
-      const buildFailedEvents = db.getEventsByTypeForSession(sessionId, 'plan:build:failed');
-
-      const planStatusMap = new Map<string, { id: string; status: string; branch: string | null; dependsOn: string[] }>();
-      for (const evt of buildStartEvents) {
-        try {
-          const data = JSON.parse(evt.data);
-          if (data.planId) {
-            planStatusMap.set(data.planId, {
-              id: data.planId,
-              status: 'running',
-              branch: data.branch ?? null,
-              dependsOn: data.dependsOn ?? [],
-            });
-          }
-        } catch { /* skip */ }
-      }
-      for (const evt of buildCompleteEvents) {
-        try {
-          const data = JSON.parse(evt.data);
-          if (data.planId && planStatusMap.has(data.planId)) {
-            planStatusMap.get(data.planId)!.status = 'completed';
-          }
-        } catch { /* skip */ }
-      }
-      for (const evt of buildFailedEvents) {
-        try {
-          const data = JSON.parse(evt.data);
-          if (data.planId && planStatusMap.has(data.planId)) {
-            planStatusMap.get(data.planId)!.status = 'failed';
-          }
-        } catch { /* skip */ }
-      }
-      const plans = Array.from(planStatusMap.values());
-
-      // Current phase from latest phase:start
-      const phaseStartEvents = db.getEventsByTypeForSession(sessionId, 'phase:start');
-      let currentPhase: string | null = null;
-      if (phaseStartEvents.length > 0) {
-        try {
-          const data = JSON.parse(phaseStartEvents[phaseStartEvents.length - 1].data);
-          currentPhase = data.phase ?? null;
-        } catch { /* skip */ }
-      }
-
-      // Current agent from latest agent:start without matching agent:stop
-      const agentStartEvents = db.getEventsByTypeForSession(sessionId, 'agent:start');
-      const agentStopEvents = db.getEventsByTypeForSession(sessionId, 'agent:stop');
-      const stoppedAgentIds = new Set<string>();
-      for (const evt of agentStopEvents) {
-        try {
-          const data = JSON.parse(evt.data);
-          if (data.agentId) stoppedAgentIds.add(data.agentId);
-        } catch { /* skip */ }
-      }
-      let currentAgent: string | null = null;
-      for (let i = agentStartEvents.length - 1; i >= 0; i--) {
-        try {
-          const data = JSON.parse(agentStartEvents[i].data);
-          if (data.agentId && !stoppedAgentIds.has(data.agentId)) {
-            currentAgent = data.agent ?? data.agentId;
-            break;
-          }
-        } catch { /* skip */ }
-      }
-
-      // Event counts
-      const allEvents = db.getEventsBySession(sessionId);
-      const totalEvents = allEvents.length;
-      let errorCount = 0;
-      for (const evt of allEvents) {
-        if (evt.type.endsWith(':failed') || evt.type.endsWith(':error')) {
-          errorCount++;
-        }
-      }
-
-      // Duration
-      let duration: { startedAt: string | null; completedAt: string | null; seconds: number | null } = {
-        startedAt: null,
-        completedAt: null,
-        seconds: null,
-      };
-      if (sessionRuns.length > 0) {
-        const startedAt = sessionRuns[0].startedAt;
-        const lastRun = sessionRuns[sessionRuns.length - 1];
-        const completedAt = lastRun.completedAt ?? null;
-        duration = {
-          startedAt,
-          completedAt,
-          seconds: completedAt
-            ? Math.round((new Date(completedAt).getTime() - new Date(startedAt).getTime()) / 1000)
-            : Math.round((Date.now() - new Date(startedAt).getTime()) / 1000),
-        };
-      }
-
-      sendJson(res, {
-        sessionId,
-        status,
-        runs,
-        plans,
-        currentPhase,
-        currentAgent,
-        eventCounts: { total: totalEvents, errors: errorCount },
-        duration,
-      });
+      sendJson(res, buildRunSummary(db, sessionId));
     } else if (url.startsWith(`${RUN_STATE_BASE}/`)) {
       const id = url.slice(`${RUN_STATE_BASE}/`.length);
       if (!id || !/^[\w-]+$/.test(id)) {
