@@ -1,0 +1,70 @@
+name: make-pi-transport-websocket-close-resilient
+description: Make Pi-backed agent runs resilient to transient WebSocket
+  transport closes by classifying retryable transport errors, downgrading
+  post-result builder closes only when committed work is proven, and enriching
+  recovery evidence for compile failures.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-transport-resilience
+    name: Pi Transport Close Resilience
+    depends_on: []
+    branch: make-pi-transport-websocket-close-resilient/plan-01-transport-resilience
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This change crosses harness error classification, retry policy
+          behavior, build-agent completion handling, and recovery evidence
+          synthesis.
+      reviewer:
+        effort: high
+        rationale: Retry and downgrade semantics need careful review to avoid masking
+          non-transient backend failures or replaying side-effectful agents
+          without evidence.
+      tester:
+        effort: high
+        rationale: Tests must cover event-stream ordering, git evidence, retry
+          classification, and recovery DB synthesis.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - review-cycle
+    - doc-sync
+    - test-write
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a multi-file reliability bugfix spanning Pi harness error
+    classification, planner/build retry paths, event/recovery signal, and tests,
+    but it can be planned coherently by one planner session, so excursion is
+    appropriate. A plan review gate helps ensure retry/downgrade behavior is
+    conservative and does not mask hard failures. The build pipeline implements
+    first, runs an iterative review focused on code/API/test/verification
+    concerns, syncs any affected docs or prompts, then writes and runs targeted
+    tests for transient post-result, mid-run, planner, and non-transient cases.
