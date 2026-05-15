@@ -62,6 +62,10 @@ export type {
   ExtensionFormat,
   ExtensionLayout,
   ExtensionTrust,
+  // --- eforge:region plan-01-extension-management-api ---
+  ExtensionScaffoldScope,
+  ExtensionScaffoldTemplate,
+  // --- eforge:endregion plan-01-extension-management-api ---
   ExtensionDiagnostic,
   ExtensionShadow,
   ExtensionRegistrationSummary,
@@ -69,6 +73,12 @@ export type {
   ExtensionListResponse,
   ExtensionShowResponse,
   ExtensionValidateResponse,
+  // --- eforge:region plan-01-extension-management-api ---
+  ExtensionNewRequest,
+  ExtensionNewResponse,
+  ExtensionReloadWatcherMetadata,
+  ExtensionReloadResponse,
+  // --- eforge:endregion plan-01-extension-management-api ---
   QueueItem,
   SessionMetadata,
   RunInfo,

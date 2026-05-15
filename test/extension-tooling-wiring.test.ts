@@ -20,6 +20,8 @@ describe('extension tooling route constants and helpers', () => {
     expect(API_ROUTES.extensionList).toBe('/api/extensions/list');
     expect(API_ROUTES.extensionShow).toBe('/api/extensions/show');
     expect(API_ROUTES.extensionValidate).toBe('/api/extensions/validate');
+    expect(API_ROUTES.extensionNew).toBe('/api/extensions/new');
+    expect(API_ROUTES.extensionReload).toBe('/api/extensions/reload');
   });
 
   it('client helpers call shared extension route constants', () => {
@@ -27,8 +29,12 @@ describe('extension tooling route constants and helpers', () => {
     expect(source).toContain('API_ROUTES.extensionList');
     expect(source).toContain('API_ROUTES.extensionShow');
     expect(source).toContain('API_ROUTES.extensionValidate');
+    expect(source).toContain('API_ROUTES.extensionNew');
+    expect(source).toContain('API_ROUTES.extensionReload');
     expect(source).not.toContain("'/api/extensions/");
     expect(source).not.toContain('"/api/extensions/');
+    expect(source).toContain('apiNewExtension');
+    expect(source).toContain('apiReloadExtensions');
   });
 });
 
@@ -89,6 +95,17 @@ describe('native extension event runtime wiring', () => {
     const wrapBlock = daemonSource.slice(daemonSource.indexOf('export function wrapWatcherEvents('), daemonSource.indexOf('async function main'));
     expect(wrapBlock.indexOf('withNativeEventHooks(')).toBeLessThan(wrapBlock.indexOf('withRecording('));
     expect(wrapBlock.indexOf('withRecording(')).toBeLessThan(wrapBlock.indexOf('withHooks('));
+  });
+
+  it('reloads the in-process watcher without using worker cancellation paths', () => {
+    const reloadBlock = daemonSource.slice(
+      daemonSource.indexOf('async function reloadExtensionsWatcher()'),
+      daemonSource.indexOf('// Load config before starting server'),
+    );
+    expect(reloadBlock).toContain('await stopWatcher();');
+    expect(reloadBlock).toContain('await startWatcher(');
+    expect(reloadBlock).not.toContain('cancelWorker');
+    expect(reloadBlock).not.toContain('process.kill');
   });
 });
 

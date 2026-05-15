@@ -40,3 +40,17 @@ export type {
 } from './event-runtime.js';
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
+// --- eforge:region plan-01-extension-management-api ---
+export {
+  SUPPORTED_EXTENSION_SCAFFOLD_TEMPLATES,
+  ScaffoldNativeExtensionError,
+  scaffoldNativeExtension,
+} from './scaffold.js';
+export type {
+  ExtensionScaffoldErrorCode,
+  ExtensionScaffoldRequestScope,
+  ExtensionScaffoldTemplate,
+  ScaffoldNativeExtensionOptions,
+  ScaffoldNativeExtensionResult,
+} from './scaffold.js';
+// --- eforge:endregion plan-01-extension-management-api ---

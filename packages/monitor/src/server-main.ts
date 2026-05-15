@@ -15,7 +15,7 @@
 
 import { openDatabase, type MonitorDB } from './db.js';
 import { startServer, type WorkerTracker, type DaemonState } from './server.js';
-import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive } from '@eforge-build/client';
+import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive, type ExtensionReloadWatcherMetadata } from '@eforge-build/client';
 import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig, type HookConfig } from '@eforge-build/engine/config';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
@@ -491,6 +491,9 @@ async function main(): Promise<void> {
     },
     onSpawnWatcher: () => { void startWatcher(config?.hooks ?? []); },
     onKillWatcher: () => { void stopWatcher(); },
+    // --- eforge:region plan-01-extension-management-api ---
+    onReloadExtensions: () => reloadExtensionsWatcher(),
+    // --- eforge:endregion plan-01-extension-management-api ---
     onShutdown: undefined as (() => void) | undefined,
     // --- eforge:region plan-01-types-and-daemon-emission ---
     onDaemonEvent: (event) => writeDaemonEvent(db, event as { type: string } & Record<string, unknown>, daemonSessionId),
@@ -630,6 +633,59 @@ async function main(): Promise<void> {
       new Promise<void>((resolveWait) => setTimeout(resolveWait, WATCHER_DRAIN_TIMEOUT_MS).unref()),
     ]);
   }
+
+  // --- eforge:region plan-01-extension-management-api ---
+  async function reloadExtensionsWatcher(): Promise<ExtensionReloadWatcherMetadata> {
+    if (!daemonState) {
+      return {
+        wasRunning: false,
+        restarted: false,
+        running: false,
+        previousSessionId: null,
+        sessionId: null,
+        message: 'Extension discovery refreshed; no runtime watcher was restarted.',
+      };
+    }
+
+    const wasRunning = watcherAbort !== null && daemonState.watcher.running;
+    const previousSessionId = daemonState.watcher.sessionId;
+    if (!wasRunning) {
+      return {
+        wasRunning: false,
+        restarted: false,
+        running: daemonState.watcher.running,
+        previousSessionId,
+        sessionId: daemonState.watcher.sessionId,
+        message: 'Extension discovery refreshed; no runtime watcher was restarted.',
+      };
+    }
+
+    await stopWatcher();
+    try {
+      const { config: reloadedConfig, warnings } = await loadConfig(cwd);
+      for (const warning of warnings) {
+        process.stderr.write(`[eforge] ${warning}\n`);
+      }
+      config = reloadedConfig;
+    } catch {
+      // Keep the previous config if reload-time config parsing fails; startWatcher
+      // will perform its own engine initialization and report any failure.
+    }
+    await startWatcher(config?.hooks ?? []);
+
+    const restarted = daemonState.watcher.running && daemonState.watcher.sessionId !== previousSessionId;
+    return {
+      wasRunning: true,
+      restarted,
+      running: daemonState.watcher.running,
+      previousSessionId,
+      sessionId: daemonState.watcher.sessionId,
+      message: restarted
+        ? 'Extension discovery refreshed and runtime watcher restarted.'
+        : 'Extension discovery refreshed, but the runtime watcher did not restart.',
+    };
+  }
+  // --- eforge:endregion plan-01-extension-management-api ---
 
   // Load config before starting server so we can pass it for validation
   let config: Awaited<ReturnType<typeof loadConfig>>['config'] | undefined;
