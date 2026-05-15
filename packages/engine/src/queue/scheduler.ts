@@ -107,6 +107,9 @@ export class QueueScheduler {
   // --- eforge:endregion plan-02-scheduler-emission ---
   private _processed = 0;
   private _skipped = 0;
+  // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+  private suspended = false;
+  // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
   constructor(opts: QueueSchedulerOptions) {
     this.bus = opts.bus;
@@ -157,6 +160,49 @@ export class QueueScheduler {
       }
     }
   }
+
+  // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+  /** Returns true when the scheduler is suspended (no new PRDs will be launched). */
+  get isSuspended(): boolean {
+    return this.suspended;
+  }
+
+  /**
+   * Suspend new PRD launches. `onComplete()` continues to run so in-flight
+   * completions are finalized and dependents are propagated correctly.
+   * Emits a single `daemon:scheduler:paused` diagnostic on each transition.
+   */
+  pause(): void {
+    if (this.suspended) return;
+    this.suspended = true;
+    this.eventQueue.push({
+      timestamp: new Date().toISOString(),
+      type: 'daemon:scheduler:paused',
+    } as EforgeEvent);
+  }
+
+  /**
+   * Resume PRD launches after a pause. Clears the suspended flag, emits a
+   * single `daemon:scheduler:resumed` diagnostic, then triggers a discovery
+   * tick so any pending PRDs are dequeued immediately.
+   */
+  resume(): void {
+    if (!this.suspended) return;
+    this.suspended = false;
+    this.eventQueue.push({
+      timestamp: new Date().toISOString(),
+      type: 'daemon:scheduler:resumed',
+    } as EforgeEvent);
+    void this.tick().catch((err) => {
+      this.eventQueue.push({
+        type: 'daemon:error',
+        source: 'scheduler:resume',
+        message: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      } as EforgeEvent);
+    });
+  }
+  // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
   // ---------------------------------------------------------------------------
   // Public lifecycle
@@ -286,6 +332,12 @@ export class QueueScheduler {
     const dependencyBlockedEmitted = new Set<string>();
     // --- eforge:endregion plan-02-scheduler-emission ---
 
+    // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+    // When suspended, do not launch any new PRDs. onComplete() still runs to
+    // finalize state — only new launches are gated here.
+    if (this.suspended) return;
+    // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
+
     for (const prd of this.orderedPrds) {
       if (this.abortController.signal.aborted) break;
 
@@ -406,10 +458,15 @@ export class QueueScheduler {
   /**
    * Handles `queue:prd:complete` forwarded from the pump.
    *
-   * Ordering guarantee: the pump yields the event to downstream consumers
-   * (SSE, hooks, persistence) BEFORE emitting it on the bus, so
-   * `session:start` / spawn events pushed here appear after the completion
-   * event in the outer consumer's view.
+   * Ordering guarantee: the pump in `eforge.ts` calls `bus.emit(event.type,
+   * event)` BEFORE `yield event`. Because `EventEmitter.emit` is synchronous,
+   * this listener is invoked immediately — `onComplete`'s synchronous prologue
+   * (counter increments, prdState updates) runs before the outer generator
+   * yields the completion event to downstream consumers. Only the continuation
+   * after `onComplete`'s first `await propagateSkip(...)` is deferred via a
+   * microtask. Any `session:start` / spawn events that `onComplete` pushes onto
+   * `eventQueue` are therefore enqueued asynchronously and still appear AFTER
+   * the completion event in the outer consumer's stream.
    */
   private async onComplete(event: Extract<SchedulerInputEvent, { type: 'queue:prd:complete' }>): Promise<void> {
     const { prdId, status } = event;

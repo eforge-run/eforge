@@ -275,6 +275,8 @@ export const IGNORED_EVENT_TYPES = [
   'daemon:scheduler:dequeued',
   'daemon:scheduler:capacity-blocked',
   'daemon:scheduler:dependency-blocked',
+  'daemon:scheduler:paused',
+  'daemon:scheduler:resumed',
   'daemon:auto-build:enabled',
   'daemon:auto-build:resumed',
   'daemon:auto-build:triggered',

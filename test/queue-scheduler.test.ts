@@ -229,3 +229,105 @@ describe('QueueScheduler — queue:prd:complete (failed)', () => {
     eventQueue.removeProducer();
   });
 });
+
+// ---------------------------------------------------------------------------
+// Test 4: pause() prevents new PRD from being dequeued
+// ---------------------------------------------------------------------------
+
+describe('QueueScheduler — pause() suspends new launches', () => {
+  it('pause() causes a ready PRD to NOT be dequeued until resume()', async () => {
+    const { cwd, queueDir, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+
+    // Pause the scheduler before start to ensure no launch on first tick
+    const scheduler = makeScheduler([]);
+    // Start with no initial PRDs, then pause, write file, inject mutation
+    await scheduler.start();
+
+    scheduler.pause();
+    expect(scheduler.isSuspended).toBe(true);
+
+    // Write a PRD file to the queue directory
+    const prdContent = '---\ntitle: PRD A\nstatus: pending\n---\n\n# PRD A\n\nDo something.';
+    await writeFile(join(cwd, queueDir, 'prd-a.md'), prdContent);
+
+    // Inject a queue:mutation to trigger discovery
+    const mutationEvent: SchedulerInputEvent = {
+      type: 'queue:mutation',
+      reason: 'enqueue',
+      timestamp: new Date().toISOString(),
+    };
+    bus.emit('queue:mutation', mutationEvent);
+
+    // Wait for the async discovery to run
+    await new Promise((r) => setTimeout(r, 200));
+
+    // PRD should be discovered but NOT spawned (suspended)
+    const events = eventQueue.drainAvailable();
+    const types = events.map((e) => e.type);
+    expect(types).toContain('queue:prd:discovered');
+    expect(types).not.toContain('daemon:scheduler:dequeued');
+    expect(spawnPrdChild).not.toHaveBeenCalled();
+
+    // Now resume — should immediately dequeue prd-a
+    scheduler.resume();
+    expect(scheduler.isSuspended).toBe(false);
+    await new Promise((r) => setTimeout(r, 200));
+
+    const eventsAfterResume = eventQueue.drainAvailable();
+    const typesAfterResume = eventsAfterResume.map((e) => e.type);
+    expect(typesAfterResume).toContain('daemon:scheduler:resumed');
+    expect(typesAfterResume).toContain('daemon:scheduler:dequeued');
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+    expect(spawnPrdChild.mock.calls[0][0].id).toBe('prd-a');
+
+    eventQueue.removeProducer();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Test 5: onComplete still runs while suspended (state finalization)
+// ---------------------------------------------------------------------------
+
+describe('QueueScheduler — onComplete runs while suspended', () => {
+  it('failed completion finalizes prdState to failed even when suspended', async () => {
+    const { bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+
+    const foundation = makeQueuedPrd('foundation');
+    const feature = makeQueuedPrd('feature', ['foundation']);
+
+    spawnPrdChild.mockResolvedValueOnce('failed');
+
+    const scheduler = makeScheduler([foundation, feature]);
+    await scheduler.start();
+
+    // foundation is spawned; pause before the completion arrives
+    await new Promise((r) => setTimeout(r, 50));
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+
+    scheduler.pause();
+
+    // Simulate foundation failing while suspended
+    const failEvent: SchedulerInputEvent = {
+      type: 'queue:prd:complete',
+      prdId: 'foundation',
+      status: 'failed',
+      timestamp: new Date().toISOString(),
+    };
+    bus.emit('queue:prd:complete', failEvent);
+
+    // Wait for onComplete to run
+    await new Promise((r) => setTimeout(r, 200));
+
+    // onComplete should have processed the failure: counter incremented
+    expect(scheduler.processed).toBe(1);
+
+    // feature should be blocked (propagateBlocked ran)
+    scheduler.finalizeBlockedAsSkipped();
+    expect(scheduler.skipped).toBe(1);
+
+    // No new builds should have started (suspended)
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+
+    eventQueue.removeProducer();
+  });
+});

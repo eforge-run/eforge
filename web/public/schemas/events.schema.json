@@ -5597,6 +5597,30 @@
           ],
           "properties": {
             "type": {
+              "const": "daemon:scheduler:paused",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:scheduler:resumed",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
               "const": "daemon:auto-build:enabled",
               "type": "string"
             }

@@ -18,7 +18,7 @@ import { startServer, type WorkerTracker, type DaemonState } from './server.js';
 import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive } from '@eforge-build/client';
 import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig, type HookConfig } from '@eforge-build/engine/config';
-import { EforgeEngine } from '@eforge-build/engine/eforge';
+import { EforgeEngine, type SchedulerControl } from '@eforge-build/engine/eforge';
 import { withHooks } from '@eforge-build/engine/hooks';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
@@ -285,6 +285,11 @@ export interface PauseOnFailureCtx {
  *  - isActiveController() — a superseded watcher must not pause a fresh one.
  *  - daemonState.autoBuild — avoids double-pause and redundant events.
  *
+ * On pause, suspends new PRD launches via `onPauseScheduler` (does NOT abort
+ * the watcher). This lets the failed `queue:prd:complete` complete its bus
+ * round-trip through `QueueScheduler.onComplete()` so in-memory state is
+ * finalized correctly before any re-enable attempt.
+ *
  * Exported for unit-testing.
  */
 export function maybePauseOnFailure(event: EforgeEvent, ctx: PauseOnFailureCtx): void {
@@ -299,7 +304,13 @@ export function maybePauseOnFailure(event: EforgeEvent, ctx: PauseOnFailureCtx):
     ctx.daemonState.autoBuildPaused = true;
     // --- eforge:endregion plan-01-types-and-daemon-emission ---
     writeAutoBuildPausedEvent(ctx.db, ctx.sessionId, `Build failed: ${event.prdId}`);
-    ctx.daemonState.onKillWatcher?.();
+    // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+    // Suspend new PRD launches without aborting the watcher, so the failed
+    // completion event still flows through QueueScheduler.onComplete() and
+    // finalizes in-memory state. Manual disable (POST /api/auto-build enabled:false)
+    // continues to call onKillWatcher for a full abort.
+    ctx.daemonState.onPauseScheduler?.();
+    // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
   }
 }
 
@@ -519,6 +530,11 @@ async function main(): Promise<void> {
       daemonState.watcher = { running: false, pid: null, sessionId: null };
       daemonState.autoBuild = false;
       daemonState.injectSchedulerEvent = undefined;
+      // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+      daemonState.onPauseScheduler = undefined;
+      daemonState.onResumeScheduler = undefined;
+      daemonState.isSchedulerAlive = undefined;
+      // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
       const errMsg = err instanceof Error ? err.message : String(err);
       const reason = `Watcher failed to initialize: ${errMsg}`;
       // --- eforge:region plan-01-types-and-daemon-emission ---
@@ -541,6 +557,11 @@ async function main(): Promise<void> {
         watcherAbort = null;
         daemonState.watcher = { running: false, pid: null, sessionId: null };
         daemonState.injectSchedulerEvent = undefined;
+        // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+        daemonState.onPauseScheduler = undefined;
+        daemonState.onResumeScheduler = undefined;
+        daemonState.isSchedulerAlive = undefined;
+        // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
       }
       return;
     }
@@ -556,6 +577,15 @@ async function main(): Promise<void> {
                 daemonState.injectSchedulerEvent = inject;
               }
             },
+            // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+            onSchedulerControlRegister: (control: SchedulerControl) => {
+              if (daemonState && watcherAbort === controller) {
+                daemonState.onPauseScheduler = () => control.pause();
+                daemonState.onResumeScheduler = () => control.resume();
+                daemonState.isSchedulerAlive = () => control.isAlive();
+              }
+            },
+            // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
           }),
           db,
           cwd,
@@ -613,6 +643,11 @@ async function main(): Promise<void> {
           if (daemonState) {
             daemonState.watcher = { running: false, pid: null, sessionId: null };
             daemonState.injectSchedulerEvent = undefined;
+            // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+            daemonState.onPauseScheduler = undefined;
+            daemonState.onResumeScheduler = undefined;
+            daemonState.isSchedulerAlive = undefined;
+            // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
           }
         }
       }

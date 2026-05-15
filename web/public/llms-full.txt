@@ -2,7 +2,7 @@
 <!-- section: cli -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 55d1e496 -->
+<!-- Commit: fdd0ca45 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -318,7 +318,7 @@ Run the MCP stdio proxy server (used by Claude Code plugin)
 <!-- section: api -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 55d1e496 -->
+<!-- Commit: fdd0ca45 -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -397,7 +397,7 @@ Use `buildPath(pattern, params)` from `@eforge-build/client` to resolve `:param`
 <!-- section: events -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 55d1e496 -->
+<!-- Commit: fdd0ca45 -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -410,7 +410,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 153
+Total variants: 155
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -547,6 +547,8 @@ Total variants: 153
 | `daemon:scheduler:dequeued` | `capacityRemaining`, `prdId`, `queueDepth` |
 | `daemon:scheduler:capacity-blocked` | `limit`, `queueDepth`, `runningCount` |
 | `daemon:scheduler:dependency-blocked` | `blockedBy`, `prdId` |
+| `daemon:scheduler:paused` | - |
+| `daemon:scheduler:resumed` | - |
 | `daemon:auto-build:enabled` | - |
 | `daemon:auto-build:resumed` | - |
 | `daemon:auto-build:triggered` | `prdsEnqueued`, `trigger` |
@@ -578,7 +580,7 @@ Use `safeParseEforgeEvent(value)` from `@eforge-build/client` to validate at run
 <!-- section: config -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 55d1e496 -->
+<!-- Commit: fdd0ca45 -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -669,7 +671,7 @@ The complete machine-readable schema is at [`/schemas/config.schema.json`](/sche
 <!-- section: tools -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 55d1e496 -->
+<!-- Commit: fdd0ca45 -->
 <!-- Source: packages/eforge/src/cli/mcp-proxy.ts, packages/pi-eforge/extensions/eforge/index.ts, eforge-plugin/skills/, packages/pi-eforge/skills/ -->
 
 # eforge MCP Tools and Skills Reference
