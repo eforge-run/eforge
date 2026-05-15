@@ -442,3 +442,24 @@ describe('emitBuildDecisionForPlan', () => {
     expect(b.decision).toEqual(a.decision);
   });
 });
+
+// --- eforge:region plan-02-build-evaluator-enforcement ---
+describe('BuildDecisionSchema — enriched cycle-terminated decisions', () => {
+  it('parses max-round termination with final evaluation metadata', () => {
+    const result = parseWithSchema(BuildDecisionSchema, {
+      kind: 'cycle-terminated',
+      rationale: 'Review cycle exhausted; last review found issues; final evaluation ran',
+      round: 1,
+      reason: 'max-rounds',
+      issuesRemaining: 0,
+      lastReviewIssueCount: 2,
+      finalEvaluationRan: true,
+      finalEvaluationAccepted: 1,
+      finalEvaluationRejected: 1,
+    });
+    expect(result.kind).toBe('cycle-terminated');
+    expect(result.lastReviewIssueCount).toBe(2);
+    expect(result.finalEvaluationRan).toBe(true);
+  });
+});
+// --- eforge:endregion plan-02-build-evaluator-enforcement ---

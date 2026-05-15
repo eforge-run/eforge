@@ -15,6 +15,7 @@ import {
   DEFAULT_RETRY_POLICIES,
   getPolicy,
   isDroppedSubmission,
+  buildEvaluatorContinuationInput,
   type RetryPolicy,
   type RetryAttemptInfo,
   type EvaluatorContinuationInput,
@@ -23,6 +24,7 @@ import {
 } from '@eforge-build/engine/retry';
 import { builderEvaluate } from '@eforge-build/engine/agents/builder';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
+import type { EvaluationSnapshot } from '@eforge-build/engine/evaluation';
 import { StubHarness } from './stub-harness.js';
 
 // ---------------------------------------------------------------------------
@@ -647,13 +649,13 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
     expect(retryEvt!.attempt).toBe(1);
     expect(retryEvt!.maxAttempts).toBe(2);
 
-    // Second attempt ran to completion — builderEvaluate emits two
-    // build:evaluate:start events (one per attempt) and at least one
-    // completion-style event from the second successful attempt.
+    // Second attempt ran to judgment completion. builderEvaluate itself only
+    // emits start events; the build stage emits evaluate:complete after applying
+    // and committing verdicts.
     const starts = out.filter((e) => e.type === 'plan:build:evaluate:start');
     expect(starts.length).toBeGreaterThanOrEqual(2);
     const completes = out.filter((e) => e.type === 'plan:build:evaluate:complete');
-    expect(completes.length).toBe(1);
+    expect(completes.length).toBe(0);
 
     // Backend was called exactly twice (once per attempt).
     expect(backend.prompts).toHaveLength(2);
@@ -911,6 +913,32 @@ describe('withRetry + StubHarness + runPlanEvaluate', () => {
 // Type-surface smoke tests (ensures continuation input shapes compile)
 // ---------------------------------------------------------------------------
 
+describe('buildEvaluatorContinuationInput', () => {
+  it('preserves evaluation snapshot and evaluator options across continuation attempts', async () => {
+    const snapshot = { cwd: '/tmp/repo', capturedAt: 'now', baseHead: 'base', stagedPatch: '', candidatePatch: '', files: [] } as EvaluationSnapshot;
+    const decision = await buildEvaluatorContinuationInput(makeAttemptInfo<EvaluatorContinuationInput>({
+      prevInput: {
+        worktreePath: '/tmp/wt',
+        planId: 'plan-01',
+        evaluationSnapshot: snapshot,
+        evaluatorOptions: { extra: 'keep-me' },
+        checkHasUnstagedChanges: async () => true,
+      },
+    }));
+
+    expect(decision.kind).toBe('retry');
+    if (decision.kind === 'retry') {
+      expect(decision.input.evaluationSnapshot).toBe(snapshot);
+      expect(decision.input.evaluatorOptions.extra).toBe('keep-me');
+      expect(decision.input.evaluatorOptions.evaluatorContinuationContext).toEqual({ attempt: 1, maxContinuations: 1 });
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Type-surface smoke tests (ensures continuation input shapes compile)
+// ---------------------------------------------------------------------------
+
 describe('RetryPolicy type surface', () => {
   it('planner continuation input type accepts expected fields', () => {
     const input: PlannerContinuationInput = {
@@ -951,6 +979,7 @@ describe('RetryPolicy type surface', () => {
     const input: EvaluatorContinuationInput = {
       worktreePath: '/tmp/wt',
       planId: 'plan-01',
+      evaluationSnapshot: undefined,
       evaluatorOptions: {
         evaluatorContinuationContext: {
           attempt: 1,

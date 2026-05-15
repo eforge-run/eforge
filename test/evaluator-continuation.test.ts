@@ -53,7 +53,7 @@ describe('builderEvaluate', () => {
     expect(failed!.terminalSubtype).toBe('error_max_turns');
   });
 
-  it('catches non-max_turns errors and yields build:failed', async () => {
+  it('catches non-max_turns errors and yields a non-fatal warning', async () => {
     const backend = new StubHarness([{
       error: new Error('Agent evaluator failed: some_other_error'),
     }]);
@@ -64,9 +64,9 @@ describe('builderEvaluate', () => {
       cwd: '/tmp',
     }));
 
-    const failed = findEvent(events, 'plan:build:failed');
-    expect(failed).toBeDefined();
-    expect(failed!.error).toContain('some_other_error');
+    const warning = findEvent(events, 'agent:warning');
+    expect(warning).toBeDefined();
+    expect(warning!.message).toContain('some_other_error');
   });
 
   it('passes continuation_context to prompt when evaluatorContinuationContext is provided', async () => {
@@ -83,7 +83,9 @@ describe('builderEvaluate', () => {
 
     expect(backend.prompts[0]).toContain('Continuation Context');
     expect(backend.prompts[0]).toContain('attempt 1 of 2');
-    expect(backend.prompts[0]).toContain('Do NOT run `git reset --soft HEAD~1` again');
+    expect(backend.prompts[0]).toContain('same immutable evaluation snapshot');
+    expect(backend.prompts[0]).not.toContain('git add');
+    expect(backend.prompts[0]).not.toContain('git checkout');
   });
 
   it('passes empty continuation_context when evaluatorContinuationContext is absent', async () => {
@@ -100,7 +102,7 @@ describe('builderEvaluate', () => {
     expect(backend.prompts[0]).not.toContain('Continuation Context');
   });
 
-  it('emits build:evaluate:start and build:evaluate:complete on success', async () => {
+  it('emits build:evaluate:start and leaves completion emission to the stage', async () => {
     const backend = new StubHarness([{
       text: `<evaluation>
   <verdict file="src/foo.ts" action="accept">
@@ -120,7 +122,7 @@ describe('builderEvaluate', () => {
     }));
 
     expect(findEvent(events, 'plan:build:evaluate:start')).toBeDefined();
-    expect(findEvent(events, 'plan:build:evaluate:complete')).toBeDefined();
+    expect(findEvent(events, 'plan:build:evaluate:complete')).toBeUndefined();
     expect(findEvent(events, 'plan:build:failed')).toBeUndefined();
   });
 });
@@ -210,17 +212,18 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const promptsDir = resolve(__dirname, '../packages/engine/src/prompts');
 
 describe('evaluator prompt templates', () => {
-  it('evaluator.md contains {{continuation_context}} between Context and Setup sections', async () => {
+  it('evaluator.md contains {{continuation_context}} before Snapshot Tools and no agent-owned git instructions', async () => {
     const content = await readFile(resolve(promptsDir, 'evaluator.md'), 'utf-8');
     const lines = content.split('\n');
     const contextIdx = lines.findIndex(l => l.startsWith('## Context'));
     const continuationIdx = lines.findIndex(l => l.includes('{{continuation_context}}'));
-    const setupIdx = lines.findIndex(l => l.startsWith('## Setup'));
+    const toolsIdx = lines.findIndex(l => l.startsWith('## Snapshot Tools'));
     expect(contextIdx).toBeGreaterThan(-1);
     expect(continuationIdx).toBeGreaterThan(-1);
-    expect(setupIdx).toBeGreaterThan(-1);
+    expect(toolsIdx).toBeGreaterThan(-1);
     expect(continuationIdx).toBeGreaterThan(contextIdx);
-    expect(continuationIdx).toBeLessThan(setupIdx);
+    expect(continuationIdx).toBeLessThan(toolsIdx);
+    expect(content).not.toMatch(/git reset|git add|git checkout|git commit/);
   });
 
   it('plan-evaluator.md contains {{continuation_context}} between Context and Setup sections', async () => {

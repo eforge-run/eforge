@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { handlePlanBuildDecision, handlePlanningDecision } from '../handle-decisions';
+import { decisionDetail, decisionSummary } from '../../decision-format';
 import { initialRunState } from '../../reducer';
 import type { EforgeEvent } from '../../types';
 import type { BuildDecision, PlanningDecision } from '@eforge-build/client/browser';
@@ -43,6 +44,18 @@ const cycleTerminatedDecision: BuildDecision = {
   round: 1,
   reason: 'no-issues',
   issuesRemaining: 0,
+};
+
+const enrichedCycleTerminatedDecision: BuildDecision = {
+  kind: 'cycle-terminated',
+  rationale: 'Max rounds reached after final evaluation',
+  round: 1,
+  reason: 'max-rounds',
+  issuesRemaining: 0,
+  lastReviewIssueCount: 2,
+  finalEvaluationRan: true,
+  finalEvaluationAccepted: 1,
+  finalEvaluationRejected: 1,
 };
 
 const scopeDecision: PlanningDecision = {
@@ -131,6 +144,18 @@ describe('handlePlanBuildDecision', () => {
     // Should not contain unrelated state fields in the delta itself
     const deltaKeys = Object.keys(delta!);
     expect(deltaKeys).toEqual(['decisions']);
+  });
+
+  it('preserves enriched cycle termination data and renders last-review count separately', () => {
+    const event = makeDecisionEvent(PLAN_A, enrichedCycleTerminatedDecision);
+    const delta = handlePlanBuildDecision(event, initialRunState);
+    const stored = delta!.decisions![PLAN_A][0].decision;
+
+    expect(stored).toEqual(enrichedCycleTerminatedDecision);
+    expect(decisionSummary(stored)).toContain('last review: 2 issue(s)');
+    expect(decisionSummary(stored)).not.toContain('issues remaining');
+    expect(decisionDetail(stored)).toContain('Final evaluation accepted: 1');
+    expect(decisionDetail(stored)).toContain('Post-evaluation issue count: 0');
   });
 });
 

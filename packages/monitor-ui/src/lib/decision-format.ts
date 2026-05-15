@@ -59,6 +59,12 @@ export function decisionSummary(decision: Decision): string {
     case 'perspectives-respawned':
       return `round ${decision.round + 1} — ${decision.perspectives.length > 0 ? decision.perspectives.join(', ') : 'auto'}`;
     case 'cycle-terminated':
+      if (decision.lastReviewIssueCount !== undefined) {
+        const final = decision.finalEvaluationRan
+          ? `final evaluation: ${decision.finalEvaluationAccepted ?? 0} accepted / ${decision.finalEvaluationRejected ?? 0} rejected`
+          : 'final evaluation: not run';
+        return `${decision.reason} — round ${decision.round + 1}, last review: ${decision.lastReviewIssueCount} issue(s), ${final}`;
+      }
       return `${decision.reason} — round ${decision.round + 1}, ${decision.issuesRemaining} issues remaining`;
     case 'evaluator-strictness':
       return `${decision.strictness} (${decision.source})`;
@@ -117,7 +123,17 @@ export function decisionDetail(decision: Decision): string {
     case 'cycle-terminated':
       lines.push(`Reason: ${decision.reason}`);
       lines.push(`Round: ${decision.round + 1}`);
-      lines.push(`Issues remaining: ${decision.issuesRemaining}`);
+      if (decision.lastReviewIssueCount !== undefined) {
+        lines.push(`Last review issue count: ${decision.lastReviewIssueCount}`);
+        lines.push(`Final evaluation ran: ${decision.finalEvaluationRan ? 'yes' : 'no'}`);
+        if (decision.finalEvaluationRan) {
+          lines.push(`Final evaluation accepted: ${decision.finalEvaluationAccepted ?? 0}`);
+          lines.push(`Final evaluation rejected: ${decision.finalEvaluationRejected ?? 0}`);
+        }
+        lines.push(`Post-evaluation issue count: ${decision.issuesRemaining}`);
+      } else {
+        lines.push(`Issues remaining: ${decision.issuesRemaining}`);
+      }
       break;
     case 'evaluator-strictness':
       lines.push(`Strictness: ${decision.strictness}`);

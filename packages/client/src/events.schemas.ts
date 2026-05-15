@@ -572,6 +572,12 @@ export const BuildDecisionSchema = Type.Union([
     round: Type.Integer({ minimum: 0 }),
     reason: Type.Union([Type.Literal('no-issues'), Type.Literal('max-rounds')]),
     issuesRemaining: Type.Integer({ minimum: 0 }),
+    // --- eforge:region plan-02-build-evaluator-enforcement ---
+    lastReviewIssueCount: Type.Optional(Type.Integer({ minimum: 0 })),
+    finalEvaluationAccepted: Type.Optional(Type.Integer({ minimum: 0 })),
+    finalEvaluationRejected: Type.Optional(Type.Integer({ minimum: 0 })),
+    finalEvaluationRan: Type.Optional(Type.Boolean()),
+    // --- eforge:endregion plan-02-build-evaluator-enforcement ---
   }),
   // Perspectives respawned for next review round
   Type.Object({
@@ -913,6 +919,7 @@ const EforgeEventVariantsSchema = Type.Union([
             Type.Literal('review'),
           ]),
           reason: Type.String(),
+          hunk: Type.Optional(Type.Integer({ minimum: 1 })),
         }),
       ),
     ),
@@ -944,6 +951,7 @@ const EforgeEventVariantsSchema = Type.Union([
             Type.Literal('review'),
           ]),
           reason: Type.String(),
+          hunk: Type.Optional(Type.Integer({ minimum: 1 })),
         }),
       ),
     ),
@@ -975,6 +983,7 @@ const EforgeEventVariantsSchema = Type.Union([
             Type.Literal('review'),
           ]),
           reason: Type.String(),
+          hunk: Type.Optional(Type.Integer({ minimum: 1 })),
         }),
       ),
     ),
@@ -1061,6 +1070,7 @@ const EforgeEventVariantsSchema = Type.Union([
             Type.Literal('review'),
           ]),
           reason: Type.String(),
+          hunk: Type.Optional(Type.Integer({ minimum: 1 })),
         }),
       ),
     ),

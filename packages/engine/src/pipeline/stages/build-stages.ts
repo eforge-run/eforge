@@ -18,7 +18,7 @@ import {
   type EvaluatorContinuationInput,
   buildShardPolicy,
 } from '../../retry.js';
-import { builderImplement, builderEvaluate } from '../../agents/builder.js';
+import { builderImplement, builderEvaluate, type BuilderEvaluationResult } from '../../agents/builder.js';
 import { runParallelReview } from '../../agents/parallel-reviewer.js';
 import { runReviewFixer } from '../../agents/review-fixer.js';
 import { runDocAuthor } from '../../agents/doc-author.js';
@@ -29,12 +29,22 @@ import type { ResolvedAgentConfig } from '../../config.js';
 import { runParallel } from '../../concurrency.js';
 import { forgeCommit } from '../../git.js';
 import { composeCommitMessage } from '../../model-tracker.js';
+// --- eforge:region plan-02-build-evaluator-enforcement ---
+import {
+  applyEvaluationVerdicts,
+  assertNoEvaluationDrift,
+  prepareEvaluationSnapshot,
+  restoreEvaluationSnapshotAfterFailure,
+  type EvaluationSnapshot,
+} from '../../evaluation/index.js';
+import type { EvaluationVerdict } from '../../schemas.js';
+// --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
 import type { BuildStageContext } from '../types.js';
 import { registerBuildStage } from '../registry.js';
 import { resolveAgentConfig } from '../agent-config.js';
 import { createToolTracker } from '../span-wiring.js';
-import { hasUnstagedChanges, withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../git-helpers.js';
+import { withPeriodicFileCheck, emitFilesChanged, emitAgentActivity } from '../git-helpers.js';
 import { toBuildFailedEvent } from '../error-translator.js';
 
 const exec = promisify(execFile);
@@ -48,6 +58,30 @@ function hasTestStages(build: BuildStageSpec[]): boolean {
     if (Array.isArray(spec)) return spec.some((s) => s.startsWith('test'));
     return spec.startsWith('test');
   });
+}
+
+async function hasEvaluationCandidateChanges(cwd: string): Promise<boolean> {
+  try {
+    const { stdout: tracked } = await exec('git', ['diff', '--name-only'], { cwd });
+    if (tracked.trim().length > 0) return true;
+    const { stdout: untracked } = await exec('git', ['ls-files', '--others', '--exclude-standard'], { cwd });
+    return untracked.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
+
+async function unstageEvaluationCandidateChanges(cwd: string): Promise<void> {
+  try {
+    await exec('git', ['diff', '--cached', '--quiet'], { cwd });
+  } catch (err) {
+    const code = (err as { code?: unknown }).code;
+    if (code === 1) {
+      await exec('git', ['reset', '--mixed', 'HEAD'], { cwd });
+      return;
+    }
+    throw err;
+  }
 }
 
 /** Per-retry builder span + event processing. Span and tracker created per-attempt. */
@@ -95,14 +129,14 @@ async function* runEvaluatorAttempt(
   ctx: BuildStageContext,
   evalAgentConfig: ResolvedAgentConfig,
   strictness?: 'strict' | 'standard' | 'lenient',
-): AsyncGenerator<EforgeEvent> {
+): AsyncGenerator<EforgeEvent, BuilderEvaluationResult | undefined> {
   const evalSpan = ctx.tracing.createSpan('evaluator', { planId: ctx.planId });
   evalSpan.setInput({ planId: ctx.planId });
   const evalTracker = createToolTracker(evalSpan);
   const { harness: evaluatorHarness, toolbeltSummary: evaluatorTb } = ctx.agentRuntimes.forRoleResolved('evaluator', ctx.planFile);
   try {
     const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
-    for await (const event of builderEvaluate(ctx.planFile, {
+    const evaluator = builderEvaluate(ctx.planFile, {
       cwd: ctx.worktreePath,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
@@ -112,15 +146,23 @@ async function* runEvaluatorAttempt(
       phase: 'build',
       stage: 'evaluate',
       ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
+      ...(input.evaluationSnapshot && { evaluatorSnapshot: input.evaluationSnapshot }),
       preImplementCommit: ctx.preImplementCommit,
       harness: evaluatorHarness,
-    })) {
+    });
+
+    while (true) {
+      const next = await evaluator.next();
+      if (next.done) {
+        evalTracker.cleanup();
+        evalSpan.end();
+        return next.value;
+      }
+      const event = next.value;
       evalTracker.handleEvent(event);
       if (event.type === 'plan:build:failed') evalSpan.error('Evaluation failed');
       yield event;
     }
-    evalTracker.cleanup();
-    evalSpan.end();
   } catch (err) {
     evalTracker.cleanup();
     evalSpan.error(err as Error);
@@ -131,6 +173,61 @@ async function* runEvaluatorAttempt(
 // ---------------------------------------------------------------------------
 // Inner stage helpers (called by composite stages)
 // ---------------------------------------------------------------------------
+
+// --- eforge:region plan-02-build-evaluator-enforcement ---
+type LastBuildEvaluation = {
+  ran: boolean;
+  accepted: number;
+  rejected: number;
+};
+
+type BuildStageContextWithEvaluation = BuildStageContext & {
+  __plan02LastBuildEvaluation?: LastBuildEvaluation;
+};
+
+function setLastBuildEvaluation(ctx: BuildStageContext, evaluation: LastBuildEvaluation): void {
+  (ctx as BuildStageContextWithEvaluation).__plan02LastBuildEvaluation = evaluation;
+}
+
+function getLastBuildEvaluation(ctx: BuildStageContext): LastBuildEvaluation | undefined {
+  return (ctx as BuildStageContextWithEvaluation).__plan02LastBuildEvaluation;
+}
+
+function summarizeEvaluationVerdicts(verdicts: EvaluationVerdict[]) {
+  return verdicts.map(v => ({
+    file: v.file,
+    action: v.action,
+    reason: v.reason,
+    ...(v.hunk !== undefined && { hunk: v.hunk }),
+  }));
+}
+
+async function restoreOriginalBuilderCommitState(snapshot: EvaluationSnapshot): Promise<void> {
+  await restoreEvaluationSnapshotAfterFailure(snapshot);
+  if (snapshot.originalHead) {
+    await exec('git', ['reset', '--soft', snapshot.originalHead], { cwd: snapshot.cwd });
+  }
+}
+
+async function restoreOriginalBuilderCommitStateUnlessDrifted(
+  ctx: BuildStageContext,
+  snapshot: EvaluationSnapshot,
+): Promise<EforgeEvent | undefined> {
+  try {
+    await assertNoEvaluationDrift(snapshot);
+  } catch (err) {
+    try {
+      await restoreOriginalBuilderCommitState(snapshot);
+    } catch {
+      // Preserve the drift error as the reported build failure.
+    }
+    ctx.buildFailed = true;
+    return toBuildFailedEvent(ctx.planId, err);
+  }
+  await restoreOriginalBuilderCommitState(snapshot);
+  return undefined;
+}
+// --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
 async function* reviewStageInner(
   ctx: BuildStageContext,
@@ -198,7 +295,34 @@ async function* evaluateStageInner(
   ctx: BuildStageContext,
   overrides?: { strictness?: 'strict' | 'standard' | 'lenient' },
 ): AsyncGenerator<EforgeEvent> {
-  if (!(await hasUnstagedChanges(ctx.worktreePath))) return;
+  try {
+    await unstageEvaluationCandidateChanges(ctx.worktreePath);
+  } catch (err) {
+    yield toBuildFailedEvent(ctx.planId, err);
+    ctx.buildFailed = true;
+    return;
+  }
+
+  if (!(await hasEvaluationCandidateChanges(ctx.worktreePath))) {
+    setLastBuildEvaluation(ctx, { ran: false, accepted: 0, rejected: 0 });
+    return;
+  }
+
+  let snapshot: EvaluationSnapshot;
+  try {
+    snapshot = await prepareEvaluationSnapshot(ctx.worktreePath, ctx.preImplementCommit ?? 'HEAD~1');
+  } catch (err) {
+    yield toBuildFailedEvent(ctx.planId, err);
+    ctx.buildFailed = true;
+    return;
+  }
+
+  if (snapshot.files.length === 0) {
+    await restoreOriginalBuilderCommitState(snapshot);
+    setLastBuildEvaluation(ctx, { ran: false, accepted: 0, rejected: 0 });
+    return;
+  }
+
   const strictness = overrides?.strictness ?? ctx.review.evaluatorStrictness;
 
   // Emit evaluator-strictness decision at the start of every evaluator run
@@ -217,19 +341,93 @@ async function* evaluateStageInner(
   const initialInput: EvaluatorContinuationInput = {
     worktreePath: ctx.worktreePath,
     planId: ctx.planId,
+    evaluationSnapshot: snapshot,
     evaluatorOptions: {},
   };
   const evaluatorPolicy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
+  let result: BuilderEvaluationResult | undefined;
+  let suppressedTerminalFailure: Extract<EforgeEvent, { type: 'plan:build:failed' }> | undefined;
+
   try {
-    for await (const event of withRetry(
+    const evaluator = withRetry<EvaluatorContinuationInput, BuilderEvaluationResult | undefined>(
       (input) => runEvaluatorAttempt(input, ctx, evalAgentConfig, strictness),
       evaluatorPolicy,
       initialInput,
-    )) {
+    );
+    while (true) {
+      const next = await evaluator.next();
+      if (next.done) {
+        result = next.value;
+        break;
+      }
+      const event = next.value;
+      if (event.type === 'plan:build:failed' && event.terminalSubtype) {
+        suppressedTerminalFailure = event;
+        continue;
+      }
       yield event;
     }
-  } catch {
-    // Per-attempt spans already recorded errors; swallow so evaluator stays non-fatal.
+  } catch (err) {
+    const driftFailure = await restoreOriginalBuilderCommitStateUnlessDrifted(ctx, snapshot);
+    if (driftFailure) {
+      yield driftFailure;
+      return;
+    }
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'agent:warning',
+      planId: ctx.planId,
+      agentId: 'unknown-evaluator',
+      agent: 'evaluator',
+      code: 'evaluation-judgment-failed',
+      message: err instanceof Error ? err.message : String(err),
+    };
+    setLastBuildEvaluation(ctx, { ran: false, accepted: 0, rejected: 0 });
+    return;
+  }
+
+  if (!result || result.failed || result.verdicts.length === 0) {
+    const driftFailure = await restoreOriginalBuilderCommitStateUnlessDrifted(ctx, snapshot);
+    if (driftFailure) {
+      yield driftFailure;
+      return;
+    }
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'agent:warning',
+      planId: ctx.planId,
+      agentId: result?.agentId ?? 'unknown-evaluator',
+      agent: 'evaluator',
+      code: (suppressedTerminalFailure || result?.failed) ? 'evaluation-judgment-failed' : 'evaluation-verdicts-missing',
+      message: suppressedTerminalFailure?.error ?? result?.error ?? 'Evaluator produced no verdicts; no review-fixer changes were committed.',
+    };
+    setLastBuildEvaluation(ctx, { ran: false, accepted: 0, rejected: 0 });
+    return;
+  }
+
+  try {
+    const application = await applyEvaluationVerdicts(snapshot, result.verdicts, {
+      commitMessage: `feat(${ctx.planId}): ${ctx.planFile.name}`,
+      modelTracker: ctx.modelTracker,
+    });
+    ctx.reviewIssues = [];
+    setLastBuildEvaluation(ctx, { ran: true, accepted: application.accepted, rejected: application.rejected });
+    yield {
+      timestamp: new Date().toISOString(),
+      type: 'plan:build:evaluate:complete',
+      planId: ctx.planId,
+      accepted: application.accepted,
+      rejected: application.rejected,
+      verdicts: summarizeEvaluationVerdicts(result.verdicts),
+    };
+  } catch (err) {
+    try {
+      await restoreOriginalBuilderCommitState(snapshot);
+    } catch {
+      // Preserve the deterministic application failure as the reported error.
+    }
+    yield toBuildFailedEvent(ctx.planId, err);
+    ctx.buildFailed = true;
   }
 }
 
@@ -724,6 +922,9 @@ registerBuildStage({
   const strictness = ctx.review.evaluatorStrictness;
 
   let terminationReason: 'no-issues' | 'max-rounds' | null = null;
+  // --- eforge:region plan-02-build-evaluator-enforcement ---
+  let lastReviewIssueCount = 0;
+  // --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
   for (let round = 0; round < maxRounds; round++) {
     // Emit perspectives-respawned at the start of each review round
@@ -736,6 +937,9 @@ registerBuildStage({
     });
 
     yield* reviewStageInner(ctx, { strategy, perspectives });
+    // --- eforge:region plan-02-build-evaluator-enforcement ---
+    lastReviewIssueCount = ctx.reviewIssues.length;
+    // --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
     if (ctx.reviewIssues.length === 0) {
       yield emitBuildDecision(ctx, {
@@ -751,6 +955,7 @@ registerBuildStage({
 
     yield* reviewFixStageInner(ctx);
     yield* evaluateStageInner(ctx, { strictness });
+    if (ctx.buildFailed) return;
   }
 
   // If all rounds exhausted without finding no-issues, emit max-rounds termination.
@@ -758,13 +963,25 @@ registerBuildStage({
   // cycle to terminate, and `round: maxRounds - 1` would be `-1`, failing
   // BuildDecisionSchema's `nonnegative()` check and crashing the build.
   if (terminationReason === null && maxRounds > 0) {
+    // --- eforge:region plan-02-build-evaluator-enforcement ---
+    const finalEvaluation = getLastBuildEvaluation(ctx);
+    const finalEvaluationText = finalEvaluation?.ran
+      ? `; final evaluation accepted ${finalEvaluation.accepted} and rejected ${finalEvaluation.rejected}`
+      : '; final evaluation did not run';
     yield emitBuildDecision(ctx, {
       kind: 'cycle-terminated',
-      rationale: `Review cycle exhausted ${maxRounds} round(s) with ${ctx.reviewIssues.length} issue(s) remaining`,
+      rationale: `Review cycle exhausted ${maxRounds} round(s); last review found ${lastReviewIssueCount} issue(s)${finalEvaluationText}`,
       round: maxRounds - 1,
       reason: 'max-rounds',
       issuesRemaining: ctx.reviewIssues.length,
+      lastReviewIssueCount,
+      finalEvaluationRan: finalEvaluation?.ran ?? false,
+      ...(finalEvaluation?.ran && {
+        finalEvaluationAccepted: finalEvaluation.accepted,
+        finalEvaluationRejected: finalEvaluation.rejected,
+      }),
     });
+    // --- eforge:endregion plan-02-build-evaluator-enforcement ---
   }
 });
 

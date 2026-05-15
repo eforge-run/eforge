@@ -1191,3 +1191,44 @@ describe('eventRegistry — queue:profile:* diagnostics', () => {
 });
 
 // --- eforge:endregion plan-01-profile-router-events ---
+
+// --- eforge:region plan-02-build-evaluator-enforcement ---
+describe('safeParseEforgeEvent — build evaluator enriched payloads', () => {
+  it('accepts plan:build:evaluate:complete verdict summaries with hunk metadata', () => {
+    const event: EforgeEvent = {
+      type: 'plan:build:evaluate:complete',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      accepted: 1,
+      rejected: 1,
+      verdicts: [
+        { file: 'src/foo.ts', hunk: 1, action: 'accept', reason: 'Correct fix' },
+        { file: 'src/foo.ts', hunk: 2, action: 'reject', reason: 'Alters intent' },
+      ],
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts enriched cycle-terminated build decisions', () => {
+    const event: EforgeEvent = {
+      type: 'plan:build:decision',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      decision: {
+        kind: 'cycle-terminated',
+        rationale: 'Review cycle exhausted; final evaluation ran',
+        round: 1,
+        reason: 'max-rounds',
+        issuesRemaining: 0,
+        lastReviewIssueCount: 2,
+        finalEvaluationRan: true,
+        finalEvaluationAccepted: 1,
+        finalEvaluationRejected: 1,
+      },
+    };
+    const result = safeParseEforgeEvent(event);
+    expect(result.success).toBe(true);
+  });
+});
+// --- eforge:endregion plan-02-build-evaluator-enforcement ---

@@ -9,7 +9,8 @@ import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
 import { runPlanner } from '@eforge-build/engine/agents/planner';
 import { runReview } from '@eforge-build/engine/agents/reviewer';
-import { builderImplement, builderEvaluate } from '@eforge-build/engine/agents/builder';
+import { builderImplement, builderEvaluate, type BuilderEvaluationResult } from '@eforge-build/engine/agents/builder';
+import type { EvaluationSnapshot } from '@eforge-build/engine/evaluation';
 import { runParallelReview } from '@eforge-build/engine/agents/parallel-reviewer';
 import { runPlanReview } from '@eforge-build/engine/agents/plan-reviewer';
 import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
@@ -429,31 +430,107 @@ describe('builderImplement wiring', () => {
 });
 
 describe('builderEvaluate wiring', () => {
-  it('counts verdicts correctly', async () => {
+  async function collectEvaluation(gen: AsyncGenerator<EforgeEvent, BuilderEvaluationResult>): Promise<{ events: EforgeEvent[]; result: BuilderEvaluationResult | undefined }> {
+    const events: EforgeEvent[] = [];
+    while (true) {
+      const next = await gen.next();
+      if (next.done) return { events, result: next.value };
+      events.push(next.value);
+    }
+  }
+
+  function makeEvaluationSnapshot(): EvaluationSnapshot {
+    return {
+      cwd: '/tmp',
+      capturedAt: '2026-01-01T00:00:00.000Z',
+      baseHead: 'base',
+      stagedPatch: '',
+      candidatePatch: 'diff --git a/a.ts b/a.ts\n',
+      files: [
+        {
+          path: 'a.ts',
+          status: 'modified',
+          statusCode: 'M',
+          diff: 'diff --git a/a.ts b/a.ts\n@@ -1 +1 @@\n-old\n+new\n',
+          diffHeader: 'diff --git a/a.ts b/a.ts\n',
+          hunks: [{ index: 1, header: '@@ -1 +1 @@', oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, diff: '@@ -1 +1 @@\n-old\n+new\n' }],
+          isBinary: false,
+          isUntracked: false,
+          isRenameOnly: false,
+          requiresFileVerdict: false,
+        },
+      ],
+    };
+  }
+
+  it('returns XML fallback verdicts with hunk metadata and leaves commit application to the stage', async () => {
     const backend = new StubHarness([{
       text: `<evaluation>
-  <verdict file="a.ts" action="accept">Good change</verdict>
-  <verdict file="b.ts" action="accept">Also good</verdict>
-  <verdict file="c.ts" action="reject">Unnecessary</verdict>
-  <verdict file="d.ts" action="review">Needs discussion</verdict>
+  <verdict file="a.ts" hunk="1" action="accept">Good change</verdict>
+  <verdict file="b.ts" action="review">Needs discussion</verdict>
 </evaluation>`,
     }]);
 
-    const events = await collectEvents(builderEvaluate(
+    const { events, result } = await collectEvaluation(builderEvaluate(
       { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
       { harness: backend, cwd: '/tmp' },
     ));
 
-    const complete = findEvent(events, 'plan:build:evaluate:complete');
-    expect(complete).toBeDefined();
-    expect(complete!.accepted).toBe(2);
-    expect(complete!.rejected).toBe(2); // reject + review both count as rejected
-    expect(complete!.verdicts).toHaveLength(4);
-    expect(complete!.verdicts).toEqual([
-      { file: 'a.ts', action: 'accept', reason: 'Good change' },
-      { file: 'b.ts', action: 'accept', reason: 'Also good' },
-      { file: 'c.ts', action: 'reject', reason: 'Unnecessary' },
-      { file: 'd.ts', action: 'review', reason: 'Needs discussion' },
+    expect(findEvent(events, 'plan:build:evaluate:start')).toBeDefined();
+    expect(findEvent(events, 'plan:build:evaluate:complete')).toBeUndefined();
+    expect(result?.source).toBe('xml');
+    expect(result?.verdicts).toEqual([
+      { file: 'a.ts', hunk: 1, action: 'accept', reason: 'Good change' },
+      { file: 'b.ts', action: 'review', reason: 'Needs discussion' },
+    ]);
+  });
+
+  it('wires structured evaluation tools and mutation-tool denylist', async () => {
+    const backend = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_evaluation_verdicts',
+        toolUseId: 'eval-1',
+        input: { verdicts: [{ file: 'a.ts', hunk: 1, action: 'accept', reason: 'Correct' }] },
+        output: '',
+      }],
+    }]);
+
+    const { result } = await collectEvaluation(builderEvaluate(
+      { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
+      { harness: backend, cwd: '/tmp', evaluatorSnapshot: makeEvaluationSnapshot() },
+    ));
+
+    expect(backend.customToolSets[0]?.map(tool => tool.name).sort()).toEqual([
+      'get_evaluation_diff',
+      'list_evaluation_files',
+      'submit_evaluation_verdicts',
+    ]);
+    expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash']));
+    expect(result?.source).toBe('structured');
+    expect(result?.verdicts).toEqual([{ file: 'a.ts', hunk: 1, action: 'accept', reason: 'Correct' }]);
+  });
+
+  it('prefers structured verdict submissions over XML fallback text when both are present', async () => {
+    const backend = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_evaluation_verdicts',
+        toolUseId: 'eval-1',
+        input: { verdicts: [{ file: 'a.ts', hunk: 1, action: 'accept', reason: 'Structured verdict' }] },
+        output: '',
+      }],
+      text: `<evaluation>
+  <verdict file="a.ts" hunk="1" action="reject">XML fallback should be ignored</verdict>
+</evaluation>`,
+    }]);
+
+    const { result } = await collectEvaluation(builderEvaluate(
+      { id: 'plan-1', name: 'Feature', dependsOn: [], branch: 'feature/x', body: 'content', filePath: '/tmp/plan.md' },
+      { harness: backend, cwd: '/tmp', evaluatorSnapshot: makeEvaluationSnapshot() },
+    ));
+
+    expect(result?.source).toBe('structured');
+    expect(result?.verdicts).toEqual([
+      { file: 'a.ts', hunk: 1, action: 'accept', reason: 'Structured verdict' },
     ]);
   });
 
@@ -469,7 +546,7 @@ describe('builderEvaluate wiring', () => {
       { harness: backend, cwd: '/tmp' },
     ));
 
-    expect(findEvent(events, 'plan:build:failed')).toBeDefined();
+    expect(findEvent(events, 'agent:warning')).toBeDefined();
     expect(findEvent(events, 'plan:build:evaluate:complete')).toBeUndefined();
   });
 });

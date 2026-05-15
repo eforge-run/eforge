@@ -5,10 +5,11 @@ import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
 import { pickSdkOptions, classifyAgentTerminalSubtype } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
-import { getEvaluationSchemaYaml } from '../schemas.js';
-import type { ShardScope } from '../schemas.js';
+import { getEvaluationSchemaYaml, getEvaluationSubmissionSchemaYaml } from '../schemas.js';
+import type { EvaluationSubmission, EvaluationVerdict, ShardScope } from '../schemas.js';
 import { ATTRIBUTION } from '../git.js';
 import { parseEvaluationBlock } from './common.js';
+import { createEvaluationTools, type EvaluationSnapshot } from '../evaluation/index.js';
 export type { EvaluationVerdict, EvaluationEvidence } from './common.js';
 
 /**
@@ -42,6 +43,10 @@ export interface BuilderOptions extends SdkPassthroughConfig {
     attempt: number;
     maxContinuations: number;
   };
+  // --- eforge:region plan-02-build-evaluator-enforcement ---
+  /** Immutable evaluator snapshot captured by the engine before invoking the read-only evaluator. */
+  evaluatorSnapshot?: EvaluationSnapshot;
+  // --- eforge:endregion plan-02-build-evaluator-enforcement ---
   /** Commit SHA captured before the implement stage — used as evaluator reset target */
   preImplementCommit?: string;
   /** Shard scope for this builder instance. When set, restricts the builder to a subset of files. */
@@ -129,7 +134,7 @@ async function hasHeadAdvanced(cwd: string, startingHead: string | undefined): P
 export const STRICTNESS_BLOCKS: Record<string, string> = {
   strict: `\n### Strictness: Strict\n\nApply a high bar for acceptance. Only accept fixes that are unambiguously correct — fixing a clear bug, crash, or security vulnerability. When in doubt, reject. Treat "review" verdicts as rejects.\n`,
   standard: '',
-  lenient: `\n### Strictness: Lenient\n\nApply a low bar for acceptance. Accept fixes unless they clearly damage the implementation's intent or remove functionality. When in doubt, accept. Treat "review" verdicts as accepts.\n`,
+  lenient: `\n### Strictness: Lenient\n\nApply a low bar for acceptance. Accept fixes unless they clearly damage the implementation's intent or remove functionality. When in doubt, accept, but still treat "review" verdicts as rejects for build evaluation.\n`,
 };
 
 const VERIFICATION_FULL = `Before committing, run the verification commands specified in the plan's "Verification" section. If the plan specifies:
@@ -262,15 +267,29 @@ ${completedDiff}
   yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: plan.id };
 }
 
+// --- eforge:region plan-02-build-evaluator-enforcement ---
+export interface BuilderEvaluationResult {
+  verdicts: EvaluationVerdict[];
+  source: 'structured' | 'xml' | 'none';
+  failed: boolean;
+  agentId?: string;
+  error?: string;
+}
+
+const EVALUATOR_MUTATION_TOOL_DENYLIST = ['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash'] as const;
+
+function mergeDisallowedTools(existing: string[] | undefined): string[] {
+  return Array.from(new Set([...(existing ?? []), ...EVALUATOR_MUTATION_TOOL_DENYLIST]));
+}
+
 /**
- * Turn 2: Evaluate reviewer's unstaged fixes. The agent runs
- * `git reset --soft <preImplementCommit>`, inspects staged (implementation)
- * vs unstaged (reviewer fixes), applies verdicts, and commits the final result.
+ * Turn 2: Evaluate review-fixer candidate changes as a read-only judgment step.
+ * The engine owns snapshot preparation, verdict application, and committing.
  */
 export async function* builderEvaluate(
   plan: PlanFile,
   options: BuilderOptions,
-): AsyncGenerator<EforgeEvent> {
+): AsyncGenerator<EforgeEvent, BuilderEvaluationResult> {
   yield { timestamp: new Date().toISOString(), type: 'plan:build:evaluate:start', planId: plan.id };
 
   let continuationContextText = '';
@@ -280,10 +299,16 @@ export async function* builderEvaluate(
 
 **This is evaluator continuation attempt ${attempt} of ${maxContinuations}.**
 
-The previous evaluator run was interrupted because it ran out of conversation turns. Some files have already been evaluated (accepted via \`git add\` or rejected via \`git checkout --\`). Do NOT redo already-evaluated files - only evaluate files that still have unstaged changes.
-
-Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again - the staged vs unstaged comparison is already set up from the previous run.`;
+The previous evaluator run was interrupted before a final verdict submission was accepted. The engine is reusing the same immutable evaluation snapshot. Do not assume any partial file application happened; inspect the captured files and submit one complete verdict set covering every candidate file or hunk.`;
   }
+
+  let structuredSubmission: EvaluationSubmission | undefined;
+  const customTools = options.evaluatorSnapshot
+    ? createEvaluationTools(options.evaluatorSnapshot, (submission) => {
+      if (structuredSubmission) return false;
+      structuredSubmission = submission;
+    })
+    : undefined;
 
   const strictnessKey = options.strictness ?? 'standard';
   const prompt = await loadPrompt('evaluator', {
@@ -291,40 +316,66 @@ Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again 
     plan_name: plan.name,
     strictness: STRICTNESS_BLOCKS[strictnessKey] ?? '',
     evaluation_schema: getEvaluationSchemaYaml(),
+    evaluation_submission_schema: getEvaluationSubmissionSchemaYaml(),
     continuation_context: continuationContextText,
-    reset_target: options.preImplementCommit ?? 'HEAD~1',
+    list_files_tool: options.harness.effectiveCustomToolName('list_evaluation_files'),
+    get_diff_tool: options.harness.effectiveCustomToolName('get_evaluation_diff'),
+    submit_verdicts_tool: options.harness.effectiveCustomToolName('submit_evaluation_verdicts'),
   }, options.promptAppend);
 
   let fullText = '';
+  let evaluatorAgentId: string | undefined;
   try {
     for await (const event of options.harness.run(
-      { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 30, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
+      {
+        prompt,
+        cwd: options.cwd,
+        maxTurns: options.maxTurns ?? 30,
+        tools: 'coding',
+        customTools,
+        disallowedTools: mergeDisallowedTools(options.disallowedTools),
+        abortSignal: options.abortController?.signal,
+        ...pickSdkOptions({ ...options, disallowedTools: mergeDisallowedTools(options.disallowedTools) }),
+      },
       'evaluator',
       plan.id,
     )) {
+      if (event.type === 'agent:start' && event.agent === 'evaluator') {
+        evaluatorAgentId = event.agentId;
+      }
       if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
       }
       if (event.type === 'agent:message' && event.content) {
         fullText += event.content;
       }
+      if (event.type === 'agent:result' && event.result.resultText && !fullText.includes(event.result.resultText)) {
+        fullText += event.result.resultText;
+      }
     }
   } catch (err) {
-    // Emit a terminal `build:failed` event carrying the subtype. The
-    // pipeline's retry wrapper (`withRetry` in `retry.ts`) inspects the
-    // yielded event and decides whether to retry via the evaluator policy.
-    // Continuation is owned entirely by the policy — this agent no longer
-    // re-throws max-turn errors for the pipeline to catch.
     const terminalSubtype = classifyAgentTerminalSubtype(err);
     const message = err instanceof Error ? err.message : String(err);
-    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: message, ...(terminalSubtype && { terminalSubtype }) };
-    return;
+    if (terminalSubtype) {
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: message, terminalSubtype };
+    } else {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'agent:warning',
+        planId: plan.id,
+        agentId: evaluatorAgentId ?? 'unknown-evaluator',
+        agent: 'evaluator',
+        code: 'evaluation-judgment-failed',
+        message,
+      };
+    }
+    return { verdicts: [], source: 'none', failed: true, ...(evaluatorAgentId && { agentId: evaluatorAgentId }), error: message };
   }
 
-  const verdicts = parseEvaluationBlock(fullText);
-  const accepted = verdicts.filter((v) => v.action === 'accept').length;
-  const rejected = verdicts.filter((v) => v.action === 'reject' || v.action === 'review').length;
+  const verdicts = structuredSubmission?.verdicts ?? parseEvaluationBlock(fullText);
+  const source: BuilderEvaluationResult['source'] = structuredSubmission ? 'structured' : verdicts.length > 0 ? 'xml' : 'none';
 
-  yield { timestamp: new Date().toISOString(), type: 'plan:build:evaluate:complete', planId: plan.id, accepted, rejected, verdicts: verdicts.map(v => ({ file: v.file, action: v.action, reason: v.reason })) };
+  return { verdicts, source, failed: false, ...(evaluatorAgentId && { agentId: evaluatorAgentId }) };
 }
+// --- eforge:endregion plan-02-build-evaluator-enforcement ---
 

@@ -2031,6 +2031,10 @@
                   },
                   "reason": {
                     "type": "string"
+                  },
+                  "hunk": {
+                    "minimum": 1,
+                    "type": "integer"
                   }
                 }
               }
@@ -2188,6 +2192,10 @@
                   },
                   "reason": {
                     "type": "string"
+                  },
+                  "hunk": {
+                    "minimum": 1,
+                    "type": "integer"
                   }
                 }
               }
@@ -2345,6 +2353,10 @@
                   },
                   "reason": {
                     "type": "string"
+                  },
+                  "hunk": {
+                    "minimum": 1,
+                    "type": "integer"
                   }
                 }
               }
@@ -2905,6 +2917,10 @@
                   },
                   "reason": {
                     "type": "string"
+                  },
+                  "hunk": {
+                    "minimum": 1,
+                    "type": "integer"
                   }
                 }
               }
@@ -7154,6 +7170,21 @@
                     "issuesRemaining": {
                       "minimum": 0,
                       "type": "integer"
+                    },
+                    "lastReviewIssueCount": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "finalEvaluationAccepted": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "finalEvaluationRejected": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "finalEvaluationRan": {
+                      "type": "boolean"
                     }
                   }
                 },

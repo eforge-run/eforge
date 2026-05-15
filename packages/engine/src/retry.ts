@@ -31,6 +31,9 @@ import { composeCommitMessage } from './model-tracker.js';
 import { parsePlanFile } from './plan.js';
 import type { EforgeEvent, AgentRole } from './events.js';
 import type { ShardScope } from './schemas.js';
+// --- eforge:region plan-02-build-evaluator-enforcement ---
+import type { EvaluationSnapshot } from './evaluation/index.js';
+// --- eforge:endregion plan-02-build-evaluator-enforcement ---
 
 const exec = promisify(execFile);
 
@@ -170,11 +173,13 @@ export async function buildContinuationDiff(cwd: string, baseBranch: string): Pr
   return `[Diff too large (${diff.length} chars) — showing file summary instead]\n\n${stat}`;
 }
 
-/** Check if a worktree has unstaged changes. */
+/** Check if a worktree has evaluator candidate changes, including untracked files. */
 async function hasUnstagedChangesInternal(cwd: string): Promise<boolean> {
   try {
-    const { stdout } = await exec('git', ['diff', '--name-only'], { cwd });
-    return stdout.trim().length > 0;
+    const { stdout: tracked } = await exec('git', ['diff', '--name-only'], { cwd });
+    if (tracked.trim().length > 0) return true;
+    const { stdout: untracked } = await exec('git', ['ls-files', '--others', '--exclude-standard'], { cwd });
+    return untracked.trim().length > 0;
   } catch {
     return false;
   }
@@ -562,6 +567,10 @@ export function buildShardPolicy(
 export interface EvaluatorContinuationInput {
   worktreePath: string;
   planId?: string;
+  // --- eforge:region plan-02-build-evaluator-enforcement ---
+  /** Immutable evaluation snapshot prepared before the evaluator attempt; preserved across continuations. */
+  evaluationSnapshot?: EvaluationSnapshot;
+  // --- eforge:endregion plan-02-build-evaluator-enforcement ---
   evaluatorOptions: Record<string, unknown> & {
     evaluatorContinuationContext?: {
       attempt: number;
@@ -589,6 +598,9 @@ export async function buildEvaluatorContinuationInput(
   const nextInput: EvaluatorContinuationInput = {
     worktreePath,
     ...(info.prevInput.planId !== undefined && { planId: info.prevInput.planId }),
+    // --- eforge:region plan-02-build-evaluator-enforcement ---
+    ...(info.prevInput.evaluationSnapshot !== undefined && { evaluationSnapshot: info.prevInput.evaluationSnapshot }),
+    // --- eforge:endregion plan-02-build-evaluator-enforcement ---
     evaluatorOptions: {
       ...evaluatorOptions,
       evaluatorContinuationContext: {
