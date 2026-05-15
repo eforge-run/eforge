@@ -1,0 +1,90 @@
+name: fix-auto-build-scheduler-pause-resume-after-a-failed-queued-build-so-parallelism-and-independent-queued-builds-continue-correctly
+description: Fix auto-build scheduler pause/resume after a failed queued build
+  so the failed PRD finalizes in scheduler state, independent queued PRDs
+  continue to start up to maxConcurrentBuilds, and re-enable cannot leave the
+  daemon in an enabled-but-inert state.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-scheduler-pause-resume-lifecycle
+    name: Decouple auto-build pause from watcher abort and make re-enable
+      deterministic
+    depends_on: []
+    branch: fix-auto-build-scheduler-pause-resume-after-a-failed-queued-build-so-parallelism-and-independent-queued-builds-continue-correctly/plan-01-scheduler-pause-resume-lifecycle
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: high
+        rationale: "Lifecycle race fix across engine and daemon: scheduler pause/resume
+          state, watcher pump ordering, callback wiring through DaemonState, and
+          HTTP route re-enable behavior. Requires careful reasoning about async
+          event flow (yield-vs-bus-emit, abort listener ordering, eventQueue
+          producer accounting) plus regression tests using real QueueScheduler +
+          AsyncEventQueue."
+      reviewer:
+        effort: high
+        rationale: Correctness review must verify the race is actually closed (failed
+          PRD finalizes in scheduler state before any abort that could remove
+          bus listeners), that re-enable cannot leave autoBuild=true with no
+          effective scheduler, and that queue mutation injection cannot silently
+          no-op.
+      tester:
+        effort: high
+        rationale: Regression tests need to drive the real race using real
+          QueueScheduler, EventEmitter, and AsyncEventQueue (no mocks per repo
+          convention). Verifying that scheduler state is finalized and capacity
+          is recovered after a failed completion requires careful event-ordering
+          setup.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+  defaultReview:
+    strategy: single
+    perspectives:
+      - code
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "The PRD explicitly recommends Excursion: a focused but cross-cutting
+    daemon/engine bugfix touching scheduler lifecycle (queue/scheduler.ts),
+    watcher pump/abort ordering (engine/eforge.ts), pause-on-failure helper
+    (server-main.ts), and auto-build POST route (server.ts). A single planner
+    session can enumerate all four touch points and their dependency ordering
+    without delegated module planning, so expedition is unwarranted.
+    Plan-review-cycle is included because the bug involves subtle
+    event-ordering/race semantics where a miscompiled fix could regress the
+    desired 'pause on failure' UX or leave the scheduler inert - plan quality
+    matters before code is written. For build, implement is followed by
+    test-write (the PRD has extensive regression coverage requirements: porting
+    the in-process simulation to vitest, route-level POST auto-build tests, the
+    yield-before-bus-emit abort race, and the failure+resume scenario with
+    maxConcurrentBuilds: 2), then review-cycle to iterate on correctness. Review
+    perspectives target the concurrency/state-machine risk: 'code' for the
+    scheduler/watcher logic, 'test' to validate that the regression coverage
+    actually exercises the race rather than masking it, and 'verify' to confirm
+    acceptance criteria 1-8 are met. Strategy is 'single' because the touch
+    points are narrowly bounded (no need for parallel multi-perspective
+    expansion), maxRounds: 2 balances iteration against the focused scope, and
+    'standard' strictness fits a bugfix that must preserve existing behavior
+    without over-engineering. Doc stages are omitted: the PRD describes no
+    user-facing API/docs surface changes, only internal scheduler/watcher
+    correctness."
