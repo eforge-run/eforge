@@ -10,7 +10,7 @@ created: 2026-05-15
 This is the successor build to a partially completed session. Plan-01 of the original PRD implemented the `pending` plan status in `RunSummary` and refactored `/api/run-summary/:id` to seed plans from `planning:complete`, but the plan was marked failed (likely due to a type-check or test failure that was not fully resolved). Plan-02 (Pi/MCP multi-build status) never ran because it was blocked by plan-01's failure.
 
 This successor PRD covers two phases:
-1. **Stabilize** plan-01's landed work on the feature branch — diagnose and fix any remaining type or test failures.
+1. **Stabilize** plan-01's landed work on the feature branch — rebase onto current main, diagnose and fix any remaining type or test failures.
 2. **Implement** the full plan-02 scope — multi-build awareness in the Pi footer, `eforge_status`, stop safety, and MCP parity.
 
 ## Starting Point
@@ -22,14 +22,21 @@ The following is already implemented on branch `eforge/improve-pi-eforge-footer-
 - `packages/monitor/src/server.ts`: `/api/run-summary/:id` refactored to seed its plan map from the latest `planning:complete` event, then overlay `plan:build:start` → `running`, `plan:build:complete` → `completed`, `plan:build:failed` → `failed`; falls back to build-event-only derivation when no `planning:complete` is present
 - `test/run-summary-plans.test.ts`: 223-line new test file covering plan-seeding and overlay semantics; a follow-on "fix test issues" commit was applied but plan-01 still ended in a failed state
 
-**First action required:** Run `pnpm type-check` and `pnpm test` on the feature branch to identify whether any failures remain from plan-01's work. Fix all failures before proceeding to the Pi/MCP implementation.
+**Important:** Since plan-01 was committed, `main` has received significant new code — notably 216 insertions to `packages/monitor/src/server.ts` (extension infrastructure) and 62 insertions to `packages/pi-eforge/extensions/eforge/index.ts`. The feature branch must be rebased onto current main before stabilization work begins.
+
+**First actions required:**
+1. Rebase the feature branch onto current `main` and resolve any conflicts, particularly in `packages/monitor/src/server.ts` and `packages/pi-eforge/extensions/eforge/index.ts`.
+2. Run `pnpm type-check` and `pnpm test` on the rebased feature branch to identify any remaining failures.
+3. Fix all failures before proceeding to the Pi/MCP implementation.
 
 ## Phase 1 — Stabilize Plan-01 Work
 
-Verify `pnpm type-check` and `pnpm test` pass on the feature branch as-is. Fix any remaining failures in:
-- `packages/monitor/src/server.ts` (run-summary plan seeding logic)
-- `test/run-summary-plans.test.ts` (plan-seeding and overlay assertions)
-- Any downstream type errors caused by adding `'pending'` to `RunSummary.plans[].status`
+1. Rebase the feature branch onto `main`.
+2. Resolve merge conflicts, preserving both the plan-01 pending-plan logic in `packages/monitor/src/server.ts` and the extension infrastructure changes that landed on main.
+3. Verify `pnpm type-check` and `pnpm test` pass on the rebased branch. Fix any remaining failures in:
+   - `packages/monitor/src/server.ts` (run-summary plan seeding logic)
+   - `test/run-summary-plans.test.ts` (plan-seeding and overlay assertions)
+   - Any downstream type errors caused by adding `'pending'` to `RunSummary.plans[].status`
 
 ## Phase 2 — Pi/MCP Multi-Build Status (Plan-02 Scope)
 
