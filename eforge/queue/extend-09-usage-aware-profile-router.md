@@ -1,7 +1,6 @@
 ---
 title: EXTEND_09: Usage-aware profile router
 created: 2026-05-15
-depends_on: ["extend-07-extension-validation-and-replay-test-harness"]
 profile: claude-sdk-4-7
 ---
 
