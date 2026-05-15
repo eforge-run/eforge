@@ -35,6 +35,18 @@ describe('toBuildFailedEvent', () => {
     expect(event.terminalSubtype).toBe('error_max_budget_usd');
   });
 
+  it('maps a plain transient transport Error to error_transient_transport', () => {
+    const planId = 'plan-03';
+    const err = new Error('Backend error: WebSocket closed 1012');
+
+    const event = toBuildFailedEvent(planId, err);
+
+    expect(event.type).toBe('plan:build:failed');
+    expect(event.planId).toBe(planId);
+    expect(event.error).toBe('Backend error: WebSocket closed 1012');
+    expect(event.terminalSubtype).toBe('error_transient_transport');
+  });
+
   it('maps a plain Error to a build:failed event without terminalSubtype', () => {
     const planId = 'plan-03';
     const err = new Error('Something went wrong');

@@ -56,6 +56,9 @@ const AgentTerminalSubtypeSchema = Type.Union([
   Type.Literal('error_max_budget_usd'),
   Type.Literal('error_max_structured_output_retries'),
   Type.Literal('error_during_execution'),
+  // --- eforge:region plan-01-transport-resilience ---
+  Type.Literal('error_transient_transport'),
+  // --- eforge:endregion plan-01-transport-resilience ---
 ]);
 
 export const REVIEW_PERSPECTIVES = ['code', 'security', 'api', 'docs', 'test', 'verify'] as const;

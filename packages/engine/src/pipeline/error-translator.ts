@@ -6,16 +6,16 @@
  */
 
 import type { EforgeEvent } from '../events.js';
-import { AgentTerminalError } from '../harness.js';
+import { classifyAgentTerminalSubtype } from '../harness.js';
 
 /**
  * Build a `plan:build:failed` event from a thrown value.
- * - AgentTerminalError: includes `terminalSubtype` from the error's subtype field.
- * - plain Error: uses `err.message`, no `terminalSubtype`.
- * - non-Error throw: stringifies the value, no `terminalSubtype`.
+ * - typed terminal or known transient transport errors: includes `terminalSubtype`.
+ * - plain Error: uses `err.message`, no `terminalSubtype` unless transient.
+ * - non-Error throw: stringifies the value, no `terminalSubtype` unless transient.
  */
 export function toBuildFailedEvent(planId: string, err: unknown): EforgeEvent {
-  const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
+  const terminalSubtype = classifyAgentTerminalSubtype(err);
   const message = err instanceof Error ? err.message : String(err);
   return {
     timestamp: new Date().toISOString(),

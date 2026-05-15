@@ -25,7 +25,7 @@ import { resolve } from 'node:path';
 import { promisify } from 'node:util';
 
 import type { AgentTerminalSubtype } from './harness.js';
-import { AgentTerminalError, isPlannerSubmissionError } from './harness.js';
+import { classifyAgentTerminalSubtype, isPlannerSubmissionError } from './harness.js';
 import { forgeCommit } from './git.js';
 import { composeCommitMessage } from './model-tracker.js';
 import { parsePlanFile } from './plan.js';
@@ -524,7 +524,12 @@ export function buildShardPolicy(
   return {
     agent: 'builder',
     maxAttempts,
-    retryableSubtypes: new Set(['error_max_turns']) as ReadonlySet<AgentTerminalSubtype>,
+    retryableSubtypes: new Set([
+      'error_max_turns',
+      // --- eforge:region plan-01-transport-resilience ---
+      'error_transient_transport',
+      // --- eforge:endregion plan-01-transport-resilience ---
+    ]) as ReadonlySet<AgentTerminalSubtype>,
     buildContinuationInput: (info) =>
       buildShardedBuilderContinuationInput(info as RetryAttemptInfo<BuilderShardContinuationInput>) as Promise<ContinuationDecision<BuilderShardContinuationInput>>,
     onRetry: (info) => {
@@ -601,6 +606,16 @@ export async function buildEvaluatorContinuationInput(
 // ---------------------------------------------------------------------------
 
 const RETRYABLE_MAX_TURNS: ReadonlySet<AgentTerminalSubtype> = new Set(['error_max_turns']);
+// --- eforge:region plan-01-transport-resilience ---
+const RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT: ReadonlySet<AgentTerminalSubtype> = new Set([
+  'error_max_turns',
+  'error_transient_transport',
+]);
+
+function isBeforePlannerSubmission(events: readonly EforgeEvent[]): boolean {
+  return !events.some((ev) => ev.type === 'planning:submission' || ev.type === 'planning:skip');
+}
+// --- eforge:endregion plan-01-transport-resilience ---
 const EMPTY_SUBTYPES: ReadonlySet<AgentTerminalSubtype> = new Set();
 
 /**
@@ -624,8 +639,13 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
     // `PlannerSubmissionError`. Inspecting events alone would also match
     // unrelated `AgentTerminalError` subtypes (e.g. `error_during_execution`,
     // `error_max_budget_usd`) that happen to have no submission tool call,
-    // which the prior ad-hoc loop explicitly did not retry.
-    shouldRetry: (info) => isPlannerSubmissionError(info.error) && isDroppedSubmission(info.events),
+    // which the prior ad-hoc loop explicitly did not retry. Transient transport
+    // closes use the same continuation prompt only when the stream failed before
+    // a terminal planner submission/skip event; otherwise the submitted plans
+    // are already authoritative and rerunning would duplicate side effects.
+    shouldRetry: (info) =>
+      (isPlannerSubmissionError(info.error) && isDroppedSubmission(info.events)) ||
+      (info.subtype === 'error_transient_transport' && isBeforePlannerSubmission(info.events)),
     buildContinuationInput: (info) => buildPlannerContinuationInput(info as RetryAttemptInfo<PlannerContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const reason: 'max_turns' | 'dropped_submission' =
@@ -643,7 +663,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   builder: {
     agent: 'builder',
     maxAttempts: 4,
-    retryableSubtypes: RETRYABLE_MAX_TURNS,
+    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
     buildContinuationInput: (info) => buildBuilderContinuationInput(info as RetryAttemptInfo<BuilderContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const planId = (info.prevInput as BuilderContinuationInput).planId;
@@ -742,7 +762,8 @@ export function getPolicy(role: AgentRole): RetryPolicy<unknown> {
  * callers should treat `undefined` as non-retryable and rethrow.
  */
 function classifyError(err: unknown): AgentTerminalSubtype | undefined {
-  if (err instanceof AgentTerminalError) return err.subtype;
+  const classified = classifyAgentTerminalSubtype(err);
+  if (classified) return classified;
   if (isPlannerSubmissionError(err)) return 'error_during_execution';
   return undefined;
 }
