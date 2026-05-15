@@ -1,0 +1,92 @@
+name: extend-04-extension-management-surface-mvp
+description: EXTEND_04 Extension Management Surface MVP — add extension
+  scaffold/new and reload management API, CLI, MCP/Pi tooling, explicit
+  enablement state, tests, and docs on top of the existing list/show/validate
+  surface.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+  - pnpm build
+plans:
+  - id: plan-01-extension-management-api
+    name: Extension Management API, Scaffold Helper, and Reload Runtime
+    depends_on: []
+    branch: extend-04-extension-management-surface-mvp/plan-01-extension-management-api
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Coordinates wire contracts, filesystem-safe scaffold writes, daemon
+          route behavior, and watcher reload lifecycle without stopping build
+          workers.
+      reviewer:
+        effort: high
+        rationale: Path-safety, API contract, and watcher lifecycle semantics need
+          careful review.
+  - id: plan-02-extension-management-surfaces-docs
+    name: Extension Management CLI, MCP/Pi Tooling, and Documentation
+    depends_on:
+      - plan-01-extension-management-api
+    branch: extend-04-extension-management-surface-mvp/plan-02-extension-management-surfaces-docs
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - docs
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - test-write
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - security
+      - docs
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive multi-package feature spanning client route
+    contracts, daemon routes, CLI, Pi/MCP surfaces, tests, and documentation,
+    but it is still suitable for a single planner session, so excursion is
+    appropriate. A plan review gate helps catch cross-package parity and
+    API-surface issues before implementation. The build pipeline runs
+    documentation authoring alongside implementation, then syncs existing docs,
+    adds tests, performs an iterative review cycle, and finishes with test-cycle
+    validation. Parallel review perspectives cover API drift,
+    filesystem/path-safety concerns, docs, test coverage, and end-to-end
+    verification without escalating to expedition-level planning.
