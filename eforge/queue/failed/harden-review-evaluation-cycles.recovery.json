@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 2,
+  "summary": {
+    "prdId": "harden-review-evaluation-cycles",
+    "setName": "harden-review-evaluation-cycles",
+    "featureBranch": "eforge/harden-review-evaluation-cycles",
+    "baseBranch": "main",
+    "plans": [
+      {
+        "planId": "plan-03-compile-evaluator-parity",
+        "status": "failed",
+        "error": "Backend error: WebSocket error",
+        "terminalSubtype": "error_transient_transport"
+      }
+    ],
+    "failingPlan": {
+      "planId": "plan-03-compile-evaluator-parity",
+      "errorMessage": "Backend error: WebSocket error",
+      "terminalSubtype": "error_transient_transport"
+    },
+    "landedCommits": [
+      {
+        "sha": "e5c4be487aae1f9b8856fbe28f1c0c24f2445482",
+        "subject": "feat(plan-03-compile-evaluator-parity): Compile Evaluator Parity",
+        "author": "Mark Schaake",
+        "date": "2026-05-15T14:37:36-07:00"
+      },
+      {
+        "sha": "d3d52ad451d5fc8a4f8f5ff2ba0856ca7b3275d0",
+        "subject": "feat(plan-02-build-evaluator-enforcement): Build Evaluator Enforcement and Reporting",
+        "author": "Mark Schaake",
+        "date": "2026-05-15T14:07:33-07:00"
+      },
+      {
+        "sha": "52b8aa5f09986199b1e7ae3a8553e90452061a0e",
+        "subject": "feat(plan-01-evaluation-application-core): Evaluation Application Core",
+        "author": "Mark Schaake",
+        "date": "2026-05-15T13:33:53-07:00"
+      },
+      {
+        "sha": "ba65795b47eb9536e3d391f5eadd86b78cb6da76",
+        "subject": "plan(harden-review-evaluation-cycles): initial planning artifacts",
+        "author": "Mark Schaake",
+        "date": "2026-05-15T12:57:08-07:00"
+      }
+    ],
+    "diffStat": ".../orchestration.yaml                             | 139 ++++\n .../plan-01-evaluation-application-core.md         |  80 +++\n .../plan-02-build-evaluator-enforcement.md         |  91 +++\n .../plan-03-compile-evaluator-parity.md            |  83 +++\n .../client/src/__tests__/events-schemas.test.ts    |  41 ++\n packages/client/src/events.schemas.ts              |  10 +\n packages/engine/src/agents/builder.ts              |  97 ++-\n packages/engine/src/agents/plan-evaluator.ts       | 217 ++++++-\n packages/engine/src/evaluation/apply.ts            | 709 +++++++++++++++++++++\n packages/engine/src/evaluation/index.ts            |   2 +\n packages/engine/src/evaluation/tools.ts            | 130 ++++\n packages/engine/src/pipeline/runners.ts            |  57 +-\n .../engine/src/pipeline/stages/build-stages.ts     | 243 ++++++-\n .../engine/src/pipeline/stages/compile-stages.ts   |  63 +-\n packages/engine/src/prompts/evaluator.md           | 154 +----\n packages/engine/src/prompts/plan-evaluator.md      |  85 +--\n packages/engine/src/retry.ts                       |  25 +-\n packages/engine/src/schemas.ts                     |  20 +\n packages/monitor-ui/src/lib/decision-format.ts     |  18 +-\n .../lib/reducer/__tests__/handle-decisions.test.ts |  25 +\n test/agent-wiring.test.ts                          | 171 ++++-\n test/build-evaluator-enforcement.test.ts           | 400 ++++++++++++\n test/cohesion-review.test.ts                       |   7 +-\n test/compile-evaluator-enforcement.test.ts         | 307 +++++++++\n test/decisions.test.ts                             |  21 +\n test/evaluation-application.test.ts                | 444 +++++++++++++\n test/evaluation-tools.test.ts                      |  90 +++\n test/evaluator-continuation.test.ts                |  48 +-\n test/retry.test.ts                                 |  38 +-\n test/schemas.test.ts                               |  27 +\n web/content/reference/api.md                       |   2 +-\n web/content/reference/cli.md                       |   2 +-\n web/content/reference/config.md                    |   2 +-\n web/content/reference/events.md                    |   2 +-\n web/content/reference/tools.md                     |   2 +-\n web/public/llms-full.txt                           |  10 +-\n web/public/llms.txt                                |   2 +-\n web/public/reference/api.md                        |   2 +-\n web/public/reference/cli.md                        |   2 +-\n web/public/reference/config.md                     |   2 +-\n web/public/reference/events.md                     |   2 +-\n web/public/reference/tools.md                      |   2 +-\n web/public/schemas/events.schema.json              |  31 +\n 43 files changed, 3569 insertions(+), 336 deletions(-)",
+    "modelsUsed": [
+      "gpt-5.5"
+    ],
+    "failedAt": "2026-05-15T21:38:05.489Z"
+  },
+  "verdict": {
+    "verdict": "retry",
+    "confidence": "high",
+    "rationale": "The failure terminal subtype is `error_transient_transport` caused by a WebSocket error — a network-level transient issue with no indication of a code defect or logic problem. Critically, all three implementation commits are present on the feature branch, including `feat(plan-03-compile-evaluator-parity): Compile Evaluator Parity` (sha `e5c4be4`). This means plan-03's implementation work committed successfully before the transport error occurred — the failure happened in a post-commit phase (review, evaluation, or test cycle). A retry will resume at the interrupted cycle rather than re-running implementation from scratch, and the transient cause has no bearing on whether the implementation is correct.",
+    "completedWork": [
+      "plan-01-evaluation-application-core: evaluation application core implemented and merged — `packages/engine/src/evaluation/apply.ts` (709 lines), `evaluation/tools.ts`, `evaluation/index.ts`, `test/evaluation-application.test.ts`, `test/evaluation-tools.test.ts`",
+      "plan-02-build-evaluator-enforcement: build evaluator enforcement and reporting implemented and merged — refactored `agents/builder.ts`, `pipeline/stages/build-stages.ts`, updated `prompts/evaluator.md`, added `test/build-evaluator-enforcement.test.ts`, review-cycle reporting fixes, monitor-ui decision format updates",
+      "plan-03-compile-evaluator-parity: compile evaluator parity implementation committed and merged — refactored `agents/plan-evaluator.ts` (217 lines changed), `pipeline/runners.ts`, `pipeline/stages/compile-stages.ts`, `prompts/plan-evaluator.md`, added `test/compile-evaluator-enforcement.test.ts` (307 lines)",
+      "Client event schema updates in `packages/client/src/events.schemas.ts` and associated schema artifacts merged",
+      "Shared `packages/engine/src/schemas.ts` and `retry.ts` updates merged"
+    ],
+    "remainingWork": [
+      "plan-03-compile-evaluator-parity: review/evaluation cycle that was interrupted by the WebSocket error needs to complete",
+      "Final merge of the feature branch to main once all plan cycles pass"
+    ],
+    "risks": [
+      "If the WebSocket error recurs (sustained backend instability), another transient failure is possible — monitor for repeated failures before assuming a code issue",
+      "plan-03 implementation commit already landed; if retry incorrectly re-runs implementation rather than resuming the interrupted cycle, there is a risk of merge conflicts or redundant changes — verify engine retry semantics handle this checkpoint correctly",
+      "Large diff scope (3,569 insertions across 43 files) means any type-check or test failures surfaced during the resumed review cycle will be non-trivial to diagnose — watch post-retry evaluation output closely"
+    ]
+  },
+  "generatedAt": "2026-05-15T21:38:48.513Z"
+}
