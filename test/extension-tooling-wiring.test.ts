@@ -141,7 +141,6 @@ describe('extension runtime documentation', () => {
       for (const capability of [
         'registerTool',
         'beforePlanMerge',
-        'registerProfileRouter',
         'registerInputSource',
         'registerReviewerPerspective',
         'registerValidationProvider',
@@ -151,6 +150,17 @@ describe('extension runtime documentation', () => {
         expect(row).toContain('Deferred');
       }
     }
+
+    // registerProfileRouter: SDK README updated to reflect pre-build dispatch contract (plan-01);
+    // docs/extensions.md and docs/extensions-api.md keep "Deferred" until plan-02 ships the runtime.
+    for (const source of [docsExtensions, docsExtensionsApi]) {
+      const row = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerProfileRouter'));
+      expect(row, 'registerProfileRouter row (docs)').toBeDefined();
+      expect(row).toContain('Deferred');
+    }
+    const sdkProfileRouterRow = sdkReadme.split('\n').find((line) => line.startsWith('|') && line.includes('registerProfileRouter'));
+    expect(sdkProfileRouterRow, 'registerProfileRouter row (SDK README)').toBeDefined();
+    expect(sdkProfileRouterRow).toContain('Yes (pre-build dispatch)');
   });
 
   it('documents extension management commands and replay workflows', () => {

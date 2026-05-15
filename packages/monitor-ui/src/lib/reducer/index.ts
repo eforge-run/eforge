@@ -270,6 +270,14 @@ export const IGNORED_EVENT_TYPES = [
   'queue:prd:commit-failed',
   'queue:prd:complete',
   'queue:complete',
+  // --- eforge:region plan-01-sdk-and-wire-contracts ---
+  // Profile router diagnostic events — session-scoped, non-persistent.
+  // Monitor UI rendering is out of scope for this plan.
+  'queue:profile:selected',
+  'queue:profile:router-failed',
+  'queue:profile:router-timeout',
+  'queue:profile:invalid-selection',
+  // --- eforge:endregion plan-01-sdk-and-wire-contracts ---
   // --- eforge:region plan-01-types-and-daemon-emission ---
   // New daemon-scoped event types — monitor UI handling is plan-03's responsibility.
   // Listed here so the exhaustive check passes without requiring plan-03 to land first.

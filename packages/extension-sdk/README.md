@@ -73,7 +73,7 @@ Loader-time registration capture is available today: the daemon calls each defau
 | `onAgentRun(handler)` | Append prompt context scoped by role/tier/phase (see note) | Yes | Yes (promptAppend only) |
 | `registerTool(tool)` | Register a custom agent tool for provenance and future injection | Yes | Deferred |
 | `beforePlanMerge(handler)` | Policy gate before plan branch is merged | Yes | Deferred |
-| `registerProfileRouter(spec)` | Select agent runtime profile per build | Yes | Deferred |
+| `registerProfileRouter(spec)` | Select agent runtime profile per build (canonical: `selectBuildProfile`) | Yes | Yes (pre-build dispatch) |
 | `registerInputSource(adapter)` | Produce PRD/build-source artifacts | Yes | Deferred |
 | `registerReviewerPerspective(spec)` | Add custom review perspective | Yes | Deferred |
 | `registerValidationProvider(spec)` | Add custom validation step | Yes | Deferred |

@@ -239,7 +239,7 @@ interface ExtensionDiff {
 
 ### `registerProfileRouter(spec)`
 
-Register a function that selects an agent runtime profile for each build. Called before each plan's build phase begins.
+Register a function that selects an agent runtime profile for each build dispatched from the queue. Called before each plan's build phase begins.
 
 **Signature:**
 
@@ -252,19 +252,31 @@ registerProfileRouter(spec: ProfileRouterSpec): void
 ```ts
 interface ProfileRouterSpec {
   name: string;
-  resolve: (
+  /** Canonical method — receives full build/queue context. */
+  selectBuildProfile?: (
+    ctx: ProfileRouterContext,
+  ) => ProfileRouterResult | null | undefined | Promise<ProfileRouterResult | null | undefined>;
+  /**
+   * @deprecated Use `selectBuildProfile` instead.
+   * Receives limited agent-run context rather than build/queue context.
+   */
+  resolve?: (
     ctx: AgentRunContext,
   ) => ProfileRouterResult | null | undefined | Promise<ProfileRouterResult | null | undefined>;
 }
 
 interface ProfileRouterResult {
   profile: string;
+  reason?: string;
+  confidence?: 'low' | 'medium' | 'high';
 }
 ```
 
-Return `null` or `undefined` from `resolve` to defer to the next registered router (or the default profile).
+At least one of `selectBuildProfile` or `resolve` must be provided. The `selectBuildProfile` method is canonical and receives `ProfileRouterContext` with PRD id, title, body, priority, dependencies, available profiles, and usage statistics.
 
-**Runtime status:** registration is captured at load time; profile routing execution is deferred.
+Return `null` or `undefined` from the handler to defer to the next registered router (or the default profile if no router selects one). The optional `reason` and `confidence` fields flow into the `queue:profile:selected` wire event.
+
+**Runtime status:** registration is captured at load time; pre-build runtime dispatch is wired via the `queue:profile:*` event family (full runtime details land with the EXTEND_09 runtime change).
 
 ---
 

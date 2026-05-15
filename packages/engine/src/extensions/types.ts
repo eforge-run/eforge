@@ -2,7 +2,7 @@ import type { Scope } from '@eforge-build/scopes';
 
 export type EventPattern = string;
 export type ExtensionHandler = (...args: never[]) => unknown;
-export interface ProfileRouterSpec { name: string; resolve: ExtensionHandler }
+export interface ProfileRouterSpec { name: string; selectBuildProfile?: ExtensionHandler; resolve?: ExtensionHandler }
 export interface InputSourceAdapter { name: string; description: string; fetch: ExtensionHandler }
 export interface ReviewerPerspectiveSpec { key: string; label: string; promptFragment: string }
 export interface ValidationProviderSpec { name: string; description: string; validate: ExtensionHandler }

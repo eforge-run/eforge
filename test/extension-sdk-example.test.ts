@@ -30,6 +30,31 @@ void _factoryCheck1;
 void _factoryCheck2;
 void _factoryCheck3;
 
+// --- eforge:region plan-01-sdk-and-wire-contracts ---
+// Type-check stub: selectBuildProfile with ProfileRouterContext
+const _profileRouterStub: sdk.EforgeExtensionFactory = (api) => {
+  api.registerProfileRouter({
+    name: 'type-check-router',
+    async selectBuildProfile(ctx: sdk.ProfileRouterContext) {
+      // Exercise prdId, availableProfiles, and usage.profile(...)
+      const _prdId: string = ctx.prdId;
+      const _profiles: sdk.ProfileSummary[] = ctx.availableProfiles;
+      const _firstProfile = ctx.availableProfiles[0]?.name ?? 'default';
+      const _usage: sdk.ProfileUsageSummary = ctx.usage.profile(_firstProfile);
+      const _nearLimit: boolean | undefined = _usage.nearLimit;
+      void _prdId;
+      void _profiles;
+      void _nearLimit;
+      if (_usage.cooldownActive) {
+        return { profile: 'fallback', reason: 'cooldown active', confidence: 'high' };
+      }
+      return null;
+    },
+  });
+};
+void _profileRouterStub;
+// --- eforge:endregion plan-01-sdk-and-wire-contracts ---
+
 // ---------------------------------------------------------------------------
 // Type-level barrel surface check — references every documented type-only
 // export so that accidental removal causes a compile error in this test file.
@@ -52,6 +77,9 @@ type _TypeExports = [
   sdk.ExtensionTool,
   sdk.ProfileRouterSpec,
   sdk.ProfileRouterResult,
+  sdk.ProfileRouterContext,
+  sdk.ProfileSummary,
+  sdk.ProfileUsageSummary,
   sdk.InputSourceAdapter,
   sdk.ReviewerPerspectiveSpec,
   sdk.ValidationProviderSpec,

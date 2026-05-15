@@ -131,10 +131,52 @@ export interface EforgeExtensionAPI {
   beforePlanMerge(handler: PolicyGateHandler): void;
 
   /**
-   * Register a profile router that dynamically resolves which profile to use
-   * for a given agent run.
+   * Register a profile router that selects which agent runtime profile to use
+   * for each build dispatched from the queue.
    *
-   * @remarks Runtime not yet wired. Typed contract only in this slice.
+   * Profile routers are invoked sequentially in registration order before each
+   * plan's build phase begins. The first router to return a non-null result wins
+   * (sequential first-valid-wins evaluation). If all routers return `null` or
+   * `undefined`, the engine falls back to the base profile from configuration.
+   * Explicit PRD frontmatter profile overrides take priority over all routers
+   * and are applied before routers are invoked.
+   *
+   * **Fail-open semantics:** if a router throws, times out, or returns a profile
+   * name that does not resolve via `loadProfile`, the engine emits a typed
+   * diagnostic event (`queue:profile:router-failed`, `queue:profile:router-timeout`,
+   * or `queue:profile:invalid-selection`) and continues with the next router.
+   * Profile routers never block a build from starting.
+   *
+   * **Canonical method:** implement `selectBuildProfile(ctx: ProfileRouterContext)`
+   * which receives rich build/queue context (PRD id, title, body, priority,
+   * dependencies, available profiles, and usage statistics). The deprecated
+   * `resolve(ctx: AgentRunContext)` method is accepted for backward compatibility
+   * but receives limited context.
+   *
+   * At least one of `selectBuildProfile` or `resolve` must be provided.
+   *
+   * Diagnostic events emitted by the runtime:
+   * - `queue:profile:selected` — a router successfully selected a profile.
+   * - `queue:profile:router-failed` — a router threw an error.
+   * - `queue:profile:router-timeout` — a router exceeded its timeout.
+   * - `queue:profile:invalid-selection` — a router returned an unknown profile name.
+   *
+   * @remarks Pre-build runtime support is wired via the `queue:profile:*` event
+   * family (EXTEND_09). Active-marker behavior is not affected by profile routers.
+   *
+   * @example
+   * ```ts
+   * eforge.registerProfileRouter({
+   *   name: 'cost-aware-router',
+   *   async selectBuildProfile(ctx) {
+   *     const usage = ctx.usage.profile('premium');
+   *     if (usage.nearLimit) {
+   *       return { profile: 'standard', reason: 'premium profile near limit' };
+   *     }
+   *     return null; // defer to next router or default
+   *   },
+   * });
+   * ```
    */
   registerProfileRouter(spec: ProfileRouterSpec): void;
 

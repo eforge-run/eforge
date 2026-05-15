@@ -274,4 +274,71 @@ describe('native extension loader', () => {
       details: expect.stringContaining('extension:invalid-export'),
     });
   });
+
+  // --- eforge:region plan-01-sdk-and-wire-contracts ---
+
+  it('registers a selectBuildProfile-shaped profile router and preserves both callables', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'router-canonical.js'), `
+      export default function extension(eforge) {
+        eforge.registerProfileRouter({
+          name: 'canonical-router',
+          selectBuildProfile: (ctx) => null,
+        });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.profileRouters).toHaveLength(1);
+    const registration = result.registry.profileRouters[0]!;
+    expect(registration.kind).toBe('profileRouter');
+    expect(registration.extensionName).toBe('router-canonical');
+    expect(registration.name).toBe('canonical-router');
+    expect(typeof registration.value.selectBuildProfile).toBe('function');
+    expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toHaveLength(0);
+  });
+
+  it('registers a deprecated resolve-shaped profile router without diagnostics', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'router-deprecated.js'), `
+      export default function extension(eforge) {
+        eforge.registerProfileRouter({
+          name: 'deprecated-router',
+          resolve: (ctx) => null,
+        });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.profileRouters).toHaveLength(1);
+    const registration = result.registry.profileRouters[0]!;
+    expect(registration.kind).toBe('profileRouter');
+    expect(registration.extensionName).toBe('router-deprecated');
+    expect(registration.name).toBe('deprecated-router');
+    expect(typeof registration.value.resolve).toBe('function');
+    expect(result.diagnostics.filter((d) => d.code === 'extension:invalid-registration')).toHaveLength(0);
+  });
+
+  it('emits extension:invalid-registration diagnostic when profile router has neither callable', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'router-invalid.js'), `
+      export default function extension(eforge) {
+        eforge.registerProfileRouter({ name: 'invalid-router' });
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.profileRouters).toHaveLength(0);
+    const invalidDiagnostics = result.diagnostics.filter((d) => d.code === 'extension:invalid-registration');
+    expect(invalidDiagnostics).toHaveLength(1);
+    expect(invalidDiagnostics[0]!.message).toContain('selectBuildProfile');
+  });
+
+  // --- eforge:endregion plan-01-sdk-and-wire-contracts ---
 });

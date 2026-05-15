@@ -199,3 +199,116 @@ export interface PolicyGateContext extends EforgeExtensionContext {
   /** Summary of file-level changes included in the merge. */
   diff: ExtensionDiff;
 }
+
+// ---------------------------------------------------------------------------
+// Profile router context types
+// ---------------------------------------------------------------------------
+
+/**
+ * Summary of a single profile available for selection by a profile router.
+ *
+ * All fields are read-only. The `toolbeltHint` field is advisory only —
+ * do not use it to infer or override actual tool availability.
+ */
+export interface ProfileSummary {
+  /** Profile name as declared in `eforge/config.yaml`. */
+  name: string;
+  /** The scope this profile belongs to (e.g. `'project-local'`, `'user'`). */
+  scope: string;
+  /** The agent harness backend this profile targets. */
+  harness: 'claude-sdk' | 'pi' | string;
+  /** Optional human-readable description of the profile's purpose. */
+  description?: string;
+  /** Optional guidance on when to prefer this profile. */
+  whenToUse?: string;
+  /** Optional free-form tags for categorization. */
+  tags?: string[];
+  /** Advisory hint about the toolbelt associated with this profile. Do not use to infer tool availability. */
+  toolbeltHint?: string;
+}
+
+/**
+ * Best-effort usage summary for a single profile.
+ *
+ * All numeric fields are optional and may be absent when the daemon has not
+ * yet recorded data for this profile. `dataSource` indicates whether any
+ * event history was used; `'none'` means the router has no usage data to act on.
+ *
+ * This contract does not imply exact provider quota limits.
+ */
+export interface ProfileUsageSummary {
+  /** ISO 8601 timestamp of the most recent build using this profile. */
+  lastUsedAt?: string;
+  /** Number of build runs using this profile in a recent window. */
+  recentRunCount?: number;
+  /** Approximate token usage in a recent window. */
+  recentTokens?: {
+    input?: number;
+    output?: number;
+    total?: number;
+  };
+  /** Approximate cost (USD) accumulated in a recent window. */
+  recentCostUsd?: number;
+  /** Number of quota errors encountered in a recent window. */
+  recentQuotaErrors?: number;
+  /** Whether a cooldown is currently active for this profile. */
+  cooldownActive?: boolean;
+  /** ISO 8601 timestamp when the cooldown expires, if active. */
+  cooldownUntil?: string;
+  /** Whether this profile is approaching its usage limit. */
+  nearLimit?: boolean;
+  /**
+   * Indicates the source of the usage data.
+   *
+   * - `'event-history'` - populated from recorded daemon event history.
+   * - `'none'` - no provider is wired; all other fields will be absent.
+   */
+  dataSource: 'event-history' | 'none';
+}
+
+/**
+ * Context passed to profile router handlers registered via `registerProfileRouter`.
+ *
+ * All fields are read-only. Do not mutate any field — the engine owns all
+ * profile, toolbelt, and MCP state.
+ *
+ * The `usage` helper returns best-effort data. When no usage provider is
+ * configured, `usage.profile(name)` returns `{ dataSource: 'none' }`.
+ */
+export interface ProfileRouterContext extends EforgeExtensionContext {
+  /** The PRD/queue item identifier being dispatched. */
+  prdId: string;
+  /** The PRD title as declared in the queue file. */
+  prdTitle: string;
+  /**
+   * Full PRD body text, if available and within the size cap (~4KB).
+   * Absent when the body is too large; use `prdContentSummary` in that case.
+   */
+  prdBody?: string;
+  /**
+   * Truncated PRD body summary (capped to ~4KB) when `prdBody` is absent.
+   * At most one of `prdBody` or `prdContentSummary` is populated.
+   */
+  prdContentSummary?: string;
+  /** Numeric dispatch priority, if set in the queue file frontmatter. */
+  priority?: number;
+  /** IDs of PRDs this item depends on, as declared in the queue file frontmatter. */
+  dependsOn: string[];
+  /** The profile currently resolved for this build, or `null` if none is set. */
+  currentProfile: string | null;
+  /**
+   * The base profile from the active eforge configuration, or `null` if no
+   * default profile is configured.
+   */
+  baseProfile: string | null;
+  /** All profiles available for selection from the active configuration. */
+  availableProfiles: ProfileSummary[];
+  /**
+   * Usage data helper. Returns best-effort usage statistics for the named profile.
+   *
+   * When no usage provider is wired, returns `{ dataSource: 'none' }` for all names.
+   */
+  usage: {
+    profile(name: string): ProfileUsageSummary;
+  };
+}

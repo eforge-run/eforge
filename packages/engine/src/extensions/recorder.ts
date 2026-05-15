@@ -69,8 +69,16 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       state.policyGates.push({ kind: 'policyGate', extensionName, extensionPath, value: handler as ExtensionHandler });
     },
     registerProfileRouter(spec: unknown): void {
-      if (!isObject(spec) || !isNonEmptyString(spec.name) || typeof spec.resolve !== 'function') {
-        addDiagnostic('registerProfileRouter requires { name: string, resolve: function }', 'extension:invalid-registration', isObject(spec) && typeof spec.name === 'string' ? spec.name : undefined);
+      if (
+        !isObject(spec) ||
+        !isNonEmptyString(spec.name) ||
+        (typeof spec.selectBuildProfile !== 'function' && typeof spec.resolve !== 'function')
+      ) {
+        addDiagnostic(
+          'registerProfileRouter requires { name: string, selectBuildProfile: function } (or deprecated { resolve: function })',
+          'extension:invalid-registration',
+          isObject(spec) && typeof spec.name === 'string' ? spec.name : undefined,
+        );
         return;
       }
       state.profileRouters.push({ kind: 'profileRouter', extensionName, extensionPath, name: spec.name, value: spec as unknown as ProfileRouterSpec });
