@@ -1,0 +1,85 @@
+name: stabilize-run-summary-pending-plans-and-implement-pi-mcp-multi-build-status
+description: Stabilize the RunSummary `pending` plans wire change (re-apply
+  plan-01 on top of current main) and implement Pi/MCP multi-build status
+  awareness (plan-02).
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-run-summary-pending-plans
+    name: Re-apply RunSummary Pending Plans and planning:complete Seeding
+    depends_on: []
+    branch: stabilize-run-summary-pending-plans-and-implement-pi-mcp-multi-build-status/plan-01-run-summary-pending-plans
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: single
+      perspectives:
+        - code
+      maxRounds: 2
+      evaluatorStrictness: standard
+  - id: plan-02-pi-mcp-multi-build-status
+    name: Pi Extension and MCP Proxy Multi-Build Status Awareness
+    depends_on:
+      - plan-01-run-summary-pending-plans
+    branch: stabilize-run-summary-pending-plans-and-implement-pi-mcp-multi-build-status/plan-02-pi-mcp-multi-build-status
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is excursion scope. The work spans multiple packages (client,
+    monitor, pi-eforge, eforge MCP proxy, tests) but the pieces share contracts
+    (new RunSummary 'pending' status, new shared
+    `apiGetRunningRuns`/`apiGetRunningSessionSummaries` helpers consumed by both
+    Pi extension and MCP proxy) and have sequential dependencies — stabilize the
+    rebased plan-01 work first, then layer Phase 2 on top. A single planner
+    session can enumerate all plans and file changes; there is no need for
+    delegated module planning, so expedition would be overkill.
+    plan-review-cycle is included because the PRD is medium-sized with a
+    stabilization-then-implement structure and explicit acceptance criteria
+    spanning two phases — a quality gate on the plan decomposition prevents the
+    successor from inheriting another partial-completion failure like plan-01.
+    The defaultBuild pipeline uses implement, then test-write (the PRD
+    explicitly calls for new unit tests for multi-build aggregation, footer
+    formatting, and checkActiveBuilds, plus updated run-summary-plans tests),
+    then review-cycle for iterative quality. doc-author/doc-sync are omitted
+    because the PRD does not name new docs files and explicitly notes the
+    DAEMON_API_VERSION comment is the only user-visible documentation surface
+    (handled inline in implement). Review perspectives are parallel across code
+    (implementation correctness across packages), api (RunSummary wire shape,
+    new shared client helpers, MCP eforge_status response shape — all
+    consumer-facing), test (test coverage is a first-class acceptance
+    criterion), and verify (16+ numbered acceptance criteria spanning two phases
+    need explicit traceability). maxRounds: 2 is sufficient for a feature of
+    this size; evaluatorStrictness: standard matches the risk profile
+    (developer-facing footer/status UX plus wire shape changes, not security or
+    data integrity)."
