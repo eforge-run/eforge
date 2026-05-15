@@ -20,6 +20,7 @@ describe('extension tooling route constants and helpers', () => {
     expect(API_ROUTES.extensionList).toBe('/api/extensions/list');
     expect(API_ROUTES.extensionShow).toBe('/api/extensions/show');
     expect(API_ROUTES.extensionValidate).toBe('/api/extensions/validate');
+    expect(API_ROUTES.extensionTest).toBe('/api/extensions/test');
     expect(API_ROUTES.extensionNew).toBe('/api/extensions/new');
     expect(API_ROUTES.extensionReload).toBe('/api/extensions/reload');
   });
@@ -29,12 +30,14 @@ describe('extension tooling route constants and helpers', () => {
     expect(source).toContain('API_ROUTES.extensionList');
     expect(source).toContain('API_ROUTES.extensionShow');
     expect(source).toContain('API_ROUTES.extensionValidate');
+    expect(source).toContain('API_ROUTES.extensionTest');
     expect(source).toContain('API_ROUTES.extensionNew');
     expect(source).toContain('API_ROUTES.extensionReload');
     expect(source).not.toContain("'/api/extensions/");
     expect(source).not.toContain('"/api/extensions/');
     expect(source).toContain('apiNewExtension');
     expect(source).toContain('apiReloadExtensions');
+    expect(source).toContain('apiTestExtension');
   });
 });
 

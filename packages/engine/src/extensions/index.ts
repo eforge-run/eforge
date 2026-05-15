@@ -50,6 +50,24 @@ export type {
 // --- eforge:endregion plan-01-agent-context-runtime ---
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
+// --- eforge:region plan-01-engine-daemon-extension-replay ---
+export {
+  parseExtensionEventFixtureFile,
+  replayNativeExtensionEvents,
+  testNativeExtensions,
+} from './replay.js';
+export type {
+  ExtensionEventFixtureParseResult,
+  ExtensionFixtureFormat,
+  NativeExtensionDeferredRegistrationFamily,
+  NativeExtensionDeferredRegistrationSummary,
+  NativeExtensionReplayCounts,
+  NativeExtensionReplayMatch,
+  NativeExtensionReplayOptions,
+  NativeExtensionReplayResult,
+  NativeExtensionReplaySource,
+} from './replay.js';
+// --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 // --- eforge:region plan-01-extension-management-api ---
 export {
   SUPPORTED_EXTENSION_SCAFFOLD_TEMPLATES,

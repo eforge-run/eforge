@@ -11,7 +11,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 53
+Total routes: 54
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -30,6 +30,7 @@ Total routes: 53
 | `extensionNew` | `/api/extensions/new` |
 | `extensionReload` | `/api/extensions/reload` |
 | `extensionShow` | `/api/extensions/show` |
+| `extensionTest` | `/api/extensions/test` |
 | `extensionValidate` | `/api/extensions/validate` |
 | `health` | `/api/health` |
 | `keepAlive` | `/api/keep-alive` |

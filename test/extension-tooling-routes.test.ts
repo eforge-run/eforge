@@ -3,12 +3,13 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, symlink, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { request } from 'node:http';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
-import { API_ROUTES, writeLockfile, apiListExtensions, apiNewExtension, apiReloadExtensions, apiShowExtension, apiValidateExtensions, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionValidateResponse } from '@eforge-build/client';
+import { API_ROUTES, writeLockfile, apiListExtensions, apiNewExtension, apiReloadExtensions, apiShowExtension, apiTestExtension, apiValidateExtensions, type EforgeEvent, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse, type ExtensionValidateResponse } from '@eforge-build/client';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -72,6 +73,36 @@ async function start(tmpDir: string): Promise<MonitorServer> {
   const db = openDatabase(resolve(tmpDir, '.eforge', 'monitor.db'));
   server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
   return server;
+}
+
+function replayEvent(type: 'config:warning' | 'plan:build:start', runId?: string): EforgeEvent {
+  const timestamp = new Date().toISOString();
+  if (type === 'config:warning') return { type, timestamp, ...(runId !== undefined && { runId }), message: 'warning', source: 'test' };
+  return { type, timestamp, ...(runId !== undefined && { runId }), planId: 'plan-1' };
+}
+
+function insertReplayRun(db: ReturnType<typeof openDatabase>, opts: { runId: string; sessionId: string; cwd: string; events: EforgeEvent[]; startedAt?: string }): void {
+  db.insertRun({ id: opts.runId, sessionId: opts.sessionId, planSet: 'set', command: 'build', status: 'completed', startedAt: opts.startedAt ?? new Date().toISOString(), cwd: opts.cwd });
+  for (const event of opts.events) {
+    db.insertEvent({ runId: opts.runId, type: event.type, data: JSON.stringify(event), timestamp: event.timestamp });
+  }
+}
+
+function postExtensionTestRaw(port: number, headers: Record<string, string>): Promise<number> {
+  return new Promise((resolveStatus, rejectStatus) => {
+    const req = request({
+      hostname: 'localhost',
+      port,
+      path: API_ROUTES.extensionTest,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+    }, (res) => {
+      res.resume();
+      res.on('end', () => resolveStatus(res.statusCode ?? 0));
+    });
+    req.on('error', rejectStatus);
+    req.end(JSON.stringify({}));
+  });
 }
 
 describe('extension tooling daemon routes', () => {
@@ -180,6 +211,222 @@ describe('extension tooling daemon routes', () => {
 
     const reload = await apiReloadExtensions({ cwd: tmpDir });
     expect(reload.data.extensions.some((entry) => entry.name === 'audit')).toBe(true);
+
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'replay.js'),
+      'export default function extension(eforge) { eforge.onEvent("config:*", () => {}); }',
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'fixture.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    const tested = await apiTestExtension({ cwd: tmpDir, body: { name: 'replay', fixture } });
+    expect(tested.data).toMatchObject({ valid: true, source: { kind: 'fixture', fixture: await realpath(fixture) }, replay: { inputEventCount: 1, filteredEventCount: 1 } });
+    expect(tested.data.matches).toEqual([expect.objectContaining({ extensionName: 'replay', pattern: 'config:*' })]);
+  });
+
+  it('POST extensionTest supports static-only requests and rejects ambiguous request bodies', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const extensionPath = resolve(tmpDir, '.eforge', 'extensions', 'static-only.js');
+    await writeFile(
+      extensionPath,
+      'export default function extension(eforge) { eforge.registerInputSource({ name: "static-input", description: "static", fetch: async () => "ok" }); }',
+      'utf-8',
+    );
+    const srv = await start(tmpDir);
+
+    const staticOnly = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'static-only' }),
+    });
+    expect(staticOnly.status).toBe(200);
+    const data = await staticOnly.json() as ExtensionTestResponse;
+    expect(data).toMatchObject({
+      valid: true,
+      source: { kind: 'none' },
+      replay: { inputEventCount: 0, filteredEventCount: 0, emittedEventCount: 0, diagnosticEventCount: 0 },
+      matches: [],
+    });
+    expect(data.deferredRegistrations).toEqual(expect.arrayContaining([
+      expect.objectContaining({ family: 'inputSources', count: 1 }),
+    ]));
+
+    for (const body of [
+      { name: 'static-only', path: extensionPath },
+      { name: 'static-only', fixture: 'events.json', run: 'latest' },
+    ]) {
+      const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it('POST extensionTest honors the configured event hook timeout', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(resolve(tmpDir, '.eforge', 'config.yaml'), 'extensions:\n  eventHookTimeoutMs: 5\n', 'utf-8');
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'timeout.js'),
+      'export default function extension(eforge) { eforge.onEvent("config:warning", async () => { await new Promise(() => {}); }); }',
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'timeout-fixture.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    const srv = await start(tmpDir);
+
+    const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'timeout', fixture }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as ExtensionTestResponse;
+    expect(data.valid).toBe(false);
+    expect(data.emittedDiagnostics).toEqual([
+      expect.objectContaining({ type: 'extension:event-handler:timeout', timeoutMs: 5 }),
+    ]);
+  });
+
+  it('POST extensionTest replays fixture events, filters by event type, and reports invalid fixtures', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const extensionPath = resolve(tmpDir, '.eforge', 'extensions', 'replay.js');
+    await writeFile(
+      extensionPath,
+      'export default function extension(eforge) { eforge.onEvent("config:*", () => {}); eforge.onEvent("plan:build:*", () => {}); }',
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'events.jsonl');
+    await writeFile(fixture, `${JSON.stringify(replayEvent('config:warning'))}\n${JSON.stringify(replayEvent('plan:build:start'))}\n`, 'utf-8');
+    const srv = await start(tmpDir);
+
+    const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'replay', fixture, event: 'plan:build:start' }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as ExtensionTestResponse;
+    expect(data.valid).toBe(true);
+    expect(data.replay).toMatchObject({ inputEventCount: 2, filteredEventCount: 1 });
+    expect(data.matches).toEqual([expect.objectContaining({ eventIndex: 1, eventType: 'plan:build:start', pattern: 'plan:build:*' })]);
+
+    const pathScoped = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: extensionPath, fixture, event: 'config:warning' }),
+    });
+    expect(pathScoped.status).toBe(200);
+    const pathScopedData = await pathScoped.json() as ExtensionTestResponse;
+    expect(pathScopedData.valid).toBe(true);
+    expect(pathScopedData.matches).toEqual([expect.objectContaining({ eventIndex: 0, eventType: 'config:warning', extensionPath: await realpath(extensionPath) })]);
+
+    const invalidFixture = resolve(tmpDir, 'bad.json');
+    await writeFile(invalidFixture, JSON.stringify({ type: 'config:warning', timestamp: new Date().toISOString() }), 'utf-8');
+    const bad = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'replay', fixture: invalidFixture }),
+    });
+    expect(bad.status).toBe(200);
+    const badData = await bad.json() as ExtensionTestResponse;
+    expect(badData.valid).toBe(false);
+    expect(badData.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'extension:invalid-fixture' })]));
+  });
+
+  it('POST extensionTest replays latest, run-id, and session-id monitor histories without persisting replay diagnostics', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(resolve(tmpDir, '.eforge', 'config.yaml'), 'extensions:\n  eventHookTimeoutMs: 5\n', 'utf-8');
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'run-replay.js'),
+      'export default function extension(eforge) { eforge.onEvent("config:warning", () => { throw new Error("dry-run failure"); }); eforge.onEvent("config:warning", async () => { await new Promise(() => {}); }); }',
+      'utf-8',
+    );
+    const db = openDatabase(resolve(tmpDir, '.eforge', 'monitor.db'));
+    insertReplayRun(db, { runId: 'run-old', sessionId: 'session-old', cwd: tmpDir, startedAt: '2026-01-01T00:00:00.000Z', events: [replayEvent('plan:build:start', 'run-old')] });
+    insertReplayRun(db, { runId: 'run-new', sessionId: 'session-new', cwd: tmpDir, startedAt: '2026-01-02T00:00:00.000Z', events: [replayEvent('config:warning', 'run-new')] });
+    db.insertEvent({
+      runId: 'run-new',
+      type: 'config:warning',
+      data: JSON.stringify({ type: 'config:warning', timestamp: new Date().toISOString() }),
+      timestamp: new Date().toISOString(),
+    });
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+
+    for (const body of [{ run: 'latest' }, { run: 'run-new' }, { run: 'session-new' }]) {
+      const before = db.getEventsBySession('session-new').length;
+      const res = await fetch(`http://localhost:${server.port}${API_ROUTES.extensionTest}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'run-replay', ...body }),
+      });
+      expect(res.status).toBe(200);
+      const data = await res.json() as ExtensionTestResponse;
+      expect(data.valid).toBe(false);
+      expect(data.source).toMatchObject({ kind: 'run', sessionId: 'session-new' });
+      expect(data.replay.inputEventCount).toBe(1);
+      expect(data.emittedDiagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'extension:event-handler:failed', message: 'dry-run failure' }),
+        expect.objectContaining({ type: 'extension:event-handler:timeout', timeoutMs: 5 }),
+      ]));
+      expect(db.getEventsBySession('session-new')).toHaveLength(before);
+    }
+  });
+
+  it('POST extensionTest rejects invalid paths and cross-origin callers', async () => {
+    const tmpDir = makeTempDir();
+    const outsideDir = makeTempDir();
+    await setupProject(tmpDir);
+    const escapedExtensionTarget = resolve(outsideDir, 'outside-extension.js');
+    const escapedFixtureTarget = resolve(outsideDir, 'outside-fixture.json');
+    await writeFile(escapedExtensionTarget, 'export default function extension() {}', 'utf-8');
+    await writeFile(escapedFixtureTarget, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    await symlink(escapedExtensionTarget, resolve(tmpDir, 'escaped-extension.js'));
+    await symlink(escapedFixtureTarget, resolve(tmpDir, 'escaped-fixture.json'));
+    const srv = await start(tmpDir);
+
+    const invalidPath = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: '../outside.js' }),
+    });
+    expect(invalidPath.status).toBe(400);
+
+    const invalidFixture = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fixture: '../outside.json' }),
+    });
+    expect(invalidFixture.status).toBe(400);
+
+    const escapedPath = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: 'escaped-extension.js' }),
+    });
+    expect(escapedPath.status).toBe(400);
+
+    const escapedFixture = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fixture: 'escaped-fixture.json' }),
+    });
+    expect(escapedFixture.status).toBe(400);
+
+    const crossOrigin = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionTest}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Origin: 'http://evil.example' },
+      body: JSON.stringify({}),
+    });
+    expect(crossOrigin.status).toBe(403);
+
+    await expect(postExtensionTestRaw(srv.port, { Host: '192.0.2.1' })).resolves.toBe(403);
+    await expect(postExtensionTestRaw(srv.port, { Host: '127.0.0.1.evil.example' })).resolves.toBe(403);
   });
 
   it('GET extensionValidate returns valid:false and error diagnostics when any extension has load errors', async () => {

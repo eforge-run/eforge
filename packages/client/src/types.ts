@@ -1,3 +1,5 @@
+import type { EforgeEvent } from './events.js';
+
 // GET /api/health
 export interface HealthResponse {
   status: 'ok';
@@ -108,6 +110,70 @@ export interface ExtensionValidateResponse {
   extensions: ExtensionEntry[];
   diagnostics: ExtensionDiagnostic[];
 }
+
+// --- eforge:region plan-01-engine-daemon-extension-replay ---
+export interface ExtensionTestRequest {
+  name?: string;
+  path?: string;
+  fixture?: string;
+  run?: 'latest' | string;
+  event?: string;
+}
+
+export interface ExtensionTestSource {
+  kind: 'none' | 'fixture' | 'run';
+  fixture?: string;
+  run?: string;
+  sessionId?: string;
+  event?: string;
+}
+
+export interface ExtensionTestReplayCounts {
+  inputEventCount: number;
+  filteredEventCount: number;
+  emittedEventCount: number;
+  diagnosticEventCount: number;
+}
+
+export interface ExtensionTestMatch {
+  eventIndex: number;
+  eventType: string;
+  extensionName: string;
+  extensionPath: string;
+  pattern: string;
+}
+
+export type ExtensionTestDiagnosticEvent = Extract<
+  EforgeEvent,
+  { type: 'extension:event-handler:failed' | 'extension:event-handler:timeout' }
+>;
+
+export type ExtensionTestDeferredRegistrationFamily =
+  | 'agentRunHooks'
+  | 'policyGates'
+  | 'profileRouters'
+  | 'inputSources'
+  | 'reviewerPerspectives'
+  | 'validationProviders'
+  | 'tools';
+
+export interface ExtensionTestDeferredRegistrationSummary {
+  family: ExtensionTestDeferredRegistrationFamily;
+  count: number;
+  extensions: Array<{ name: string; path: string; count: number }>;
+}
+
+export interface ExtensionTestResponse {
+  valid: boolean;
+  source: ExtensionTestSource;
+  extensions: ExtensionEntry[];
+  diagnostics: ExtensionDiagnostic[];
+  replay: ExtensionTestReplayCounts;
+  matches: ExtensionTestMatch[];
+  emittedDiagnostics: ExtensionTestDiagnosticEvent[];
+  deferredRegistrations: ExtensionTestDeferredRegistrationSummary[];
+}
+// --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 
 // --- eforge:region plan-01-extension-management-api ---
 export interface ExtensionNewRequest {

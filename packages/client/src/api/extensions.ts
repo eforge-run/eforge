@@ -10,6 +10,8 @@ import type {
   ExtensionNewResponse,
   ExtensionReloadResponse,
   ExtensionShowResponse,
+  ExtensionTestRequest,
+  ExtensionTestResponse,
   ExtensionValidateResponse,
 } from '../types.js';
 
@@ -49,3 +51,9 @@ export function apiNewExtension(opts: { cwd: string; body: ExtensionNewRequest }
 export function apiReloadExtensions(opts: { cwd: string }) {
   return daemonRequest<ExtensionReloadResponse>(opts.cwd, 'POST', API_ROUTES.extensionReload, {});
 }
+
+// --- eforge:region plan-01-engine-daemon-extension-replay ---
+export function apiTestExtension(opts: { cwd: string; body: ExtensionTestRequest }) {
+  return daemonRequest<ExtensionTestResponse>(opts.cwd, 'POST', API_ROUTES.extensionTest, opts.body);
+}
+// --- eforge:endregion plan-01-engine-daemon-extension-replay ---
