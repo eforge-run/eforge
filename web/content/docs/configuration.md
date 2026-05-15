@@ -123,7 +123,7 @@ extensions:
 
 Supported extension entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. The loader executes the default-export factory in the eforge daemon/worker Node process without a sandbox, records registrations, and surfaces status, diagnostics, shadows, trust, source, strategy, and registration counts through `eforge extension list/show/validate` and extension API routes.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, and registration capture. Event dispatch, policy enforcement, agent augmentation, custom tool execution, profile routing, input sources, reviewer perspectives, and validation providers are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch, and management commands (`eforge extension list/show/validate/new/reload`). Blocking policy enforcement, agent augmentation, and other non-event registered capability execution are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
 
 ## Profile Toolbelts for UI Work
 

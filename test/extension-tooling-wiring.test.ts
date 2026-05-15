@@ -41,16 +41,18 @@ describe('extension tooling route constants and helpers', () => {
 describe('CLI extension command registration', () => {
   const source = readRepoFile('packages/eforge/src/cli/index.ts');
 
-  it('registers eforge extension list/show/validate commands on the actual Commander program', () => {
+  it('registers eforge extension list/show/validate/new/reload commands on the actual Commander program', () => {
     const program = createProgram(undefined, 'test');
     const extension = program.commands.find((command) => command.name() === 'extension');
     expect(extension).toBeDefined();
-    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['list', 'show', 'validate']);
+    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['list', 'new', 'reload', 'show', 'validate']);
   });
 
   it('declares the required show and validate arguments', () => {
     expect(source).toContain(".command('show <name>')");
     expect(source).toContain(".command('validate [nameOrPath]')");
+    expect(source).toContain(".command('new <name>')");
+    expect(source).toContain(".command('reload')");
   });
 
   it('validate exits non-zero when the response is invalid', () => {
@@ -139,6 +141,16 @@ describe('extension runtime documentation', () => {
     }
   });
 
+  it('documents extension management commands and deferred workflows', () => {
+    expect(docsExtensions).toContain('eforge extension new <name>');
+    expect(docsExtensions).toContain('eforge extension reload');
+    expect(docsExtensions).toContain('local -> `.eforge/extensions/`');
+    expect(docsExtensions).toContain('project -> `eforge/extensions/`');
+    expect(docsExtensions).toContain('user -> `~/.config/eforge/extensions/`');
+    expect(docsExtensions).toContain('$XDG_CONFIG_HOME/eforge/extensions/');
+    expect(docsExtensions).toContain('Event replay testing is deferred');
+  });
+
   it('documents event hook timeout semantics and example runtime notes', () => {
     expect(configDocs).toContain('eventHookTimeoutMs: 5000');
     expect(configDocs).toContain('Must be a positive integer');
@@ -154,32 +166,86 @@ describe('MCP/Pi eforge_extension parity', () => {
   const mcpSource = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
   const piSource = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');
 
-  it('MCP proxy registers eforge_extension and uses exported client helpers', () => {
-    expect(mcpSource).toContain("name: 'eforge_extension'");
-    expect(mcpSource).toContain("z.enum(['list', 'show', 'validate'])");
-    expect(mcpSource).toContain('apiListExtensions');
-    expect(mcpSource).toContain('apiShowExtension');
-    expect(mcpSource).toContain('apiValidateExtensions');
+  function mcpExtensionBlock(): string {
     const blockStart = mcpSource.indexOf("name: 'eforge_extension'");
     const blockEnd = mcpSource.indexOf("name: 'eforge_models'", blockStart);
     expect(blockEnd).toBeGreaterThan(blockStart);
-    const block = mcpSource.slice(blockStart, blockEnd);
+    return mcpSource.slice(blockStart, blockEnd);
+  }
+
+  function piExtensionBlock(): string {
+    const blockStart = piSource.indexOf('name: "eforge_extension"');
+    const blockEnd = piSource.indexOf('name: "eforge_models"', blockStart);
+    expect(blockEnd).toBeGreaterThan(blockStart);
+    return piSource.slice(blockStart, blockEnd);
+  }
+
+  it('MCP proxy registers eforge_extension and uses exported client helpers', () => {
+    expect(mcpSource).toContain("name: 'eforge_extension'");
+    expect(mcpSource).toContain("z.enum(['list', 'show', 'validate', 'new', 'reload'])");
+    expect(mcpSource).toContain('apiListExtensions');
+    expect(mcpSource).toContain('apiShowExtension');
+    expect(mcpSource).toContain('apiValidateExtensions');
+    expect(mcpSource).toContain('apiNewExtension');
+    expect(mcpSource).toContain('apiReloadExtensions');
+    const block = mcpExtensionBlock();
     expect(block).not.toContain("'/api/");
     expect(block).not.toContain('"/api/');
   });
 
   it('Pi extension registers eforge_extension and uses exported client helpers', () => {
     expect(piSource).toContain('name: "eforge_extension"');
-    expect(piSource).toContain('StringEnum(["list", "show", "validate"] as const');
+    expect(piSource).toContain('StringEnum(["list", "show", "validate", "new", "reload"] as const');
     expect(piSource).toContain('apiListExtensions');
     expect(piSource).toContain('apiShowExtension');
     expect(piSource).toContain('apiValidateExtensions');
-    const blockStart = piSource.indexOf('name: "eforge_extension"');
-    const blockEnd = piSource.indexOf('name: "eforge_models"', blockStart);
-    expect(blockEnd).toBeGreaterThan(blockStart);
-    const block = piSource.slice(blockStart, blockEnd);
+    expect(piSource).toContain('apiNewExtension');
+    expect(piSource).toContain('apiReloadExtensions');
+    const block = piExtensionBlock();
     expect(block).not.toContain("'/api/");
     expect(block).not.toContain('"/api/');
+  });
+
+  it('keeps MCP and Pi action-specific parameter validation rules in sync', () => {
+    const requiredMessages = [
+      '"list" does not accept name, path, scope, template, or force',
+      '"name" is required when action is "show"',
+      '"show" does not accept path, scope, template, or force',
+      '"validate" does not accept scope, template, or force',
+      'Specify only one of "name" or "path" for validate',
+      '"name" is required when action is "new"',
+      '"path" is not supported when action is "new"',
+      '"reload" does not accept name, path, scope, template, or force',
+    ];
+
+    for (const [surface, block] of [
+      ['MCP', mcpExtensionBlock()],
+      ['Pi', piExtensionBlock()],
+    ] as const) {
+      for (const message of requiredMessages) {
+        expect(block, `${surface} validation message: ${message}`).toContain(message);
+      }
+    }
+  });
+
+  it('routes new and reload actions through the action-specific client helpers', () => {
+    function expectInOrder(block: string, before: string, after: string): void {
+      const beforeIndex = block.indexOf(before);
+      const afterIndex = block.indexOf(after);
+      expect(beforeIndex, `${before} should be present`).toBeGreaterThanOrEqual(0);
+      expect(afterIndex, `${after} should be present`).toBeGreaterThanOrEqual(0);
+      expect(beforeIndex).toBeLessThan(afterIndex);
+    }
+
+    const mcpBlock = mcpExtensionBlock();
+    expectInOrder(mcpBlock, "if (action === 'new')", 'apiNewExtension');
+    expectInOrder(mcpBlock, 'apiNewExtension', 'apiReloadExtensions');
+    expectInOrder(mcpBlock, '"reload" does not accept', 'apiReloadExtensions');
+
+    const piBlock = piExtensionBlock();
+    expectInOrder(piBlock, 'if (params.action === "new")', 'apiNewExtension');
+    expectInOrder(piBlock, 'apiNewExtension', 'apiReloadExtensions');
+    expectInOrder(piBlock, '"reload" does not accept', 'apiReloadExtensions');
   });
 
   it('/eforge:config Pi overlay includes the resolved extensions config block', () => {

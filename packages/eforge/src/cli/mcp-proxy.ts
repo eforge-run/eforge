@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetLatestRunFromRuns, apiListExtensions, apiShowExtension, apiValidateExtensions } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetLatestRunFromRuns, apiListExtensions, apiShowExtension, apiValidateExtensions, apiNewExtension, apiReloadExtensions } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   RunInfo,
@@ -23,6 +23,7 @@ import type {
   SessionStreamSnapshot,
   FollowCounters,
   VersionResponse,
+  ExtensionNewRequest,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
 
@@ -515,29 +516,48 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_extension
   createDaemonTool(server, cwd, {
     name: 'eforge_extension',
-    description: 'List, show, or validate native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path.',
+    description: 'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running.',
     schema: {
-      action: z.enum(['list', 'show', 'validate']).describe('Extension operation to perform'),
-      name: z.string().min(1).optional().describe('Extension name (required for "show", optional for "validate")'),
+      action: z.enum(['list', 'show', 'validate', 'new', 'reload']).describe('Extension operation to perform'),
+      name: z.string().min(1).optional().describe('Extension name (required for "show" and "new", optional for "validate")'),
       path: z.string().min(1).optional().describe('Ad-hoc extension file/directory path to validate ("validate" only)'),
+      scope: z.enum(['local', 'project', 'user']).optional().describe('Scope for "new". Defaults to local.'),
+      template: z.enum(['event-logger', 'blank']).optional().describe('Scaffold template for "new". Defaults to event-logger.'),
+      force: z.boolean().optional().describe('Overwrite an existing extension file when action is "new". Default: false.'),
     },
-    handler: async ({ action, name, path }, { cwd: toolCwd }) => {
+    handler: async ({ action, name, path, scope, template, force }, { cwd: toolCwd }) => {
       if (action === 'list') {
-        if (name !== undefined || path !== undefined) throw new Error('"name" and "path" are not supported when action is "list"');
+        if (name !== undefined || path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"list" does not accept name, path, scope, template, or force');
         const { data } = await apiListExtensions({ cwd: toolCwd });
         return data;
       }
       if (action === 'show') {
         if (!name) throw new Error('"name" is required when action is "show"');
-        if (path !== undefined) throw new Error('"path" is not supported when action is "show"');
+        if (path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"show" does not accept path, scope, template, or force');
         const { data } = await apiShowExtension({ cwd: toolCwd, name });
         return data;
       }
-      if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for validate');
-      const request: { cwd: string; name?: string; path?: string } = { cwd: toolCwd };
-      if (name !== undefined) request.name = name;
-      if (path !== undefined) request.path = path;
-      const { data } = await apiValidateExtensions(request);
+      if (action === 'validate') {
+        if (scope !== undefined || template !== undefined || force !== undefined) throw new Error('"validate" does not accept scope, template, or force');
+        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for validate');
+        const request: { cwd: string; name?: string; path?: string } = { cwd: toolCwd };
+        if (name !== undefined) request.name = name;
+        if (path !== undefined) request.path = path;
+        const { data } = await apiValidateExtensions(request);
+        return data;
+      }
+      if (action === 'new') {
+        if (!name) throw new Error('"name" is required when action is "new"');
+        if (path !== undefined) throw new Error('"path" is not supported when action is "new"');
+        const body: ExtensionNewRequest = { name };
+        if (scope !== undefined) body.scope = scope;
+        if (template !== undefined) body.template = template as ExtensionNewRequest['template'];
+        if (force !== undefined) body.force = force;
+        const { data } = await apiNewExtension({ cwd: toolCwd, body });
+        return data;
+      }
+      if (name !== undefined || path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"reload" does not accept name, path, scope, template, or force');
+      const { data } = await apiReloadExtensions({ cwd: toolCwd });
       return data;
     },
   });

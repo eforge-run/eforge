@@ -118,7 +118,7 @@ extensions:
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `extensions.enabled` | `true` | Enables native extension discovery and loading. When `false`, no extension directories or explicit paths are loaded. |
+| `extensions.enabled` | `true` | Enables native extension loading at runtime. When `false`, extension directories and explicit paths are not loaded; management commands may still report discovered candidates with `enabled: false` for visibility. |
 | `extensions.include` | unset | Optional allowlist for auto-discovered extension names. Only listed names are considered. |
 | `extensions.eventHookTimeoutMs` | `5000` | Timeout in milliseconds for each native `onEvent` handler invocation. Must be a positive integer. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
@@ -129,7 +129,7 @@ Auto-discovery scans `~/.config/eforge/extensions/`, `eforge/extensions/`, and `
 
 Project/team extensions are committed code and are skipped unless `extensions.trustProjectExtensions: true` is set from a trusted layer (user config or project-local config). Extensions execute in the eforge daemon/worker Node process without a sandbox.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, and native `onEvent` dispatch. Blocking policy enforcement, agent augmentation, and other non-event registered capability execution are deferred runtime phases.
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch, and management commands (`eforge extension list/show/validate/new/reload`). Blocking policy enforcement, agent augmentation, and other non-event registered capability execution are deferred runtime phases.
 
 ## Tiers
 

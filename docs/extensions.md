@@ -38,7 +38,7 @@ Fields:
 
 | Field | Default | Meaning |
 |-------|---------|---------|
-| `extensions.enabled` | `true` | Enables native extension discovery and loading. When `false`, no extensions are discovered and `paths` are ignored. |
+| `extensions.enabled` | `true` | Enables native extension loading at runtime. When `false`, extension directories and `paths` are not loaded; management commands may still report discovered candidates with `enabled: false` for visibility. |
 | `extensions.include` | unset | Optional allowlist for auto-discovered extension names. If set, only listed auto-discovered names are considered. |
 | `extensions.eventHookTimeoutMs` | `5000` | Timeout in milliseconds for each native `onEvent` handler invocation. Must be a positive integer. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
@@ -64,6 +64,8 @@ project-local > project-team > user
 ```
 
 The highest-precedence candidate wins; lower-precedence candidates with the same name are reported as `shadowed`. Project-local is the recommended starting point for new extensions. Promote an extension to `eforge/extensions/` only once it is intended for the team and document that users must opt in to trusting project extensions.
+
+CLI scaffold scopes map to discovery directories as follows: local -> `.eforge/extensions/`, project -> `eforge/extensions/`, and user -> `~/.config/eforge/extensions/` by default (`$XDG_CONFIG_HOME/eforge/extensions/` when configured).
 
 ## Supported layouts
 
@@ -128,6 +130,7 @@ Statuses:
 | `loaded` | Factory loaded successfully and registration capture completed. |
 | `shadowed` | Auto-discovered candidate lost to a higher-precedence extension with the same name. |
 | `skipped` | Candidate was intentionally skipped, most commonly because it is an untrusted project/team extension. |
+| `excluded` | Candidate was filtered out by extension include/exclude configuration. |
 | `error` | Discovery, validation, import, export, or factory execution failed. |
 
 Diagnostics include severity (`warning` or `error`), stable code, message, and when available name/path/scope/source. Common diagnostics include unsupported layouts, duplicate explicit names, untrusted project extensions, invalid default exports, and factory errors.
@@ -149,13 +152,23 @@ eforge extension list
 eforge extension show build-notifier
 eforge extension validate
 eforge extension validate ./tools/eforge-audit.ts
+eforge extension new <name>
+eforge extension reload
 ```
 
-Add `--json` to CLI commands for machine-readable provenance. The same data is exposed via `/api/extensions/list`, `/api/extensions/show`, and `/api/extensions/validate`.
+`eforge extension new <name>` scaffolds a TypeScript extension. Defaults are `--scope local` (project-local `.eforge/extensions/`), `--template event-logger`, and no overwrite. Pass `--scope project` for committed team extensions, `--scope user` for personal cross-project extensions, `--template blank` for a minimal module, or `--force` to overwrite an existing scaffold target. Non-JSON output prints the created path, canonical daemon scope (`project-local`, `project-team`, or `user`), template, overwrite state, and next validation/reload steps.
+
+`eforge extension reload` refreshes daemon extension discovery and restarts the runtime watcher when it is currently running. JSON output is the raw daemon response, including refreshed extension entries, diagnostics, registration totals, and watcher restart metadata. Non-JSON output summarizes watcher state and diagnostic counts.
+
+List/show output includes `enabled`, a derived boolean for whether the entry is selected by the current extension config and is not shadowed or excluded. It is `false` when extensions are globally disabled, when include/exclude filters leave the entry out, or when a higher-precedence extension shadows it. A selected entry can still have `enabled: true` with status `skipped` or `error`; use status, trust, and diagnostics to see why it did not load.
+
+Add `--json` to CLI commands for machine-readable provenance. The same data is exposed via `/api/extensions/list`, `/api/extensions/show`, `/api/extensions/validate`, `/api/extensions/new`, and `/api/extensions/reload`.
+
+Event replay testing is deferred, as are `extension enable`, `extension disable`, `extension promote`, and `extension demote` workflows.
 
 ## Runtime support today
 
-The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection tooling, and native `onEvent` dispatch are available.
+The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection and management tooling, and native `onEvent` dispatch are available.
 
 Event hooks run for real CLI, queue worker, and daemon watcher event streams. Dispatch is non-blocking with respect to the engine pipeline: handlers receive matching events but cannot alter or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with the extension name, matched pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Those diagnostics are recorded by the monitor before shell hooks run, so shell-hook matching has parity with normal engine and extension diagnostic events.
 

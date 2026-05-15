@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 55d1e496 -->
+<!-- Commit: d171f301 -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -11,7 +11,7 @@ than embedding literal path strings.
 
 ## Routes
 
-Total routes: 51
+Total routes: 53
 
 | Route key | Path pattern |
 |-----------|-------------|
@@ -27,6 +27,8 @@ Total routes: 51
 | `enqueue` | `/api/enqueue` |
 | `events` | `/api/events/:runId` |
 | `extensionList` | `/api/extensions/list` |
+| `extensionNew` | `/api/extensions/new` |
+| `extensionReload` | `/api/extensions/reload` |
 | `extensionShow` | `/api/extensions/show` |
 | `extensionValidate` | `/api/extensions/validate` |
 | `health` | `/api/health` |

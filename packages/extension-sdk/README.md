@@ -12,10 +12,21 @@ pnpm add @eforge-build/extension-sdk
 
 ## Quick start
 
+Start with the CLI scaffold for a local, gitignored extension:
+
+```sh
+eforge extension new build-notifier
+$EDITOR .eforge/extensions/build-notifier.ts
+eforge extension validate build-notifier
+eforge extension reload
+```
+
+By default this uses the `event-logger` template in `.eforge/extensions/` and refuses to overwrite an existing file unless `--force` is passed. Use `--scope project` for `eforge/extensions/` or `--scope user` for your user config directory.
+
 An extension is a TypeScript module with a default-export factory:
 
 ```ts
-// eforge/extensions/build-notifier.ts
+// .eforge/extensions/build-notifier.ts
 import type { EforgeExtensionAPI } from "@eforge-build/extension-sdk";
 
 export default function extension(eforge: EforgeExtensionAPI) {
