@@ -30,6 +30,12 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
   if (type === 'extension:event-handler:failed') return { cls: 'failed', label: type };
   if (type === 'extension:event-handler:timeout') return { cls: 'failed', label: type };
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+  // --- eforge:region plan-01-agent-context-runtime ---
+  if (type === 'extension:agent-context:applied') return { cls: 'info', label: type };
+  if (type === 'extension:agent-context:failed') return { cls: 'failed', label: type };
+  if (type === 'extension:agent-context:timeout') return { cls: 'failed', label: type };
+  if (type === 'extension:agent-context:unsupported') return { cls: 'warning', label: type };
+  // --- eforge:endregion plan-01-agent-context-runtime ---
   // --- eforge:region plan-04-monitor-ui ---
   if (type === 'recovery:start') return { cls: 'info', label: type };
   if (type === 'recovery:summary') return { cls: 'info', label: type };
@@ -132,6 +138,12 @@ function eventSummary(event: EforgeEvent): string {
     case 'extension:event-handler:failed': return `Extension hook failed: ${event.extensionName} (${event.pattern} on ${event.triggeringEventType}) — ${event.message}`;
     case 'extension:event-handler:timeout': return `Extension hook timed out: ${event.extensionName} (${event.pattern} on ${event.triggeringEventType}) after ${event.timeoutMs}ms`;
     // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+    // --- eforge:region plan-01-agent-context-runtime ---
+    case 'extension:agent-context:applied': return `Extension applied: ${event.extensionName} appended ${event.promptCharCount} chars (${event.fragmentCount} fragment(s))`;
+    case 'extension:agent-context:failed': return `Extension hook failed: ${event.extensionName} (${event.role}) — ${event.message}`;
+    case 'extension:agent-context:timeout': return `Extension hook timed out: ${event.extensionName} (${event.role}) after ${event.timeoutMs}ms`;
+    case 'extension:agent-context:unsupported': return `Extension returned unsupported fields: ${event.extensionName} — ${event.fields.join(', ')}`;
+    // --- eforge:endregion plan-01-agent-context-runtime ---
     case 'planning:decision': return `Planning decision: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     case 'plan:build:decision': return `Build decision [${event.planId}]: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     default: return event.type;
@@ -242,6 +254,32 @@ function eventDetail(event: EforgeEvent): string | null {
         return `Requirement: ${g.requirement}${complexitySuffix}\n  Gap: ${g.explanation}`;
       }).join('\n\n');
     }
+    // --- eforge:region plan-01-agent-context-runtime ---
+    case 'extension:agent-context:applied': {
+      const parts = [
+        `Extension: ${event.extensionName}`,
+        `Path: ${event.extensionPath}`,
+        `Role: ${event.role}`,
+        `Fragment chars: ${event.promptCharCount}`,
+        `Total fragments: ${event.fragmentCount}`,
+      ];
+      return parts.join('\n');
+    }
+    case 'extension:agent-context:failed': {
+      const parts = [
+        `Extension: ${event.extensionName}`,
+        `Path: ${event.extensionPath}`,
+        `Role: ${event.role}`,
+        `Message: ${event.message}`,
+      ];
+      if (event.stack) parts.push(`Stack:\n${event.stack}`);
+      return parts.join('\n');
+    }
+    case 'extension:agent-context:timeout':
+      return `Extension: ${event.extensionName}\nPath: ${event.extensionPath}\nRole: ${event.role}\nTimeout: ${event.timeoutMs}ms`;
+    case 'extension:agent-context:unsupported':
+      return `Extension: ${event.extensionName}\nPath: ${event.extensionPath}\nRole: ${event.role}\nUnsupported fields: ${event.fields.join(', ')}`;
+    // --- eforge:endregion plan-01-agent-context-runtime ---
     // --- eforge:region plan-01-native-event-runtime-foundation ---
     case 'extension:event-handler:failed': {
       const parts = [
@@ -308,6 +346,7 @@ function EventCardImpl({ event, startTime, showVerbose }: EventCardProps) {
     complete: 'bg-green/15 text-green',
     failed: 'bg-red/15 text-red',
     progress: 'bg-yellow/15 text-yellow',
+    warning: 'bg-yellow/15 text-yellow',
     agent: 'bg-muted-foreground/10 text-text-dim',
     info: 'bg-purple/15 text-purple',
   };

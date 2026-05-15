@@ -638,3 +638,309 @@ describe('safeParseEforgeEvent — agent:activity variant', () => {
     }
   });
 });
+
+// --- eforge:region plan-01-agent-context-runtime ---
+
+// ---------------------------------------------------------------------------
+// extension:agent-context:* variants (EXTEND_08A)
+// ---------------------------------------------------------------------------
+
+describe('safeParseEforgeEvent — extension:agent-context:* variants', () => {
+  it('accepts extension:agent-context:applied with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      role: 'builder',
+      profile: 'default',
+      promptCharCount: 1500,
+      fragmentCount: 1,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:agent-context:applied with all optional fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      role: 'builder',
+      tier: 'implementation',
+      phase: 'build',
+      stage: 'implement',
+      profile: 'default',
+      planId: 'plan-01',
+      harness: 'claude-sdk',
+      toolbelt: 'browser-ui',
+      projectMcpSelection: 'toolbelt',
+      promptCharCount: 1500,
+      fragmentCount: 2,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:agent-context:applied with toolbelt: null', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      role: 'builder',
+      profile: 'default',
+      toolbelt: null,
+      promptCharCount: 800,
+      fragmentCount: 1,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects extension:agent-context:applied missing promptCharCount', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      role: 'builder',
+      profile: 'default',
+      fragmentCount: 1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts extension:agent-context:failed with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      role: 'reviewer',
+      profile: 'default',
+      message: 'Handler threw an error',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:agent-context:failed with optional stack field', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      role: 'builder',
+      profile: 'default',
+      message: 'Something went wrong',
+      stack: 'Error: Something went wrong\n    at handler (/ext.ts:10:5)',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects extension:agent-context:failed missing message', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      role: 'builder',
+      profile: 'default',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts extension:agent-context:timeout with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:timeout',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'slow-ext',
+      extensionPath: '/project/.eforge/extensions/slow-ext.ts',
+      role: 'planner',
+      profile: 'default',
+      timeoutMs: 5000,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects extension:agent-context:timeout with non-number timeoutMs', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:timeout',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'slow-ext',
+      extensionPath: '/project/.eforge/extensions/slow-ext.ts',
+      role: 'planner',
+      profile: 'default',
+      timeoutMs: '5000',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts extension:agent-context:unsupported with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:unsupported',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'tool-ext',
+      extensionPath: '/project/.eforge/extensions/tool-ext.ts',
+      role: 'builder',
+      profile: 'default',
+      fields: ['tools'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts extension:agent-context:unsupported with multiple field values', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:unsupported',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'tool-ext',
+      extensionPath: '/project/.eforge/extensions/tool-ext.ts',
+      role: 'builder',
+      profile: 'default',
+      fields: ['tools', 'allowedTools', 'disallowedTools'],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects extension:agent-context:unsupported with unknown field literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-context:unsupported',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'tool-ext',
+      extensionPath: '/project/.eforge/extensions/tool-ext.ts',
+      role: 'builder',
+      profile: 'default',
+      fields: ['unknownField'],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('round-trips all four agent-context variants through JSON', () => {
+    const variants: import('../events.schemas.js').EforgeEvent[] = [
+      {
+        type: 'extension:agent-context:applied',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionName: 'my-ext',
+        extensionPath: '/ext.ts',
+        role: 'builder',
+        tier: 'implementation',
+        phase: 'build',
+        stage: 'implement',
+        profile: 'default',
+        planId: 'plan-01',
+        promptCharCount: 1000,
+        fragmentCount: 1,
+      },
+      {
+        type: 'extension:agent-context:failed',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionName: 'my-ext',
+        extensionPath: '/ext.ts',
+        role: 'builder',
+        profile: 'default',
+        message: 'boom',
+      },
+      {
+        type: 'extension:agent-context:timeout',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionName: 'slow-ext',
+        extensionPath: '/slow.ts',
+        role: 'planner',
+        profile: 'default',
+        timeoutMs: 5000,
+      },
+      {
+        type: 'extension:agent-context:unsupported',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionName: 'tool-ext',
+        extensionPath: '/tool.ts',
+        role: 'builder',
+        profile: 'default',
+        fields: ['tools'],
+      },
+    ];
+
+    for (const event of variants) {
+      const parsed = JSON.parse(JSON.stringify(event));
+      expect(parsed).toEqual(event);
+      const result = safeParseEforgeEvent(parsed);
+      expect(result.success, `${event.type} should roundtrip through safeParseEforgeEvent`).toBe(true);
+    }
+  });
+});
+
+describe('eventRegistry — extension:agent-context:* diagnostics', () => {
+  it('registers all four agent-context variants as session-scoped, non-persistent events', () => {
+    expect(eventRegistry['extension:agent-context:applied']).toMatchObject({ scope: 'session', persist: false });
+    expect(eventRegistry['extension:agent-context:failed']).toMatchObject({ scope: 'session', persist: false });
+    expect(eventRegistry['extension:agent-context:timeout']).toMatchObject({ scope: 'session', persist: false });
+    expect(eventRegistry['extension:agent-context:unsupported']).toMatchObject({ scope: 'session', persist: false });
+  });
+
+  it('summary function for applied event includes extension name, char count, and role', () => {
+    const event: import('../events.schemas.js').EforgeEvent = {
+      type: 'extension:agent-context:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'my-ext',
+      extensionPath: '/ext.ts',
+      role: 'builder',
+      tier: 'implementation',
+      profile: 'default',
+      promptCharCount: 1234,
+      fragmentCount: 1,
+    };
+    const summary = getEventSummary(event);
+    expect(summary).toContain('my-ext');
+    expect(summary).toContain('1234');
+    expect(summary).toContain('builder');
+  });
+
+  it('summary function for failed event includes extension name, role, and message', () => {
+    const event: import('../events.schemas.js').EforgeEvent = {
+      type: 'extension:agent-context:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'err-ext',
+      extensionPath: '/err.ts',
+      role: 'reviewer',
+      profile: 'default',
+      message: 'Handler exploded',
+    };
+    const summary = getEventSummary(event);
+    expect(summary).toContain('err-ext');
+    expect(summary).toContain('reviewer');
+    expect(summary).toContain('Handler exploded');
+  });
+
+  it('summary function for timeout event includes extension name, timeoutMs, and role', () => {
+    const event: import('../events.schemas.js').EforgeEvent = {
+      type: 'extension:agent-context:timeout',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'slow-ext',
+      extensionPath: '/slow.ts',
+      role: 'planner',
+      profile: 'default',
+      timeoutMs: 3000,
+    };
+    const summary = getEventSummary(event);
+    expect(summary).toContain('slow-ext');
+    expect(summary).toContain('3000');
+    expect(summary).toContain('planner');
+  });
+
+  it('summary function for unsupported event includes extension name, role, and fields', () => {
+    const event: import('../events.schemas.js').EforgeEvent = {
+      type: 'extension:agent-context:unsupported',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'tool-ext',
+      extensionPath: '/tool.ts',
+      role: 'builder',
+      profile: 'default',
+      fields: ['tools', 'allowedTools'],
+    };
+    const summary = getEventSummary(event);
+    expect(summary).toContain('tool-ext');
+    expect(summary).toContain('builder');
+    expect(summary).toContain('tools');
+    expect(summary).toContain('allowedTools');
+  });
+});
+
+// --- eforge:endregion plan-01-agent-context-runtime ---

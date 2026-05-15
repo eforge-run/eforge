@@ -395,6 +395,269 @@
           "type": "object",
           "required": [
             "type",
+            "extensionName",
+            "extensionPath",
+            "role",
+            "profile",
+            "promptCharCount",
+            "fragmentCount"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:agent-context:applied",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "tier": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "string"
+            },
+            "profile": {
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "harness": {
+              "type": "string"
+            },
+            "toolbelt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "projectMcpSelection": {
+              "type": "string"
+            },
+            "promptCharCount": {
+              "type": "number"
+            },
+            "fragmentCount": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "extensionName",
+            "extensionPath",
+            "role",
+            "profile",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:agent-context:failed",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "tier": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "string"
+            },
+            "profile": {
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "harness": {
+              "type": "string"
+            },
+            "toolbelt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "projectMcpSelection": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "extensionName",
+            "extensionPath",
+            "role",
+            "profile",
+            "timeoutMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:agent-context:timeout",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "tier": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "string"
+            },
+            "profile": {
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "harness": {
+              "type": "string"
+            },
+            "toolbelt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "projectMcpSelection": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "extensionName",
+            "extensionPath",
+            "role",
+            "profile",
+            "fields"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:agent-context:unsupported",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "role": {
+              "type": "string"
+            },
+            "tier": {
+              "type": "string"
+            },
+            "phase": {
+              "type": "string"
+            },
+            "stage": {
+              "type": "string"
+            },
+            "profile": {
+              "type": "string"
+            },
+            "planId": {
+              "type": "string"
+            },
+            "harness": {
+              "type": "string"
+            },
+            "toolbelt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "projectMcpSelection": {
+              "type": "string"
+            },
+            "fields": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "const": "tools",
+                    "type": "string"
+                  },
+                  {
+                    "const": "allowedTools",
+                    "type": "string"
+                  },
+                  {
+                    "const": "disallowedTools",
+                    "type": "string"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "source"
           ],
           "properties": {

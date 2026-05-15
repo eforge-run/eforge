@@ -42,7 +42,7 @@ import type { AgentHarness } from './harness.js';
 import type { ClaudeSDKHarnessOptions } from './harnesses/claude-sdk.js';
 import type { SdkPluginConfig, SettingSource } from '@anthropic-ai/claude-agent-sdk';
 import { loadConfig, DEFAULT_REVIEW, getConfigDir, getConventionalConfigDir } from './config.js';
-import { loadNativeExtensions } from './extensions/index.js';
+import { loadNativeExtensions, withAgentContextHooks } from './extensions/index.js';
 import { setPromptDir } from './prompts.js';
 import { type AgentRuntimeRegistry, singletonRegistry, buildAgentRuntimeRegistry } from './agent-runtime-registry.js';
 import { createTracingContext } from './tracing.js';
@@ -290,6 +290,17 @@ export class EforgeEngine {
         toolbelts: config.tools.toolbelts,
       });
     }
+    // --- eforge:region plan-01-agent-context-runtime ---
+    // Wrap the registry with the agent-context hook decorator so every harness
+    // returned by forRole/forRoleResolved executes registered agentRunHooks.
+    agentRuntimes = withAgentContextHooks(agentRuntimes, {
+      extensionRegistry: extensionLoadResult.registry,
+      profileName: configProfile.name ?? 'default',
+      cwd,
+      timeoutMs: config.extensions.agentContextHookTimeoutMs,
+    });
+    // --- eforge:endregion plan-01-agent-context-runtime ---
+
     options = { ...options, agentRuntimes };
 
     return new EforgeEngine(config, options, configWarnings, configProfile, extensionLoadResult.registry, extensionLoadResult.diagnostics);
@@ -438,7 +449,7 @@ export class EforgeEngine {
     let formattedBody = sourceContent;
     try {
       const formatterConfig = resolveAgentConfig('formatter', this.config);
-      const gen = runFormatter({ ...formatterConfig, sourceContent, verbose, abortController, harness: this.agentRuntimes.forRole('formatter') });
+      const gen = runFormatter({ ...formatterConfig, sourceContent, verbose, abortController, phase: 'standalone', harness: this.agentRuntimes.forRole('formatter') });
       let result = await gen.next();
       while (!result.done) {
         yield result.value;
@@ -475,6 +486,7 @@ export class EforgeEngine {
             runningBuilds,
             verbose,
             abortController,
+            phase: 'standalone',
             harness: this.agentRuntimes.forRole('dependency-detector'),
           });
           let depResult = await depGen.next();
@@ -677,6 +689,7 @@ export class EforgeEngine {
             maxAttempts,
             verbose,
             abortController,
+            phase: 'standalone',
             harness: agentRuntimes.forRole('validation-fixer'),
           })) {
             fixerTracker.handleEvent(event);
@@ -709,6 +722,7 @@ export class EforgeEngine {
             conflict,
             verbose,
             abortController,
+            phase: 'standalone',
             harness: agentRuntimes.forRole('merge-conflict-resolver'),
           })) {
             resolverTracker.handleEvent(event);
@@ -769,6 +783,7 @@ export class EforgeEngine {
             diff,
             verbose,
             abortController,
+            phase: 'standalone',
             harness: agentRuntimes.forRole('prd-validator'),
           })) {
             prdTracker.handleEvent(event);
@@ -807,6 +822,7 @@ export class EforgeEngine {
             gaps,
             prdContent,
             completionPercent,
+            phase: 'standalone',
             harness: agentRuntimes.forRole('gap-closer'),
             pipelineContext: {
               config,
@@ -963,6 +979,7 @@ export class EforgeEngine {
         title: prd.frontmatter.title,
         verbose,
         abortController,
+        phase: 'standalone',
         harness: this.agentRuntimes.forRole('staleness-assessor'),
       })) {
         if (event.type === 'queue:prd:stale') {
@@ -1283,6 +1300,7 @@ export class EforgeEngine {
                   prdId,
                   cwd,
                   abortController: recoveryAbort,
+                  phase: 'standalone',
                 })) {
                   if (event.type === 'recovery:complete') {
                     verdictResult = event.verdict;
@@ -1846,6 +1864,7 @@ export class EforgeEngine {
           cwd,
           verbose,
           abortController,
+          phase: 'standalone',
         })) {
           if (event.type === 'recovery:complete') {
             // Collect the verdict; we will re-emit recovery:complete with sidecar paths below

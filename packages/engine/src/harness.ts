@@ -31,9 +31,26 @@ export interface SdkPassthroughConfig {
   disallowedTools?: string[];
   /** Text appended to the agent prompt after variable substitution. Not passed to the backend SDK. */
   promptAppend?: string;
+  // --- eforge:region plan-01-agent-context-runtime ---
+  /**
+   * Build phase context for extension hooks. Values: 'compile' | 'build' | 'standalone'.
+   * Not forwarded to the backend SDK.
+   */
+  phase?: string;
+  /**
+   * Build stage context for extension hooks (e.g. 'implement', 'review', 'planner').
+   * Not forwarded to the backend SDK.
+   */
+  stage?: string;
+  // --- eforge:endregion plan-01-agent-context-runtime ---
 }
 
-/** Keys that are part of resolved agent config but should NOT be forwarded to the backend SDK. */
+/**
+ * Keys that are part of resolved agent config but should NOT be forwarded to the backend SDK.
+ * `phase` and `stage` are excluded here because they need to flow through to the harness's
+ * `run()` method for extension-hook context. SDK backends never forward these to the external
+ * API — they only read specific known fields when constructing API calls.
+ */
 const NON_SDK_KEYS = new Set(['promptAppend']);
 
 /**
@@ -142,6 +159,21 @@ export interface AgentRunOptions {
   projectMcpSelection?: 'all' | 'none' | 'toolbelt';
   /** Sorted names of the project MCP servers passed to this tier's harness. */
   projectMcpServerNames?: string[];
+  // --- eforge:region plan-01-agent-context-runtime ---
+  /**
+   * Build phase for this agent run. Populated by build and compile stage
+   * call sites; undefined for programmatic/standalone invocations.
+   * Values: 'compile' | 'build' | 'standalone'.
+   * Not forwarded to the backend SDK.
+   */
+  phase?: string;
+  /**
+   * Build stage name for this agent run (e.g. 'implement', 'review', 'planner').
+   * Populated by build and compile stage call sites; undefined for standalone runs.
+   * Not forwarded to the backend SDK.
+   */
+  stage?: string;
+  // --- eforge:endregion plan-01-agent-context-runtime ---
 }
 
 /**

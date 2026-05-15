@@ -180,6 +180,36 @@ const eventRegistry = {
   },
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
+  // --- eforge:region plan-01-agent-context-runtime ---
+  'extension:agent-context:applied': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} appended ${e.promptCharCount} chars to ${e.role}${e.tier ? ` (${e.tier})` : ''}`,
+  },
+
+  'extension:agent-context:failed': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} agent-context hook failed for ${e.role}: ${e.message}`,
+  },
+
+  'extension:agent-context:timeout': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} agent-context hook timed out after ${e.timeoutMs}ms for ${e.role}`,
+  },
+
+  'extension:agent-context:unsupported': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} returned unsupported fields for ${e.role}: ${e.fields.join(', ')} (deferred to EXTEND_08B)`,
+  },
+  // --- eforge:endregion plan-01-agent-context-runtime ---
+
   // -------------------------------------------------------------------------
   // Planning
   // -------------------------------------------------------------------------

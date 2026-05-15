@@ -36,6 +36,7 @@ extensions:
   # paths:                       # optional explicit extension modules/directories
   #   - ./tools/eforge-audit.ts
   trustProjectExtensions: false  # default: false
+  # agentContextHookTimeoutMs: 5000  # default: inherits eventHookTimeoutMs; positive integer milliseconds
 ```
 
 Fields:
@@ -47,6 +48,7 @@ Fields:
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |
 | `extensions.trustProjectExtensions` | `false` | Trust gate for checked-in project/team extensions under `eforge/extensions/`. User and project-local extensions are trusted when loading is enabled. |
+| `extensions.agentContextHookTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `onAgentRun` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 
 The trust flag is intentionally restricted: checked-in `eforge/config.yaml` cannot silently turn on trust for checked-in extensions. Set `extensions.trustProjectExtensions: true` in user config (`~/.config/eforge/config.yaml`) or project-local config (`.eforge/config.yaml`) when you intentionally trust this project's committed extensions.
 
@@ -171,16 +173,18 @@ Event replay testing is deferred, as are `extension enable`, `extension disable`
 
 ## Runtime support today
 
-The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection and management tooling, and native `onEvent` dispatch are available.
+The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection and management tooling, native `onEvent` dispatch, and `onAgentRun` prompt-context augmentation are available.
 
 Event hooks run for real CLI, queue worker, and daemon watcher event streams. Dispatch is non-blocking with respect to the engine pipeline: handlers receive matching events but cannot alter or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with the extension name, matched pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Those diagnostics are recorded by the monitor before shell hooks run, so shell-hook matching has parity with normal engine and extension diagnostic events.
 
-All non-event extension capability execution is intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete.
+Agent-run hooks fire before each agent invocation. Handlers can inspect `ctx.role`, `ctx.tier`, `ctx.phase`, and `ctx.stage` to scope their contribution, then return `{ promptAppend: '...' }` to inject additional context. Fragments are appended after any config-level `promptAppend` already resolved by the engine, wrapped in a named provenance section identifying the contributing extension. Multiple extensions contribute in registration order. The runtime is fail-open: a handler that throws or exceeds `extensions.agentContextHookTimeoutMs` emits a typed diagnostic event but does not abort the agent run. Tool fields (`tools`, `allowedTools`, `disallowedTools`) in the return value emit an `extension:agent-context:unsupported` diagnostic and are otherwise ignored - tool injection is tracked for EXTEND_08B.
+
+All other non-event extension capability execution is intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
 | `onEvent` - typed event subscriptions | Yes | Yes | Yes |
-| `onAgentRun` - agent augmentation | Yes | Yes | Deferred |
+| `onAgentRun` - agent prompt-context augmentation | Yes | Yes | Yes (promptAppend only - tools/allowedTools/disallowedTools deferred to EXTEND_08B) |
 | `registerTool` - custom agent tool | Yes | Yes | Deferred |
 | `beforePlanMerge` - policy gate | Yes | Yes | Deferred |
 | `registerProfileRouter` | Yes | Yes | Deferred |
@@ -188,7 +192,7 @@ All non-event extension capability execution is intentionally deferred for later
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-This means examples can now be loaded, validated, and event-hook examples run at runtime. Blocking policy enforcement, agent augmentation, custom tool execution, profile routing, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
+Event-hook and agent-context-hook examples can be loaded, validated, and run at runtime. Blocking policy enforcement, custom tool execution, profile routing, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
 
 ## Schema language
 

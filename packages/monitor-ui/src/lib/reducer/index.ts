@@ -186,6 +186,12 @@ export const IGNORED_EVENT_TYPES = [
   'extension:event-handler:failed',
   'extension:event-handler:timeout',
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+  // --- eforge:region plan-01-agent-context-runtime ---
+  'extension:agent-context:applied',
+  'extension:agent-context:failed',
+  'extension:agent-context:timeout',
+  'extension:agent-context:unsupported',
+  // --- eforge:endregion plan-01-agent-context-runtime ---
   'planning:start',
   'planning:skip',
   'planning:submission',

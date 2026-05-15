@@ -114,6 +114,9 @@ export interface EventHookContext extends EforgeExtensionContext {
 
 /**
  * Context passed to agent-run hooks and profile routers.
+ *
+ * All fields are read-only metadata. Handlers must not write to or mutate
+ * toolbelt, profile, or MCP selection — those are engine-owned values.
  */
 export interface AgentRunContext extends EforgeExtensionContext {
   /** The agent's role in the current build stage. */
@@ -132,6 +135,59 @@ export interface AgentRunContext extends EforgeExtensionContext {
    * Populated for review and post-build stages.
    */
   changedFiles?: string[];
+  /**
+   * The engine pipeline phase in which this agent run is executing.
+   *
+   * Known values:
+   * - `'compile'` - planning/compilation pipeline (planner, module-planner, etc.)
+   * - `'build'` - build pipeline (builder, reviewer, evaluator, etc.)
+   * - `'standalone'` - standalone helper invocations outside a pipeline
+   *   (recovery-analyst, staleness-assessor, formatter, etc.)
+   */
+  phase?: string;
+  /**
+   * The specific pipeline stage in which this agent run is executing.
+   *
+   * Known values for `phase: 'build'`: `'implement'`, `'review'`, `'review-fix'`,
+   * `'evaluate'`, `'test'`, `'test-write'`, `'doc-author'`, `'doc-sync'`.
+   *
+   * Known values for `phase: 'compile'`: `'planner'`, `'module-planner'`,
+   * `'pipeline-composer'`, `'plan-review'`, `'plan-evaluate'`,
+   * `'architecture-review'`, `'architecture-evaluate'`, `'cohesion-review'`,
+   * `'cohesion-evaluate'`.
+   *
+   * Not set when `phase` is `'standalone'`.
+   */
+  stage?: string;
+  /**
+   * The agent harness backend used for this run.
+   *
+   * - `'claude-sdk'` - Anthropic Claude Agent SDK
+   * - `'pi'` - Pi AI agent harness
+   */
+  harness?: 'claude-sdk' | 'pi';
+  /**
+   * The active toolbelt name for this run, or `null` when no named toolbelt
+   * is active. Read-only — do not use this to infer or override tool availability.
+   */
+  toolbelt?: string | null;
+  /**
+   * How the active toolbelt was selected.
+   *
+   * - `'tier'` - toolbelt resolved from the agent's tier configuration
+   * - `'role'` - toolbelt resolved from the agent's role configuration
+   * - `'plan'` - toolbelt overridden at the plan level
+   * - `'default'` - fallback toolbelt used
+   */
+  toolbeltSource?: 'tier' | 'role' | 'plan' | 'default';
+  /**
+   * The project MCP server selection mode active for this run.
+   *
+   * - `'all'` - all project MCP servers are available
+   * - `'none'` - no project MCP servers are available
+   * - `'toolbelt'` - only toolbelt-selected project MCP servers are available
+   */
+  projectMcpSelection?: 'all' | 'none' | 'toolbelt';
 }
 
 /**

@@ -119,14 +119,21 @@ describe('extension runtime documentation', () => {
   const minimalEventLogger = readRepoFile('examples/extensions/minimal-event-logger.ts');
   const protectedPaths = readRepoFile('examples/extensions/protected-paths.ts');
 
-  it('marks onEvent runtime execution as supported while non-event families remain deferred', () => {
+  it('marks onEvent and onAgentRun runtime execution as supported while other families remain deferred', () => {
     expect(docsExtensions).toContain('| `onEvent` - typed event subscriptions | Yes | Yes | Yes |');
     expect(docsExtensionsApi).toContain('| `onEvent` | Yes | Yes | Yes |');
     expect(sdkReadme).toContain('| `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | Yes | Yes |');
 
+    // onAgentRun is now partially supported (promptAppend only)
+    for (const source of [docsExtensions, docsExtensionsApi, sdkReadme]) {
+      const onAgentRunRow = source.split('\n').find((line) => line.startsWith('| `onAgentRun'));
+      expect(onAgentRunRow, 'onAgentRun row').toBeDefined();
+      expect(onAgentRunRow).not.toContain('Deferred');
+      expect(onAgentRunRow).toContain('Yes');
+    }
+
     for (const source of [docsExtensions, docsExtensionsApi, sdkReadme]) {
       for (const capability of [
-        'onAgentRun',
         'registerTool',
         'beforePlanMerge',
         'registerProfileRouter',
