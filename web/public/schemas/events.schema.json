@@ -414,7 +414,108 @@
               "type": "string"
             },
             "role": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
             },
             "tier": {
               "type": "string"
@@ -432,7 +533,16 @@
               "type": "string"
             },
             "harness": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "claude-sdk",
+                  "type": "string"
+                },
+                {
+                  "const": "pi",
+                  "type": "string"
+                }
+              ]
             },
             "toolbelt": {
               "anyOf": [
@@ -445,13 +555,28 @@
               ]
             },
             "projectMcpSelection": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "all",
+                  "type": "string"
+                },
+                {
+                  "const": "none",
+                  "type": "string"
+                },
+                {
+                  "const": "toolbelt",
+                  "type": "string"
+                }
+              ]
             },
             "promptCharCount": {
-              "type": "number"
+              "minimum": 0,
+              "type": "integer"
             },
             "fragmentCount": {
-              "type": "number"
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -477,7 +602,108 @@
               "type": "string"
             },
             "role": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
             },
             "tier": {
               "type": "string"
@@ -495,7 +721,16 @@
               "type": "string"
             },
             "harness": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "claude-sdk",
+                  "type": "string"
+                },
+                {
+                  "const": "pi",
+                  "type": "string"
+                }
+              ]
             },
             "toolbelt": {
               "anyOf": [
@@ -508,7 +743,20 @@
               ]
             },
             "projectMcpSelection": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "all",
+                  "type": "string"
+                },
+                {
+                  "const": "none",
+                  "type": "string"
+                },
+                {
+                  "const": "toolbelt",
+                  "type": "string"
+                }
+              ]
             },
             "message": {
               "type": "string"
@@ -540,7 +788,108 @@
               "type": "string"
             },
             "role": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
             },
             "tier": {
               "type": "string"
@@ -558,7 +907,16 @@
               "type": "string"
             },
             "harness": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "claude-sdk",
+                  "type": "string"
+                },
+                {
+                  "const": "pi",
+                  "type": "string"
+                }
+              ]
             },
             "toolbelt": {
               "anyOf": [
@@ -571,10 +929,24 @@
               ]
             },
             "projectMcpSelection": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "all",
+                  "type": "string"
+                },
+                {
+                  "const": "none",
+                  "type": "string"
+                },
+                {
+                  "const": "toolbelt",
+                  "type": "string"
+                }
+              ]
             },
             "timeoutMs": {
-              "type": "number"
+              "minimum": 0,
+              "type": "integer"
             }
           }
         },
@@ -600,7 +972,108 @@
               "type": "string"
             },
             "role": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "planner",
+                  "type": "string"
+                },
+                {
+                  "const": "builder",
+                  "type": "string"
+                },
+                {
+                  "const": "reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "review-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "module-planner",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "plan-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "architecture-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-reviewer",
+                  "type": "string"
+                },
+                {
+                  "const": "cohesion-evaluator",
+                  "type": "string"
+                },
+                {
+                  "const": "validation-fixer",
+                  "type": "string"
+                },
+                {
+                  "const": "merge-conflict-resolver",
+                  "type": "string"
+                },
+                {
+                  "const": "staleness-assessor",
+                  "type": "string"
+                },
+                {
+                  "const": "formatter",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-author",
+                  "type": "string"
+                },
+                {
+                  "const": "doc-syncer",
+                  "type": "string"
+                },
+                {
+                  "const": "test-writer",
+                  "type": "string"
+                },
+                {
+                  "const": "tester",
+                  "type": "string"
+                },
+                {
+                  "const": "prd-validator",
+                  "type": "string"
+                },
+                {
+                  "const": "dependency-detector",
+                  "type": "string"
+                },
+                {
+                  "const": "pipeline-composer",
+                  "type": "string"
+                },
+                {
+                  "const": "gap-closer",
+                  "type": "string"
+                },
+                {
+                  "const": "recovery-analyst",
+                  "type": "string"
+                }
+              ]
             },
             "tier": {
               "type": "string"
@@ -618,7 +1091,16 @@
               "type": "string"
             },
             "harness": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "claude-sdk",
+                  "type": "string"
+                },
+                {
+                  "const": "pi",
+                  "type": "string"
+                }
+              ]
             },
             "toolbelt": {
               "anyOf": [
@@ -631,9 +1113,23 @@
               ]
             },
             "projectMcpSelection": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "const": "all",
+                  "type": "string"
+                },
+                {
+                  "const": "none",
+                  "type": "string"
+                },
+                {
+                  "const": "toolbelt",
+                  "type": "string"
+                }
+              ]
             },
             "fields": {
+              "minItems": 1,
               "type": "array",
               "items": {
                 "anyOf": [
