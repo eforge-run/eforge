@@ -579,10 +579,34 @@ describe('runPlanReview wiring', () => {
 // --- Plan Evaluator ---
 
 describe('runPlanEvaluate wiring', () => {
-  it('counts evaluation verdicts', async () => {
+  function makePlanEvaluationSnapshot(): EvaluationSnapshot {
+    return {
+      cwd: '/tmp',
+      capturedAt: '2026-01-01T00:00:00.000Z',
+      baseHead: 'base',
+      stagedPatch: '',
+      candidatePatch: 'diff --git a/eforge/plans/my-plan/a.md b/eforge/plans/my-plan/a.md\n',
+      files: [
+        {
+          path: 'eforge/plans/my-plan/a.md',
+          status: 'modified',
+          statusCode: 'M',
+          diff: 'diff --git a/eforge/plans/my-plan/a.md b/eforge/plans/my-plan/a.md\n@@ -1 +1 @@\n-old\n+new\n',
+          diffHeader: 'diff --git a/eforge/plans/my-plan/a.md b/eforge/plans/my-plan/a.md\n',
+          hunks: [{ index: 1, header: '@@ -1 +1 @@', oldStart: 1, oldLines: 1, newStart: 1, newLines: 1, diff: '@@ -1 +1 @@\n-old\n+new\n' }],
+          isBinary: false,
+          isUntracked: false,
+          isRenameOnly: false,
+          requiresFileVerdict: false,
+        },
+      ],
+    };
+  }
+
+  it('counts evaluation verdicts and preserves hunk metadata in summaries', async () => {
     const backend = new StubHarness([{
       text: `<evaluation>
-  <verdict file="plans/a.md" action="accept">Good fix</verdict>
+  <verdict file="plans/a.md" hunk="1" action="accept">Good fix</verdict>
   <verdict file="plans/b.md" action="reject">Over-scoped</verdict>
 </evaluation>`,
     }]);
@@ -600,9 +624,37 @@ describe('runPlanEvaluate wiring', () => {
     expect(complete!.accepted).toBe(1);
     expect(complete!.rejected).toBe(1);
     expect(complete!.verdicts).toEqual([
-      { file: 'plans/a.md', action: 'accept', reason: 'Good fix' },
+      { file: 'plans/a.md', hunk: 1, action: 'accept', reason: 'Good fix' },
       { file: 'plans/b.md', action: 'reject', reason: 'Over-scoped' },
     ]);
+  });
+
+  it('wires structured evaluation tools and mutation-tool denylist', async () => {
+    const backend = new StubHarness([{
+      toolCalls: [{
+        tool: 'submit_evaluation_verdicts',
+        toolUseId: 'eval-1',
+        input: { verdicts: [{ file: 'eforge/plans/my-plan/a.md', hunk: 1, action: 'accept', reason: 'Correct' }] },
+        output: '',
+      }],
+    }]);
+
+    const events = await collectEvents(runPlanEvaluate({
+      harness: backend,
+      planSetName: 'my-plan',
+      sourceContent: 'PRD content',
+      cwd: '/tmp',
+      evaluationSnapshot: makePlanEvaluationSnapshot(),
+      allowedPathPrefix: 'eforge/plans/my-plan',
+    }));
+
+    expect(backend.customToolSets[0]?.map(tool => tool.name).sort()).toEqual([
+      'get_evaluation_diff',
+      'list_evaluation_files',
+      'submit_evaluation_verdicts',
+    ]);
+    expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash']));
+    expect(events.find(e => e.type === 'planning:error')).toBeDefined();
   });
 
   // runPlanEvaluate re-throws after yielding a zero-count complete event —

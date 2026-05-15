@@ -20,13 +20,31 @@ import {
 import { runParallel, type ParallelTask } from '../concurrency.js';
 import { forgeCommit } from '../git.js';
 import { composeCommitMessage } from '../model-tracker.js';
+import { discardEvaluationCandidateFixes, restoreEvaluationSnapshotAfterFailure, type EvaluationSnapshot } from '../evaluation/index.js';
 
 import type { PipelineContext, BuildStageContext } from './types.js';
 import { getCompileStage, getBuildStage } from './registry.js';
-import { commitPlanArtifacts, hasUnstagedChanges } from './git-helpers.js';
+import { commitPlanArtifacts } from './git-helpers.js';
 import { createToolTracker } from './span-wiring.js';
 
 const exec = promisify(execFile);
+
+async function restoreOriginalEvaluationHead(snapshot: EvaluationSnapshot): Promise<void> {
+  await restoreEvaluationSnapshotAfterFailure(snapshot);
+  await discardEvaluationCandidateFixes(snapshot);
+  await exec('git', ['reset', '--hard', snapshot.originalHead ?? snapshot.baseHead], { cwd: snapshot.cwd });
+}
+
+async function hasEvaluationCandidateChanges(cwd: string): Promise<boolean> {
+  try {
+    const { stdout: tracked } = await exec('git', ['diff', '--name-only'], { cwd });
+    if (tracked.trim().length > 0) return true;
+    const { stdout: untracked } = await exec('git', ['ls-files', '--others', '--exclude-standard'], { cwd });
+    return untracked.trim().length > 0;
+  } catch {
+    return false;
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Shared review cycle helper (used by both compile and build stages)
@@ -47,7 +65,8 @@ export interface ReviewCycleConfig {
   evaluator: {
     role: AgentRole;
     metadata: Record<string, unknown>;
-    run: (continuationContext?: { attempt: number; maxContinuations: number }) => AsyncGenerator<EforgeEvent>;
+    run: (input: EvaluatorContinuationInput) => AsyncGenerator<EforgeEvent>;
+    prepareInput?: () => Promise<Partial<EvaluatorContinuationInput>>;
   };
 }
 
@@ -77,7 +96,7 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
   }
 
   // Phase: Evaluate (only if reviewer left unstaged changes, non-fatal)
-  if (await hasUnstagedChanges(config.cwd)) {
+  if (await hasEvaluationCandidateChanges(config.cwd)) {
     // Wrap the evaluator.run() callback so it pulls continuationContext out of
     // the retry input. The policy's buildContinuationInput splices it in.
     //
@@ -85,11 +104,10 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
     // wrapper) so each retry gets its own span and fresh tool-call state.
     const runEvaluatorWrapped = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
       const evalSpan = config.tracing.createSpan(config.evaluator.role, config.evaluator.metadata);
-      evalSpan.setInput(config.evaluator.metadata);
+      evalSpan.setInput({ ...config.evaluator.metadata, ...(input.evaluationSnapshot && { evaluationSnapshot: input.evaluationSnapshot }) });
       const evalTracker = createToolTracker(evalSpan);
       try {
-        const continuationContext = input.evaluatorOptions.evaluatorContinuationContext as { attempt: number; maxContinuations: number } | undefined;
-        for await (const event of config.evaluator.run(continuationContext)) {
+        for await (const event of config.evaluator.run(input)) {
           evalTracker.handleEvent(event);
           yield event;
         }
@@ -102,9 +120,18 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
       }
     };
 
+    let preparedInput: Partial<EvaluatorContinuationInput> = {};
+    try {
+      preparedInput = await config.evaluator.prepareInput?.() ?? {};
+    } catch (err) {
+      yield { timestamp: new Date().toISOString(), type: 'planning:error', reason: err instanceof Error ? err.message : String(err) };
+      return;
+    }
+
     const initialInput: EvaluatorContinuationInput = {
       worktreePath: config.cwd,
-      evaluatorOptions: {},
+      ...preparedInput,
+      evaluatorOptions: preparedInput.evaluatorOptions ?? {},
     };
 
     const evalPolicy = DEFAULT_RETRY_POLICIES[config.evaluator.role] as RetryPolicy<EvaluatorContinuationInput> | undefined;
@@ -115,6 +142,13 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
           yield event;
         }
       } catch {
+        if (initialInput.evaluationSnapshot) {
+          try {
+            await restoreOriginalEvaluationHead(initialInput.evaluationSnapshot);
+          } catch {
+            // Preserve evaluator non-fatal behavior even if best-effort restore fails.
+          }
+        }
         // Wrapper already recorded span error; swallow so evaluate stays non-fatal.
       }
       return;
@@ -125,6 +159,13 @@ export async function* runReviewCycle(config: ReviewCycleConfig): AsyncGenerator
         yield event;
       }
     } catch {
+      if (initialInput.evaluationSnapshot) {
+        try {
+          await restoreOriginalEvaluationHead(initialInput.evaluationSnapshot);
+        } catch {
+          // Preserve evaluator non-fatal behavior even if best-effort restore fails.
+        }
+      }
       // Per-attempt spans already recorded errors inside the wrapper;
       // swallow so evaluate remains non-fatal.
     }
@@ -150,7 +191,7 @@ export async function* runCompilePipeline(
   const MAX_RESTARTS = 5;
   while (i < ctx.pipeline.compile.length) {
     const stageName = ctx.pipeline.compile[i];
-    if (stageName === 'plan-review-cycle' || stageName === 'architecture-review-cycle') {
+    if (stageName === 'plan-review-cycle' || stageName === 'architecture-review-cycle' || stageName === 'cohesion-review-cycle') {
       // Commit plan artifacts before running review cycles
       // (reviewers read committed files)
       if (ctx.plans.length > 0 || ctx.expeditionModules.length > 0) {

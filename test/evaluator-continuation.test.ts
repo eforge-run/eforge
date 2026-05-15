@@ -150,7 +150,11 @@ describe('runPlanEvaluate continuation context', () => {
 
     expect(backend.prompts[0]).toContain('Continuation Context');
     expect(backend.prompts[0]).toContain('attempt 1 of 2');
-    expect(backend.prompts[0]).toContain('Do NOT run `git reset --soft HEAD~1` again');
+    expect(backend.prompts[0]).toContain('same immutable evaluation snapshot');
+    expect(backend.prompts[0]).toContain('re-inspect the captured diff');
+    expect(backend.prompts[0]).not.toContain('git reset');
+    expect(backend.prompts[0]).not.toContain('git add');
+    expect(backend.prompts[0]).not.toContain('git checkout');
   });
 
   it('passes empty continuation_context when continuationContext is absent', async () => {
@@ -187,6 +191,10 @@ describe('runCohesionEvaluate continuation context', () => {
 
     expect(backend.prompts[0]).toContain('Continuation Context');
     expect(backend.prompts[0]).toContain('attempt 2 of 3');
+    expect(backend.prompts[0]).toContain('re-inspect the captured diff');
+    expect(backend.prompts[0]).not.toContain('git reset');
+    expect(backend.prompts[0]).not.toContain('git add');
+    expect(backend.prompts[0]).not.toContain('git checkout');
   });
 });
 
@@ -203,6 +211,10 @@ describe('runArchitectureEvaluate continuation context', () => {
 
     expect(backend.prompts[0]).toContain('Continuation Context');
     expect(backend.prompts[0]).toContain('attempt 1 of 1');
+    expect(backend.prompts[0]).toContain('re-inspect the captured diff');
+    expect(backend.prompts[0]).not.toContain('git reset');
+    expect(backend.prompts[0]).not.toContain('git add');
+    expect(backend.prompts[0]).not.toContain('git checkout');
   });
 });
 
@@ -226,17 +238,18 @@ describe('evaluator prompt templates', () => {
     expect(content).not.toMatch(/git reset|git add|git checkout|git commit/);
   });
 
-  it('plan-evaluator.md contains {{continuation_context}} between Context and Setup sections', async () => {
+  it('plan-evaluator.md contains {{continuation_context}} before Snapshot Tools and no agent-owned git instructions', async () => {
     const content = await readFile(resolve(promptsDir, 'plan-evaluator.md'), 'utf-8');
     const lines = content.split('\n');
     const contextIdx = lines.findIndex(l => l.startsWith('## Context'));
     const continuationIdx = lines.findIndex(l => l.includes('{{continuation_context}}'));
-    const setupIdx = lines.findIndex(l => l.startsWith('## Setup') || l.startsWith('## Source'));
+    const toolsIdx = lines.findIndex(l => l.startsWith('## Snapshot Tools'));
     expect(contextIdx).toBeGreaterThan(-1);
     expect(continuationIdx).toBeGreaterThan(-1);
-    expect(setupIdx).toBeGreaterThan(-1);
+    expect(toolsIdx).toBeGreaterThan(-1);
     expect(continuationIdx).toBeGreaterThan(contextIdx);
-    expect(continuationIdx).toBeLessThan(setupIdx);
+    expect(continuationIdx).toBeLessThan(toolsIdx);
+    expect(content).not.toMatch(/git reset|git add|git checkout|git commit/);
   });
 });
 

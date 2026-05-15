@@ -583,9 +583,10 @@ export interface EvaluatorContinuationInput {
 
 /**
  * Build the next evaluator attempt's input:
- * - If no unstaged changes remain (all files were processed by the prior
- *   attempt), return `abort-success` — the retry short-circuits to success.
- * - Otherwise splice `evaluatorContinuationContext` into the options.
+ * - If no unstaged changes remain, return `abort-success` — the retry
+ *   short-circuits to success.
+ * - Otherwise preserve the immutable evaluation snapshot plus evaluator options
+ *   and splice read-only `evaluatorContinuationContext` into the next attempt.
  */
 export async function buildEvaluatorContinuationInput(
   info: RetryAttemptInfo<EvaluatorContinuationInput>,

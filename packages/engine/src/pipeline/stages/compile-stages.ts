@@ -32,6 +32,7 @@ import type { PipelineContext } from '../types.js';
 import { registerCompileStage } from '../registry.js';
 import { resolveAgentConfig } from '../agent-config.js';
 import { createToolTracker, createStageSpanWiring } from '../span-wiring.js';
+import { prepareEvaluationSnapshot } from '../../evaluation/index.js';
 import { runReviewCycle } from '../runners.js';
 
 // ---------------------------------------------------------------------------
@@ -295,6 +296,8 @@ registerCompileStage({
   const { harness: planEvaluatorHarness, toolbeltSummary: planEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('plan-evaluator');
   const reviewerConfig = resolveAgentConfig('plan-reviewer', ctx.config, undefined, planReviewerTb);
   const evaluatorConfig = resolveAgentConfig('plan-evaluator', ctx.config, undefined, planEvaluatorTb);
+  const planSetPath = `${ctx.config.plan.outputDir}/${ctx.planSetName}`;
+  const evaluationCommitMessage = `plan(${ctx.planSetName}): planning artifacts`;
 
   try {
     yield* runReviewCycle({
@@ -319,7 +322,11 @@ registerCompileStage({
       evaluator: {
         role: 'plan-evaluator',
         metadata: { planSet: ctx.planSetName },
-        run: (continuationContext) => runPlanEvaluate({
+        prepareInput: async () => ({
+          evaluationSnapshot: await prepareEvaluationSnapshot(ctx.cwd, 'HEAD~1'),
+          evaluatorOptions: { allowedPathPrefix: planSetPath, commitMessage: evaluationCommitMessage },
+        }),
+        run: (input) => runPlanEvaluate({
           ...evaluatorConfig,
           planSetName: ctx.planSetName,
           sourceContent: ctx.sourceContent,
@@ -327,7 +334,11 @@ registerCompileStage({
           verbose,
           abortController,
           outputDir: ctx.config.plan.outputDir,
-          continuationContext,
+          evaluationSnapshot: input.evaluationSnapshot,
+          allowedPathPrefix: planSetPath,
+          commitMessage: evaluationCommitMessage,
+          modelTracker: ctx.modelTracker,
+          continuationContext: input.evaluatorOptions.evaluatorContinuationContext,
           phase: 'compile',
           stage: 'plan-evaluate',
           harness: planEvaluatorHarness,
@@ -372,6 +383,8 @@ registerCompileStage({
   const { harness: archEvaluatorHarness, toolbeltSummary: archEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('architecture-evaluator');
   const archReviewerConfig = resolveAgentConfig('architecture-reviewer', ctx.config, undefined, archReviewerTb);
   const archEvaluatorConfig = resolveAgentConfig('architecture-evaluator', ctx.config, undefined, archEvaluatorTb);
+  const planSetPath = `${ctx.config.plan.outputDir}/${planSetName}`;
+  const evaluationCommitMessage = `plan(${planSetName}): planning artifacts`;
 
   try {
     yield* runReviewCycle({
@@ -385,7 +398,27 @@ registerCompileStage({
       evaluator: {
         role: 'architecture-evaluator',
         metadata: { planSet: planSetName },
-        run: (continuationContext) => runArchitectureEvaluate({ ...archEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, phase: 'compile', stage: 'architecture-evaluate', harness: archEvaluatorHarness }),
+        prepareInput: async () => ({
+          evaluationSnapshot: await prepareEvaluationSnapshot(cwd, 'HEAD~1'),
+          evaluatorOptions: { allowedPathPrefix: planSetPath, commitMessage: evaluationCommitMessage },
+        }),
+        run: (input) => runArchitectureEvaluate({
+          ...archEvaluatorConfig,
+          planSetName,
+          sourceContent,
+          cwd,
+          verbose,
+          abortController,
+          outputDir: ctx.config.plan.outputDir,
+          evaluationSnapshot: input.evaluationSnapshot,
+          allowedPathPrefix: planSetPath,
+          commitMessage: evaluationCommitMessage,
+          modelTracker: ctx.modelTracker,
+          continuationContext: input.evaluatorOptions.evaluatorContinuationContext,
+          phase: 'compile',
+          stage: 'architecture-evaluate',
+          harness: archEvaluatorHarness,
+        }),
       },
     });
   } catch (err) {
@@ -486,6 +519,8 @@ registerCompileStage({
   const { harness: cohesionEvaluatorHarness, toolbeltSummary: cohesionEvaluatorTb } = ctx.agentRuntimes.forRoleResolved('cohesion-evaluator');
   const cohesionReviewerConfig = resolveAgentConfig('cohesion-reviewer', ctx.config, undefined, cohesionReviewerTb);
   const cohesionEvaluatorConfig = resolveAgentConfig('cohesion-evaluator', ctx.config, undefined, cohesionEvaluatorTb);
+  const modulesPath = `${ctx.config.plan.outputDir}/${planSetName}/modules`;
+  const evaluationCommitMessage = `plan(${planSetName}): planning artifacts`;
 
   try {
     yield* runReviewCycle({
@@ -499,7 +534,27 @@ registerCompileStage({
       evaluator: {
         role: 'cohesion-evaluator',
         metadata: { planSet: planSetName },
-        run: (continuationContext) => runCohesionEvaluate({ ...cohesionEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, phase: 'compile', stage: 'cohesion-evaluate', harness: cohesionEvaluatorHarness }),
+        prepareInput: async () => ({
+          evaluationSnapshot: await prepareEvaluationSnapshot(cwd, 'HEAD~1'),
+          evaluatorOptions: { allowedPathPrefix: modulesPath, commitMessage: evaluationCommitMessage },
+        }),
+        run: (input) => runCohesionEvaluate({
+          ...cohesionEvaluatorConfig,
+          planSetName,
+          sourceContent,
+          cwd,
+          verbose,
+          abortController,
+          outputDir: ctx.config.plan.outputDir,
+          evaluationSnapshot: input.evaluationSnapshot,
+          allowedPathPrefix: modulesPath,
+          commitMessage: evaluationCommitMessage,
+          modelTracker: ctx.modelTracker,
+          continuationContext: input.evaluatorOptions.evaluatorContinuationContext,
+          phase: 'compile',
+          stage: 'cohesion-evaluate',
+          harness: cohesionEvaluatorHarness,
+        }),
       },
     });
   } catch (err) {

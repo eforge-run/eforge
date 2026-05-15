@@ -183,7 +183,7 @@ describe('runCohesionEvaluate wiring', () => {
   it('counts evaluation verdicts correctly', async () => {
     const backend = new StubHarness([{
       text: `<evaluation>
-  <verdict file="plans/a.md" action="accept">
+  <verdict file="plans/a.md" hunk="1" action="accept">
     <original>Original</original>
     <fix>Fix</fix>
     <rationale>Good fix</rationale>
@@ -226,7 +226,7 @@ describe('runCohesionEvaluate wiring', () => {
     expect(complete!.accepted).toBe(2);
     expect(complete!.rejected).toBe(2); // reject + review both count as rejected
     expect(complete!.verdicts).toEqual([
-      { file: 'plans/a.md', action: 'accept', reason: 'Good fix' },
+      { file: 'plans/a.md', hunk: 1, action: 'accept', reason: 'Good fix' },
       { file: 'plans/b.md', action: 'accept', reason: 'Also good' },
       { file: 'plans/c.md', action: 'reject', reason: 'Alters approach' },
       { file: 'plans/d.md', action: 'review', reason: 'Debatable' },
@@ -276,7 +276,7 @@ describe('runCohesionEvaluate wiring', () => {
     expect(complete!.rejected).toBe(0);
   });
 
-  it('uses coding tools', async () => {
+  it('uses coding tools with evaluator mutation tools denied', async () => {
     const backend = new StubHarness([{ text: '<evaluation></evaluation>' }]);
 
     await collectEvents(runCohesionEvaluate({
@@ -288,5 +288,6 @@ describe('runCohesionEvaluate wiring', () => {
 
     expect(backend.calls).toHaveLength(1);
     expect(backend.calls[0].tools).toBe('coding');
+    expect(backend.calls[0].disallowedTools).toEqual(expect.arrayContaining(['Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Bash']));
   });
 });

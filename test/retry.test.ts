@@ -921,7 +921,7 @@ describe('buildEvaluatorContinuationInput', () => {
         worktreePath: '/tmp/wt',
         planId: 'plan-01',
         evaluationSnapshot: snapshot,
-        evaluatorOptions: { extra: 'keep-me' },
+        evaluatorOptions: { extra: 'keep-me', allowedPathPrefix: 'eforge/plans/demo' },
         checkHasUnstagedChanges: async () => true,
       },
     }));
@@ -930,6 +930,7 @@ describe('buildEvaluatorContinuationInput', () => {
     if (decision.kind === 'retry') {
       expect(decision.input.evaluationSnapshot).toBe(snapshot);
       expect(decision.input.evaluatorOptions.extra).toBe('keep-me');
+      expect(decision.input.evaluatorOptions.allowedPathPrefix).toBe('eforge/plans/demo');
       expect(decision.input.evaluatorOptions.evaluatorContinuationContext).toEqual({ attempt: 1, maxContinuations: 1 });
     }
   });
