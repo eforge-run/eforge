@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 2,
+  "summary": {
+    "prdId": "improve-pi-eforge-footer-status-so-active-builds-and-plan-counts-are-accurate",
+    "setName": "improve-pi-eforge-footer-status-so-active-builds-and-plan-counts-are-accurate",
+    "featureBranch": "eforge/improve-pi-eforge-footer-status-so-active-builds-and-plan-counts-are-accurate",
+    "baseBranch": "main",
+    "plans": [
+      {
+        "planId": "plan-02-pi-mcp-multi-build-status",
+        "status": "failed",
+        "error": "Blocked by failed dependency: plan-01-run-summary-pending-plans"
+      }
+    ],
+    "failingPlan": {
+      "planId": "plan-02-pi-mcp-multi-build-status",
+      "errorMessage": "Blocked by failed dependency: plan-01-run-summary-pending-plans"
+    },
+    "landedCommits": [
+      {
+        "sha": "40185ed3bf5abf1ef893b4a3efc0b0be2f9d9540",
+        "subject": "test(plan-01-run-summary-pending-plans): fix test issues",
+        "author": "Mark Schaake",
+        "date": "2026-05-14T17:07:58-07:00"
+      },
+      {
+        "sha": "a38ef0a3442af3fce541f163e972952f2ab63d6c",
+        "subject": "feat(plan-01-run-summary-pending-plans): RunSummary pending plans + planning:complete seeding",
+        "author": "Mark Schaake",
+        "date": "2026-05-14T17:05:12-07:00"
+      },
+      {
+        "sha": "eb8d66296722bbabcbbdecffdd3d0a2c5a54575e",
+        "subject": "test(plan-01-run-summary-pending-plans): add run-summary plan-seeding tests",
+        "author": "Mark Schaake",
+        "date": "2026-05-14T17:04:21-07:00"
+      },
+      {
+        "sha": "838365d0fb890e74cf68ef6fa4426e3188d4ca0f",
+        "subject": "plan(improve-pi-eforge-footer-status-so-active-builds-and-plan-counts-are-accurate): initial planning artifacts",
+        "author": "Mark Schaake",
+        "date": "2026-05-14T16:55:33-07:00"
+      }
+    ],
+    "diffStat": ".../orchestration.yaml                             |  85 ++++++\n .../plan-01-run-summary-pending-plans.md           |  84 ++++++\n .../plan-02-pi-mcp-multi-build-status.md           | 133 +++++++++\n packages/client/src/api-version.ts                 |   2 +-\n packages/client/src/types.ts                       |   2 +-\n packages/monitor/src/server.ts                     | 310 ++++++++++++---------\n test/daemon-recovery.test.ts                       |   4 +-\n test/run-summary-plans.test.ts                     | 223 +++++++++++++++\n 8 files changed, 709 insertions(+), 134 deletions(-)",
+    "modelsUsed": [
+      "claude-opus-4-7",
+      "claude-sonnet-4-6"
+    ],
+    "failedAt": "2026-05-15T00:17:16.558Z"
+  },
+  "verdict": {
+    "verdict": "manual",
+    "confidence": "low",
+    "rationale": "Recovery analyst failed or timed out.",
+    "completedWork": [],
+    "remainingWork": [],
+    "risks": [],
+    "partial": true,
+    "recoveryError": "Claude Code process aborted by user"
+  },
+  "generatedAt": "2026-05-15T00:18:50.963Z"
+}
