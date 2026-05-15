@@ -281,7 +281,7 @@ At least one of `selectBuildProfile` or `resolve` must be provided. The `selectB
 
 Return `null` or `undefined` from the handler to defer to the next registered router (or the default profile if no router selects one). The optional `reason` and `confidence` fields flow into the `queue:profile:selected` wire event.
 
-**Runtime status:** registration is captured at load time; pre-build runtime dispatch is wired via the `queue:profile:*` event family (full runtime details land with the EXTEND_09 runtime change).
+**Runtime status:** `Yes (pre-build dispatch)`. Routers are invoked sequentially in registration order before each queued PRD build, with per-router timeouts and fail-open semantics. When a PRD's `frontmatter.profile` is already set, routing is skipped entirely. A router that throws emits `queue:profile:router-failed` and the next router is consulted; a timeout emits `queue:profile:router-timeout`; a returned profile that cannot be loaded emits `queue:profile:invalid-selection`. Returning `null` or `undefined` defers to the next router (first-valid-wins). The `queue:profile:selected` event records provenance when a valid profile is chosen. `ctx.usage.profile(name)` returns best-effort data from daemon event history — use it for heuristic decisions, not hard quota enforcement.
 
 ---
 
@@ -536,7 +536,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `onAgentRun` | Yes | Yes | Yes (promptAppend only — tools/allowedTools/disallowedTools deferred to EXTEND_08B)[^1] |
 | `registerTool` / `ExtensionTool` | Yes | Yes | Deferred |
 | `beforePlanMerge` policy gate | Yes | Yes | Deferred |
-| `registerProfileRouter` | Yes | Yes | Deferred |
+| `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
 | `registerInputSource` | Yes | Yes | Deferred |
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
