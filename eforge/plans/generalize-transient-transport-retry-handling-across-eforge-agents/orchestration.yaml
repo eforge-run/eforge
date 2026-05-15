@@ -1,0 +1,55 @@
+name: generalize-transient-transport-retry-handling-across-eforge-agents
+description: Generalize transient transport retry handling for evaluator-family
+  agents by routing error_transient_transport through existing retry policies
+  and evaluator continuation tests.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm exec vitest run test/retry.test.ts test/pi-transport-resilience.test.ts
+    test/agent-wiring.test.ts
+plans:
+  - id: plan-01-evaluator-transient-transport-retry
+    name: Evaluator Transient Transport Retry Policy
+    depends_on: []
+    branch: generalize-transient-transport-retry-handling-across-eforge-agents/plan-01-evaluator-transient-transport-retry
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused but non-trivial engine bugfix touching central
+    retry policy and evaluator continuation behavior, so excursion is
+    appropriate. A plan review is useful to preserve the explicit safety
+    boundaries around planner safeguards and avoiding blanket retries. The build
+    includes implementation, generated/updated tests, an iterative review cycle,
+    and a final test cycle because the PRD requires regression coverage for
+    retry, abort-success, non-transient errors, and evaluator-family policies.
+    Parallel review perspectives cover code correctness, test adequacy, and
+    verification of the stated acceptance criteria without adding unnecessary
+    expedition overhead.
