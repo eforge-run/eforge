@@ -21,6 +21,7 @@ import { loadConfig, type HookConfig } from '@eforge-build/engine/config';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { withHooks } from '@eforge-build/engine/hooks';
 import type { EforgeEvent } from '@eforge-build/engine/events';
+import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import { withRecording } from './recorder.js';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
@@ -304,8 +305,8 @@ export function maybePauseOnFailure(event: EforgeEvent, ctx: PauseOnFailureCtx):
 
 /**
  * Compose the watcher event-stream middlewares for the daemon.
- * withRecording (inner) persists events to SQLite first; withHooks (outer)
- * fires user-configured hooks against the same stream.
+ * Native event hooks run before recording so generated diagnostics are persisted;
+ * withHooks (outer) fires user-configured shell hooks after recording.
  *
  * Exported so the wiring can be unit-tested without spawning a real daemon.
  */
@@ -315,8 +316,14 @@ export function wrapWatcherEvents(
   cwd: string,
   pid: number,
   hooks: readonly HookConfig[],
+  native?: {
+    registry: Pick<NativeExtensionRegistry, 'eventHooks'>;
+    timeoutMs: number;
+  },
 ): AsyncGenerator<EforgeEvent> {
-  return withHooks(withRecording(events, db, cwd, pid), hooks, cwd);
+  const nativeEvents = withNativeEventHooks(events, native?.registry, { cwd, timeoutMs: native?.timeoutMs });
+  const recordedEvents = withRecording(nativeEvents, db, cwd, pid);
+  return withHooks(recordedEvents, hooks, cwd);
 }
 
 async function main(): Promise<void> {
@@ -554,9 +561,13 @@ async function main(): Promise<void> {
           cwd,
           process.pid,
           hooks,
+          {
+            registry: engine.nativeExtensionRegistry,
+            timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+          },
         );
-        // Drain the event stream; withRecording persists each event to SQLite
-        // and withHooks fires user-configured hooks non-blocking.
+        // Drain the event stream; native event hooks run first, withRecording
+        // persists each event to SQLite, and withHooks fires user-configured hooks non-blocking.
         // Inspect each event to pause auto-build on the first failed PRD.
         const pauseCtx: PauseOnFailureCtx = {
           isActiveController: () => watcherAbort === controller,

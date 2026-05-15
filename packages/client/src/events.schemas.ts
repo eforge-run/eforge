@@ -674,6 +674,27 @@ const EforgeEventVariantsSchema = Type.Union([
     errors: Type.Array(Type.String()),
   }),
 
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  // Native extension event-hook diagnostics
+  Type.Object({
+    type: Type.Literal('extension:event-handler:failed'),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    pattern: Type.String(),
+    triggeringEventType: Type.String(),
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:event-handler:timeout'),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    pattern: Type.String(),
+    triggeringEventType: Type.String(),
+    timeoutMs: Type.Number(),
+  }),
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
   // Planning
   Type.Object({
     type: Type.Literal('planning:start'),

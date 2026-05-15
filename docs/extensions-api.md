@@ -75,7 +75,7 @@ type EventHookHandler<T extends EforgeEvent["type"]> = (
 
 The `event` parameter is narrowed to `EventOfType<T>` when the pattern is an exact event type string. For glob patterns (containing `*`), the event type is `EforgeEvent`.
 
-**Runtime status:** registration is captured at load time; event dispatch is deferred.
+**Runtime status:** registration is captured at load time and matching events are dispatched at runtime. Dispatch is non-blocking with respect to the engine pipeline: handlers cannot alter, block, or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields; monitor recording sees those diagnostics before shell hooks run.
 
 ---
 
@@ -367,7 +367,7 @@ interface ExtensionExecApi {
 
 ### `EventHookContext`
 
-Context for `onEvent` handlers. Extends `EforgeExtensionContext` and adds an `event` field carrying the raw `EforgeEvent` that triggered the hook (the same object as the handler's first argument, exposed here for convenience in shared helpers):
+Context for `onEvent` handlers. Extends `EforgeExtensionContext` and adds an `event` field carrying the raw `EforgeEvent` that triggered the hook (the same object as the handler's first argument, exposed here for convenience in shared helpers). Runtime event hooks receive the enriched event object, including available `sessionId` and `runId` correlation fields:
 
 ```ts
 interface EventHookContext extends EforgeExtensionContext {
@@ -484,11 +484,11 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and blocking/capability execution are intentionally deferred for later phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch is available for `onEvent`; blocking and non-event capability execution are intentionally deferred for later phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
-| `onEvent` | Yes | Yes | Deferred |
+| `onEvent` | Yes | Yes | Yes |
 | `onAgentRun` | Yes | Yes | Deferred |
 | `registerTool` / `ExtensionTool` | Yes | Yes | Deferred |
 | `beforePlanMerge` policy gate | Yes | Yes | Deferred |
@@ -497,7 +497,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-Loaded extensions therefore appear in provenance and validation output today, including registration summaries and diagnostics. Event dispatch, agent augmentation, custom tool injection/execution, blocking policy enforcement, profile routing, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
+Loaded extensions therefore appear in provenance and validation output today, including registration summaries and diagnostics. Event hook examples run at runtime and receive correlated events. Agent augmentation, custom tool injection/execution, blocking policy enforcement, profile routing, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
 
 ---
 

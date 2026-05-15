@@ -26,6 +26,10 @@ function classifyEvent(type: string, event: EforgeEvent): { cls: string; label: 
     return { cls: status === 'failed' ? 'failed' : 'complete', label: type };
   }
   if (type === 'validation:command:timeout') return { cls: 'failed', label: type };
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  if (type === 'extension:event-handler:failed') return { cls: 'failed', label: type };
+  if (type === 'extension:event-handler:timeout') return { cls: 'failed', label: type };
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
   // --- eforge:region plan-04-monitor-ui ---
   if (type === 'recovery:start') return { cls: 'info', label: type };
   if (type === 'recovery:summary') return { cls: 'info', label: type };
@@ -124,6 +128,10 @@ function eventSummary(event: EforgeEvent): string {
     case 'recovery:complete': return `Recovery complete: ${event.prdId}`;
     case 'recovery:error': return `Recovery failed: ${event.prdId} — ${event.error}`;
     // --- eforge:endregion plan-04-monitor-ui ---
+    // --- eforge:region plan-01-native-event-runtime-foundation ---
+    case 'extension:event-handler:failed': return `Extension hook failed: ${event.extensionName} (${event.pattern} on ${event.triggeringEventType}) — ${event.message}`;
+    case 'extension:event-handler:timeout': return `Extension hook timed out: ${event.extensionName} (${event.pattern} on ${event.triggeringEventType}) after ${event.timeoutMs}ms`;
+    // --- eforge:endregion plan-01-native-event-runtime-foundation ---
     case 'planning:decision': return `Planning decision: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     case 'plan:build:decision': return `Build decision [${event.planId}]: ${event.decision.kind} — ${decisionSummary(event.decision)}`;
     default: return event.type;
@@ -234,6 +242,21 @@ function eventDetail(event: EforgeEvent): string | null {
         return `Requirement: ${g.requirement}${complexitySuffix}\n  Gap: ${g.explanation}`;
       }).join('\n\n');
     }
+    // --- eforge:region plan-01-native-event-runtime-foundation ---
+    case 'extension:event-handler:failed': {
+      const parts = [
+        `Extension: ${event.extensionName}`,
+        `Path: ${event.extensionPath}`,
+        `Pattern: ${event.pattern}`,
+        `Triggering event: ${event.triggeringEventType}`,
+        `Message: ${event.message}`,
+      ];
+      if (event.stack) parts.push(`Stack:\n${event.stack}`);
+      return parts.join('\n');
+    }
+    case 'extension:event-handler:timeout':
+      return `Extension: ${event.extensionName}\nPath: ${event.extensionPath}\nPattern: ${event.pattern}\nTriggering event: ${event.triggeringEventType}\nTimeout: ${event.timeoutMs}ms`;
+    // --- eforge:endregion plan-01-native-event-runtime-foundation ---
     case 'planning:decision':
       return decisionDetail(event.decision);
     case 'plan:build:decision':

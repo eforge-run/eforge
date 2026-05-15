@@ -4,6 +4,7 @@ import { homedir } from 'node:os';
 import {
   resolveConfig,
   DEFAULT_CONFIG,
+  DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
   getUserConfigPath,
   mergePartialConfigs,
   loadConfig,
@@ -73,7 +74,16 @@ describe('resolveConfig', () => {
 
   it('extensions default to enabled without project trust and absent filters', () => {
     const config = resolveConfig({}, {});
-    expect(config.extensions).toEqual({ enabled: true, trustProjectExtensions: false });
+    expect(config.extensions).toEqual({
+      enabled: true,
+      trustProjectExtensions: false,
+      eventHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+    });
+  });
+
+  it('propagates extensions.eventHookTimeoutMs from file config', () => {
+    const config = resolveConfig({ extensions: { eventHookTimeoutMs: 2500 } }, {});
+    expect(config.extensions.eventHookTimeoutMs).toBe(2500);
   });
 
   it('postMergeCommands parsed from file config', () => {
@@ -174,6 +184,7 @@ describe('mergePartialConfigs', () => {
         include: ['global'],
         exclude: ['old'],
         paths: ['./global.ts'],
+        eventHookTimeoutMs: 1234,
       },
     };
     const project: PartialEforgeConfig = {
@@ -187,6 +198,15 @@ describe('mergePartialConfigs', () => {
     expect(merged.extensions?.include).toEqual(['project']);
     expect(merged.extensions?.exclude).toEqual(['old']);
     expect(merged.extensions?.paths).toEqual(['./global.ts']);
+    expect(merged.extensions?.eventHookTimeoutMs).toBe(1234);
+  });
+
+  it('project extensions.eventHookTimeoutMs overrides the global value', () => {
+    const merged = mergePartialConfigs(
+      { extensions: { eventHookTimeoutMs: 1000 } },
+      { extensions: { eventHookTimeoutMs: 2000 } },
+    );
+    expect(merged.extensions?.eventHookTimeoutMs).toBe(2000);
   });
 });
 
@@ -259,11 +279,12 @@ describe('loadConfig legacy eforge.yaml detection', () => {
 
     const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-no-legacy-'));
     await mkdir(join(tmpDir, 'eforge'), { recursive: true });
-    await writeFile(join(tmpDir, 'eforge', 'config.yaml'), 'agents:\n  maxTurns: 10\n', 'utf-8');
+    await writeFile(join(tmpDir, 'eforge', 'config.yaml'), 'agents:\n  maxTurns: 10\nextensions:\n  eventHookTimeoutMs: 2500\n', 'utf-8');
 
     try {
       const { config } = await loadConfig(tmpDir);
       expect(config.agents.maxTurns).toBe(10);
+      expect(config.extensions.eventHookTimeoutMs).toBe(2500);
     } finally {
       await rm(tmpDir, { recursive: true });
     }
@@ -399,10 +420,16 @@ describe('extensionConfigSchema', () => {
         exclude: ['b'],
         paths: ['./x.ts'],
         trustProjectExtensions: false,
+        eventHookTimeoutMs: 2500,
       },
     });
     expect(result.success).toBe(true);
     expect(extensionConfigSchema.safeParse(result.success ? result.data.extensions : undefined).success).toBe(true);
+  });
+
+  it('rejects non-positive or fractional native event hook timeouts', () => {
+    expect(configYamlSchema.safeParse({ extensions: { eventHookTimeoutMs: 0 } }).success).toBe(false);
+    expect(configYamlSchema.safeParse({ extensions: { eventHookTimeoutMs: 1.5 } }).success).toBe(false);
   });
 });
 

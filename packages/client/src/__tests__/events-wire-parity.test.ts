@@ -93,6 +93,33 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       errors: ['unexpected token'],
     },
   },
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  {
+    label: 'extension:event-handler:failed',
+    payload: {
+      type: 'extension:event-handler:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'audit-log',
+      extensionPath: '/project/.eforge/extensions/audit-log.js',
+      pattern: 'plan:build:*',
+      triggeringEventType: 'plan:build:failed',
+      message: 'boom',
+      stack: 'Error: boom',
+    },
+  },
+  {
+    label: 'extension:event-handler:timeout',
+    payload: {
+      type: 'extension:event-handler:timeout',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'audit-log',
+      extensionPath: '/project/.eforge/extensions/audit-log.js',
+      pattern: '*',
+      triggeringEventType: 'plan:build:complete',
+      timeoutMs: 5000,
+    },
+  },
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
   // Planning
   {
@@ -1408,6 +1435,32 @@ describe('events-wire-parity — invalid payloads (missing required field)', () 
     });
     expect(result.success).toBe(false);
   });
+
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  it('rejects extension:event-handler:failed missing extensionName', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:event-handler:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionPath: '/x.js',
+      pattern: '*',
+      triggeringEventType: 'plan:build:failed',
+      message: 'boom',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects extension:event-handler:timeout missing timeoutMs', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:event-handler:timeout',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'x',
+      extensionPath: '/x.js',
+      pattern: '*',
+      triggeringEventType: 'plan:build:failed',
+    });
+    expect(result.success).toBe(false);
+  });
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
   it('rejects any event missing timestamp (required envelope field)', () => {
     const result = safeParseEforgeEvent({

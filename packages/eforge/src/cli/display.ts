@@ -850,6 +850,16 @@ export function renderEvent(event: EforgeEvent): void {
       console.log(chalk.yellow(`  ⚠ Auto-build paused: ${event.reason}`));
       break;
 
+    // --- eforge:region plan-01-native-event-runtime-foundation ---
+    case 'extension:event-handler:failed':
+      console.log(chalk.red(`  ✗ Extension ${event.extensionName} hook failed [${event.pattern} on ${event.triggeringEventType}]: ${event.message}`));
+      break;
+
+    case 'extension:event-handler:timeout':
+      console.log(chalk.yellow(`  ⚠ Extension ${event.extensionName} hook timed out after ${event.timeoutMs}ms [${event.pattern} on ${event.triggeringEventType}]`));
+      break;
+    // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
     // --- eforge:region plan-01-types-and-daemon-emission ---
     case 'daemon:warning':
       console.log(chalk.yellow(`  ⚠ Daemon warning [${event.source}]: ${event.message}`));

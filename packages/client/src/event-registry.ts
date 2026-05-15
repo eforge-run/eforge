@@ -164,6 +164,22 @@ const eventRegistry = {
       `Module ${e.moduleId} emitted invalid <build-config> (${e.reason}): ${e.errors.join('; ')}`,
   },
 
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  'extension:event-handler:failed': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} event hook failed (${e.pattern} on ${e.triggeringEventType}): ${e.message}`,
+  },
+
+  'extension:event-handler:timeout': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} event hook timed out after ${e.timeoutMs}ms (${e.pattern} on ${e.triggeringEventType})`,
+  },
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
   // -------------------------------------------------------------------------
   // Planning
   // -------------------------------------------------------------------------

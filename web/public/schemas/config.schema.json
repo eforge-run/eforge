@@ -496,6 +496,12 @@
         "trustProjectExtensions": {
           "description": "Trust checked-in project-team native extensions",
           "type": "boolean"
+        },
+        "eventHookTimeoutMs": {
+          "description": "Default timeout in milliseconds for native extension event-hook handlers",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,

@@ -26,6 +26,7 @@ Native extension loading is controlled by the top-level `extensions` block in `e
 ```yaml
 extensions:
   enabled: true                  # default: true
+  eventHookTimeoutMs: 5000       # default: 5000; positive integer milliseconds
   # include: [build-notifier]    # optional allowlist by extension name
   # exclude: [experimental]      # optional denylist by extension name
   # paths:                       # optional explicit extension modules/directories
@@ -39,6 +40,7 @@ Fields:
 |-------|---------|---------|
 | `extensions.enabled` | `true` | Enables native extension discovery and loading. When `false`, no extensions are discovered and `paths` are ignored. |
 | `extensions.include` | unset | Optional allowlist for auto-discovered extension names. If set, only listed auto-discovered names are considered. |
+| `extensions.eventHookTimeoutMs` | `5000` | Timeout in milliseconds for each native `onEvent` handler invocation. Must be a positive integer. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |
 | `extensions.trustProjectExtensions` | `false` | Trust gate for checked-in project/team extensions under `eforge/extensions/`. User and project-local extensions are trusted when loading is enabled. |
@@ -153,13 +155,15 @@ Add `--json` to CLI commands for machine-readable provenance. The same data is e
 
 ## Runtime support today
 
-The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, and CLI/API/MCP/Pi inspection tooling are available.
+The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection tooling, and native `onEvent` dispatch are available.
 
-Runtime dispatch and capability execution are intentionally deferred for later phases. Loading an extension records registrations; most registered handlers are not yet invoked by the engine pipeline.
+Event hooks run for real CLI, queue worker, and daemon watcher event streams. Dispatch is non-blocking with respect to the engine pipeline: handlers receive matching events but cannot alter or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with the extension name, matched pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Those diagnostics are recorded by the monitor before shell hooks run, so shell-hook matching has parity with normal engine and extension diagnostic events.
+
+All non-event extension capability execution is intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
-| `onEvent` - typed event subscriptions | Yes | Yes | Deferred |
+| `onEvent` - typed event subscriptions | Yes | Yes | Yes |
 | `onAgentRun` - agent augmentation | Yes | Yes | Deferred |
 | `registerTool` - custom agent tool | Yes | Yes | Deferred |
 | `beforePlanMerge` - policy gate | Yes | Yes | Deferred |
@@ -168,7 +172,7 @@ Runtime dispatch and capability execution are intentionally deferred for later p
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-This means examples can now be loaded and validated, and their registration summaries appear in provenance output. Event dispatch, blocking policy enforcement, agent augmentation, custom tool execution, profile routing, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
+This means examples can now be loaded, validated, and event-hook examples run at runtime. Blocking policy enforcement, agent augmentation, custom tool execution, profile routing, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
 
 ## Schema language
 

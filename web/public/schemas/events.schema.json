@@ -328,6 +328,73 @@
           "type": "object",
           "required": [
             "type",
+            "extensionName",
+            "extensionPath",
+            "pattern",
+            "triggeringEventType",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:event-handler:failed",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "pattern": {
+              "type": "string"
+            },
+            "triggeringEventType": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "extensionName",
+            "extensionPath",
+            "pattern",
+            "triggeringEventType",
+            "timeoutMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:event-handler:timeout",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "pattern": {
+              "type": "string"
+            },
+            "triggeringEventType": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "source"
           ],
           "properties": {

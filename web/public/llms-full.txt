@@ -410,7 +410,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 151
+Total variants: 153
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -422,6 +422,8 @@ Total variants: 151
 | `config:warning` | `details`, `message`, `source` |
 | `planning:warning` | `details`, `message`, `planId`, `source` |
 | `planning:module:build-config:invalid` | `errors`, `moduleId`, `reason` |
+| `extension:event-handler:failed` | `extensionName`, `extensionPath`, `message`, `pattern`, `stack`, `triggeringEventType` |
+| `extension:event-handler:timeout` | `extensionName`, `extensionPath`, `pattern`, `timeoutMs`, `triggeringEventType` |
 | `planning:start` | `label`, `source` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |

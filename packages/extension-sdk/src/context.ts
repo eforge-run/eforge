@@ -2,9 +2,10 @@
  * Context types passed to extension hook handlers.
  *
  * Each hook receives a context object scoped to its execution environment.
- * Some fields (e.g. `exec`, `state`) are typed contracts whose runtime
- * implementations are not yet wired — they are included so authors can write
- * type-safe code against the future runtime surface.
+ * Event-hook contexts are runtime-supported. Some other fields (e.g. `exec`,
+ * `state`) are typed contracts whose runtime implementations are not yet wired
+ * — they are included so authors can write type-safe code against the future
+ * runtime surface.
  */
 
 import type { EforgeEvent } from './events.js';
@@ -16,8 +17,10 @@ import type { EforgeEvent } from './events.js';
 /**
  * Structured logger available to all extension hooks.
  *
- * Messages are routed through the eforge daemon's log pipeline, so they appear
- * in `eforge logs` output and the monitor UI.
+ * Messages are routed through the eforge daemon's log pipeline. Event-hook
+ * handler failure and timeout diagnostics are emitted as monitor-recorded
+ * `extension:event-handler:*` events, but logger output itself is not a
+ * separate monitor event variant in this scope.
  */
 export interface ExtensionLogger {
   debug(message: string, ...args: unknown[]): void;
@@ -94,6 +97,12 @@ export interface EforgeExtensionContext {
 
 /**
  * Context passed to event hook handlers registered via `onEvent`.
+ *
+ * `onEvent` handlers are runtime-supported. The context carries the same
+ * enriched event object as the handler's first argument, including available
+ * `sessionId` and `runId` correlation fields. Handler failures and timeouts are
+ * emitted as `extension:event-handler:*` diagnostics; `ctx.logger` messages do
+ * not create separate monitor event variants in this scope.
  */
 export interface EventHookContext extends EforgeExtensionContext {
   /**
