@@ -16,8 +16,15 @@ import * as sdk from '@eforge-build/extension-sdk';
 // from being elided by tree-shakers while keeping eslint/no-unused happy.
 import minimalEventLogger from '../examples/extensions/minimal-event-logger.js';
 import protectedPaths from '../examples/extensions/protected-paths.js';
+// --- eforge:region plan-02-runtime-and-integration ---
+import profileRouter from '../examples/extensions/profile-router.js';
+// --- eforge:endregion plan-02-runtime-and-integration ---
 const _factoryCheck1: sdk.EforgeExtensionFactory = minimalEventLogger;
 const _factoryCheck2: sdk.EforgeExtensionFactory = protectedPaths;
+// --- eforge:region plan-02-runtime-and-integration ---
+const _factoryCheck4: sdk.EforgeExtensionFactory = profileRouter;
+void _factoryCheck4;
+// --- eforge:endregion plan-02-runtime-and-integration ---
 const _factoryCheck3: sdk.EforgeExtensionFactory = (api) => {
   api.registerTool({
     name: 'test:noop',

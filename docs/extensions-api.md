@@ -276,7 +276,39 @@ At least one of `selectBuildProfile` or `resolve` must be provided. The `selectB
 
 Return `null` or `undefined` from the handler to defer to the next registered router (or the default profile if no router selects one). The optional `reason` and `confidence` fields flow into the `queue:profile:selected` wire event.
 
-**Runtime status:** registration is captured at load time; pre-build runtime dispatch is wired via the `queue:profile:*` event family (full runtime details land with the EXTEND_09 runtime change).
+**Runtime status:** `Yes (pre-build dispatch)`. Routers are invoked sequentially in registration order before each queued PRD build, with per-router timeouts and fail-open semantics:
+
+- **Dispatch-time routing.** Routers run after a PRD is dequeued and before `session:start` is emitted. The selected profile is persisted to the PRD's frontmatter via a `chore(queue): route <prd> to profile <name>` commit before the build subprocess starts.
+- **Explicit-override precedence.** When the PRD's `frontmatter.profile` is already set, routing is skipped entirely — no `queue:profile:*` events are emitted and no router is invoked.
+- **Fail-open.** A router that throws emits `queue:profile:router-failed` and the next router is consulted. A timeout emits `queue:profile:router-timeout`. A returned profile name that cannot be loaded (not found in any scope) emits `queue:profile:invalid-selection`. If no router yields a valid selection, the build proceeds under the default profile (unchanged from current behavior).
+- **First-valid-wins.** Returning `null` or `undefined` defers to the next router. The first non-null result whose profile name successfully loads wins.
+- **`queue:profile:*` event family.** Four event types are emitted during dispatch:
+  - `queue:profile:selected` — a valid profile was selected (includes `prdId`, `profile`, `baseProfile`, `routerName`, `extensionName`, `extensionPath`, optional `reason`/`confidence`).
+  - `queue:profile:router-failed` — a router threw (includes `message`, optional `stack`).
+  - `queue:profile:router-timeout` — a router exceeded its timeout (includes `timeoutMs`).
+  - `queue:profile:invalid-selection` — a router returned a profile that could not be loaded (includes `requestedProfile`, `reason: 'not-found' | 'load-error'`).
+- **Exact-quota caveat.** `ctx.usage.profile(name)` returns best-effort data from daemon event history. It does not query provider APIs for exact quota state. Use it for heuristic decisions (cooldown detection, token accumulation trends) rather than hard quota enforcement.
+
+**Example using `selectBuildProfile`:**
+
+```ts
+eforge.registerProfileRouter({
+  name: 'quota-aware-router',
+  async selectBuildProfile(ctx) {
+    const usage = ctx.usage.profile('primary-profile');
+    if (usage.cooldownActive || usage.nearLimit) {
+      // Fall back to secondary when primary is throttled
+      return { profile: 'secondary-profile', reason: 'primary in cooldown', confidence: 'medium' };
+    }
+    if (ctx.availableProfiles.some((p) => p.name === 'primary-profile')) {
+      return { profile: 'primary-profile', reason: 'primary available', confidence: 'high' };
+    }
+    return null; // Defer to next router or default profile
+  },
+});
+```
+
+See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a complete three-tier fallback example with env-var-driven profile names.
 
 ---
 
@@ -531,7 +563,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `onAgentRun` | Yes | Yes | Yes (promptAppend only — tools/allowedTools/disallowedTools deferred to EXTEND_08B)[^1] |
 | `registerTool` / `ExtensionTool` | Yes | Yes | Deferred |
 | `beforePlanMerge` policy gate | Yes | Yes | Deferred |
-| `registerProfileRouter` | Yes | Yes | Deferred |
+| `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
 | `registerInputSource` | Yes | Yes | Deferred |
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |

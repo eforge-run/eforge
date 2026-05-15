@@ -15,12 +15,17 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting } from '../prd-queue.js';
+import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile } from '../prd-queue.js';
 import { Semaphore, type AsyncEventQueue } from '../concurrency.js';
 import type { EforgeEvent } from '../events.js';
 import type { EforgeConfig } from '../config.js';
 import type { QueuedPrd } from '../prd-queue.js';
 import type { QueueOptions } from '../eforge.js';
+// --- eforge:region plan-02-runtime-and-integration ---
+import type { NativeExtensionRegistry } from '../extensions/types.js';
+import type { ProfileUsageProvider } from '../profile-usage.js';
+import { executeProfileRouters } from '../extensions/profile-router-runtime.js';
+// --- eforge:endregion plan-02-runtime-and-integration ---
 
 // ---------------------------------------------------------------------------
 // Scheduler input event types
@@ -77,11 +82,19 @@ export interface QueueSchedulerOptions {
   /** Multiplexed event queue shared with the watcher pump. */
   eventQueue: AsyncEventQueue<EforgeEvent>;
   /** Callback that spawns a PRD child subprocess and returns its exit status. */
-  spawnPrdChild: (prd: QueuedPrd, options: QueueOptions, prdSessionId: string) => Promise<'completed' | 'failed' | 'skipped'>;
+  spawnPrdChild: (prd: QueuedPrd, options: QueueOptions, prdSessionId: string, routedProfileOverride?: string) => Promise<'completed' | 'failed' | 'skipped'>;
   /** Full watchQueue options (auto, verbose, etc.) forwarded to spawnPrdChild. */
   options: QueueOptions;
   /** Pre-loaded initial PRD list (already ordered and name-filtered). */
   initialPrds: QueuedPrd[];
+  // --- eforge:region plan-02-runtime-and-integration ---
+  /** Optional extension registry for profile routers. */
+  extensionRegistry?: Pick<NativeExtensionRegistry, 'profileRouters'>;
+  /** Optional usage provider for profile router context. */
+  profileUsageProvider?: ProfileUsageProvider;
+  /** Config directory used to validate router-selected profile names. */
+  configDir?: string;
+  // --- eforge:endregion plan-02-runtime-and-integration ---
 }
 
 // ---------------------------------------------------------------------------
@@ -105,6 +118,13 @@ export class QueueScheduler {
   // --- eforge:region plan-02-scheduler-emission ---
   private readonly parallelism: number;
   // --- eforge:endregion plan-02-scheduler-emission ---
+  // --- eforge:region plan-02-runtime-and-integration ---
+  /** PRD ids currently in the routing/launch async path — prevents duplicate launches. */
+  private readonly launching = new Set<string>();
+  private readonly extensionRegistry?: Pick<NativeExtensionRegistry, 'profileRouters'>;
+  private readonly profileUsageProvider?: ProfileUsageProvider;
+  private readonly configDir: string;
+  // --- eforge:endregion plan-02-runtime-and-integration ---
   private _processed = 0;
   private _skipped = 0;
   // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
@@ -126,6 +146,11 @@ export class QueueScheduler {
     // --- eforge:region plan-02-scheduler-emission ---
     this.parallelism = opts.parallelism;
     // --- eforge:endregion plan-02-scheduler-emission ---
+    // --- eforge:region plan-02-runtime-and-integration ---
+    this.extensionRegistry = opts.extensionRegistry;
+    this.profileUsageProvider = opts.profileUsageProvider;
+    this.configDir = opts.configDir ?? opts.cwd;
+    // --- eforge:endregion plan-02-runtime-and-integration ---
 
     // Initialise prdState from the pre-loaded initial PRD list.
     for (const prd of opts.initialPrds) {
@@ -363,6 +388,12 @@ export class QueueScheduler {
 
       if (!this.isReady(prd.id)) continue;
 
+      // --- eforge:region plan-02-runtime-and-integration ---
+      // Skip if already in routing/launch path (prevents duplicate launches
+      // when onMutation and onComplete both fire while routing is in flight).
+      if (this.launching.has(prd.id)) continue;
+      // --- eforge:endregion plan-02-runtime-and-integration ---
+
       // --- eforge:region plan-02-scheduler-emission ---
       // Emit capacity-blocked once per tick when the concurrency limit is reached.
       if (runningCount >= this.parallelism) {
@@ -383,6 +414,9 @@ export class QueueScheduler {
 
       const state = this.prdState.get(prd.id)!;
       state.status = 'running';
+      // --- eforge:region plan-02-runtime-and-integration ---
+      this.launching.add(prd.id);
+      // --- eforge:endregion plan-02-runtime-and-integration ---
       // --- eforge:region plan-02-scheduler-emission ---
       runningCount++;
       const queueDepth = [...this.prdState.values()].filter((s) => s.status === 'pending').length;
@@ -395,39 +429,138 @@ export class QueueScheduler {
       } as EforgeEvent);
       // --- eforge:endregion plan-02-scheduler-emission ---
 
-      // Parent owns the sessionId: generate it here and emit session:start
-      // immediately so the DB row exists before the child subprocess starts.
+      // Parent owns the sessionId: generate it here so it's available before
+      // the async IIFE starts routing. session:start is emitted inside the IIFE
+      // after routing completes (so the routed profile is known first).
       const prdSessionId = randomUUID();
-      this.eventQueue.push({
-        type: 'session:start',
-        sessionId: prdSessionId,
-        timestamp: new Date().toISOString(),
-      } as EforgeEvent);
-      this.eventQueue.push({
-        type: 'session:profile',
-        sessionId: prdSessionId,
-        profileName: this.configProfile.name,
-        source: this.configProfile.source,
-        scope: this.configProfile.scope,
-        config: this.configProfile.config,
-        timestamp: new Date().toISOString(),
-      } as EforgeEvent);
 
       this.eventQueue.addProducer();
+
+      // Capture prd in a local so the routing IIFE can update it (re-assignment
+      // in the outer loop variable would not affect already-captured closures).
+      let currentPrd = prd;
 
       void (async () => {
         let acquired = false;
         let status: 'completed' | 'failed' | 'skipped' = 'failed';
+        let routedProfileOverride: string | undefined;
+
         try {
+          // --- eforge:region plan-02-runtime-and-integration ---
+          // Early abort check — bail without emitting session:start.
+          if (this.abortController.signal.aborted) {
+            this.launching.delete(currentPrd.id);
+            this.eventQueue.push({
+              timestamp: new Date().toISOString(),
+              type: 'queue:prd:complete',
+              prdId: currentPrd.id,
+              status: 'skipped',
+            } as EforgeEvent);
+            return;
+          }
+
+          // Profile routing: only runs when no explicit frontmatter.profile is set
+          // and the registry has at least one router.
+          const routers = this.extensionRegistry?.profileRouters;
+          if (!currentPrd.frontmatter.profile && routers && routers.length > 0) {
+            const { selection, diagnostics } = await executeProfileRouters(
+              { profileRouters: routers },
+              currentPrd,
+              {
+                configDir: this.configDir,
+                cwd: this.cwd,
+                config: this.config,
+                profileUsageProvider: this.profileUsageProvider,
+                configProfileName: this.configProfile.name,
+              },
+            );
+
+            // Emit diagnostics before session:start
+            for (const diag of diagnostics) {
+              this.eventQueue.push(diag);
+            }
+
+            if (selection) {
+              // Emit queue:profile:selected before session:start
+              this.eventQueue.push({
+                timestamp: new Date().toISOString(),
+                type: 'queue:profile:selected',
+                prdId: currentPrd.id,
+                prdTitle: currentPrd.frontmatter.title,
+                profile: selection.profile,
+                baseProfile: this.configProfile.name,
+                routerName: selection.routerName,
+                extensionName: selection.extensionName,
+                extensionPath: selection.extensionPath,
+                ...(selection.reason !== undefined ? { reason: selection.reason } : {}),
+                ...(selection.confidence !== undefined ? { confidence: selection.confidence } : {}),
+              } as EforgeEvent);
+
+              // Try to persist selected profile to frontmatter
+              try {
+                currentPrd = await setQueuedPrdProfile(currentPrd, selection.profile, this.cwd);
+                // frontmatter.profile is now set — existing spawnPrdChild code path handles it
+              } catch (persistErr) {
+                // Persist failed — fall back to in-memory override
+                const persistMessage = persistErr instanceof Error ? persistErr.message : String(persistErr);
+                routedProfileOverride = selection.profile;
+                this.eventQueue.push({
+                  timestamp: new Date().toISOString(),
+                  type: 'queue:profile:router-failed',
+                  prdId: currentPrd.id,
+                  routerName: selection.routerName,
+                  extensionName: selection.extensionName,
+                  extensionPath: selection.extensionPath,
+                  message: `persist-failed: ${persistMessage}`,
+                } as EforgeEvent);
+              }
+            }
+          }
+
+          // Post-routing abort check
+          if (this.abortController.signal.aborted) {
+            this.launching.delete(currentPrd.id);
+            this.eventQueue.push({
+              timestamp: new Date().toISOString(),
+              type: 'queue:prd:complete',
+              prdId: currentPrd.id,
+              status: 'skipped',
+            } as EforgeEvent);
+            return;
+          }
+          // --- eforge:endregion plan-02-runtime-and-integration ---
+
+          // Emit session:start and session:profile now that the routed profile is known.
+          // Use the persisted frontmatter.profile if set, else the in-memory override, else the config default.
+          const selectedProfileName = currentPrd.frontmatter.profile ?? routedProfileOverride ?? this.configProfile.name;
+          const profileSource = (currentPrd.frontmatter.profile || routedProfileOverride)
+            ? 'override' as const
+            : this.configProfile.source;
+
+          this.eventQueue.push({
+            type: 'session:start',
+            sessionId: prdSessionId,
+            timestamp: new Date().toISOString(),
+          } as EforgeEvent);
+          this.eventQueue.push({
+            type: 'session:profile',
+            sessionId: prdSessionId,
+            profileName: selectedProfileName,
+            source: profileSource,
+            scope: (currentPrd.frontmatter.profile || routedProfileOverride) ? null : this.configProfile.scope,
+            config: (currentPrd.frontmatter.profile || routedProfileOverride) ? null : this.configProfile.config,
+            timestamp: new Date().toISOString(),
+          } as EforgeEvent);
+
           await this.semaphore.acquire();
           acquired = true;
 
-          status = await this._spawnPrdChild(prd, this.options, prdSessionId);
+          status = await this._spawnPrdChild(currentPrd, this.options, prdSessionId, routedProfileOverride);
 
           this.eventQueue.push({
             timestamp: new Date().toISOString(),
             type: 'queue:prd:complete',
-            prdId: prd.id,
+            prdId: currentPrd.id,
             status,
           } as EforgeEvent);
         } catch {
@@ -435,10 +568,13 @@ export class QueueScheduler {
           this.eventQueue.push({
             timestamp: new Date().toISOString(),
             type: 'queue:prd:complete',
-            prdId: prd.id,
+            prdId: currentPrd.id,
             status: 'failed',
           } as EforgeEvent);
         } finally {
+          // --- eforge:region plan-02-runtime-and-integration ---
+          this.launching.delete(currentPrd.id);
+          // --- eforge:endregion plan-02-runtime-and-integration ---
           if (acquired) this.semaphore.release();
           this.eventQueue.removeProducer();
         }

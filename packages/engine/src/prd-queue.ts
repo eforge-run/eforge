@@ -660,6 +660,69 @@ export async function enqueuePrd(options: EnqueuePrdOptions): Promise<EnqueuePrd
 }
 
 // ---------------------------------------------------------------------------
+// Routed profile persistence (EXTEND_09)
+// ---------------------------------------------------------------------------
+
+/**
+ * Rewrite the `profile:` frontmatter field in a queued PRD file to the given
+ * profile name, then stage and commit only that file via `forgeCommit`.
+ *
+ * - Adds the `profile:` line if absent from the frontmatter block.
+ * - Replaces the existing `profile:` line if already present.
+ * - All other frontmatter fields are preserved unchanged.
+ * - Uses `paths: [filePath]` to scope the commit to only the PRD file.
+ *
+ * Returns a new `QueuedPrd` with `frontmatter.profile` set to the routed value.
+ * Throws on read/write or commit failure; callers must handle and fall back to
+ * the in-memory `routedProfileOverride` path.
+ */
+export async function setQueuedPrdProfile(
+  prd: QueuedPrd,
+  profile: string,
+  cwd: string,
+): Promise<QueuedPrd> {
+  const content = prd.content;
+
+  // Locate the frontmatter block
+  const fmMatch = content.match(/^(---\n)([\s\S]*?)(\n---)([\s\S]*)$/);
+  if (!fmMatch) {
+    throw new Error(`PRD file '${prd.filePath}' has no valid frontmatter block`);
+  }
+
+  const [, openDelim, fmBody, closeDelim, bodyPart] = fmMatch;
+
+  // Rewrite or insert the profile field
+  let newFmBody: string;
+  const profileLineRegex = /^profile\s*:.*$/m;
+  if (profileLineRegex.test(fmBody)) {
+    newFmBody = fmBody.replace(profileLineRegex, `profile: ${profile}`);
+  } else {
+    // Append before the closing delimiter
+    newFmBody = fmBody.trimEnd() + `\nprofile: ${profile}`;
+  }
+
+  const newContent = `${openDelim}${newFmBody}${closeDelim}${bodyPart}`;
+
+  // Write updated file
+  await writeFile(prd.filePath, newContent, 'utf-8');
+
+  // Stage and commit only this file
+  await retryOnLock(() => exec('git', ['add', '--', prd.filePath], { cwd }), cwd);
+  await forgeCommit(
+    cwd,
+    composeCommitMessage(`chore(queue): route ${prd.id} to profile ${profile}`),
+    { paths: [prd.filePath] },
+  );
+
+  // Return updated QueuedPrd with new frontmatter and content
+  return {
+    ...prd,
+    content: newContent,
+    frontmatter: { ...prd.frontmatter, profile },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Piggyback scheduling helpers
 // ---------------------------------------------------------------------------
 

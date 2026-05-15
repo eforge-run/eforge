@@ -24,6 +24,30 @@ The returned fragment is appended after any config-level `promptAppend` already 
 
 > **Runtime note:** `promptAppend` is runtime-supported. Returning `tools`, `allowedTools`, or `disallowedTools` emits an `extension:agent-context:unsupported` diagnostic; tool injection is tracked for EXTEND_08B.
 
+### `profile-router.ts`
+
+Implements a Claude → Codex → local fallback profile selection strategy using `registerProfileRouter`. Demonstrates:
+
+- `selectBuildProfile` as the canonical router method (preferred over the deprecated `resolve`)
+- Consulting `ctx.usage.profile(name)` to check `cooldownActive` and `nearLimit` before selecting
+- Returning `{ profile, reason, confidence }` with human-readable rationale
+- Returning `null` to defer when no candidate is suitable (fail-open)
+- Env-var-driven configuration (`EFORGE_PROFILE_PRIMARY`, `EFORGE_PROFILE_SECONDARY`, `EFORGE_PROFILE_LOCAL`) so users can experiment without editing code
+
+Default profile names are `claude-sdk-4-7` (primary), `pi-codex-5-5` (secondary), and `pi-deepseek-qwen` (local fallback). All three can be overridden via environment variables.
+
+**Selection logic:**
+1. If the primary profile is available (exists in scope, no cooldown, not near-limit), select it with `confidence: 'high'`.
+2. Else if the secondary profile is available, select it with `confidence: 'medium'`.
+3. Else if the local fallback profile exists in any scope (no quota check), select it with `confidence: 'low'`.
+4. If none of the three are available, return `null` — other routers or the default profile take over.
+
+**Usage data:** `ctx.usage.profile(name)` returns `{ dataSource: 'none' }` when the daemon has no event history for the profile (e.g. first run or CLI mode). In that case `cooldownActive` and `nearLimit` are undefined, so the profile is treated as available.
+
+**No active-profile mutation:** this router never calls `setActiveProfile` or writes any marker file. Routing is dispatch-time only and does not persist outside the enqueued PRD's frontmatter.
+
+> **Runtime note:** `registerProfileRouter` is fully wired — routers run before each PRD build in the queue. The runtime dispatches routers in registration order, fail-open.
+
 ### `protected-paths.ts`
 
 Uses `eforge.beforePlanMerge` to block merges that touch a protected path. Demonstrates:

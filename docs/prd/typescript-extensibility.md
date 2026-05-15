@@ -271,8 +271,8 @@ export default function extension(eforge: EforgeExtensionAPI) {
   eforge.registerProfileRouter({
     name: "quota-aware-router",
     async selectBuildProfile(ctx) {
-      const claude = await ctx.usage.profile("claude-sdk-4-7");
-      const codex = await ctx.usage.profile("codex-5-5");
+      const claude = ctx.usage.profile("claude-sdk-4-7");
+      const codex = ctx.usage.profile("codex-5-5");
 
       if (!claude.nearLimit) {
         return {
