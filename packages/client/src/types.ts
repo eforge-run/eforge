@@ -209,7 +209,7 @@ export interface RunSummary {
   }>;
   plans: Array<{
     id: string;
-    status: 'running' | 'completed' | 'failed';
+    status: 'pending' | 'running' | 'completed' | 'failed';
     branch: string | null;
     dependsOn: string[];
   }>;
