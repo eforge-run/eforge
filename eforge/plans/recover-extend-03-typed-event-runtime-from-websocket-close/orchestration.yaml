@@ -1,0 +1,81 @@
+name: recover-extend-03-typed-event-runtime-from-websocket-close
+description: Recover EXTEND_03 typed event extension runtime after a transient
+  WebSocket close by preserving the landed native event runtime foundation and
+  wiring onEvent dispatch into CLI, queue, daemon watcher, tests, and docs.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm --filter @eforge-build/engine build
+  - pnpm type-check
+  - pnpm test -- test/extension-event-runtime.test.ts
+    test/daemon-watcher-hooks.test.ts test/extension-tooling-wiring.test.ts
+  - pnpm docs:check
+plans:
+  - id: plan-01-recover-native-event-runtime-foundation
+    name: Recover Native Event Runtime Foundation
+    depends_on: []
+    branch: recover-extend-03-typed-event-runtime-from-websocket-close/plan-01-recover-native-event-runtime-foundation
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+        - verify
+      maxRounds: 1
+      evaluatorStrictness: standard
+  - id: plan-02-runtime-wiring-and-docs
+    name: Runtime Wiring and Documentation
+    depends_on:
+      - plan-01-recover-native-event-runtime-foundation
+    branch: recover-extend-03-typed-event-runtime-from-websocket-close/plan-02-runtime-wiring-and-docs
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+        - docs
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - test-write
+      - doc-sync
+    - review-cycle
+    - test-cycle
+    - validate
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - docs
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: "This is an excursion: the work spans CLI, daemon watcher, tests, SDK
+    comments, examples, and docs, but a single planner can enumerate the
+    recovery steps and wiring changes without delegated module planning. A
+    plan-review gate is useful because the PRD has strict recovery constraints
+    around preserving the prior commit and middleware ordering. The build runs
+    implementation alongside documentation authoring, then writes focused tests
+    and syncs docs after the code diff exists. Review, test-cycle, and validate
+    are included to cover event-runtime ordering, persistence behavior, docs
+    drift, type-checking, and the required targeted test commands."
