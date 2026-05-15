@@ -216,7 +216,10 @@ export type AgentTerminalSubtype =
   | 'error_max_turns'
   | 'error_max_budget_usd'
   | 'error_max_structured_output_retries'
-  | 'error_during_execution';
+  | 'error_during_execution'
+  // --- eforge:region plan-01-transport-resilience ---
+  | 'error_transient_transport';
+  // --- eforge:endregion plan-01-transport-resilience ---
 
 /**
  * Thrown by backends when an agent run ends with a terminal SDK error.
@@ -235,6 +238,25 @@ export class AgentTerminalError extends Error {
 export function isMaxTurnsError(err: unknown): err is AgentTerminalError {
   return err instanceof AgentTerminalError && err.subtype === 'error_max_turns';
 }
+
+// --- eforge:region plan-01-transport-resilience ---
+/** True when an error message matches a known transient backend transport close. */
+export function isTransientTransportError(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('websocket closed 1012') ||
+    normalized.includes('backend error: websocket error')
+  );
+}
+
+/** Classify a thrown value into a terminal subtype when the engine can do so safely. */
+export function classifyAgentTerminalSubtype(err: unknown): AgentTerminalSubtype | undefined {
+  if (err instanceof AgentTerminalError) return err.subtype;
+  const message = err instanceof Error ? err.message : typeof err === 'string' ? err : undefined;
+  if (message && isTransientTransportError(message)) return 'error_transient_transport';
+  return undefined;
+}
+// --- eforge:endregion plan-01-transport-resilience ---
 
 /**
  * Thrown by the planner agent runner when the agent stream ends without ever

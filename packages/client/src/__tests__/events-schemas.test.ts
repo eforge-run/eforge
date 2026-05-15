@@ -434,6 +434,52 @@ describe('safeParseEforgeEvent — pre-existing variant spot-checks', () => {
     expect(result.success).toBe(true);
   });
 
+  it('accepts error_transient_transport terminal subtype on build failures and retries', () => {
+    const failed = safeParseEforgeEvent({
+      type: 'plan:build:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      error: 'Backend error: WebSocket closed 1012',
+      terminalSubtype: 'error_transient_transport',
+    });
+    expect(failed.success).toBe(true);
+
+    const retry = safeParseEforgeEvent({
+      type: 'agent:retry',
+      timestamp: '2025-01-01T00:00:01.000Z',
+      agent: 'builder',
+      attempt: 1,
+      maxAttempts: 4,
+      subtype: 'error_transient_transport',
+      label: 'builder-continuation',
+      planId: 'plan-01',
+    });
+    expect(retry.success).toBe(true);
+  });
+
+  it('rejects unknown terminal subtypes on build failures and retries', () => {
+    const failed = safeParseEforgeEvent({
+      type: 'plan:build:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      planId: 'plan-01',
+      error: 'Backend error: something else',
+      terminalSubtype: 'error_not_in_schema',
+    });
+    expect(failed.success).toBe(false);
+
+    const retry = safeParseEforgeEvent({
+      type: 'agent:retry',
+      timestamp: '2025-01-01T00:00:01.000Z',
+      agent: 'builder',
+      attempt: 1,
+      maxAttempts: 4,
+      subtype: 'error_not_in_schema',
+      label: 'builder-continuation',
+      planId: 'plan-01',
+    });
+    expect(retry.success).toBe(false);
+  });
+
   it('accepts a well-formed daemon:heartbeat event', () => {
     const result = safeParseEforgeEvent({
       type: 'daemon:heartbeat',

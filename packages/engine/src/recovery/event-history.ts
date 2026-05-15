@@ -10,12 +10,37 @@
 
 import { DatabaseSync } from 'node:sqlite';
 import type { BuildFailureSummary, FailingPlanEntry, PlanSummaryEntry, LandedCommit } from '../events.js';
+import { classifyAgentTerminalSubtype } from '../harness.js';
 
 export interface SynthesizeOptions {
   setName: string;
   prdId: string;
   dbPath?: string;
 }
+
+// --- eforge:region plan-01-transport-resilience ---
+interface EventHistoryRow {
+  id: number;
+  planId: string | null;
+  agent: string | null;
+  data: string;
+  timestamp: string;
+}
+
+function parseEventData(data: string): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(data);
+    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {};
+  } catch {
+    return {};
+  }
+}
+
+function terminalSubtypeFromMessage(message: string | undefined): string | undefined {
+  if (!message) return undefined;
+  return classifyAgentTerminalSubtype(new Error(message));
+}
+// --- eforge:endregion plan-01-transport-resilience ---
 
 /**
  * Synthesize a partial BuildFailureSummary fragment from monitor.db event history.
@@ -34,33 +59,13 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
     try {
       // Find the most recent run for this setName
       const runStmt = db.prepare(
-        `SELECT id, started_at as startedAt FROM runs WHERE plan_set = ? ORDER BY started_at DESC LIMIT 1`,
+        `SELECT id, command, started_at as startedAt FROM runs WHERE plan_set = ? ORDER BY started_at DESC LIMIT 1`,
       );
-      const run = runStmt.get(setName) as { id: string; startedAt: string } | undefined;
+      const run = runStmt.get(setName) as { id: string; command: string; startedAt: string } | undefined;
 
       if (!run) return null;
 
       const runId = run.id;
-
-      // Find the most recent plan:build:failed event for this run
-      const failedStmt = db.prepare(
-        `SELECT id, plan_id as planId, data, timestamp FROM events WHERE run_id = ? AND type = 'plan:build:failed' ORDER BY id DESC LIMIT 1`,
-      );
-      const failedEvent = failedStmt.get(runId) as {
-        id: number;
-        planId: string | null;
-        data: string;
-        timestamp: string;
-      } | undefined;
-
-      if (!failedEvent) return null;
-
-      const failingPlanId = failedEvent.planId ?? 'unknown';
-      let errorMessage: string | undefined;
-      try {
-        const parsed = JSON.parse(failedEvent.data) as Record<string, unknown>;
-        errorMessage = typeof parsed.error === 'string' ? parsed.error : undefined;
-      } catch { /* ignore malformed data */ }
 
       // Find agent:start events to extract model IDs
       const agentStmt = db.prepare(
@@ -70,26 +75,98 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
 
       const modelSet = new Set<string>();
       for (const ae of agentEvents) {
-        try {
-          const parsed = JSON.parse(ae.data) as Record<string, unknown>;
-          const model = parsed.model;
-          if (typeof model === 'string' && model) {
-            modelSet.add(model);
-          }
-        } catch { /* ignore malformed data */ }
+        const parsed = parseEventData(ae.data);
+        const model = parsed.model;
+        if (typeof model === 'string' && model) {
+          modelSet.add(model);
+        }
       }
       const modelsUsed = [...modelSet].sort();
 
-      const failingPlan: FailingPlanEntry = {
-        planId: failingPlanId,
-        errorMessage,
-      };
+      // Find the most recent plan:build:failed event for this run
+      const failedStmt = db.prepare(
+        `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'plan:build:failed' ORDER BY id DESC LIMIT 1`,
+      );
+      const failedEvent = failedStmt.get(runId) as EventHistoryRow | undefined;
 
-      const plans: PlanSummaryEntry[] = [{
-        planId: failingPlanId,
-        status: 'failed',
-        error: errorMessage,
-      }];
+      let failingPlan: FailingPlanEntry;
+      let plans: PlanSummaryEntry[];
+      let failedAt: string;
+
+      if (failedEvent) {
+        const failingPlanId = failedEvent.planId ?? 'unknown';
+        const parsed = parseEventData(failedEvent.data);
+        const errorMessage = typeof parsed.error === 'string' ? parsed.error : undefined;
+        const terminalSubtype = typeof parsed.terminalSubtype === 'string'
+          ? parsed.terminalSubtype
+          : terminalSubtypeFromMessage(errorMessage);
+
+        failingPlan = {
+          planId: failingPlanId,
+          errorMessage,
+          ...(terminalSubtype && { terminalSubtype }),
+        };
+
+        plans = [{
+          planId: failingPlanId,
+          status: 'failed',
+          error: errorMessage,
+          ...(terminalSubtype && { terminalSubtype }),
+        }];
+        failedAt = failedEvent.timestamp;
+      } else {
+        // --- eforge:region plan-01-transport-resilience ---
+        if (run.command !== 'compile') return null;
+
+        const phaseStmt = db.prepare(
+          `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'phase:end' ORDER BY id DESC LIMIT 20`,
+        );
+        const phaseEvents = phaseStmt.all(runId) as unknown as EventHistoryRow[];
+        const failedPhase = phaseEvents.find((event) => {
+          const parsed = parseEventData(event.data);
+          const result = parsed.result;
+          return Boolean(
+            result &&
+            typeof result === 'object' &&
+            (result as Record<string, unknown>).status === 'failed',
+          );
+        });
+        if (!failedPhase) return null;
+
+        const stopStmt = db.prepare(
+          `SELECT id, plan_id as planId, agent, data, timestamp FROM events WHERE run_id = ? AND type = 'agent:stop' AND id <= ? ORDER BY id DESC LIMIT 20`,
+        );
+        const stopEvents = stopStmt.all(runId, failedPhase.id) as unknown as EventHistoryRow[];
+        const failedStop = stopEvents.find((event) => {
+          const parsed = parseEventData(event.data);
+          return typeof parsed.error === 'string' && parsed.error.length > 0;
+        });
+        if (!failedStop) return null;
+
+        const parsedStop = parseEventData(failedStop.data);
+        const errorMessage = typeof parsedStop.error === 'string' ? parsedStop.error : undefined;
+        const agentId = typeof parsedStop.agentId === 'string' ? parsedStop.agentId : undefined;
+        const agentRole = typeof parsedStop.agent === 'string'
+          ? parsedStop.agent
+          : failedStop.agent ?? undefined;
+        const terminalSubtype = terminalSubtypeFromMessage(errorMessage);
+
+        failingPlan = {
+          planId: 'compile',
+          agentId,
+          agentRole,
+          errorMessage,
+          ...(terminalSubtype && { terminalSubtype }),
+        };
+        plans = [{
+          planId: 'compile',
+          status: 'failed',
+          error: errorMessage,
+          ...(terminalSubtype && { terminalSubtype }),
+        }];
+        failedAt = failedPhase.timestamp;
+        // --- eforge:endregion plan-01-transport-resilience ---
+      }
 
       return {
         prdId,
@@ -101,7 +178,7 @@ export function synthesizeFromEvents(options: SynthesizeOptions): Partial<BuildF
         landedCommits: [] as LandedCommit[],
         diffStat: '',
         modelsUsed,
-        failedAt: failedEvent.timestamp,
+        failedAt,
         partial: true,
       };
     } finally {

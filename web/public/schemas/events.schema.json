@@ -2232,6 +2232,10 @@
                 {
                   "const": "error_during_execution",
                   "type": "string"
+                },
+                {
+                  "const": "error_transient_transport",
+                  "type": "string"
                 }
               ]
             }
@@ -4438,6 +4442,10 @@
                 },
                 {
                   "const": "error_during_execution",
+                  "type": "string"
+                },
+                {
+                  "const": "error_transient_transport",
                   "type": "string"
                 }
               ]

@@ -1,5 +1,8 @@
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
 import type { AgentHarness, SdkPassthroughConfig } from '../harness.js';
-import { pickSdkOptions, AgentTerminalError } from '../harness.js';
+import { pickSdkOptions, classifyAgentTerminalSubtype } from '../harness.js';
 import { isAlwaysYieldedAgentEvent, type EforgeEvent, type PlanFile } from '../events.js';
 import { loadPrompt } from '../prompts.js';
 import { getEvaluationSchemaYaml } from '../schemas.js';
@@ -104,6 +107,25 @@ ${scopeItems.join('\n')}
  * Strictness text blocks injected into the evaluator prompt via {{strictness}}.
  * Exported for testability.
  */
+const exec = promisify(execFile);
+
+// --- eforge:region plan-01-transport-resilience ---
+async function revParseHead(cwd: string): Promise<string | undefined> {
+  try {
+    const { stdout } = await exec('git', ['rev-parse', 'HEAD'], { cwd });
+    return stdout.trim() || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+async function hasHeadAdvanced(cwd: string, startingHead: string | undefined): Promise<boolean> {
+  if (!startingHead) return false;
+  const currentHead = await revParseHead(cwd);
+  return currentHead !== undefined && currentHead !== startingHead;
+}
+// --- eforge:endregion plan-01-transport-resilience ---
+
 export const STRICTNESS_BLOCKS: Record<string, string> = {
   strict: `\n### Strictness: Strict\n\nApply a high bar for acceptance. Only accept fixes that are unambiguously correct — fixing a clear bug, crash, or security vulnerability. When in doubt, reject. Treat "review" verdicts as rejects.\n`,
   standard: '',
@@ -183,19 +205,56 @@ ${completedDiff}
     continuation_context: continuationContextText,
   }, options.promptAppend);
 
+  // --- eforge:region plan-01-transport-resilience ---
+  const startingHead = await revParseHead(options.cwd);
+  let builderAgentId: string | undefined;
+  let sawAgentResult = false;
+  // --- eforge:endregion plan-01-transport-resilience ---
+
   try {
     for await (const event of options.harness.run(
       { prompt, cwd: options.cwd, maxTurns: options.maxTurns ?? 80, tools: 'coding', abortSignal: options.abortController?.signal, ...pickSdkOptions(options) },
       'builder',
       plan.id,
     )) {
+      // --- eforge:region plan-01-transport-resilience ---
+      if (event.type === 'agent:start' && event.agent === 'builder') {
+        builderAgentId = event.agentId;
+      }
+      if (event.type === 'agent:result' && event.agent === 'builder') {
+        sawAgentResult = true;
+        if (event.agentId) builderAgentId = event.agentId;
+      }
+      // --- eforge:endregion plan-01-transport-resilience ---
       if (isAlwaysYieldedAgentEvent(event) || options.verbose) {
         yield event;
       }
     }
   } catch (err) {
-    const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
-    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) };
+    const terminalSubtype = classifyAgentTerminalSubtype(err);
+    const message = err instanceof Error ? err.message : String(err);
+    // --- eforge:region plan-01-transport-resilience ---
+    if (
+      terminalSubtype === 'error_transient_transport' &&
+      sawAgentResult &&
+      builderAgentId &&
+      await hasHeadAdvanced(options.cwd, startingHead)
+    ) {
+      yield {
+        timestamp: new Date().toISOString(),
+        type: 'agent:warning',
+        planId: plan.id,
+        agentId: builderAgentId,
+        agent: 'builder',
+        code: 'transient-transport-downgraded',
+        message: `Transient transport error after committed builder result was downgraded: ${message}`,
+      };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:progress', planId: plan.id, message: 'Implementation complete' };
+      yield { timestamp: new Date().toISOString(), type: 'plan:build:implement:complete', planId: plan.id };
+      return;
+    }
+    // --- eforge:endregion plan-01-transport-resilience ---
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: message, ...(terminalSubtype && { terminalSubtype }) };
     return;
   }
 
@@ -256,8 +315,9 @@ Do NOT run \`git reset --soft ${options.preImplementCommit ?? 'HEAD~1'}\` again 
     // yielded event and decides whether to retry via the evaluator policy.
     // Continuation is owned entirely by the policy — this agent no longer
     // re-throws max-turn errors for the pipeline to catch.
-    const terminalSubtype = err instanceof AgentTerminalError ? err.subtype : undefined;
-    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: (err as Error).message, ...(terminalSubtype && { terminalSubtype }) };
+    const terminalSubtype = classifyAgentTerminalSubtype(err);
+    const message = err instanceof Error ? err.message : String(err);
+    yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId: plan.id, error: message, ...(terminalSubtype && { terminalSubtype }) };
     return;
   }
 

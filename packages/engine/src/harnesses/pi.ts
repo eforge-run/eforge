@@ -23,6 +23,9 @@ import type { AgentTool, ThinkingLevel } from '@earendil-works/pi-agent-core';
 import type { McpServerConfig } from '@anthropic-ai/claude-agent-sdk';
 import type { EforgeEvent, AgentRole, AgentResultData } from '../events.js';
 import type { AgentHarness, AgentRunOptions, ThinkingConfig, EffortLevel, HarnessDebugCallback, HarnessDebugPayload } from '../harness.js';
+// --- eforge:region plan-01-transport-resilience ---
+import { AgentTerminalError, isTransientTransportError } from '../harness.js';
+// --- eforge:endregion plan-01-transport-resilience ---
 import type { PiConfig } from '../config.js';
 import { AsyncEventQueue } from '../concurrency.js';
 import { PiMcpBridge } from './pi-mcp-bridge.js';
@@ -845,12 +848,25 @@ export class PiHarness implements AgentHarness {
       yield { timestamp: new Date().toISOString(), type: 'agent:result', planId, agentId, agent, result: resultData };
 
       if (error) {
+        // --- eforge:region plan-01-transport-resilience ---
+        if (isTransientTransportError(error)) {
+          throw new AgentTerminalError('error_transient_transport', error);
+        }
+        // --- eforge:endregion plan-01-transport-resilience ---
         throw new Error(error);
       }
 
       // Handle fallback model retry
     } catch (err) {
       error = err instanceof Error ? err.message : String(err);
+
+      // --- eforge:region plan-01-transport-resilience ---
+      if (isTransientTransportError(error)) {
+        throw err instanceof AgentTerminalError
+          ? err
+          : new AgentTerminalError('error_transient_transport', error);
+      }
+      // --- eforge:endregion plan-01-transport-resilience ---
 
       // Attempt fallback model if configured and this looks like a model error
       if (options.fallbackModel && isModelError(error)) {
