@@ -6,7 +6,7 @@ These examples demonstrate the `@eforge-build/extension-sdk` API. Each example i
 
 ### `minimal-event-logger.ts`
 
-Subscribes to `plan:build:failed` events and logs through the extension context logger. Demonstrates:
+Subscribes to `plan:build:failed` events and logs through the extension context logger. `onEvent` registrations are runtime-supported; handler errors and timeouts emit extension diagnostics. Demonstrates:
 
 - Default-export factory style
 - Typed event subscription with `onEvent`
@@ -19,7 +19,7 @@ Uses `eforge.beforePlanMerge` to block merges that touch a protected path. Demon
 - Policy gate registration
 - `PolicyDecision` discriminated union (`allow` / `block`)
 
-> **Runtime note:** `beforePlanMerge` is a type-level contract in this release. The policy gate runtime wires up in a subsequent epic (EXTEND_03). The example is labelled accordingly.
+> **Runtime note:** `beforePlanMerge` is loaded and captured for provenance, but policy-gate enforcement remains deferred to a later runtime phase. The example is labelled accordingly.
 
 ## Validation
 

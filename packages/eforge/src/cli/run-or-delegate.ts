@@ -28,6 +28,7 @@ import type { EforgeConfig, HookConfig } from '@eforge-build/engine/config';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { withHooks } from '@eforge-build/engine/hooks';
 import { withSessionId, withRunId, runSession } from '@eforge-build/engine/session';
+import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import { ensureMonitor, type Monitor } from '@eforge-build/monitor';
 import {
   readLockfile,
@@ -109,18 +110,29 @@ function buildConfigOverrides(options: {
   return Object.keys(overrides).length > 0 ? overrides : undefined;
 }
 
+interface WrapEventsOptions {
+  monitor: Monitor;
+  hooks: readonly HookConfig[];
+  native: {
+    registry: Pick<NativeExtensionRegistry, 'eventHooks'>;
+    timeoutMs: number;
+    cwd?: string;
+  };
+  sessionOpts?: import('@eforge-build/engine/session').SessionOptions;
+}
+
 function wrapEvents(
   events: AsyncGenerator<EforgeEvent>,
-  monitor: Monitor,
-  hooks: readonly HookConfig[],
-  sessionOpts?: import('@eforge-build/engine/session').SessionOptions,
+  opts: WrapEventsOptions,
 ): AsyncGenerator<EforgeEvent> {
-  let wrapped = sessionOpts ? withSessionId(events, sessionOpts) : events;
+  let wrapped = opts.sessionOpts ? withSessionId(events, opts.sessionOpts) : events;
   wrapped = withRunId(wrapped);
-  if (hooks.length > 0) {
-    wrapped = withHooks(wrapped, hooks, process.cwd());
-  }
-  return monitor.wrapEvents(wrapped);
+  wrapped = withNativeEventHooks(wrapped, opts.native.registry, {
+    cwd: opts.native.cwd ?? process.cwd(),
+    timeoutMs: opts.native.timeoutMs,
+  });
+  wrapped = opts.monitor.wrapEvents(wrapped);
+  return opts.hooks.length > 0 ? withHooks(wrapped, opts.hooks, process.cwd()) : wrapped;
 }
 
 async function consumeEvents(
@@ -194,8 +206,14 @@ async function runDryRun(
 
     const wrapped = wrapEvents(
       runSession(compileEvents, compileSessionId),
-      monitor,
-      engine.resolvedConfig.hooks,
+      {
+        monitor,
+        hooks: engine.resolvedConfig.hooks,
+        native: {
+          registry: engine.nativeExtensionRegistry,
+          timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+        },
+      },
     );
 
     for await (const event of wrapped) {
@@ -318,8 +336,14 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
 
     const wrapped = wrapEvents(
       runSession(enqueueEvents, enqueueSessionId),
-      monitor,
-      engine.resolvedConfig.hooks,
+      {
+        monitor,
+        hooks: engine.resolvedConfig.hooks,
+        native: {
+          registry: engine.nativeExtensionRegistry,
+          timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+        },
+      },
     );
 
     for await (const event of wrapped) {
@@ -354,7 +378,14 @@ async function runBuild(opts: BuildRunOpts): Promise<CliExitInfo> {
     });
 
     const result = await consumeEvents(
-      wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks),
+      wrapEvents(queueEvents, {
+        monitor,
+        hooks: engine.resolvedConfig.hooks,
+        native: {
+          registry: engine.nativeExtensionRegistry,
+          timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+        },
+      }),
       { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
     );
 
@@ -392,7 +423,14 @@ async function runQueue(opts: QueueRunOpts): Promise<CliExitInfo> {
       : engine.runQueue(queueOpts);
 
     const result = await consumeEvents(
-      wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks),
+      wrapEvents(queueEvents, {
+        monitor,
+        hooks: engine.resolvedConfig.hooks,
+        native: {
+          registry: engine.nativeExtensionRegistry,
+          timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+        },
+      }),
       { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
     );
 

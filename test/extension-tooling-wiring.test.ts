@@ -52,6 +52,87 @@ describe('CLI extension command registration', () => {
   });
 });
 
+describe('native extension event runtime wiring', () => {
+  const cliIndexSource = readRepoFile('packages/eforge/src/cli/index.ts');
+  const runOrDelegateSource = readRepoFile('packages/eforge/src/cli/run-or-delegate.ts');
+  const daemonSource = readRepoFile('packages/monitor/src/server-main.ts');
+
+  it('CLI entrypoint imports and wires native event hooks before monitor recording', () => {
+    expect(cliIndexSource).toContain("withNativeEventHooks, type NativeExtensionRegistry");
+    expect(cliIndexSource).toContain('withNativeEventHooks(');
+    expect(cliIndexSource).toContain('nativeExtensionRegistry');
+    expect(cliIndexSource).toContain('eventHookTimeoutMs');
+    const wrapBlock = cliIndexSource.slice(cliIndexSource.indexOf('function wrapEvents('), cliIndexSource.indexOf('async function consumeEvents'));
+    expect(wrapBlock.indexOf('withSessionId(')).toBeLessThan(wrapBlock.indexOf('withRunId('));
+    expect(wrapBlock.indexOf('withRunId(')).toBeLessThan(wrapBlock.indexOf('withNativeEventHooks('));
+    expect(wrapBlock.indexOf('withNativeEventHooks(')).toBeLessThan(wrapBlock.indexOf('opts.monitor.wrapEvents('));
+    expect(wrapBlock.indexOf('opts.monitor.wrapEvents(')).toBeLessThan(wrapBlock.indexOf('withHooks('));
+  });
+
+  it('run-or-delegate imports and wires native event hooks before monitor recording', () => {
+    expect(runOrDelegateSource).toContain("withNativeEventHooks, type NativeExtensionRegistry");
+    expect(runOrDelegateSource).toContain('withNativeEventHooks(');
+    expect(runOrDelegateSource).toContain('nativeExtensionRegistry');
+    expect(runOrDelegateSource).toContain('eventHookTimeoutMs');
+    const wrapBlock = runOrDelegateSource.slice(runOrDelegateSource.indexOf('function wrapEvents('), runOrDelegateSource.indexOf('async function consumeEvents'));
+    expect(wrapBlock.indexOf('withSessionId(')).toBeLessThan(wrapBlock.indexOf('withRunId('));
+    expect(wrapBlock.indexOf('withRunId(')).toBeLessThan(wrapBlock.indexOf('withNativeEventHooks('));
+    expect(wrapBlock.indexOf('withNativeEventHooks(')).toBeLessThan(wrapBlock.indexOf('opts.monitor.wrapEvents('));
+    expect(wrapBlock.indexOf('opts.monitor.wrapEvents(')).toBeLessThan(wrapBlock.indexOf('withHooks('));
+  });
+
+  it('daemon watcher imports and wires native event hooks before SQLite recording', () => {
+    expect(daemonSource).toContain("withNativeEventHooks, type NativeExtensionRegistry");
+    expect(daemonSource).toContain('withNativeEventHooks(');
+    expect(daemonSource).toContain('nativeExtensionRegistry');
+    expect(daemonSource).toContain('eventHookTimeoutMs');
+    const wrapBlock = daemonSource.slice(daemonSource.indexOf('export function wrapWatcherEvents('), daemonSource.indexOf('async function main'));
+    expect(wrapBlock.indexOf('withNativeEventHooks(')).toBeLessThan(wrapBlock.indexOf('withRecording('));
+    expect(wrapBlock.indexOf('withRecording(')).toBeLessThan(wrapBlock.indexOf('withHooks('));
+  });
+});
+
+describe('extension runtime documentation', () => {
+  const docsExtensions = readRepoFile('docs/extensions.md');
+  const docsExtensionsApi = readRepoFile('docs/extensions-api.md');
+  const sdkReadme = readRepoFile('packages/extension-sdk/README.md');
+  const configDocs = readRepoFile('docs/config.md');
+  const minimalEventLogger = readRepoFile('examples/extensions/minimal-event-logger.ts');
+  const protectedPaths = readRepoFile('examples/extensions/protected-paths.ts');
+
+  it('marks onEvent runtime execution as supported while non-event families remain deferred', () => {
+    expect(docsExtensions).toContain('| `onEvent` - typed event subscriptions | Yes | Yes | Yes |');
+    expect(docsExtensionsApi).toContain('| `onEvent` | Yes | Yes | Yes |');
+    expect(sdkReadme).toContain('| `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | Yes | Yes |');
+
+    for (const source of [docsExtensions, docsExtensionsApi, sdkReadme]) {
+      for (const capability of [
+        'onAgentRun',
+        'registerTool',
+        'beforePlanMerge',
+        'registerProfileRouter',
+        'registerInputSource',
+        'registerReviewerPerspective',
+        'registerValidationProvider',
+      ]) {
+        const row = source.split('\n').find((line) => line.startsWith('|') && line.includes(capability));
+        expect(row, `${capability} row`).toBeDefined();
+        expect(row).toContain('Deferred');
+      }
+    }
+  });
+
+  it('documents event hook timeout semantics and example runtime notes', () => {
+    expect(configDocs).toContain('eventHookTimeoutMs: 5000');
+    expect(configDocs).toContain('Must be a positive integer');
+    expect(minimalEventLogger).not.toContain('Event dispatch remains deferred');
+    expect(minimalEventLogger).toContain('onEvent');
+    expect(minimalEventLogger).toContain('dispatched at runtime');
+    expect(protectedPaths).toContain('Policy enforcement before merge remains');
+    expect(protectedPaths).toContain('deferred until the policy-gate runtime is implemented');
+  });
+});
+
 describe('MCP/Pi eforge_extension parity', () => {
   const mcpSource = readRepoFile('packages/eforge/src/cli/mcp-proxy.ts');
   const piSource = readRepoFile('packages/pi-eforge/extensions/eforge/index.ts');

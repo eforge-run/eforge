@@ -9,9 +9,9 @@
  * - Typed event narrowing via `EventOfType`
  * - Access to `ctx.logger` for structured logging
  *
- * Runtime status: the factory can be loaded by the daemon and this `onEvent`
- * registration is captured in extension provenance. Event dispatch remains
- * deferred until the event-hook runtime is implemented.
+ * Runtime status: the factory can be loaded by the daemon, this `onEvent`
+ * registration is captured in extension provenance, and matching events are
+ * dispatched at runtime. Handler errors and timeouts emit extension diagnostics.
  */
 
 import type { EforgeExtensionAPI, EventOfType } from '@eforge-build/extension-sdk';

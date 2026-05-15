@@ -7,6 +7,7 @@ import { wrapWatcherEvents } from '@eforge-build/monitor/server-main';
 import { openDatabase } from '@eforge-build/monitor/db';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { HookConfig } from '@eforge-build/engine/config';
+import type { EventHookRegistration } from '@eforge-build/engine/extensions/index';
 
 describe('wrapWatcherEvents', () => {
   it('fires session:start hook and persists events to SQLite', async () => {
@@ -101,6 +102,90 @@ describe('wrapWatcherEvents', () => {
       const run = db.getRun(runId);
       expect(run).toBeDefined();
       expect(run!.status).toBe('completed');
+    } finally {
+      db.close();
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('persists native event hook failure diagnostics from watcher streams', async () => {
+    const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-daemon-watcher-native-hooks-'));
+    const eforgeDir = resolve(tmpDir, '.eforge');
+    mkdirSync(eforgeDir, { recursive: true });
+    const dbPath = resolve(eforgeDir, 'monitor.db');
+    const db = openDatabase(dbPath);
+    const hookOutputFile = join(tmpDir, 'native-hook-out.txt');
+
+    try {
+      const sessionId = 'watcher-session-native-failure';
+      const runId = 'watcher-run-native-failure';
+      const now = new Date().toISOString();
+      const eventHooks: EventHookRegistration[] = [
+        {
+          kind: 'eventHook',
+          extensionName: 'throwing-watcher-hook',
+          extensionPath: '/extensions/throwing-watcher-hook.ts',
+          value: {
+            pattern: 'phase:start',
+            handler: (() => { throw new Error('native watcher hook failed'); }) as never,
+          },
+        },
+      ];
+      const hooks: HookConfig[] = [
+        {
+          event: 'extension:event-handler:failed',
+          command: `echo "EFORGE_EVENT_TYPE=$EFORGE_EVENT_TYPE" > "${hookOutputFile}" && echo "EFORGE_RUN_ID=$EFORGE_RUN_ID" >> "${hookOutputFile}" && echo "EFORGE_SESSION_ID=$EFORGE_SESSION_ID" >> "${hookOutputFile}"`,
+          timeout: 5000,
+        },
+      ];
+
+      async function* fakeEvents(): AsyncGenerator<EforgeEvent> {
+        yield { type: 'session:start', sessionId, timestamp: now } as unknown as EforgeEvent;
+        yield { type: 'phase:start', runId, sessionId, planSet: 'prd', command: 'build', timestamp: now } as unknown as EforgeEvent;
+        yield { type: 'phase:end', runId, sessionId, result: { status: 'completed', summary: 'ok' }, timestamp: now } as unknown as EforgeEvent;
+        yield { type: 'session:end', sessionId, result: { status: 'completed', summary: 'ok' }, timestamp: now } as unknown as EforgeEvent;
+      }
+
+      const composed = wrapWatcherEvents(
+        fakeEvents(),
+        db,
+        tmpDir,
+        process.pid,
+        hooks,
+        { registry: { eventHooks }, timeoutMs: 1000 },
+      );
+      const collected: EforgeEvent[] = [];
+      for await (const event of composed) {
+        collected.push(event);
+      }
+
+      const failures = collected.filter((event) => event.type === 'extension:event-handler:failed');
+      expect(failures).toHaveLength(1);
+      expect(failures[0]).toMatchObject({
+        extensionName: 'throwing-watcher-hook',
+        pattern: 'phase:start',
+        triggeringEventType: 'phase:start',
+        runId,
+        sessionId,
+        message: 'native watcher hook failed',
+      });
+
+      const hookOutput = await readFile(hookOutputFile, 'utf-8');
+      expect(hookOutput).toContain('EFORGE_EVENT_TYPE=extension:event-handler:failed');
+      expect(hookOutput).toContain(`EFORGE_RUN_ID=${runId}`);
+      expect(hookOutput).toContain(`EFORGE_SESSION_ID=${sessionId}`);
+
+      const rows = db.getEventsByType(runId, 'extension:event-handler:failed');
+      expect(rows).toHaveLength(1);
+      const payload = JSON.parse(rows[0]!.data) as Record<string, unknown>;
+      expect(payload).toMatchObject({
+        extensionName: 'throwing-watcher-hook',
+        pattern: 'phase:start',
+        triggeringEventType: 'phase:start',
+        runId,
+        sessionId,
+        message: 'native watcher hook failed',
+      });
     } finally {
       db.close();
       await rm(tmpDir, { recursive: true, force: true });

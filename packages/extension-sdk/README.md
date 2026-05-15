@@ -49,13 +49,13 @@ The eforge daemon discovers and loads native extensions from three scopes:
 
 Precedence is `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. Extensions run in the eforge daemon/worker Node process without a sandbox.
 
-Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch/execution of registered capabilities is deferred.
+Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch is available for `onEvent`; non-event registered capabilities remain deferred.
 
 ## Registration methods
 
 | Method | Description | Loader-time capture | Runtime execution |
 |--------|-------------|---------------------|-------------------|
-| `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | Yes | Deferred |
+| `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | Yes | Yes |
 | `onAgentRun(handler)` | Augment agent runs with tools and prompt context (scope by `ctx.role`) | Yes | Deferred |
 | `registerTool(tool)` | Register a custom agent tool for provenance and future injection | Yes | Deferred |
 | `beforePlanMerge(handler)` | Policy gate before plan branch is merged | Yes | Deferred |
@@ -64,7 +64,9 @@ Loader-time registration capture is available today: the daemon calls each defau
 | `registerReviewerPerspective(spec)` | Add custom review perspective | Yes | Deferred |
 | `registerValidationProvider(spec)` | Add custom validation step | Yes | Deferred |
 
-All capabilities have full TypeScript type contracts. Loading and registration capture are wired; event dispatch, blocking gates, agent augmentation, tool execution, routing, and provider execution land in subsequent runtime phases.
+All capabilities have full TypeScript type contracts. Loading, registration capture, and `onEvent` dispatch are wired; blocking gates, agent augmentation, tool execution, routing, and provider execution land in subsequent runtime phases.
+
+`onEvent` handlers are non-blocking with respect to the engine pipeline. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields.
 
 ## Policy decisions
 
@@ -129,4 +131,4 @@ Local docs: [`docs/extensions.md`](../../docs/extensions.md) and [`docs/extensio
 
 ## Stability
 
-Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, and registration capture are available. Runtime execution of deferred capability families will build on this stable contract.
+Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, and `onEvent` execution are available. Runtime execution of deferred capability families will build on this stable contract.

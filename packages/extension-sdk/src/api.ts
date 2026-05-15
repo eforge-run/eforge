@@ -42,7 +42,8 @@ export interface EforgeExtensionAPI {
    * @param pattern - Glob pattern matching event type strings (e.g. `plan:build:*`).
    * @param handler - Async or sync handler invoked with the matched event and context.
    *
-   * @remarks Phase 1 runtime target. Not yet wired in this release.
+   * @remarks Runtime-supported. Matching events are dispatched to handlers;
+   * failures and timeouts emit `extension:event-handler:*` diagnostics.
    *
    * @example
    * ```ts

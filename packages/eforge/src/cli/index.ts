@@ -11,6 +11,7 @@ import type { EforgeConfig, HookConfig } from '@eforge-build/engine/config';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { withHooks } from '@eforge-build/engine/hooks';
 import { withSessionId, withRunId, runSession } from '@eforge-build/engine/session';
+import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
 import { initDisplay, renderEvent, renderStatus, renderLangfuseStatus, renderQueueList, stopAllSpinners } from './display.js';
 import { registerPlaybookCommand } from './playbook.js';
 import { createClarificationHandler, createApprovalHandler } from './interactive.js';
@@ -103,18 +104,29 @@ async function withMonitor<T>(
   }
 }
 
+interface WrapEventsOptions {
+  monitor: Monitor;
+  hooks: readonly HookConfig[];
+  native: {
+    registry: Pick<NativeExtensionRegistry, 'eventHooks'>;
+    timeoutMs: number;
+    cwd?: string;
+  };
+  sessionOpts?: import('@eforge-build/engine/session').SessionOptions;
+}
+
 function wrapEvents(
   events: AsyncGenerator<EforgeEvent>,
-  monitor: Monitor,
-  hooks: readonly HookConfig[],
-  sessionOpts?: import('@eforge-build/engine/session').SessionOptions,
+  opts: WrapEventsOptions,
 ): AsyncGenerator<EforgeEvent> {
-  let wrapped = sessionOpts ? withSessionId(events, sessionOpts) : events;
+  let wrapped = opts.sessionOpts ? withSessionId(events, opts.sessionOpts) : events;
   wrapped = withRunId(wrapped);
-  if (hooks.length > 0) {
-    wrapped = withHooks(wrapped, hooks, process.cwd());
-  }
-  return monitor.wrapEvents(wrapped);
+  wrapped = withNativeEventHooks(wrapped, opts.native.registry, {
+    cwd: opts.native.cwd ?? process.cwd(),
+    timeoutMs: opts.native.timeoutMs,
+  });
+  wrapped = opts.monitor.wrapEvents(wrapped);
+  return opts.hooks.length > 0 ? withHooks(wrapped, opts.hooks, process.cwd()) : wrapped;
 }
 
 async function consumeEvents(
@@ -241,7 +253,14 @@ export function createProgram(abortController?: AbortController, version?: strin
           });
 
           await consumeEvents(
-            wrapEvents(runSession(enqueueEvents, sessionId), monitor, engine.resolvedConfig.hooks),
+            wrapEvents(runSession(enqueueEvents, sessionId), {
+              monitor,
+              hooks: engine.resolvedConfig.hooks,
+              native: {
+                registry: engine.nativeExtensionRegistry,
+                timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+              },
+            }),
           );
         });
       },
@@ -309,7 +328,14 @@ export function createProgram(abortController?: AbortController, version?: strin
               : engine.runQueue(queueOpts);
 
             const result = await consumeEvents(
-              wrapEvents(queueEvents, monitor, engine.resolvedConfig.hooks),
+              wrapEvents(queueEvents, {
+                monitor,
+                hooks: engine.resolvedConfig.hooks,
+                native: {
+                  registry: engine.nativeExtensionRegistry,
+                  timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+                },
+              }),
               { afterStart: () => renderLangfuseStatus(engine.resolvedConfig) },
             );
 
@@ -512,7 +538,14 @@ export function createProgram(abortController?: AbortController, version?: strin
             abortController,
           }, options.sessionId);
 
-          const wrapped = wrapEvents(buildEvents, monitor, engine.resolvedConfig.hooks);
+          const wrapped = wrapEvents(buildEvents, {
+            monitor,
+            hooks: engine.resolvedConfig.hooks,
+            native: {
+              registry: engine.nativeExtensionRegistry,
+              timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+            },
+          });
 
           let completionStatus: 'completed' | 'failed' | 'skipped' | undefined;
           let skipReason: string | undefined;
@@ -956,7 +989,15 @@ export function createProgram(abortController?: AbortController, version?: strin
             });
 
             await consumeEvents(
-              wrapEvents(runSession(recoverEvents, sessionId), monitor, engine.resolvedConfig.hooks),
+              wrapEvents(runSession(recoverEvents, sessionId), {
+                monitor,
+                hooks: engine.resolvedConfig.hooks,
+                native: {
+                  registry: engine.nativeExtensionRegistry,
+                  timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+                  ...(cwd && { cwd }),
+                },
+              }),
             );
           });
         } catch (err) {
@@ -995,7 +1036,15 @@ export function createProgram(abortController?: AbortController, version?: strin
             const applyEvents = engine.applyRecovery(prdId);
 
             await consumeEvents(
-              wrapEvents(runSession(applyEvents, sessionId), monitor, engine.resolvedConfig.hooks),
+              wrapEvents(runSession(applyEvents, sessionId), {
+                monitor,
+                hooks: engine.resolvedConfig.hooks,
+                native: {
+                  registry: engine.nativeExtensionRegistry,
+                  timeoutMs: engine.resolvedConfig.extensions.eventHookTimeoutMs,
+                  ...(cwd && { cwd }),
+                },
+              }),
             );
           });
         } catch (err) {

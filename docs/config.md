@@ -21,6 +21,7 @@ plugins:
 
 extensions:
   enabled: true               # Discover and load native eforge extensions
+  eventHookTimeoutMs: 5000    # Native onEvent handler timeout in ms (positive integer)
   trustProjectExtensions: false # Trust checked-in eforge/extensions/ modules (user/local config only)
   # include:                  # Allowlist by native extension name
   # exclude:                  # Denylist by native extension name
@@ -100,11 +101,12 @@ Each command in `postMergeCommands` and the planner-generated validate commands 
 
 ## Native extensions
 
-The top-level `extensions` block controls native eforge TypeScript/JavaScript extension discovery and loader-time registration capture. See [extensions.md](extensions.md) for discovery, trust, diagnostics, and runtime limitations.
+The top-level `extensions` block controls native eforge TypeScript/JavaScript extension discovery, loader-time registration capture, and event-hook timeout behavior. See [extensions.md](extensions.md) for discovery, trust, diagnostics, and runtime limitations.
 
 ```yaml
 extensions:
   enabled: true
+  eventHookTimeoutMs: 5000
   include:
     - build-notifier
   exclude:
@@ -118,6 +120,7 @@ extensions:
 |-------|---------|-------------|
 | `extensions.enabled` | `true` | Enables native extension discovery and loading. When `false`, no extension directories or explicit paths are loaded. |
 | `extensions.include` | unset | Optional allowlist for auto-discovered extension names. Only listed names are considered. |
+| `extensions.eventHookTimeoutMs` | `5000` | Timeout in milliseconds for each native `onEvent` handler invocation. Must be a positive integer. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Explicit extension files or directories to validate/load in addition to auto-discovery. Relative paths resolve from the project root. |
 | `extensions.trustProjectExtensions` | `false` | Allows checked-in project/team extensions from `eforge/extensions/` to load. User and project-local extensions load when enabled. |
@@ -126,7 +129,7 @@ Auto-discovery scans `~/.config/eforge/extensions/`, `eforge/extensions/`, and `
 
 Project/team extensions are committed code and are skipped unless `extensions.trustProjectExtensions: true` is set from a trusted layer (user config or project-local config). Extensions execute in the eforge daemon/worker Node process without a sandbox.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, and registration capture. Event dispatch, blocking policy enforcement, agent augmentation, and other registered capability execution are deferred runtime phases.
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, and native `onEvent` dispatch. Blocking policy enforcement, agent augmentation, and other non-event registered capability execution are deferred runtime phases.
 
 ## Tiers
 
