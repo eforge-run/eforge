@@ -3,12 +3,12 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
-import { writeLockfile, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse } from '@eforge-build/client';
+import { writeLockfile, type EforgeEvent, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse } from '@eforge-build/client';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -42,6 +42,12 @@ async function start(tmpDir: string): Promise<MonitorServer> {
   server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
   writeLockfile(tmpDir, { pid: process.pid, port: server.port, startedAt: new Date().toISOString() });
   return server;
+}
+
+function replayEvent(type: 'config:warning' | 'plan:build:start', runId?: string): EforgeEvent {
+  const timestamp = new Date().toISOString();
+  if (type === 'config:warning') return { type, timestamp, ...(runId !== undefined && { runId }), message: 'warning', source: 'test' };
+  return { type, timestamp, ...(runId !== undefined && { runId }), planId: 'plan-1' };
 }
 
 async function runCli(tmpDir: string, args: string[]): Promise<{ stdout: string; stderr: string }> {
@@ -83,10 +89,150 @@ async function runCli(tmpDir: string, args: string[]): Promise<{ stdout: string;
 }
 
 describe('extension CLI commands', () => {
-  it('registers extension list/show/validate/new/reload subcommands', () => {
+  it('registers extension list/show/validate/test/new/reload subcommands', () => {
     const program = createProgram(undefined, 'test');
     const extension = program.commands.find((command) => command.name() === 'extension');
-    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['list', 'new', 'reload', 'show', 'validate']);
+    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['list', 'new', 'reload', 'show', 'test', 'validate']);
+  });
+
+  it('extension test --fixture --json prints the raw ExtensionTestResponse', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      'export default function extension(eforge) { eforge.onEvent("config:*", () => {}); }',
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'events.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', 'events.json', '--json']);
+    const data = JSON.parse(stdout) as ExtensionTestResponse;
+    expect(data.valid).toBe(true);
+    expect(data.source).toMatchObject({ kind: 'fixture', fixture: await realpath(fixture) });
+    expect(data.matches).toEqual([expect.objectContaining({ extensionName: 'loaded', pattern: 'config:*' })]);
+  });
+
+  it('extension test non-JSON output summarizes replay matches and deferred registrations', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      'export default function extension(eforge) { eforge.onEvent("config:*", () => {}); eforge.registerInputSource({ name: "static-input", description: "static", fetch: async () => "ok" }); }',
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'events.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', fixture]);
+    expect(stdout).toContain('Extensions test passed');
+    expect(stdout).toContain('Source:                fixture');
+    expect(stdout).toContain('Replayed events:       1');
+    expect(stdout).toContain('Matches:               1');
+    expect(stdout).toContain('Emitted diagnostics:   0');
+    expect(stdout).toContain('Deferred registrations:');
+    expect(stdout).toContain('inputSources: 1');
+  });
+
+  it('extension test treats path-like nameOrPath arguments as ad-hoc extension paths', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const extensionPath = resolve(tmpDir, 'adhoc.js');
+    await writeFile(
+      extensionPath,
+      'export default function extension(eforge) { eforge.onEvent("config:*", () => {}); }',
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'events.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'test', 'adhoc.js', '--fixture', 'events.json', '--json']);
+    const data = JSON.parse(stdout) as ExtensionTestResponse;
+    expect(data.valid).toBe(true);
+    expect(data.extensions).toEqual([expect.objectContaining({ name: 'adhoc', path: await realpath(extensionPath) })]);
+    expect(data.matches).toEqual([expect.objectContaining({ extensionName: 'adhoc', extensionPath: await realpath(extensionPath) })]);
+  });
+
+  it('extension test non-JSON output includes emitted diagnostic details and exits 1 for handler failures', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      'export default function extension(eforge) { eforge.onEvent("config:*", () => { throw new Error("boom"); }); }',
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'events.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('config:warning')), 'utf-8');
+    await start(tmpDir);
+
+    try {
+      await runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', fixture]);
+      throw new Error('Expected extension test to exit with code 1');
+    } catch (err) {
+      expect(err).toMatchObject({
+        message: 'process.exit:1',
+        stdout: expect.stringContaining('Emitted diagnostics:   1'),
+        stderr: expect.stringContaining('Extensions test failed'),
+      });
+      expect((err as { stdout?: string }).stdout).toContain('Emitted diagnostic details:');
+      expect((err as { stdout?: string }).stdout).toContain('extension:event-handler:failed');
+      expect((err as { stdout?: string }).stdout).toContain('boom');
+    }
+  });
+
+  it('extension test --run latest --event replays monitor events through the daemon helper', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      'export default function extension(eforge) { eforge.onEvent("config:*", () => {}); }',
+      'utf-8',
+    );
+    const db = openDatabase(resolve(tmpDir, '.eforge', 'monitor.db'));
+    const event = replayEvent('config:warning', 'run-new');
+    db.insertRun({ id: 'run-new', sessionId: 'session-new', planSet: 'set', command: 'build', status: 'completed', startedAt: new Date().toISOString(), cwd: tmpDir });
+    db.insertEvent({ runId: 'run-new', type: event.type, data: JSON.stringify(event), timestamp: event.timestamp });
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    writeLockfile(tmpDir, { pid: process.pid, port: server.port, startedAt: new Date().toISOString() });
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'test', 'loaded', '--run', 'latest', '--event', 'config:warning', '--json']);
+    const data = JSON.parse(stdout) as ExtensionTestResponse;
+    expect(data.source).toMatchObject({ kind: 'run', run: 'latest', sessionId: 'session-new', event: 'config:warning' });
+    expect(data.replay).toMatchObject({ inputEventCount: 1, filteredEventCount: 1 });
+    expect(data.matches).toEqual([expect.objectContaining({ extensionName: 'loaded', eventType: 'config:warning' })]);
+  });
+
+  it('extension test exits with code 1 when the daemon reports invalid output', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await start(tmpDir);
+    const invalidFixture = resolve(tmpDir, 'bad.json');
+    await writeFile(invalidFixture, JSON.stringify({ type: 'config:warning', timestamp: new Date().toISOString() }), 'utf-8');
+
+    await expect(runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', invalidFixture])).rejects.toMatchObject({
+      message: 'process.exit:1',
+      stderr: expect.stringContaining('Extensions test failed'),
+    });
+  });
+
+  it('extension test no-match replay exits successfully when valid', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(
+      resolve(tmpDir, '.eforge', 'extensions', 'loaded.js'),
+      'export default function extension(eforge) { eforge.onEvent("config:*", () => {}); }',
+      'utf-8',
+    );
+    const fixture = resolve(tmpDir, 'events.json');
+    await writeFile(fixture, JSON.stringify(replayEvent('plan:build:start')), 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'test', 'loaded', '--fixture', fixture]);
+    expect(stdout).toContain('Matches:               0');
+    expect(stdout).toContain('No event hooks matched the replay input.');
   });
 
   it('extension new --json creates the default local event-logger template', async () => {

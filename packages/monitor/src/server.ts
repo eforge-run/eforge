@@ -11,6 +11,7 @@ import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, extname, join, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parse as parseYaml } from 'yaml';
+import { isIP } from 'node:net';
 
 const execAsync = promisify(execFile);
 import type { MonitorDB } from './db.js';
@@ -26,6 +27,8 @@ import type {
   ExtensionNewRequest,
   ExtensionReloadWatcherMetadata,
   ExtensionRegistrationSummary,
+  ExtensionTestRequest,
+  ExtensionTestResponse,
   RunSummary,
 } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent, parseWithSchema } from '@eforge-build/client';
@@ -1333,6 +1336,20 @@ export async function startServer(
   // daemon is otherwise browser-reachable (CORS preflight is allowed globally),
   // so require these new mutation routes to originate from the local machine and
   // reject cross-origin browser requests.
+  function isLoopbackHostHeader(hostHeader: string | undefined): boolean {
+    if (!hostHeader) return false;
+    let hostname: string;
+    try {
+      hostname = new URL(`http://${hostHeader}`).hostname.toLowerCase();
+    } catch {
+      return hostHeader.toLowerCase() === '::1';
+    }
+    if (hostname.startsWith('[') && hostname.endsWith(']')) hostname = hostname.slice(1, -1);
+    if (hostname.endsWith('.')) hostname = hostname.slice(0, -1);
+    const ipVersion = isIP(hostname);
+    return hostname === 'localhost' || hostname === '::1' || (ipVersion === 4 && hostname.startsWith('127.'));
+  }
+
   function rejectUnsafeExtensionMutationRequest(req: IncomingMessage, res: ServerResponse): boolean {
     const remoteAddress = req.socket.remoteAddress;
     const isLoopback = remoteAddress === undefined
@@ -1344,12 +1361,17 @@ export async function startServer(
       return true;
     }
 
+    const host = req.headers.host;
+    if (!isLoopbackHostHeader(host)) {
+      sendJsonError(res, 403, 'Extension management mutations require a loopback Host header');
+      return true;
+    }
+
     const originHeader = req.headers.origin;
     const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
     if (origin) {
-      const host = req.headers.host;
       try {
-        if (!host || new URL(origin).host !== host) {
+        if (new URL(origin).host !== host) {
           sendJsonError(res, 403, 'Cross-origin extension management mutations are not allowed');
           return true;
         }
@@ -1446,6 +1468,44 @@ export async function startServer(
       return null;
     }
   }
+
+  // --- eforge:region plan-01-engine-daemon-extension-replay ---
+  function sourceResolutionDiagnostic(message: string): ExtensionDiagnostic {
+    return {
+      severity: 'error',
+      code: 'extension:replay-source-error',
+      message,
+    };
+  }
+
+  function isPlainObject(value: unknown): value is Record<string, unknown> {
+    return value !== null && typeof value === 'object' && !Array.isArray(value);
+  }
+
+  function validateExtensionTestRequestBody(value: unknown): ExtensionTestRequest | string {
+    if (!isPlainObject(value)) return 'Invalid JSON body';
+    const body = value as ExtensionTestRequest;
+    if (body.name !== undefined && (typeof body.name !== 'string' || !EXTENSION_NAME_RE.test(body.name))) {
+      return 'Invalid extension name';
+    }
+    if (body.path !== undefined && typeof body.path !== 'string') return 'Invalid extension path';
+    if (body.name !== undefined && body.path !== undefined) return 'Specify only one of name or path';
+    if (body.fixture !== undefined && typeof body.fixture !== 'string') return 'Invalid fixture path';
+    if (body.run !== undefined && typeof body.run !== 'string') return 'Invalid run';
+    if (body.fixture !== undefined && body.run !== undefined) return 'Specify only one replay source: fixture or run';
+    if (body.event !== undefined && (typeof body.event !== 'string' || body.event.trim().length === 0)) {
+      return 'Invalid event filter';
+    }
+    return body;
+  }
+
+  function hydrateRunReplayEvents(sessionId: string): EforgeEvent[] {
+    return db.getEventsBySession(sessionId).flatMap((evt) => {
+      const parsed = parseEventRow(evt.data, evt.timestamp, evt.type, evt.id);
+      return parsed ? [parsed] : [];
+    });
+  }
+  // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 
   function selectExtensionByName(extensions: ExtensionEntry[], name: string): ExtensionEntry | undefined {
     const matches = extensions.filter((entry) => entry.name === name);
@@ -2330,6 +2390,108 @@ export async function startServer(
       return;
     }
     // --- eforge:endregion plan-01-extension-management-api ---
+
+    // --- eforge:region plan-01-engine-daemon-extension-replay ---
+    if (req.method === 'POST' && url === API_ROUTES.extensionTest) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+
+      let body: ExtensionTestRequest;
+      try {
+        const rawBody = await parseJsonBody(req);
+        const validation = validateExtensionTestRequestBody(rawBody);
+        if (typeof validation === 'string') {
+          sendJsonError(res, 400, validation);
+          return;
+        }
+        body = validation;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+
+      let extensionPath: string | undefined;
+      if (body.path !== undefined) {
+        extensionPath = await validateExtensionQueryPath(body.path) ?? undefined;
+        if (!extensionPath) {
+          sendJsonError(res, 400, 'Invalid extension path');
+          return;
+        }
+      }
+      let fixturePath: string | undefined;
+      if (body.fixture !== undefined) {
+        fixturePath = await validateExtensionQueryPath(body.fixture) ?? undefined;
+        if (!fixturePath) {
+          sendJsonError(res, 400, 'Invalid fixture path');
+          return;
+        }
+      }
+
+      try {
+        const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
+        const { parseExtensionEventFixtureFile, replayNativeExtensionEvents } = await import('@eforge-build/engine/extensions/index');
+        const { config, warnings } = await loadConfig(cwd);
+        for (const warning of warnings) process.stderr.write(`${warning}\n`);
+        const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+        const loaderConfig = extensionPath
+          ? {
+            enabled: true,
+            trustProjectExtensions: config.extensions.trustProjectExtensions,
+            include: ['__eforge_no_auto_extensions__'],
+            paths: [extensionPath],
+          }
+          : config.extensions;
+
+        let events: EforgeEvent[] = [];
+        const sourceDiagnostics: ExtensionDiagnostic[] = [];
+        let source: ExtensionTestResponse['source'] = { kind: 'none', ...(body.event !== undefined && { event: body.event }) };
+        if (fixturePath) {
+          const fixture = await parseExtensionEventFixtureFile(fixturePath);
+          events = fixture.events;
+          sourceDiagnostics.push(...fixture.diagnostics);
+          source = { kind: 'fixture', fixture: fixturePath, ...(body.event !== undefined && { event: body.event }) };
+        } else if (body.run !== undefined) {
+          let sessionId: string | undefined;
+          if (body.run === 'latest') {
+            sessionId = db.getLatestSessionId();
+            if (!sessionId) sourceDiagnostics.push(sourceResolutionDiagnostic('No latest run is available'));
+          } else {
+            sessionId = resolveSessionId(body.run);
+            if (!db.getRun(body.run) && db.getSessionRuns(sessionId).length === 0) {
+              sourceDiagnostics.push(sourceResolutionDiagnostic(`Run or session not found: ${body.run}`));
+              sessionId = undefined;
+            }
+          }
+          if (sessionId) events = hydrateRunReplayEvents(sessionId);
+          source = {
+            kind: 'run',
+            run: body.run,
+            ...(sessionId !== undefined && { sessionId }),
+            ...(body.event !== undefined && { event: body.event }),
+          };
+        }
+
+        const result = await replayNativeExtensionEvents({
+          cwd,
+          loaderOptions: { cwd, configDir, config: loaderConfig },
+          ...(body.name !== undefined && { name: body.name }),
+          ...(extensionPath !== undefined && { path: extensionPath }),
+          events,
+          ...(body.event !== undefined && { eventType: body.event }),
+          timeoutMs: config.extensions.eventHookTimeoutMs,
+          source,
+          sourceDiagnostics,
+        });
+        sendJson(res, result);
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to test extensions');
+      }
+      return;
+    }
+    // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 
     if (req.method === 'GET' && (url === API_ROUTES.extensionList || url.startsWith(`${API_ROUTES.extensionList}?`))) {
       try {

@@ -112,6 +112,32 @@ describe('native extension loader', () => {
     }));
   });
 
+  it('rejects non-object and non-object-root tool input schemas during registration capture', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    await writeModule(resolve(extensions, 'scalar-schema.js'), 'export default function extension(eforge) { eforge.registerTool({ name: "scalar-tool", description: "bad", inputSchema: "not-an-object", handler: () => "ok" }); }');
+    await writeModule(resolve(extensions, 'string-schema.js'), 'export default function extension(eforge) { eforge.registerTool({ name: "bad-tool", description: "bad", inputSchema: { type: "string" }, handler: () => "ok" }); }');
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.tools).toEqual([]);
+    expect(result.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        code: 'extension:invalid-registration',
+        name: 'scalar-tool',
+        path: resolve(extensions, 'scalar-schema.js'),
+        message: expect.stringContaining('inputSchema: object'),
+      }),
+      expect.objectContaining({
+        code: 'extension:invalid-registration',
+        name: 'bad-tool',
+        path: resolve(extensions, 'string-schema.js'),
+        message: expect.stringContaining('object-root schema'),
+      }),
+    ]));
+  });
+
   it('skips untrusted project-team extensions and loads them when trusted', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);

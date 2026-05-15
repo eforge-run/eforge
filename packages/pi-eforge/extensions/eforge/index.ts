@@ -48,6 +48,7 @@ import {
   apiListExtensions,
   apiShowExtension,
   apiValidateExtensions,
+  apiTestExtension,
   apiNewExtension,
   apiReloadExtensions,
   LOCKFILE_POLL_INTERVAL_MS,
@@ -68,6 +69,7 @@ import type {
   FollowCounters,
   VersionResponse,
   ExtensionNewRequest,
+  ExtensionTestRequest,
 } from '@eforge-build/client';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
@@ -964,23 +966,35 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_extension",
     label: "eforge extension",
     description:
-      'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running.',
+      'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running.',
     parameters: Type.Object({
-      action: StringEnum(["list", "show", "validate", "new", "reload"] as const, {
+      action: StringEnum(["list", "show", "validate", "test", "new", "reload"] as const, {
         description: "Extension operation to perform",
       }),
       name: Type.Optional(
         Type.String({
           minLength: 1,
-          description: 'Extension name (required for "show" and "new", optional for "validate")',
+          description: 'Extension name (required for "show" and "new", optional for "validate" and "test")',
         }),
       ),
       path: Type.Optional(
         Type.String({
           minLength: 1,
-          description: 'Ad-hoc extension file/directory path to validate ("validate" only)',
+          description: 'Ad-hoc extension file/directory path to validate or test ("validate" and "test" only)',
         }),
       ),
+      fixture: Type.Optional(Type.String({
+        minLength: 1,
+        description: 'Project-local JSON/JSONL event fixture to replay ("test" only)',
+      })),
+      run: Type.Optional(Type.String({
+        minLength: 1,
+        description: 'Monitor DB event source to replay: "latest" or a session/run id ("test" only)',
+      })),
+      event: Type.Optional(Type.String({
+        minLength: 1,
+        description: 'Exact event type filter for replay ("test" only)',
+      })),
       scope: Type.Optional(StringEnum(["local", "project", "user"] as const, {
         description: 'Scope for "new". Defaults to local.',
       })),
@@ -992,9 +1006,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const hasTestOnlyParams = params.fixture !== undefined || params.run !== undefined || params.event !== undefined;
       if (params.action === "list") {
         if (params.name !== undefined || params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
           throw new Error('"list" does not accept name, path, scope, template, or force');
+        }
+        if (hasTestOnlyParams) {
+          throw new Error('"list" does not accept fixture, run, or event');
         }
         const { data } = await apiListExtensions({ cwd: ctx.cwd });
         return jsonResult(data);
@@ -1006,12 +1024,18 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
           throw new Error('"show" does not accept path, scope, template, or force');
         }
+        if (hasTestOnlyParams) {
+          throw new Error('"show" does not accept fixture, run, or event');
+        }
         const { data } = await apiShowExtension({ cwd: ctx.cwd, name: params.name });
         return jsonResult(data);
       }
       if (params.action === "validate") {
         if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
           throw new Error('"validate" does not accept scope, template, or force');
+        }
+        if (hasTestOnlyParams) {
+          throw new Error('"validate" does not accept fixture, run, or event');
         }
         if (params.name !== undefined && params.path !== undefined) {
           throw new Error('Specify only one of "name" or "path" for validate');
@@ -1022,12 +1046,31 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const { data } = await apiValidateExtensions(request);
         return jsonResult(data);
       }
+      if (params.action === "test") {
+        if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
+          throw new Error('"test" does not accept scope, template, or force');
+        }
+        if (params.name !== undefined && params.path !== undefined) {
+          throw new Error('Specify only one of "name" or "path" for test');
+        }
+        const body: ExtensionTestRequest = {};
+        if (params.name !== undefined) body.name = params.name;
+        if (params.path !== undefined) body.path = params.path;
+        if (params.fixture !== undefined) body.fixture = params.fixture;
+        if (params.run !== undefined) body.run = params.run;
+        if (params.event !== undefined) body.event = params.event;
+        const { data } = await apiTestExtension({ cwd: ctx.cwd, body });
+        return jsonResult(data);
+      }
       if (params.action === "new") {
         if (!params.name) {
           throw new Error('"name" is required when action is "new"');
         }
         if (params.path !== undefined) {
           throw new Error('"path" is not supported when action is "new"');
+        }
+        if (hasTestOnlyParams) {
+          throw new Error('"new" does not accept fixture, run, or event');
         }
         const body: ExtensionNewRequest = { name: params.name };
         if (params.scope !== undefined) body.scope = params.scope;
@@ -1038,6 +1081,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       }
       if (params.name !== undefined || params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
         throw new Error('"reload" does not accept name, path, scope, template, or force');
+      }
+      if (hasTestOnlyParams) {
+        throw new Error('"reload" does not accept fixture, run, or event');
       }
       const { data } = await apiReloadExtensions({ cwd: ctx.cwd });
       return jsonResult(data);

@@ -101,6 +101,12 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
         addDiagnostic('registerTool requires { name: string, description: string, inputSchema: object, handler: function }', 'extension:invalid-registration', isObject(tool) && typeof tool.name === 'string' ? tool.name : undefined);
         return;
       }
+      // --- eforge:region plan-01-engine-daemon-extension-replay ---
+      if (!isObjectRootInputSchema(tool.inputSchema)) {
+        addDiagnostic('registerTool inputSchema must be an object-root schema (type: "object")', 'extension:invalid-registration', tool.name);
+        return;
+      }
+      // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
       state.tools.push({ kind: 'tool', extensionName, extensionPath, name: tool.name, value: tool as unknown as ExtensionTool });
     },
   };
@@ -155,6 +161,12 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+// --- eforge:region plan-01-engine-daemon-extension-replay ---
+function isObjectRootInputSchema(value: Record<string, unknown>): boolean {
+  return value.type === 'object';
+}
+
+// --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }

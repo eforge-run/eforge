@@ -70,6 +70,9 @@ export {
   apiNewExtension,
   apiReloadExtensions,
   // --- eforge:endregion plan-01-extension-management-api ---
+  // --- eforge:region plan-01-engine-daemon-extension-replay ---
+  apiTestExtension,
+  // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 } from './api/extensions.js';
 // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
@@ -271,6 +274,16 @@ export type {
   ExtensionListResponse,
   ExtensionShowResponse,
   ExtensionValidateResponse,
+  // --- eforge:region plan-01-engine-daemon-extension-replay ---
+  ExtensionTestRequest,
+  ExtensionTestSource,
+  ExtensionTestReplayCounts,
+  ExtensionTestMatch,
+  ExtensionTestDiagnosticEvent,
+  ExtensionTestDeferredRegistrationFamily,
+  ExtensionTestDeferredRegistrationSummary,
+  ExtensionTestResponse,
+  // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
   // --- eforge:region plan-01-extension-management-api ---
   ExtensionNewRequest,
   ExtensionNewResponse,

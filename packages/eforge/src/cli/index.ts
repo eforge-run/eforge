@@ -28,10 +28,13 @@ import {
   apiListExtensions,
   apiShowExtension,
   apiValidateExtensions,
+  apiTestExtension,
   apiNewExtension,
   apiReloadExtensions,
   type ExtensionEntry,
   type ExtensionNewRequest,
+  type ExtensionTestRequest,
+  type ExtensionTestResponse,
 } from '@eforge-build/client';
 import { runOrDelegate } from './run-or-delegate.js';
 import { formatCliError } from './errors.js';
@@ -204,6 +207,67 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
     for (const diagnostic of entry.diagnostics) {
       const color = diagnostic.severity === 'error' ? chalk.red : chalk.yellow;
       console.log(color(`    - ${diagnostic.code}: ${diagnostic.message}`));
+    }
+  }
+}
+
+function formatExtensionTestSource(source: ExtensionTestResponse['source']): string {
+  const parts: string[] = [source.kind];
+  if (source.fixture) parts.push(source.fixture);
+  if (source.run) parts.push(`run=${source.run}`);
+  if (source.sessionId) parts.push(`session=${source.sessionId}`);
+  if (source.event) parts.push(`event=${source.event}`);
+  return parts.join(' ');
+}
+
+function renderExtensionTestResult(data: ExtensionTestResponse): void {
+  if (data.valid) {
+    console.log(chalk.green('✔') + ' Extensions test passed');
+  } else {
+    console.error(chalk.red('✘') + ' Extensions test failed');
+  }
+
+  console.log(`  Source:                ${formatExtensionTestSource(data.source)}`);
+  console.log(`  Extensions:            ${data.extensions.length}`);
+  console.log(`  Replayed events:       ${data.replay.inputEventCount}`);
+  console.log(`  Filtered events:       ${data.replay.filteredEventCount}`);
+  console.log(`  Emitted events:        ${data.replay.emittedEventCount}`);
+  console.log(`  Matches:               ${data.matches.length}`);
+  console.log(`  Emitted diagnostics:   ${data.emittedDiagnostics.length}`);
+
+  if (data.matches.length === 0) {
+    console.log(chalk.dim('  No event hooks matched the replay input.'));
+  } else {
+    console.log('  Matched event hooks:');
+    for (const match of data.matches) {
+      console.log(`    - event[${match.eventIndex}] ${match.eventType} -> ${match.extensionName} (${match.pattern})`);
+    }
+  }
+
+  if (data.deferredRegistrations.length > 0) {
+    console.log('  Deferred registrations:');
+    for (const entry of data.deferredRegistrations) {
+      console.log(`    - ${entry.family}: ${entry.count}`);
+    }
+  } else {
+    console.log('  Deferred registrations: none');
+  }
+
+  if (data.diagnostics.length > 0) {
+    console.log('  Diagnostics:');
+    for (const diagnostic of data.diagnostics) {
+      const color = diagnostic.severity === 'error' ? chalk.red : chalk.yellow;
+      const target = diagnostic.name ?? diagnostic.path;
+      console.log(color(`    - ${diagnostic.severity} ${diagnostic.code}: ${diagnostic.message}${target ? ` (${target})` : ''}`));
+    }
+  }
+
+  if (data.emittedDiagnostics.length > 0) {
+    console.log('  Emitted diagnostic details:');
+    for (const diagnostic of data.emittedDiagnostics) {
+      const timeout = 'timeoutMs' in diagnostic ? ` timeoutMs=${diagnostic.timeoutMs}` : '';
+      const message = 'message' in diagnostic ? `: ${diagnostic.message}` : '';
+      console.log(chalk.red(`    - ${diagnostic.type}: ${diagnostic.extensionName} ${diagnostic.pattern} on ${diagnostic.triggeringEventType}${message}${timeout}`));
     }
   }
 }
@@ -643,6 +707,37 @@ export function createProgram(abortController?: AbortController, version?: strin
           for (const diagnostic of data.diagnostics) {
             console.error(chalk.red(`  - ${diagnostic.code}: ${diagnostic.message}`));
           }
+        }
+        if (!data.valid) process.exit(1);
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('test [nameOrPath]')
+    .description('Dry-run native extension event hooks against fixture or monitor events')
+    .option('--run <run>', 'Replay monitor DB events: latest or a session/run id')
+    .option('--event <type>', 'Filter replay input by exact event type')
+    .option('--fixture <path>', 'Replay project-local fixture events from a JSON or JSONL file')
+    .option('--json', 'Output JSON')
+    .action(async (nameOrPath: string | undefined, options: { run?: string; event?: string; fixture?: string; json?: boolean }) => {
+      try {
+        const body: ExtensionTestRequest = {};
+        if (nameOrPath) {
+          if (isExtensionPathArg(nameOrPath)) body.path = nameOrPath;
+          else body.name = nameOrPath;
+        }
+        if (options.fixture !== undefined) body.fixture = options.fixture;
+        if (options.run !== undefined) body.run = options.run;
+        if (options.event !== undefined) body.event = options.event;
+        const { data } = await apiTestExtension({ cwd: process.cwd(), body });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          renderExtensionTestResult(data);
         }
         if (!data.valid) process.exit(1);
       } catch (err) {

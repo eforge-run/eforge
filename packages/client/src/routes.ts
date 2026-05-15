@@ -131,6 +131,9 @@ export const API_ROUTES = {
   extensionList: '/api/extensions/list',
   extensionShow: '/api/extensions/show',
   extensionValidate: '/api/extensions/validate',
+  // --- eforge:region plan-01-engine-daemon-extension-replay ---
+  extensionTest: '/api/extensions/test',
+  // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
   // --- eforge:endregion plan-02-extension-tooling-surfaces ---
   // --- eforge:region plan-01-extension-management-api ---
   extensionNew: '/api/extensions/new',

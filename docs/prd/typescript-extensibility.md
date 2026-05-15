@@ -88,7 +88,7 @@ eforge extension reload
 
 Build this surface incrementally. The first eforge task should deliver the management MVP (`new`, `list`, `show`, `validate`, `reload`) plus shared daemon/client plumbing. Event replay testing belongs with the validation/replay harness task, and promote/demote plus richer enable/disable behavior can follow once the scoped loader and trust model are proven.
 
-Expose matching daemon API/client helpers and MCP/Pi tooling. The current MCP/Pi surface is a single `eforge_extension` tool with actions such as `new`, `list`, `show`, `validate`, and `reload`; future validation/replay work can add `test` when that runtime exists.
+Expose matching daemon API/client helpers and MCP/Pi tooling. The current MCP/Pi surface is a single `eforge_extension` tool with actions such as `new`, `list`, `show`, `validate`, `test`, and `reload`.
 
 ## Relationship to Profile Toolbelts
 
