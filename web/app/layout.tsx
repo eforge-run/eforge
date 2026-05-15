@@ -5,6 +5,10 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'eforge - agentic build system',
   description: 'eforge is an autonomous plan-build-review orchestration engine for agentic code generation.',
+  icons: {
+    icon: '/favicon.ico?v=3',
+    shortcut: '/favicon.ico?v=3',
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
