@@ -1,0 +1,139 @@
+name: harden-review-evaluation-cycles
+description: Harden review/evaluation cycles so evaluator agents submit
+  structured judgments while engine code applies and commits accepted fixes,
+  detects git-state divergence, and reports review-cycle termination without
+  stale issue counts.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm vitest run test/evaluation-application.test.ts
+    test/build-evaluator-enforcement.test.ts
+    test/compile-evaluator-enforcement.test.ts test/agent-wiring.test.ts
+    test/evaluator-continuation.test.ts test/retry.test.ts test/pipeline.test.ts
+    test/decisions.test.ts packages/client/src/__tests__/events-schemas.test.ts
+  - pnpm docs:check
+  - pnpm test
+plans:
+  - id: plan-01-evaluation-application-core
+    name: Evaluation Application Core
+    depends_on: []
+    branch: harden-review-evaluation-cycles/plan-01-evaluation-application-core
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: xhigh
+        rationale: Unified-diff parsing, hunk-level git index application, and state
+          restoration require careful git semantics and edge-case handling.
+      reviewer:
+        effort: high
+        rationale: The helper becomes the trust boundary for evaluator decisions and
+          must be reviewed for path safety and git-state invariants.
+      tester:
+        effort: high
+        rationale: Temp git repository tests need to cover file-level, hunk-level,
+          commit trailer, and invariant-failure paths.
+  - id: plan-02-build-evaluator-enforcement
+    name: Build Evaluator Enforcement and Reporting
+    depends_on:
+      - plan-01-evaluation-application-core
+    branch: harden-review-evaluation-cycles/plan-02-build-evaluator-enforcement
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This changes the build evaluator trust boundary, retry behavior,
+          event metadata, and review-cycle reporting in coordinated engine
+          files.
+      reviewer:
+        effort: high
+        rationale: Review must verify no evaluator self-mutation path remains and
+          max-round reporting no longer uses stale review issue lists.
+      tester:
+        effort: high
+        rationale: Pipeline-level tests need stub harnesses plus temp git repos to prove
+          enforcement and reporting behavior.
+  - id: plan-03-compile-evaluator-parity
+    name: Compile Evaluator Parity
+    depends_on:
+      - plan-02-build-evaluator-enforcement
+    branch: harden-review-evaluation-cycles/plan-03-compile-evaluator-parity
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Compile review cycles share retry machinery with build evaluation and
+          need coordinated updates across runner, agents, prompts, and tests.
+      reviewer:
+        effort: high
+        rationale: Review must confirm plan, cohesion, and architecture evaluator modes
+          all use the same engine-applied contract.
+      tester:
+        effort: high
+        rationale: Plan-phase parity requires temp git repo tests for all evaluator
+          modes plus continuation and non-fatal failure behavior.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - test-write
+    - review-cycle
+    - test-cycle
+    - doc-sync
+    - validate
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - verify
+      - security
+      - docs
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: This is a cohesive cross-cutting engine refactor, not a delegated
+    multi-subsystem expedition. Plan review is included because the
+    git-state/evaluator boundary and compile/build parity need careful
+    sequencing. The build pipeline emphasizes implementation, regression test
+    generation, iterative code review, final test execution, documentation
+    synchronization for changed behavior/events/prompts, and validation. Strict
+    parallel review is appropriate because the change affects engine trust
+    boundaries, commit conventions, event/API behavior, and test coverage.
