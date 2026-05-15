@@ -1,0 +1,108 @@
+name: extend-07-extension-validation-and-replay-test-harness
+description: Add extension validation and replay test harness across engine,
+  daemon/client API, CLI, MCP/Pi tooling, docs, and tests.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+plans:
+  - id: plan-01-engine-daemon-extension-replay
+    name: Engine and Daemon Extension Replay Harness
+    depends_on: []
+    branch: extend-07-extension-validation-and-replay-test-harness/plan-01-engine-daemon-extension-replay
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Adds a new reusable execution harness plus public daemon/client route
+          shapes and security-sensitive route handling for arbitrary extension
+          code execution.
+      reviewer:
+        effort: high
+        rationale: Review must cover API shape, security guard placement, and reuse of
+          existing extension runtime semantics.
+      tester:
+        effort: high
+        rationale: Route, fixture parsing, event filtering, timeout/failure diagnostics,
+          and DB replay paths need focused verification.
+  - id: plan-02-cli-mcp-pi-docs-extension-test
+    name: CLI, MCP, Pi, and Docs Extension Test Surface
+    depends_on:
+      - plan-01-engine-daemon-extension-replay
+    branch: extend-07-extension-validation-and-replay-test-harness/plan-02-cli-mcp-pi-docs-extension-test
+    build:
+      - - implement
+        - doc-author
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - docs
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Updates multiple user-facing surfaces that must remain in parity
+          while consuming the new client route contract.
+      reviewer:
+        effort: high
+        rationale: Review must verify CLI exit semantics, MCP/Pi parameter parity,
+          documentation accuracy, and no inline daemon route literals.
+      tester:
+        effort: high
+        rationale: CLI and static parity tests need coverage for JSON/non-JSON output
+          and nonzero failure behavior.
+      doc-author:
+        effort: medium
+        rationale: Docs need focused updates to remove deferred replay language and
+          document command/API behavior.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - test-write
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+      - api
+      - docs
+      - test
+      - verify
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: Excursion fits because the feature spans engine, client, daemon, CLI,
+    Pi/MCP, docs, and tests, but it is one cohesive validation/replay API rather
+    than independently planned subsystems. A planner plus plan-review cycle
+    gives enough compile-time quality control without expedition overhead. Build
+    runs implementation alongside planned docs, then syncs docs to the actual
+    diff, adds tests, performs strict multi-perspective review for public
+    API/security-sensitive extension execution, and finishes with an iterative
+    test cycle to verify behavior.
