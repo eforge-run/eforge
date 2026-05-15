@@ -30,24 +30,24 @@
     "type-check": "tsc --noEmit"
   },
   "dependencies": {
-    "@anthropic-ai/claude-agent-sdk": "^0.2.140",
+    "@anthropic-ai/claude-agent-sdk": "^0.2.141",
     "@earendil-works/pi-agent-core": "^0.74.0",
     "@earendil-works/pi-ai": "^0.74.0",
     "@earendil-works/pi-coding-agent": "^0.74.0",
     "@eforge-build/client": "workspace:*",
     "@eforge-build/extension-sdk": "workspace:*",
     "@eforge-build/scopes": "workspace:*",
-    "jiti": "^2.7.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@sinclair/typebox": "^0.34.49",
     "chalk": "^5.6.2",
+    "jiti": "^2.7.0",
     "langfuse": "^3.38.20",
     "ora": "^9.4.0",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/node": "^25.7.0",
+    "@types/node": "^25.8.0",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   },
