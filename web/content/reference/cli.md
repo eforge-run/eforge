@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: fdd0ca45 -->
+<!-- Commit: d171f301 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -111,7 +111,7 @@ Build a single PRD directly (subprocess entry point for the queue scheduler)
 
 ### `extension`
 
-Inspect and validate native eforge extensions
+Manage native eforge extensions
 
 
 #### `list`
@@ -139,6 +139,31 @@ Show one native extension by name
 #### `validate`
 
 Validate configured native extensions, or a single extension name/path
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output JSON |
+
+#### `new`
+
+Scaffold a native eforge extension
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--scope <scope>` | Extension scope: local, project, or user |
+| `--template <template>` | Scaffold template |
+| `--force` | Overwrite an existing extension file |
+| `--json` | Output JSON |
+
+#### `reload`
+
+Reload native extension discovery and restart the daemon watcher when running
 
 
 **Options:**

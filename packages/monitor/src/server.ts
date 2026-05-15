@@ -23,6 +23,8 @@ import type {
   ExtensionDiagnostic,
   ExtensionEntry,
   ExtensionListResponse,
+  ExtensionNewRequest,
+  ExtensionReloadWatcherMetadata,
   ExtensionRegistrationSummary,
 } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent, parseWithSchema } from '@eforge-build/client';
@@ -194,6 +196,10 @@ export interface DaemonState {
   onSpawnWatcher?: () => void;
   /** Callback to kill the watcher — set by server-main.ts */
   onKillWatcher?: () => void;
+  // --- eforge:region plan-01-extension-management-api ---
+  /** Callback to reload extension discovery and restart the active watcher — set by server-main.ts */
+  onReloadExtensions?: () => Promise<ExtensionReloadWatcherMetadata>;
+  // --- eforge:endregion plan-01-extension-management-api ---
   /** Callback to trigger graceful daemon shutdown — set by server-main.ts */
   onShutdown?: () => void;
   /**
@@ -1149,6 +1155,39 @@ export async function startServer(
     res.end(JSON.stringify(data));
   }
 
+  // Extension scaffold/reload mutates local filesystem/runtime state. The
+  // daemon is otherwise browser-reachable (CORS preflight is allowed globally),
+  // so require these new mutation routes to originate from the local machine and
+  // reject cross-origin browser requests.
+  function rejectUnsafeExtensionMutationRequest(req: IncomingMessage, res: ServerResponse): boolean {
+    const remoteAddress = req.socket.remoteAddress;
+    const isLoopback = remoteAddress === undefined
+      || remoteAddress === '::1'
+      || remoteAddress === '::ffff:127.0.0.1'
+      || remoteAddress.startsWith('127.');
+    if (!isLoopback) {
+      sendJsonError(res, 403, 'Extension management mutations must originate from the local machine');
+      return true;
+    }
+
+    const originHeader = req.headers.origin;
+    const origin = Array.isArray(originHeader) ? originHeader[0] : originHeader;
+    if (origin) {
+      const host = req.headers.host;
+      try {
+        if (!host || new URL(origin).host !== host) {
+          sendJsonError(res, 403, 'Cross-origin extension management mutations are not allowed');
+          return true;
+        }
+      } catch {
+        sendJsonError(res, 403, 'Cross-origin extension management mutations are not allowed');
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   /**
    * Extract the harness kind from a parsed profile object.
    * Supports both the new `agentRuntimes.<name>.harness` shape and the legacy
@@ -1241,6 +1280,12 @@ export async function startServer(
       ?? matches[0];
   }
 
+  // --- eforge:region plan-01-extension-management-api ---
+  function extensionEntryEnabled(status: ExtensionEntry['status'], globalEnabled: boolean): boolean {
+    return globalEnabled && status !== 'shadowed' && status !== 'excluded';
+  }
+  // --- eforge:endregion plan-01-extension-management-api ---
+
   async function loadExtensionResponse(opts: { path?: string } = {}): Promise<ExtensionListResponse> {
     if (!cwd) throw new Error('Working directory not configured');
     const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
@@ -1260,6 +1305,47 @@ export async function startServer(
       }
       : config.extensions;
 
+    // --- eforge:region plan-01-extension-management-api ---
+    if (!opts.path && !config.extensions.enabled) {
+      const discovery = await discoverNativeExtensions({
+        cwd,
+        configDir,
+        config: {
+          ...config.extensions,
+          enabled: true,
+        },
+      });
+      const extensions: ExtensionEntry[] = discovery.candidates.map((candidate) => ({
+        name: candidate.name,
+        path: candidate.path,
+        ...(candidate.entrypoint !== undefined && { entrypoint: candidate.entrypoint }),
+        scope: candidate.scope as ExtensionEntry['scope'],
+        source: candidate.source,
+        status: candidate.status,
+        enabled: false,
+        trust: candidate.trust,
+        ...(candidate.format !== undefined && { format: candidate.format }),
+        ...(candidate.layout !== undefined && { layout: candidate.layout }),
+        shadows: candidate.shadows.map((shadow) => ({
+          name: shadow.name,
+          path: shadow.path,
+          ...(shadow.entrypoint !== undefined && { entrypoint: shadow.entrypoint }),
+          scope: shadow.scope,
+          ...(shadow.format !== undefined && { format: shadow.format }),
+          ...(shadow.layout !== undefined && { layout: shadow.layout }),
+        })),
+        registrations: { ...EMPTY_EXTENSION_REGISTRATIONS },
+        diagnostics: candidate.diagnostics.map(normalizeExtensionDiagnostic),
+      }));
+      extensions.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+      return {
+        extensions,
+        diagnostics: discovery.diagnostics.map(normalizeExtensionDiagnostic),
+        totals: { ...EMPTY_EXTENSION_REGISTRATIONS },
+      };
+    }
+    // --- eforge:endregion plan-01-extension-management-api ---
+
     const loadResult = await loadNativeExtensions({ cwd, configDir, config: extensionConfig });
     const projection = projectExtensionRegistry(loadResult.registry);
     const loadedByKey = new Map(projection.extensions.map((extension) => [`${extension.name}\0${extension.path}`, extension]));
@@ -1273,6 +1359,9 @@ export async function startServer(
         scope: candidate.scope as ExtensionEntry['scope'],
         source: candidate.source,
         status: candidate.status,
+        // --- eforge:region plan-01-extension-management-api ---
+        enabled: extensionEntryEnabled(candidate.status, extensionConfig.enabled),
+        // --- eforge:endregion plan-01-extension-management-api ---
         trust: candidate.trust,
         ...(candidate.format !== undefined && { format: candidate.format }),
         ...(candidate.layout !== undefined && { layout: candidate.layout }),
@@ -1310,6 +1399,9 @@ export async function startServer(
           scope: candidate.scope as ExtensionEntry['scope'],
           source: candidate.source,
           status: 'excluded',
+          // --- eforge:region plan-01-extension-management-api ---
+          enabled: false,
+          // --- eforge:endregion plan-01-extension-management-api ---
           trust: candidate.trust,
           ...(candidate.format !== undefined && { format: candidate.format }),
           ...(candidate.layout !== undefined && { layout: candidate.layout }),
@@ -1988,6 +2080,83 @@ export async function startServer(
     }
 
     // --- eforge:region plan-02-extension-tooling-surfaces ---
+    // --- eforge:region plan-01-extension-management-api ---
+    if (req.method === 'POST' && url === API_ROUTES.extensionNew) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let body: ExtensionNewRequest;
+      try {
+        const bodyRaw = await parseJsonBody(req);
+        if (typeof bodyRaw !== 'object' || bodyRaw === null || Array.isArray(bodyRaw)) {
+          sendJsonError(res, 400, 'Invalid JSON body');
+          return;
+        }
+        body = bodyRaw as ExtensionNewRequest;
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (!body.name || typeof body.name !== 'string') {
+        sendJsonError(res, 400, 'Missing required field: name');
+        return;
+      }
+      if (body.scope !== undefined && body.scope !== 'local' && body.scope !== 'project' && body.scope !== 'user') {
+        sendJsonError(res, 400, 'Invalid extension scope. Supported scopes: local, project, user');
+        return;
+      }
+      if (body.template !== undefined && body.template !== 'event-logger' && body.template !== 'blank') {
+        sendJsonError(res, 400, 'Unknown extension template. Supported templates: event-logger, blank');
+        return;
+      }
+      if (body.force !== undefined && typeof body.force !== 'boolean') {
+        sendJsonError(res, 400, 'Invalid field: force must be boolean');
+        return;
+      }
+      try {
+        const { scaffoldNativeExtension } = await import('@eforge-build/engine/extensions/index');
+        const result = await scaffoldNativeExtension({
+          cwd,
+          name: body.name,
+          ...(body.scope !== undefined && { scope: body.scope }),
+          ...(body.template !== undefined && { template: body.template }),
+          force: body.force === true,
+        });
+        sendJson(res, result);
+      } catch (err) {
+        const status = err instanceof Error && err.name === 'ScaffoldNativeExtensionError'
+          ? ((err as { status?: number }).status ?? 400)
+          : 500;
+        sendJsonError(res, status, err instanceof Error ? err.message : 'Failed to scaffold extension');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.extensionReload) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      try {
+        const data = await loadExtensionResponse();
+        const currentWatcher = options?.daemonState?.watcher;
+        const watcher = options?.daemonState?.onReloadExtensions
+          ? await options.daemonState.onReloadExtensions()
+          : {
+            wasRunning: currentWatcher?.running ?? false,
+            restarted: false,
+            running: currentWatcher?.running ?? false,
+            previousSessionId: currentWatcher?.sessionId ?? null,
+            sessionId: currentWatcher?.sessionId ?? null,
+            message: 'Extension discovery refreshed; no runtime watcher was restarted.',
+          } satisfies ExtensionReloadWatcherMetadata;
+        sendJson(res, { ...data, ...watcher, watcher });
+      } catch (err) {
+        sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to reload extensions');
+      }
+      return;
+    }
+    // --- eforge:endregion plan-01-extension-management-api ---
+
     if (req.method === 'GET' && (url === API_ROUTES.extensionList || url.startsWith(`${API_ROUTES.extensionList}?`))) {
       try {
         const data = await loadExtensionResponse();

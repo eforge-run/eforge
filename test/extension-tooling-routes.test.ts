@@ -3,12 +3,12 @@
  */
 
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
-import { API_ROUTES, writeLockfile, apiListExtensions, apiShowExtension, apiValidateExtensions, type ExtensionListResponse, type ExtensionShowResponse, type ExtensionValidateResponse } from '@eforge-build/client';
+import { API_ROUTES, writeLockfile, apiListExtensions, apiNewExtension, apiReloadExtensions, apiShowExtension, apiValidateExtensions, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionValidateResponse } from '@eforge-build/client';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -85,15 +85,55 @@ describe('extension tooling daemon routes', () => {
     const data = await res.json() as ExtensionListResponse;
 
     const loaded = data.extensions.find((entry) => entry.name === 'loaded' && entry.status === 'loaded');
-    expect(loaded).toMatchObject({ name: 'loaded', status: 'loaded', scope: 'project-local', source: 'auto' });
+    expect(loaded).toMatchObject({ name: 'loaded', status: 'loaded', scope: 'project-local', source: 'auto', enabled: true });
     expect(loaded?.registrations.inputSources).toBe(1);
     expect(loaded?.shadows.some((shadow) => shadow.scope === 'project-team')).toBe(true);
-    expect(data.extensions.find((entry) => entry.name === 'loaded' && entry.status === 'shadowed')).toMatchObject({ name: 'loaded', status: 'shadowed', scope: 'project-team' });
-    expect(data.extensions.find((entry) => entry.name === 'team')).toMatchObject({ name: 'team', status: 'skipped', scope: 'project-team' });
-    expect(data.extensions.find((entry) => entry.name === 'bad')).toMatchObject({ name: 'bad', status: 'error', scope: 'project-local' });
-    expect(data.extensions.find((entry) => entry.name === 'excluded')).toMatchObject({ name: 'excluded', status: 'excluded', scope: 'project-local' });
+    expect(data.extensions.find((entry) => entry.name === 'loaded' && entry.status === 'shadowed')).toMatchObject({ name: 'loaded', status: 'shadowed', scope: 'project-team', enabled: false });
+    expect(data.extensions.find((entry) => entry.name === 'team')).toMatchObject({ name: 'team', status: 'skipped', scope: 'project-team', enabled: true });
+    expect(data.extensions.find((entry) => entry.name === 'bad')).toMatchObject({ name: 'bad', status: 'error', scope: 'project-local', enabled: true });
+    expect(data.extensions.find((entry) => entry.name === 'excluded')).toMatchObject({ name: 'excluded', status: 'excluded', scope: 'project-local', enabled: false });
+    expect(data.extensions.every((entry) => typeof entry.enabled === 'boolean')).toBe(true);
     expect(data.diagnostics.some((diagnostic) => diagnostic.code === 'extension:invalid-export')).toBe(true);
     expect(data.diagnostics.some((diagnostic) => diagnostic.code === 'extension:untrusted')).toBe(true);
+  });
+
+  it('GET extensionList marks all discovered entries disabled when extensions are globally disabled', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), [
+      'extensions:',
+      '  enabled: false',
+      '  trustProjectExtensions: false',
+    ].join('\n'), 'utf-8');
+    const srv = await start(tmpDir);
+
+    const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionList}`);
+    expect(res.status).toBe(200);
+    const data = await res.json() as ExtensionListResponse;
+
+    expect(data.extensions.length).toBeGreaterThan(0);
+    expect(data.extensions.every((entry) => entry.enabled === false)).toBe(true);
+    expect(data.totals).toMatchObject({ eventHooks: 0, inputSources: 0, tools: 0 });
+  });
+
+  it('GET extensionList marks include-filtered auto entries disabled while selected entries stay enabled', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), [
+      'extensions:',
+      '  trustProjectExtensions: false',
+      '  include:',
+      '    - loaded',
+    ].join('\n'), 'utf-8');
+    const srv = await start(tmpDir);
+
+    const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionList}`);
+    expect(res.status).toBe(200);
+    const data = await res.json() as ExtensionListResponse;
+
+    expect(data.extensions.find((entry) => entry.name === 'loaded' && entry.status === 'loaded')).toMatchObject({ enabled: true });
+    expect(data.extensions.find((entry) => entry.name === 'bad')).toMatchObject({ status: 'excluded', enabled: false });
+    expect(data.extensions.find((entry) => entry.name === 'excluded')).toMatchObject({ status: 'excluded', enabled: false });
   });
 
   it('GET extensionShow returns one entry and 404 for unknown names', async () => {
@@ -106,6 +146,7 @@ describe('extension tooling daemon routes', () => {
     const data = await res.json() as ExtensionShowResponse;
     expect(data.extension.name).toBe('loaded');
     expect(data.extension.status).toBe('loaded');
+    expect(data.extension.enabled).toBe(true);
 
     const missing = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionShow}?name=missing`);
     expect(missing.status).toBe(404);
@@ -133,6 +174,12 @@ describe('extension tooling daemon routes', () => {
     expect(validate.data.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'extension:invalid-export' }),
     ]));
+
+    const created = await apiNewExtension({ cwd: tmpDir, body: { name: 'audit' } });
+    expect(created.data).toMatchObject({ name: 'audit', template: 'event-logger', scope: 'project-local' });
+
+    const reload = await apiReloadExtensions({ cwd: tmpDir });
+    expect(reload.data.extensions.some((entry) => entry.name === 'audit')).toBe(true);
   });
 
   it('GET extensionValidate returns valid:false and error diagnostics when any extension has load errors', async () => {
@@ -172,6 +219,149 @@ describe('extension tooling daemon routes', () => {
 
     const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionValidate}?path=${encodeURIComponent('../outside.js')}`);
     expect(res.status).toBe(400);
+  });
+
+  it('POST extensionNew creates the default template in project-local scope', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const srv = await start(tmpDir);
+
+    const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionNew}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'audit' }),
+    });
+    expect(res.status).toBe(200);
+    const data = await res.json() as ExtensionNewResponse;
+    expect(data).toMatchObject({ name: 'audit', template: 'event-logger', scope: 'project-local', overwritten: false });
+    const content = await readFile(resolve(tmpDir, '.eforge', 'extensions', 'audit.ts'), 'utf-8');
+    expect(content).toContain('defineEforgeExtension');
+    expect(content).toContain('onEvent');
+  });
+
+  it('POST extensionNew returns 409 on conflict and leaves existing content unchanged', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const srv = await start(tmpDir);
+    const target = resolve(tmpDir, '.eforge', 'extensions', 'audit.ts');
+    await writeFile(target, 'existing content', 'utf-8');
+
+    const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionNew}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'audit' }),
+    });
+
+    expect(res.status).toBe(409);
+    expect(await readFile(target, 'utf-8')).toBe('existing content');
+  });
+
+  it('POST extensionNew honors request scope, template, and force overwrite', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const srv = await start(tmpDir);
+    const target = resolve(tmpDir, 'eforge', 'extensions', 'team-audit.ts');
+    await writeFile(target, 'existing content', 'utf-8');
+
+    const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionNew}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'team-audit', scope: 'project', template: 'blank', force: true }),
+    });
+
+    expect(res.status).toBe(200);
+    const data = await res.json() as ExtensionNewResponse;
+    expect(data).toMatchObject({
+      name: 'team-audit',
+      requestScope: 'project',
+      scope: 'project-team',
+      template: 'blank',
+      overwritten: true,
+      path: target,
+    });
+    const content = await readFile(target, 'utf-8');
+    expect(content).toContain('Register extension capabilities here');
+    expect(content).not.toContain('onEvent');
+  });
+
+  it('POST extensionNew rejects invalid names and unknown templates', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const srv = await start(tmpDir);
+
+    for (const body of [
+      { name: '../audit' },
+      { name: '..' },
+      { name: '' },
+      { name: 'audit', template: 'missing' },
+    ]) {
+      const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionNew}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it('POST extensionReload returns fresh extension data and no-watcher metadata', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const srv = await start(tmpDir);
+
+    const res = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionReload}`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const data = await res.json() as ExtensionReloadResponse;
+    expect(data.extensions.some((entry) => entry.name === 'loaded')).toBe(true);
+    expect(Array.isArray(data.diagnostics)).toBe(true);
+    expect(data.totals).toMatchObject({ inputSources: 1 });
+    expect(data.watcher).toEqual({
+      wasRunning: false,
+      restarted: false,
+      running: false,
+      previousSessionId: null,
+      sessionId: null,
+      message: 'Extension discovery refreshed; no runtime watcher was restarted.',
+    });
+    expect(data).toMatchObject(data.watcher);
+  });
+
+  it('POST extensionReload reports active watcher restart metadata from daemon state', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const db = openDatabase(resolve(tmpDir, '.eforge', 'monitor.db'));
+    const onReloadExtensions = vi.fn(async () => ({
+      wasRunning: true,
+      restarted: true,
+      running: true,
+      previousSessionId: 'watcher-old',
+      sessionId: 'watcher-new',
+      message: 'restarted',
+    }));
+    server = await startServer(db, 0, {
+      strictPort: true,
+      cwd: tmpDir,
+      daemonState: {
+        autoBuild: true,
+        autoBuildPaused: false,
+        watcher: { running: true, pid: null, sessionId: 'watcher-old' },
+        onReloadExtensions,
+      },
+    });
+
+    const res = await fetch(`http://localhost:${server.port}${API_ROUTES.extensionReload}`, { method: 'POST' });
+    expect(res.status).toBe(200);
+    const data = await res.json() as ExtensionReloadResponse;
+    expect(onReloadExtensions).toHaveBeenCalledOnce();
+    expect(data.watcher).toEqual({
+      wasRunning: true,
+      restarted: true,
+      running: true,
+      previousSessionId: 'watcher-old',
+      sessionId: 'watcher-new',
+      message: 'restarted',
+    });
+    expect(data).toMatchObject(data.watcher);
   });
 
   it('CLI extension validate exits with code 1 for an invalid ad-hoc extension path', async () => {

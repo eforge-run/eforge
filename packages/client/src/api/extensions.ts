@@ -6,6 +6,9 @@ import { daemonRequest } from '../daemon-client.js';
 import { API_ROUTES } from '../routes.js';
 import type {
   ExtensionListResponse,
+  ExtensionNewRequest,
+  ExtensionNewResponse,
+  ExtensionReloadResponse,
   ExtensionShowResponse,
   ExtensionValidateResponse,
 } from '../types.js';
@@ -37,4 +40,12 @@ export function apiValidateExtensions(opts: { cwd: string; name?: string; path?:
     'GET',
     appendQuery(API_ROUTES.extensionValidate, params),
   );
+}
+
+export function apiNewExtension(opts: { cwd: string; body: ExtensionNewRequest }) {
+  return daemonRequest<ExtensionNewResponse>(opts.cwd, 'POST', API_ROUTES.extensionNew, opts.body);
+}
+
+export function apiReloadExtensions(opts: { cwd: string }) {
+  return daemonRequest<ExtensionReloadResponse>(opts.cwd, 'POST', API_ROUTES.extensionReload, {});
 }

@@ -64,6 +64,10 @@ export {
   apiListExtensions,
   apiShowExtension,
   apiValidateExtensions,
+  // --- eforge:region plan-01-extension-management-api ---
+  apiNewExtension,
+  apiReloadExtensions,
+  // --- eforge:endregion plan-01-extension-management-api ---
 } from './api/extensions.js';
 // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
@@ -254,6 +258,10 @@ export type {
   ExtensionFormat,
   ExtensionLayout,
   ExtensionTrust,
+  // --- eforge:region plan-01-extension-management-api ---
+  ExtensionScaffoldScope,
+  ExtensionScaffoldTemplate,
+  // --- eforge:endregion plan-01-extension-management-api ---
   ExtensionDiagnostic,
   ExtensionShadow,
   ExtensionRegistrationSummary,
@@ -261,6 +269,12 @@ export type {
   ExtensionListResponse,
   ExtensionShowResponse,
   ExtensionValidateResponse,
+  // --- eforge:region plan-01-extension-management-api ---
+  ExtensionNewRequest,
+  ExtensionNewResponse,
+  ExtensionReloadWatcherMetadata,
+  ExtensionReloadResponse,
+  // --- eforge:endregion plan-01-extension-management-api ---
   QueueItem,
   SessionMetadata,
   RunInfo,

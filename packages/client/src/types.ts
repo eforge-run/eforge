@@ -39,6 +39,10 @@ export type ExtensionDiagnosticSeverity = 'warning' | 'error';
 export type ExtensionFormat = 'js' | 'mjs' | 'ts' | 'mts';
 export type ExtensionLayout = 'file' | 'directory';
 export type ExtensionTrust = 'trusted' | 'untrusted';
+// --- eforge:region plan-01-extension-management-api ---
+export type ExtensionScaffoldScope = 'local' | 'project' | 'user';
+export type ExtensionScaffoldTemplate = 'event-logger' | 'blank';
+// --- eforge:endregion plan-01-extension-management-api ---
 
 export interface ExtensionDiagnostic {
   severity: ExtensionDiagnosticSeverity;
@@ -77,6 +81,9 @@ export interface ExtensionEntry {
   scope: ExtensionScope;
   source: ExtensionSource;
   status: ExtensionStatus;
+  // --- eforge:region plan-01-extension-management-api ---
+  enabled?: boolean;
+  // --- eforge:endregion plan-01-extension-management-api ---
   trust?: ExtensionTrust;
   format?: ExtensionFormat;
   layout?: ExtensionLayout;
@@ -101,6 +108,42 @@ export interface ExtensionValidateResponse {
   extensions: ExtensionEntry[];
   diagnostics: ExtensionDiagnostic[];
 }
+
+// --- eforge:region plan-01-extension-management-api ---
+export interface ExtensionNewRequest {
+  name: string;
+  scope?: ExtensionScaffoldScope;
+  template?: ExtensionScaffoldTemplate;
+  force?: boolean;
+}
+
+export interface ExtensionNewResponse {
+  name: string;
+  template: ExtensionScaffoldTemplate;
+  requestScope: ExtensionScaffoldScope;
+  scope: Exclude<ExtensionScope, 'external'>;
+  configDir: string;
+  scopeDir: string;
+  extensionsDir: string;
+  path: string;
+  created: true;
+  overwritten: boolean;
+  message: string;
+}
+
+export interface ExtensionReloadWatcherMetadata {
+  wasRunning: boolean;
+  restarted: boolean;
+  running: boolean;
+  previousSessionId: string | null;
+  sessionId: string | null;
+  message: string;
+}
+
+export interface ExtensionReloadResponse extends ExtensionListResponse, ExtensionReloadWatcherMetadata {
+  watcher: ExtensionReloadWatcherMetadata;
+}
+// --- eforge:endregion plan-01-extension-management-api ---
 // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
 // GET /api/queue (array of these)

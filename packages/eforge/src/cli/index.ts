@@ -28,7 +28,10 @@ import {
   apiListExtensions,
   apiShowExtension,
   apiValidateExtensions,
+  apiNewExtension,
+  apiReloadExtensions,
   type ExtensionEntry,
+  type ExtensionNewRequest,
 } from '@eforge-build/client';
 import { runOrDelegate } from './run-or-delegate.js';
 import { formatCliError } from './errors.js';
@@ -164,10 +167,11 @@ function renderExtensionTable(extensions: ExtensionEntry[]): void {
     status: entry.status,
     scope: entry.scope,
     source: entry.source,
+    enabled: String(entry.enabled),
     registrations: extensionRegistrationSummary(entry),
     path: entry.path,
   }));
-  const headers = ['name', 'status', 'scope', 'source', 'registrations', 'path'] as const;
+  const headers = ['name', 'status', 'enabled', 'scope', 'source', 'registrations', 'path'] as const;
   const widths = Object.fromEntries(headers.map((header) => [
     header,
     Math.max(header.length, ...rows.map((row) => String(row[header]).length)),
@@ -182,6 +186,7 @@ function renderExtensionTable(extensions: ExtensionEntry[]): void {
 function renderExtensionDetail(entry: ExtensionEntry): void {
   console.log(chalk.bold(entry.name));
   console.log(`  Status:        ${entry.status}`);
+  console.log(`  Enabled:       ${entry.enabled}`);
   console.log(`  Scope:         ${entry.scope}`);
   console.log(`  Source:        ${entry.source}`);
   console.log(`  Path:          ${entry.path}`);
@@ -573,7 +578,7 @@ export function createProgram(abortController?: AbortController, version?: strin
   // --- eforge:region plan-02-extension-tooling-surfaces ---
   const extension = program
     .command('extension')
-    .description('Inspect and validate native eforge extensions');
+    .description('Manage native eforge extensions');
 
   extension
     .command('list')
@@ -640,6 +645,67 @@ export function createProgram(abortController?: AbortController, version?: strin
           }
         }
         if (!data.valid) process.exit(1);
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('new <name>')
+    .description('Scaffold a native eforge extension')
+    .option('--scope <scope>', 'Extension scope: local, project, or user')
+    .option('--template <template>', 'Scaffold template')
+    .option('--force', 'Overwrite an existing extension file')
+    .option('--json', 'Output JSON')
+    .action(async (name: string, options: { scope?: string; template?: string; force?: boolean; json?: boolean }) => {
+      try {
+        const body: ExtensionNewRequest = { name };
+        if (options.scope !== undefined) {
+          if (!['local', 'project', 'user'].includes(options.scope)) {
+            throw new Error('--scope must be one of: local, project, user');
+          }
+          body.scope = options.scope as ExtensionNewRequest['scope'];
+        }
+        if (options.template !== undefined) body.template = options.template as ExtensionNewRequest['template'];
+        if (options.force !== undefined) body.force = options.force;
+        const { data } = await apiNewExtension({ cwd: process.cwd(), body });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.log(chalk.green('✔') + ` Extension ${data.name} scaffolded`);
+          console.log(`  Path:       ${data.path}`);
+          console.log(`  Scope:      ${data.scope}`);
+          console.log(`  Template:   ${data.template}`);
+          console.log(`  Overwritten:${data.overwritten ? ' yes' : ' no'}`);
+          console.log(chalk.dim(`Next: eforge extension validate ${data.name}`));
+          console.log(chalk.dim('Next: eforge extension reload'));
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('reload')
+    .description('Reload native extension discovery and restart the daemon watcher when running')
+    .option('--json', 'Output JSON')
+    .action(async (options: { json?: boolean }) => {
+      try {
+        const { data } = await apiReloadExtensions({ cwd: process.cwd() });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.log(chalk.green('✔') + ' Extensions reloaded');
+          console.log(`  Watcher was running: ${data.watcher.wasRunning}`);
+          console.log(`  Watcher restarted:   ${data.watcher.restarted}`);
+          console.log(`  Watcher running:     ${data.watcher.running}`);
+          console.log(`  Diagnostics:         ${data.diagnostics.length}`);
+          console.log(`  Message:             ${data.watcher.message}`);
+        }
       } catch (err) {
         const { message, exitCode } = formatCliError(err);
         console.error(chalk.red(`Error: ${message}`));

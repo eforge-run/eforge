@@ -47,6 +47,8 @@ import {
   apiListExtensions,
   apiShowExtension,
   apiValidateExtensions,
+  apiNewExtension,
+  apiReloadExtensions,
   LOCKFILE_POLL_INTERVAL_MS,
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
@@ -66,6 +68,7 @@ import type {
   SessionStreamSnapshot,
   FollowCounters,
   VersionResponse,
+  ExtensionNewRequest,
 } from '@eforge-build/client';
 import { handleProfileCommand, handleProfileNewCommand } from './profile-commands';
 import { handleConfigCommand } from './config-command';
@@ -997,15 +1000,15 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_extension",
     label: "eforge extension",
     description:
-      'List, show, or validate native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path.',
+      'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running.',
     parameters: Type.Object({
-      action: StringEnum(["list", "show", "validate"] as const, {
+      action: StringEnum(["list", "show", "validate", "new", "reload"] as const, {
         description: "Extension operation to perform",
       }),
       name: Type.Optional(
         Type.String({
           minLength: 1,
-          description: 'Extension name (required for "show", optional for "validate")',
+          description: 'Extension name (required for "show" and "new", optional for "validate")',
         }),
       ),
       path: Type.Optional(
@@ -1014,11 +1017,20 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           description: 'Ad-hoc extension file/directory path to validate ("validate" only)',
         }),
       ),
+      scope: Type.Optional(StringEnum(["local", "project", "user"] as const, {
+        description: 'Scope for "new". Defaults to local.',
+      })),
+      template: Type.Optional(StringEnum(["event-logger", "blank"] as const, {
+        description: 'Scaffold template for "new". Defaults to event-logger.',
+      })),
+      force: Type.Optional(Type.Boolean({
+        description: 'Overwrite an existing extension file when action is "new". Default: false.',
+      })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       if (params.action === "list") {
-        if (params.name !== undefined || params.path !== undefined) {
-          throw new Error('"name" and "path" are not supported when action is "list"');
+        if (params.name !== undefined || params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
+          throw new Error('"list" does not accept name, path, scope, template, or force');
         }
         const { data } = await apiListExtensions({ cwd: ctx.cwd });
         return jsonResult(data);
@@ -1027,19 +1039,43 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (!params.name) {
           throw new Error('"name" is required when action is "show"');
         }
-        if (params.path !== undefined) {
-          throw new Error('"path" is not supported when action is "show"');
+        if (params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
+          throw new Error('"show" does not accept path, scope, template, or force');
         }
         const { data } = await apiShowExtension({ cwd: ctx.cwd, name: params.name });
         return jsonResult(data);
       }
-      if (params.name !== undefined && params.path !== undefined) {
-        throw new Error('Specify only one of "name" or "path" for validate');
+      if (params.action === "validate") {
+        if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
+          throw new Error('"validate" does not accept scope, template, or force');
+        }
+        if (params.name !== undefined && params.path !== undefined) {
+          throw new Error('Specify only one of "name" or "path" for validate');
+        }
+        const request: { cwd: string; name?: string; path?: string } = { cwd: ctx.cwd };
+        if (params.name !== undefined) request.name = params.name;
+        if (params.path !== undefined) request.path = params.path;
+        const { data } = await apiValidateExtensions(request);
+        return jsonResult(data);
       }
-      const request: { cwd: string; name?: string; path?: string } = { cwd: ctx.cwd };
-      if (params.name !== undefined) request.name = params.name;
-      if (params.path !== undefined) request.path = params.path;
-      const { data } = await apiValidateExtensions(request);
+      if (params.action === "new") {
+        if (!params.name) {
+          throw new Error('"name" is required when action is "new"');
+        }
+        if (params.path !== undefined) {
+          throw new Error('"path" is not supported when action is "new"');
+        }
+        const body: ExtensionNewRequest = { name: params.name };
+        if (params.scope !== undefined) body.scope = params.scope;
+        if (params.template !== undefined) body.template = params.template as ExtensionNewRequest['template'];
+        if (params.force !== undefined) body.force = params.force;
+        const { data } = await apiNewExtension({ cwd: ctx.cwd, body });
+        return jsonResult(data);
+      }
+      if (params.name !== undefined || params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
+        throw new Error('"reload" does not accept name, path, scope, template, or force');
+      }
+      const { data } = await apiReloadExtensions({ cwd: ctx.cwd });
       return jsonResult(data);
     },
   });

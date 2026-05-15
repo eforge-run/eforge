@@ -1,6 +1,6 @@
 # Extensions API Reference
 
-This document is the type-level reference for `@eforge-build/extension-sdk`. For conceptual background, scope model, and example walkthroughs, see [`docs/extensions.md`](./extensions.md).
+This document is the type-level reference for `@eforge-build/extension-sdk`. For conceptual background, scope model, management commands (`eforge extension list/show/validate/new/reload`), and example walkthroughs, see [`docs/extensions.md`](./extensions.md).
 
 ## Entrypoint
 
