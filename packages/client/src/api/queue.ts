@@ -88,3 +88,36 @@ export async function apiGetLatestRunFromRuns(opts: { cwd: string }): Promise<Ru
   const { data } = await daemonRequest<RunInfo[]>(opts.cwd, 'GET', API_ROUTES.runs);
   return data[0] ?? null;
 }
+
+/**
+ * Fetch all currently running sessions.
+ * Filters /api/runs to status === 'running' with a valid sessionId.
+ * Dedupes by sessionId keeping the first occurrence (newest, since runs are
+ * sorted started_at DESC — one session may have multiple rows after recovery/retry).
+ */
+export async function apiGetRunningRuns(opts: { cwd: string }): Promise<{ data: RunInfo[]; port: number }> {
+  const { data, port } = await daemonRequest<RunInfo[]>(opts.cwd, 'GET', API_ROUTES.runs);
+  const filtered = data
+    .filter((r) => r.status === 'running' && r.sessionId !== undefined)
+    .filter((r, i, arr) => arr.findIndex((x) => x.sessionId === r.sessionId) === i);
+  return { data: filtered, port };
+}
+
+/**
+ * Fetch all currently running session summaries.
+ * Calls apiGetRunningRuns, then fetches RunSummary for each in parallel via
+ * Promise.allSettled. Drops rejected entries silently (transient errors should
+ * not blank the full status). Preserves input run order.
+ */
+export async function apiGetRunningSessionSummaries(opts: { cwd: string }): Promise<Array<{ run: RunInfo; summary: RunSummary }>> {
+  const { data: runs } = await apiGetRunningRuns(opts);
+  const results = await Promise.allSettled(
+    runs.map(async (run) => {
+      const { data: summary } = await apiGetRunSummary({ cwd: opts.cwd, id: run.sessionId! });
+      return { run, summary };
+    }),
+  );
+  return results
+    .filter((r): r is PromiseFulfilledResult<{ run: RunInfo; summary: RunSummary }> => r.status === 'fulfilled')
+    .map((r) => r.value);
+}

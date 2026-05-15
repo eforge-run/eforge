@@ -28,6 +28,8 @@ export {
   apiGetQueue,
   apiGetRuns,
   apiGetLatestRunFromRuns,
+  apiGetRunningRuns,
+  apiGetRunningSessionSummaries,
   apiGetRunSummary,
   apiGetRunSummaryIfRunning,
   apiGetRunState,

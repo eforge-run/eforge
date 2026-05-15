@@ -43,7 +43,8 @@ import {
   subscribeWithSnapshot,
   aggregateSessionSummary,
   eventToProgress,
-  apiGetRuns,
+  apiGetRunningRuns,
+  apiGetRunningSessionSummaries,
   apiListExtensions,
   apiShowExtension,
   apiValidateExtensions,
@@ -57,8 +58,6 @@ import {
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   EnqueueResponse,
-  RunSummary,
-  RunInfo,
   ConfigValidateResponse,
   QueueItem,
   AutoBuildState,
@@ -74,6 +73,20 @@ import { handleProfileCommand, handleProfileNewCommand } from './profile-command
 import { handleConfigCommand } from './config-command';
 import { handlePlaybookCommand } from './playbook-commands';
 import type { UIContext } from './ui-helpers';
+export {
+  formatSingleBuildFooter,
+  formatAggregateFooter,
+  formatQueueFooter,
+  aggregateRunningSummaries,
+  checkActiveBuildsMessage,
+} from './pure-helpers.js';
+import {
+  formatSingleBuildFooter,
+  formatAggregateFooter,
+  formatQueueFooter,
+  checkActiveBuildsMessage,
+  formatDuration,
+} from './pure-helpers.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -98,95 +111,12 @@ function withMonitorUrl(
   return { ...data, monitorUrl: `http://localhost:${port}` };
 }
 
-function truncateStatusPart(value: string, max = 36): string {
-  return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
-}
-
-function formatDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds}s`;
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
-  if (mins < 60) return secs > 0 ? `${mins}m ${secs}s` : `${mins}m`;
-  const hours = Math.floor(mins / 60);
-  const remMins = mins % 60;
-  return remMins > 0 ? `${hours}h ${remMins}m` : `${hours}h`;
-}
-
-function formatBuildFooter(summary: RunSummary): string {
-  const parts: string[] = ['eforge build: running'];
-
-  const activityParts = [summary.currentPhase, summary.currentAgent]
-    .filter((part): part is string => Boolean(part));
-  let activity = activityParts.join(' › ');
-  if (!activity) {
-    const runningPlan = summary.plans.find((plan) => plan.status === 'running');
-    const runningRun = summary.runs.find((run) => run.status === 'running');
-    activity = runningPlan?.id ?? runningRun?.command ?? '';
-  }
-  if (activity) parts.push(truncateStatusPart(activity));
-
-  if (summary.plans.length > 0) {
-    const complete = summary.plans.filter((plan) => plan.status === 'completed').length;
-    parts.push(`${complete}/${summary.plans.length} plans`);
-  }
-
-  if (summary.eventCounts.errors > 0) {
-    parts.push(`${summary.eventCounts.errors} errors`);
-  }
-
-  if (summary.duration.seconds != null) {
-    parts.push(formatDuration(summary.duration.seconds));
-  }
-
-  return parts.join(' - ');
-}
-
-function formatQueueFooter(queueItems: QueueItem[], hasRunningBuild: boolean): string | undefined {
-  const visibleItems = hasRunningBuild
-    ? queueItems.filter((item) => item.status !== 'running')
-    : queueItems;
-  if (visibleItems.length === 0) return undefined;
-
-  const counts = new Map<string, number>();
-  for (const item of visibleItems) {
-    counts.set(item.status, (counts.get(item.status) ?? 0) + 1);
-  }
-
-  const preferredOrder = ['running', 'pending', 'waiting', 'failed', 'skipped'];
-  const parts: string[] = [];
-  for (const status of preferredOrder) {
-    const count = counts.get(status);
-    if (count) parts.push(`${count} ${status}`);
-  }
-  for (const [status, count] of counts) {
-    if (!preferredOrder.includes(status)) parts.push(`${count} ${status}`);
-  }
-
-  return `eforge queue: ${parts.join(', ')}`;
-}
-
-async function getPreferredRun(cwd: string): Promise<RunInfo | null> {
-  const { data: runs } = await apiGetRuns({ cwd });
-  return runs.find((run) => run.status === 'running' && run.sessionId)
-    ?? runs.find((run) => run.sessionId)
-    ?? null;
-}
-
 async function checkActiveBuilds(
   cwd: string,
 ): Promise<string | null> {
   try {
-    const run = await getPreferredRun(cwd);
-    if (!run?.sessionId) return null;
-    const { data: summary } = await daemonRequest<RunSummary>(
-      cwd,
-      "GET",
-      buildPath(API_ROUTES.runSummary, { id: run.sessionId }),
-    );
-    if (summary?.status === "running") {
-      return "An eforge build is currently active. Use force: true to stop anyway.";
-    }
-    return null;
+    const { data: runs } = await apiGetRunningRuns({ cwd });
+    return checkActiveBuildsMessage(runs);
   } catch {
     return null;
   }
@@ -303,21 +233,15 @@ export default function eforgeExtension(pi: ExtensionAPI) {
 
       let hasRunningBuild = false;
       try {
-        const run = await getPreferredRun(ctx.cwd);
-        if (run?.sessionId) {
-          const { data: summary } = await daemonRequest<RunSummary>(
-            ctx.cwd,
-            'GET',
-            buildPath(API_ROUTES.runSummary, { id: run.sessionId }),
-          );
-          if (summary?.status === 'running') {
-            hasRunningBuild = true;
-            ctx.ui.setStatus('eforge-build', formatBuildFooter(summary));
-          } else {
-            ctx.ui.setStatus('eforge-build', undefined);
-          }
-        } else {
+        const summaries = await apiGetRunningSessionSummaries({ cwd: ctx.cwd });
+        if (summaries.length === 0) {
           ctx.ui.setStatus('eforge-build', undefined);
+        } else if (summaries.length === 1) {
+          hasRunningBuild = true;
+          ctx.ui.setStatus('eforge-build', formatSingleBuildFooter(summaries[0].summary));
+        } else {
+          hasRunningBuild = true;
+          ctx.ui.setStatus('eforge-build', formatAggregateFooter(summaries));
         }
       } catch {
         ctx.ui.setStatus('eforge-build', undefined);
@@ -629,20 +553,23 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }),
       };
 
-      const run = await getPreferredRun(ctx.cwd);
-      if (!run?.sessionId) {
+      const summaries = await apiGetRunningSessionSummaries({ cwd: ctx.cwd });
+      if (summaries.length === 0) {
         return jsonResult({
           status: "idle",
           message: "No active eforge sessions.",
           ...versions,
         });
       }
-      const { data: summary } = await daemonRequest<RunSummary>(
-        ctx.cwd,
-        "GET",
-        buildPath(API_ROUTES.runSummary, { id: run.sessionId }),
-      );
-      return jsonResult({ ...summary, ...versions });
+      return jsonResult({
+        status: "active",
+        builds: summaries.map(({ run, summary }) => ({
+          ...summary,
+          runId: run.id,
+          command: run.command,
+        })),
+        ...versions,
+      });
     },
 
     renderCall(_args, theme) {
@@ -658,13 +585,18 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const data = JSON.parse(text.text) as {
           status?: string;
           message?: string;
-          sessionId?: string;
-          runs?: Array<{ id: string; command: string; status: string; startedAt: string; completedAt: string | null }>;
-          plans?: Array<{ id: string; status: string; branch: string | null; dependsOn: string[] }>;
-          currentPhase?: string | null;
-          currentAgent?: string | null;
-          eventCounts?: { total: number; errors: number };
-          duration?: { startedAt: string | null; completedAt: string | null; seconds: number | null };
+          builds?: Array<{
+            sessionId: string;
+            runId: string;
+            command: string;
+            status: string;
+            runs?: Array<{ id: string; command: string; status: string; startedAt: string; completedAt: string | null }>;
+            plans?: Array<{ id: string; status: string; branch: string | null; dependsOn: string[] }>;
+            currentPhase?: string | null;
+            currentAgent?: string | null;
+            eventCounts?: { total: number; errors: number };
+            duration?: { startedAt: string | null; completedAt: string | null; seconds: number | null };
+          }>;
         };
 
         // Idle state
@@ -672,60 +604,92 @@ export default function eforgeExtension(pi: ExtensionAPI) {
           return new Text(theme.fg("muted", "⊘ No active sessions"), 0, 0);
         }
 
+        const builds = data.builds ?? [];
+        if (builds.length === 0) {
+          return new Text(theme.fg("muted", "⊘ No active sessions"), 0, 0);
+        }
+
         const lines: string[] = [];
 
-        // Status + duration header
-        const statusIcon = data.status === "completed" ? "✓" : data.status === "running" ? "⟳" : data.status === "failed" ? "✗" : "?";
-        const statusColor = data.status === "completed" ? "success" : data.status === "running" ? "warning" : data.status === "failed" ? "error" : "muted";
-        let header = theme.fg(statusColor, `${statusIcon} ${data.status}`);
-        if (data.duration?.seconds != null) {
-          const mins = Math.floor(data.duration.seconds / 60);
-          const secs = data.duration.seconds % 60;
-          const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
-          header += theme.fg("dim", `  ${timeStr}`);
-        }
-        lines.push(header);
-
-        // Current activity (when running)
-        if (data.status === "running") {
-          const parts: string[] = [];
-          if (data.currentPhase) parts.push(data.currentPhase);
-          if (data.currentAgent) parts.push(data.currentAgent);
-          if (parts.length > 0) {
-            lines.push(theme.fg("accent", `  ▸ ${parts.join(" › ")}`));
+        if (builds.length === 1) {
+          // Single-build: use detailed rendering
+          const build = builds[0];
+          const statusIcon = build.status === "completed" ? "✓" : build.status === "running" ? "⟳" : build.status === "failed" ? "✗" : "?";
+          const statusColor = build.status === "completed" ? "success" : build.status === "running" ? "warning" : build.status === "failed" ? "error" : "muted";
+          let header = theme.fg(statusColor, `${statusIcon} ${build.status}`);
+          if (build.duration?.seconds != null) {
+            const timeStr = formatDuration(build.duration.seconds);
+            header += theme.fg("dim", `  ${timeStr}`);
           }
-        }
+          lines.push(header);
 
-        // Plans
-        if (data.plans && data.plans.length > 0) {
-          lines.push("");
-          for (const plan of data.plans) {
-            const pIcon = plan.status === "completed" ? "✓" : plan.status === "running" ? "⟳" : plan.status === "failed" ? "✗" : "○";
-            const pColor = plan.status === "completed" ? "success" : plan.status === "running" ? "warning" : plan.status === "failed" ? "error" : "muted";
-            lines.push(`  ${theme.fg(pColor, pIcon)} ${theme.fg("text", plan.id)}`);
+          if (build.status === "running") {
+            const parts: string[] = [];
+            if (build.currentPhase) parts.push(build.currentPhase);
+            if (build.currentAgent) parts.push(build.currentAgent);
+            if (parts.length > 0) {
+              lines.push(theme.fg("accent", `  ▸ ${parts.join(" › ")}`));
+            }
           }
-        }
 
-        // Event counts
-        if (data.eventCounts) {
-          lines.push("");
-          let countsStr = theme.fg("dim", `${data.eventCounts.total} events`);
-          if (data.eventCounts.errors > 0) {
-            countsStr += theme.fg("error", ` · ${data.eventCounts.errors} errors`);
-          } else {
-            countsStr += theme.fg("dim", " · 0 errors");
+          if (build.plans && build.plans.length > 0) {
+            const complete = build.plans.filter((p) => p.status === "completed").length;
+            lines.push(theme.fg("dim", `  ${complete}/${build.plans.length} plans`));
+            lines.push("");
+            for (const plan of build.plans) {
+              const pIcon = plan.status === "completed" ? "✓" : plan.status === "running" ? "⟳" : plan.status === "failed" ? "✗" : "○";
+              const pColor = plan.status === "completed" ? "success" : plan.status === "running" ? "warning" : plan.status === "failed" ? "error" : "muted";
+              lines.push(`  ${theme.fg(pColor, pIcon)} ${theme.fg("text", plan.id)}`);
+            }
           }
-          lines.push(`  ${countsStr}`);
-        }
 
-        // Expanded: show runs detail
-        if (expanded && data.runs && data.runs.length > 0) {
-          lines.push("");
-          lines.push(theme.fg("muted", "  Runs:"));
-          for (const run of data.runs) {
-            const rIcon = run.status === "completed" ? "✓" : run.status === "running" ? "⟳" : run.status === "failed" ? "✗" : "○";
-            const rColor = run.status === "completed" ? "success" : run.status === "running" ? "warning" : run.status === "failed" ? "error" : "muted";
-            lines.push(`    ${theme.fg(rColor, rIcon)} ${theme.fg("text", run.command)} ${theme.fg("dim", `(${run.status})`)}`);
+          if (build.eventCounts) {
+            lines.push("");
+            let countsStr = theme.fg("dim", `${build.eventCounts.total} events`);
+            if (build.eventCounts.errors > 0) {
+              countsStr += theme.fg("error", ` · ${build.eventCounts.errors} errors`);
+            } else {
+              countsStr += theme.fg("dim", " · 0 errors");
+            }
+            lines.push(`  ${countsStr}`);
+          }
+
+          if (expanded && build.runs && build.runs.length > 0) {
+            lines.push("");
+            lines.push(theme.fg("muted", "  Runs:"));
+            for (const run of build.runs) {
+              const rIcon = run.status === "completed" ? "✓" : run.status === "running" ? "⟳" : run.status === "failed" ? "✗" : "○";
+              const rColor = run.status === "completed" ? "success" : run.status === "running" ? "warning" : run.status === "failed" ? "error" : "muted";
+              lines.push(`    ${theme.fg(rColor, rIcon)} ${theme.fg("text", run.command)} ${theme.fg("dim", `(${run.status})`)}`);
+            }
+          }
+        } else {
+          // Multi-build: one section per build
+          lines.push(theme.fg("warning", `⟳ ${builds.length} builds running`));
+          for (const build of builds) {
+            lines.push("");
+            // Header: command
+            lines.push(theme.fg("accent", `  ▸ ${build.command}`));
+            lines.push(theme.fg("dim", `    ${build.sessionId}`));
+
+            // Activity
+            const activity: string[] = [];
+            if (build.currentPhase) activity.push(build.currentPhase);
+            if (build.currentAgent) activity.push(build.currentAgent);
+            if (activity.length > 0) {
+              lines.push(theme.fg("dim", `    ${activity.join(" › ")}`));
+            }
+
+            // Plans progress
+            if (build.plans && build.plans.length > 0) {
+              const complete = build.plans.filter((p) => p.status === "completed").length;
+              lines.push(theme.fg("dim", `    ${complete}/${build.plans.length} plans`));
+            }
+
+            // Error count
+            if (build.eventCounts && build.eventCounts.errors > 0) {
+              lines.push(theme.fg("error", `    ${build.eventCounts.errors} errors`));
+            }
           }
         }
 

@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetLatestRunFromRuns, apiListExtensions, apiShowExtension, apiValidateExtensions, apiNewExtension, apiReloadExtensions } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiNewExtension, apiReloadExtensions } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   RunInfo,
@@ -390,12 +390,19 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         }),
       };
 
-      const latestRun = await apiGetLatestRunFromRuns({ cwd: toolCwd });
-      if (!latestRun?.sessionId) {
+      const summaries = await apiGetRunningSessionSummaries({ cwd: toolCwd });
+      if (summaries.length === 0) {
         return { status: 'idle', message: 'No active eforge sessions.', ...versions };
       }
-      const { data: summary } = await daemonRequest<RunSummary>(toolCwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
-      return { ...summary, ...versions };
+      return {
+        status: 'active',
+        builds: summaries.map(({ run, summary }) => ({
+          ...summary,
+          runId: run.id,
+          command: run.command,
+        })),
+        ...versions,
+      };
     },
   });
 
@@ -596,13 +603,13 @@ export async function runMcpProxy(cwd: string): Promise<void> {
     handler: async ({ action, force }, { cwd: toolCwd }) => {
       async function checkActiveBuilds(): Promise<string | null> {
         try {
-          const latestRun = await apiGetLatestRunFromRuns({ cwd: toolCwd });
-          if (!latestRun?.sessionId) return null;
-          const { data: summary } = await daemonRequest<RunSummary>(toolCwd, 'GET', buildPath(API_ROUTES.runSummary, { id: latestRun.sessionId }));
-          if (summary?.status === 'running') {
+          const { data: runs } = await apiGetRunningRuns({ cwd: toolCwd });
+          // Mirrors checkActiveBuildsMessage from packages/pi-eforge/extensions/eforge/pure-helpers.ts
+          if (runs.length === 0) return null;
+          if (runs.length === 1) {
             return 'An eforge build is currently active. Use force: true to stop anyway.';
           }
-          return null;
+          return `${runs.length} eforge builds are currently active. Use force: true to stop anyway.`;
         } catch {
           return null;
         }
