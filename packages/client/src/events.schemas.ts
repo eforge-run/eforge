@@ -1353,6 +1353,8 @@ const EforgeEventVariantsSchema = Type.Union([
     prdId: Type.String(),
     blockedBy: Type.Array(Type.String()),
   }),
+  Type.Object({ type: Type.Literal('daemon:scheduler:paused') }),
+  Type.Object({ type: Type.Literal('daemon:scheduler:resumed') }),
 
   // Daemon auto-build extensions
   Type.Object({ type: Type.Literal('daemon:auto-build:enabled') }),

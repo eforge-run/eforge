@@ -8,12 +8,14 @@ import { openDatabase } from '@eforge-build/monitor/db';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import type { DaemonState } from '@eforge-build/monitor/server';
 
-function makeDaemonState(killWatcher: () => void): DaemonState {
+function makeDaemonState(pauseScheduler: () => void): DaemonState {
   return {
     autoBuild: true,
+    autoBuildPaused: false,
     watcher: { running: true, pid: null, sessionId: null },
     onSpawnWatcher: () => {},
-    onKillWatcher: killWatcher,
+    onKillWatcher: vi.fn(),
+    onPauseScheduler: pauseScheduler,
     onShutdown: undefined,
   };
 }
@@ -28,7 +30,7 @@ function makeFailedEvent(prdId: string): EforgeEvent {
 }
 
 describe('maybePauseOnFailure', () => {
-  it('pauses auto-build on the first failed queue:prd:complete', async () => {
+  it('pauses auto-build on the first failed queue:prd:complete via onPauseScheduler', async () => {
     const tmpDir = await mkdtemp(join(tmpdir(), 'eforge-auto-build-pause-'));
     const eforgeDir = resolve(tmpDir, '.eforge');
     mkdirSync(eforgeDir, { recursive: true });
@@ -37,8 +39,8 @@ describe('maybePauseOnFailure', () => {
     try {
       const sessionId = 'watcher-session-pause-test-001';
       const prdId = 'sample-prd';
-      const killWatcher = vi.fn();
-      const daemonState = makeDaemonState(killWatcher);
+      const pauseScheduler = vi.fn();
+      const daemonState = makeDaemonState(pauseScheduler);
 
       const ctx: PauseOnFailureCtx = {
         isActiveController: () => true,
@@ -58,8 +60,9 @@ describe('maybePauseOnFailure', () => {
       const parsed = JSON.parse(pausedEvents[0].data) as { reason: string };
       expect(parsed.reason).toBe(`Build failed: ${prdId}`);
 
-      // (c) onKillWatcher called exactly once
-      expect(killWatcher).toHaveBeenCalledTimes(1);
+      // (c) onPauseScheduler called exactly once (not onKillWatcher)
+      expect(pauseScheduler).toHaveBeenCalledTimes(1);
+      expect(daemonState.onKillWatcher).not.toHaveBeenCalled();
     } finally {
       db.close();
       await rm(tmpDir, { recursive: true, force: true });
@@ -74,8 +77,8 @@ describe('maybePauseOnFailure', () => {
 
     try {
       const sessionId = 'watcher-session-idempotent-001';
-      const killWatcher = vi.fn();
-      const daemonState = makeDaemonState(killWatcher);
+      const pauseScheduler = vi.fn();
+      const daemonState = makeDaemonState(pauseScheduler);
 
       const ctx: PauseOnFailureCtx = {
         isActiveController: () => true,
@@ -89,11 +92,11 @@ describe('maybePauseOnFailure', () => {
       // First call pauses
       maybePauseOnFailure(failedEvent, ctx);
       expect(daemonState.autoBuild).toBe(false);
-      expect(killWatcher).toHaveBeenCalledTimes(1);
+      expect(pauseScheduler).toHaveBeenCalledTimes(1);
 
       // Second call is a no-op: autoBuild is already false
       maybePauseOnFailure(failedEvent, ctx);
-      expect(killWatcher).toHaveBeenCalledTimes(1); // still 1
+      expect(pauseScheduler).toHaveBeenCalledTimes(1); // still 1
 
       const pausedEvents = db.getEventsByType(sessionId, 'daemon:auto-build:paused');
       expect(pausedEvents).toHaveLength(1); // only one event written
@@ -111,8 +114,8 @@ describe('maybePauseOnFailure', () => {
 
     try {
       const sessionId = 'watcher-session-controller-guard-001';
-      const killWatcher = vi.fn();
-      const daemonState = makeDaemonState(killWatcher);
+      const pauseScheduler = vi.fn();
+      const daemonState = makeDaemonState(pauseScheduler);
 
       const ctx: PauseOnFailureCtx = {
         isActiveController: () => false, // superseded controller
@@ -124,7 +127,8 @@ describe('maybePauseOnFailure', () => {
       maybePauseOnFailure(makeFailedEvent('sample-prd'), ctx);
 
       expect(daemonState.autoBuild).toBe(true); // unchanged
-      expect(killWatcher).not.toHaveBeenCalled();
+      expect(pauseScheduler).not.toHaveBeenCalled();
+      expect(daemonState.onKillWatcher).not.toHaveBeenCalled();
       expect(db.getEventsByType(sessionId, 'daemon:auto-build:paused')).toHaveLength(0);
     } finally {
       db.close();
@@ -140,8 +144,8 @@ describe('maybePauseOnFailure', () => {
 
     try {
       const sessionId = 'watcher-session-completed-test-001';
-      const killWatcher = vi.fn();
-      const daemonState = makeDaemonState(killWatcher);
+      const pauseScheduler = vi.fn();
+      const daemonState = makeDaemonState(pauseScheduler);
 
       const ctx: PauseOnFailureCtx = {
         isActiveController: () => true,
@@ -160,7 +164,8 @@ describe('maybePauseOnFailure', () => {
       maybePauseOnFailure(completedEvent, ctx);
 
       expect(daemonState.autoBuild).toBe(true); // unchanged
-      expect(killWatcher).not.toHaveBeenCalled();
+      expect(pauseScheduler).not.toHaveBeenCalled();
+      expect(daemonState.onKillWatcher).not.toHaveBeenCalled();
     } finally {
       db.close();
       await rm(tmpDir, { recursive: true, force: true });

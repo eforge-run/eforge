@@ -1123,6 +1123,18 @@ const eventRegistry = {
     summary: (e) => `PRD ${e.prdId} blocked by: ${e.blockedBy.join(', ')}`,
   },
 
+  'daemon:scheduler:paused': {
+    scope: 'daemon',
+    persist: true,
+    summary: () => 'Scheduler paused: new PRD launches suspended',
+  },
+
+  'daemon:scheduler:resumed': {
+    scope: 'daemon',
+    persist: true,
+    summary: () => 'Scheduler resumed: PRD launch discovery re-triggered',
+  },
+
   // -------------------------------------------------------------------------
   // Daemon auto-build extensions
   // -------------------------------------------------------------------------

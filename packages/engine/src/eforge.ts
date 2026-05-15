@@ -111,7 +111,31 @@ export interface QueueOptions {
    * on fs.watch. The inject function is a no-op after the watcher is aborted.
    */
   onInjectEventRegister?: (inject: (event: SchedulerInputEvent) => void) => void;
+  // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+  /**
+   * Callback invoked once the scheduler is ready, passing a control object
+   * that lets the daemon pause/resume launches and check liveness.
+   * Mirrors the `onInjectEventRegister` pattern.
+   */
+  onSchedulerControlRegister?: (control: SchedulerControl) => void;
+  // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 }
+
+// --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+/**
+ * Control handle for the QueueScheduler passed to the daemon via
+ * `onSchedulerControlRegister`. Lets the daemon pause/resume new PRD launches
+ * and check whether the underlying watcher is still alive.
+ */
+export type SchedulerControl = {
+  /** Suspend new PRD launches (in-flight builds continue). */
+  pause: () => void;
+  /** Resume PRD launches; triggers an immediate discovery tick. */
+  resume: () => void;
+  /** Returns true while the watcher's AbortController is not yet aborted. */
+  isAlive: () => boolean;
+};
+// --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
 export interface RecoveryOptions {
   /** Stream verbose agent output */
@@ -1647,6 +1671,16 @@ export class EforgeEngine {
     // HTTP routes use this to wake the scheduler without relying on fs.watch.
     options.onInjectEventRegister?.((event) => bus.emit(event.type, event));
 
+    // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+    // Register the scheduler control handle so the daemon can pause/resume
+    // new PRD launches without aborting the watcher generator.
+    options.onSchedulerControlRegister?.({
+      pause: () => scheduler.pause(),
+      resume: () => scheduler.resume(),
+      isAlive: () => !abortController.signal.aborted,
+    });
+    // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
+
     yield {
       timestamp: new Date().toISOString(),
       type: 'queue:start',
@@ -1673,17 +1707,21 @@ export class EforgeEngine {
     // Initial scan + launch ready PRDs.
     await scheduler.start();
 
-    // Thin pump: yield every event from eventQueue to the outer caller, then
-    // re-emit scheduler-relevant types onto the bus.
-    // Yield-before-emit ordering guarantees downstream consumers (SSE, hooks,
-    // persistence) see queue:prd:complete before the scheduler reacts and
-    // potentially pushes follow-up session:start / spawn events onto eventQueue.
+    // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+    // Thin pump: emit scheduler-relevant events onto the bus BEFORE yielding
+    // to the outer caller. This ensures QueueScheduler.onComplete() is queued
+    // (as a microtask via the bus handler) before the consumer's synchronous
+    // reaction runs. Any follow-up session:start / spawn events pushed by
+    // onComplete() are enqueued into eventQueue asynchronously, so they still
+    // appear after the completion event in the outer consumer's view — the
+    // emit-before-yield ordering does NOT cause out-of-order events.
     for await (const event of eventQueue) {
-      yield event;
       if (SCHEDULER_INPUT_TYPES.has(event.type)) {
         bus.emit(event.type, event);
       }
+      yield event;
     }
+    // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 
     // Finalize: count blocked PRDs as skipped, then emit the terminal event.
     scheduler.finalizeBlockedAsSkipped();

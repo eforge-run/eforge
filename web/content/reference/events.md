@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 55d1e496 -->
+<!-- Commit: fdd0ca45 -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -13,7 +13,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 153
+Total variants: 155
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -150,6 +150,8 @@ Total variants: 153
 | `daemon:scheduler:dequeued` | `capacityRemaining`, `prdId`, `queueDepth` |
 | `daemon:scheduler:capacity-blocked` | `limit`, `queueDepth`, `runningCount` |
 | `daemon:scheduler:dependency-blocked` | `blockedBy`, `prdId` |
+| `daemon:scheduler:paused` | - |
+| `daemon:scheduler:resumed` | - |
 | `daemon:auto-build:enabled` | - |
 | `daemon:auto-build:resumed` | - |
 | `daemon:auto-build:triggered` | `prdsEnqueued`, `trigger` |

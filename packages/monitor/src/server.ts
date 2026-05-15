@@ -209,6 +209,23 @@ export interface DaemonState {
    * coupling server.ts to the DB write logic or the daemon session id.
    */
   onDaemonEvent?: (event: EforgeEvent) => void;
+  // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+  /**
+   * Pause the scheduler (suspend new PRD launches without aborting the watcher).
+   * Set by server-main.ts via `onSchedulerControlRegister`; cleared when the watcher stops.
+   */
+  onPauseScheduler?: () => void;
+  /**
+   * Resume the scheduler after a pause; triggers an immediate discovery tick.
+   * Set by server-main.ts via `onSchedulerControlRegister`; cleared when the watcher stops.
+   */
+  onResumeScheduler?: () => void;
+  /**
+   * Returns true while the scheduler's underlying AbortController is not yet aborted.
+   * Set by server-main.ts via `onSchedulerControlRegister`; cleared when the watcher stops.
+   */
+  isSchedulerAlive?: () => boolean;
+  // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 }
 
 interface SSESubscriber {
@@ -1686,10 +1703,34 @@ export async function startServer(
         }
         options.daemonState.autoBuild = body.enabled;
         if (body.enabled) {
-          // Spawn watcher if not already running
-          if (!options.daemonState.watcher.running && options.daemonState.onSpawnWatcher) {
-            options.daemonState.onSpawnWatcher();
+          // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
+          // Determine whether to spawn a fresh watcher or resume the existing one.
+          // Three cases require a fresh spawn:
+          //   1. Watcher is not running at all.
+          //   2. Watcher is marked running but the scheduler inject handle is missing
+          //      (aborted/draining window — scheduler is inert).
+          //   3. isSchedulerAlive() explicitly reports the abort controller is dead.
+          const { watcher, injectSchedulerEvent, isSchedulerAlive, onSpawnWatcher, onResumeScheduler } = options.daemonState;
+          const schedulerHandleMissing = !injectSchedulerEvent;
+          const schedulerDead = typeof isSchedulerAlive === 'function' && !isSchedulerAlive();
+          const needsSpawn = !watcher.running || schedulerHandleMissing || schedulerDead;
+          if (needsSpawn) {
+            if (watcher.running && (schedulerHandleMissing || schedulerDead)) {
+              // Watcher is in draining/abort state but scheduler is inert:
+              // emit a daemon:error for observability before restarting.
+              options.daemonState.onDaemonEvent?.({
+                type: 'daemon:error',
+                source: 'auto-build:enable',
+                message: 'Watcher marked running but scheduler is inert (handle missing or aborted); restarting watcher',
+                timestamp: new Date().toISOString(),
+              } as EforgeEvent);
+            }
+            onSpawnWatcher?.();
+          } else {
+            // Live watcher with active scheduler — just resume.
+            onResumeScheduler?.();
           }
+          // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
           // --- eforge:region plan-01-types-and-daemon-emission ---
           // Emit enabled or resumed based on whether this follows a failure-triggered pause.
           const wasPaused = options.daemonState.autoBuildPaused;
