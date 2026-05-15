@@ -15,6 +15,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { safeParseEforgeEvent } from '../events.schemas.js';
+import { eventRegistry, getEventSummary } from '../event-registry.js';
 import type { EforgeEvent } from '../events.schemas.js';
 
 // ---------------------------------------------------------------------------
@@ -75,6 +76,41 @@ const NEW_VARIANT_TYPES = new Set([
   'merge:worktree:clear',
 ]);
 
+// --- eforge:region plan-01-native-event-runtime-foundation ---
+const extensionDiagnosticVariants: EforgeEvent[] = [
+  {
+    type: 'extension:event-handler:failed',
+    timestamp: '2025-01-01T00:00:00.000Z',
+    sessionId: 'sess-1',
+    runId: 'run-1',
+    extensionName: 'audit-log',
+    extensionPath: '/project/.eforge/extensions/audit-log.js',
+    pattern: 'plan:build:*',
+    triggeringEventType: 'plan:build:failed',
+    message: 'boom',
+    stack: 'Error: boom',
+  },
+  {
+    type: 'extension:event-handler:failed',
+    timestamp: '2025-01-01T00:00:01.000Z',
+    extensionName: 'string-error-hook',
+    extensionPath: '/project/.eforge/extensions/string-error-hook.js',
+    pattern: 'queue:*',
+    triggeringEventType: 'queue:complete',
+    message: 'plain string failure',
+  },
+  {
+    type: 'extension:event-handler:timeout',
+    timestamp: '2025-01-01T00:00:02.000Z',
+    extensionName: 'audit-log',
+    extensionPath: '/project/.eforge/extensions/audit-log.js',
+    pattern: '*',
+    triggeringEventType: 'plan:build:complete',
+    timeoutMs: 5000,
+  },
+];
+// --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
 // ---------------------------------------------------------------------------
 // JSON round-trip tests
 // ---------------------------------------------------------------------------
@@ -99,6 +135,21 @@ describe('new plan lifecycle + merge-worktree variants — JSON roundtrip', () =
 // ---------------------------------------------------------------------------
 
 describe('safeParseEforgeEvent — new variants', () => {
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  it('accepts extension event-handler diagnostics with required fields', () => {
+    for (const event of extensionDiagnosticVariants) {
+      const result = safeParseEforgeEvent(event);
+      expect(result.success, `${event.type} should be accepted`).toBe(true);
+    }
+  });
+
+  it('round-trips extension event-handler diagnostics through JSON', () => {
+    for (const event of extensionDiagnosticVariants) {
+      expect(JSON.parse(JSON.stringify(event))).toEqual(event);
+    }
+  });
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
   it('accepts plan:status:change with every valid status value', () => {
     const statuses = ['pending', 'running', 'completed', 'failed', 'blocked', 'merged'] as const;
     for (const status of statuses) {
@@ -166,10 +217,58 @@ describe('safeParseEforgeEvent — new variants', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Event registry metadata
+// ---------------------------------------------------------------------------
+
+// --- eforge:region plan-01-native-event-runtime-foundation ---
+describe('eventRegistry — extension diagnostics', () => {
+  it('registers extension diagnostics as session-scoped, non-persistent events with summaries', () => {
+    const failed = extensionDiagnosticVariants[0]!;
+    const timeout = extensionDiagnosticVariants[2]!;
+    expect(eventRegistry['extension:event-handler:failed']).toMatchObject({ scope: 'session', persist: false });
+    expect(eventRegistry['extension:event-handler:timeout']).toMatchObject({ scope: 'session', persist: false });
+    expect(getEventSummary(failed)).toBe(
+      'Extension audit-log event hook failed (plan:build:* on plan:build:failed): boom',
+    );
+    expect(getEventSummary(timeout)).toBe(
+      'Extension audit-log event hook timed out after 5000ms (* on plan:build:complete)',
+    );
+  });
+});
+// --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
+// ---------------------------------------------------------------------------
 // Schema validation — invalid payloads rejected
 // ---------------------------------------------------------------------------
 
 describe('safeParseEforgeEvent — rejection of invalid payloads', () => {
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  it('rejects extension:event-handler:failed missing message', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:event-handler:failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'audit-log',
+      extensionPath: '/project/.eforge/extensions/audit-log.js',
+      pattern: '*',
+      triggeringEventType: 'plan:build:failed',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects extension:event-handler:timeout with non-number timeoutMs', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:event-handler:timeout',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'audit-log',
+      extensionPath: '/project/.eforge/extensions/audit-log.js',
+      pattern: '*',
+      triggeringEventType: 'plan:build:failed',
+      timeoutMs: '5000',
+    });
+    expect(result.success).toBe(false);
+  });
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
   it('rejects plan:status:change with an invalid status value', () => {
     const result = safeParseEforgeEvent({
       type: 'plan:status:change',

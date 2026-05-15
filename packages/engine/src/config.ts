@@ -19,6 +19,8 @@ import {
   getScopeDirectory,
   userEforgeConfigDir,
 } from '@eforge-build/scopes';
+import { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS } from './extensions/event-runtime.js';
+export { DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS };
 export type { ShardScope } from './schemas.js';
 
 // Re-export shared types from @eforge-build/client so engine-internal callers
@@ -174,6 +176,9 @@ export const extensionConfigSchema = z.object({
   exclude: z.array(z.string()).optional().describe('Native extension names to exclude during auto-discovery'),
   paths: z.array(z.string()).optional().describe('Explicit native extension module paths to load'),
   trustProjectExtensions: z.boolean().optional().describe('Trust checked-in project-team native extensions'),
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  eventHookTimeoutMs: z.number().int().positive().optional().describe('Default timeout in milliseconds for native extension event-hook handlers'),
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 }).describe('Native eforge extension configuration');
 // --- eforge:endregion plan-01-extension-runtime-foundation ---
 
@@ -345,6 +350,9 @@ export type PluginConfig = z.output<typeof pluginConfigSchema>;
 export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {
   enabled: boolean;
   trustProjectExtensions: boolean;
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  eventHookTimeoutMs: number;
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 };
 // --- eforge:endregion plan-01-extension-runtime-foundation ---
 export type TierConfig = z.output<typeof tierConfigSchema>;
@@ -617,7 +625,13 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
   plan: Object.freeze({ outputDir: 'eforge/plans' }),
   plugins: Object.freeze({ enabled: true }),
   // --- eforge:region plan-01-extension-runtime-foundation ---
-  extensions: Object.freeze({ enabled: true, trustProjectExtensions: false }),
+  extensions: Object.freeze({
+    enabled: true,
+    trustProjectExtensions: false,
+    // --- eforge:region plan-01-native-event-runtime-foundation ---
+    eventHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+    // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+  }),
   // --- eforge:endregion plan-01-extension-runtime-foundation ---
   prdQueue: Object.freeze({ dir: 'eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
   daemon: Object.freeze({ idleShutdownMs: 7_200_000 }),
@@ -705,6 +719,9 @@ export function resolveConfig(
     extensions: Object.freeze({
       enabled: fileConfig.extensions?.enabled ?? DEFAULT_CONFIG.extensions.enabled,
       trustProjectExtensions: fileConfig.extensions?.trustProjectExtensions ?? DEFAULT_CONFIG.extensions.trustProjectExtensions,
+      // --- eforge:region plan-01-native-event-runtime-foundation ---
+      eventHookTimeoutMs: fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.eventHookTimeoutMs,
+      // --- eforge:endregion plan-01-native-event-runtime-foundation ---
       include: fileConfig.extensions?.include,
       exclude: fileConfig.extensions?.exclude,
       paths: fileConfig.extensions?.paths,

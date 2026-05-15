@@ -182,6 +182,10 @@ export const handlerRegistry = {
 export const IGNORED_EVENT_TYPES = [
   'phase:end',
   'planning:module:build-config:invalid',
+  // --- eforge:region plan-01-native-event-runtime-foundation ---
+  'extension:event-handler:failed',
+  'extension:event-handler:timeout',
+  // --- eforge:endregion plan-01-native-event-runtime-foundation ---
   'planning:start',
   'planning:skip',
   'planning:submission',
