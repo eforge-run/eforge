@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 8918a27b -->
+<!-- Commit: 27e7e90f -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -145,6 +145,20 @@ Validate configured native extensions, or a single extension name/path
 
 | Flag | Description |
 |------|-------------|
+| `--json` | Output JSON |
+
+#### `test`
+
+Dry-run native extension event hooks against fixture or monitor events
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--run <run>` | Replay monitor DB events: latest or a session/run id |
+| `--event <type>` | Filter replay input by exact event type |
+| `--fixture <path>` | Replay project-local fixture events from a JSON or JSONL file |
 | `--json` | Output JSON |
 
 #### `new`

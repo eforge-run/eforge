@@ -129,7 +129,7 @@ Auto-discovery scans `~/.config/eforge/extensions/`, `eforge/extensions/`, and `
 
 Project/team extensions are committed code and are skipped unless `extensions.trustProjectExtensions: true` is set from a trusted layer (user config or project-local config). Extensions execute in the eforge daemon/worker Node process without a sandbox.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch, and management commands (`eforge extension list/show/validate/new/reload`). Blocking policy enforcement, agent augmentation, and other non-event registered capability execution are deferred runtime phases.
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, and management commands (`eforge extension list/show/validate/test/new/reload`). Blocking policy enforcement, tool injection/execution, profile routing, input-source execution, reviewer perspective execution, and validation-provider execution are deferred runtime phases.
 
 ## Tiers
 

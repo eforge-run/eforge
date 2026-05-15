@@ -11,7 +11,7 @@ import { z } from 'zod';
 import { readFile, writeFile, access, mkdir, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stringify as stringifyYaml } from 'yaml';
-import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiNewExtension, apiReloadExtensions } from '@eforge-build/client';
+import { ensureDaemon, daemonRequest, daemonRequestIfRunning, sleep, readLockfile, subscribeWithSnapshot, aggregateSessionSummary, eventToProgress, LOCKFILE_POLL_INTERVAL_MS, LOCKFILE_POLL_TIMEOUT_MS, API_ROUTES, buildPath, apiRecover, apiReadRecoverySidecar, apiApplyRecovery, apiGetRunningRuns, apiGetRunningSessionSummaries, apiListExtensions, apiShowExtension, apiValidateExtensions, apiTestExtension, apiNewExtension, apiReloadExtensions } from '@eforge-build/client';
 import { deriveProfileName } from '@eforge-build/engine/config';
 import type {
   RunInfo,
@@ -24,6 +24,7 @@ import type {
   FollowCounters,
   VersionResponse,
   ExtensionNewRequest,
+  ExtensionTestRequest,
 } from '@eforge-build/client';
 import { createDaemonTool, McpUserError, formatResourceJson } from './mcp-tool-factory.js';
 
@@ -523,29 +524,36 @@ export async function runMcpProxy(cwd: string): Promise<void> {
   // Tool: eforge_extension
   createDaemonTool(server, cwd, {
     name: 'eforge_extension',
-    description: 'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running.',
+    description: 'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running.',
     schema: {
-      action: z.enum(['list', 'show', 'validate', 'new', 'reload']).describe('Extension operation to perform'),
-      name: z.string().min(1).optional().describe('Extension name (required for "show" and "new", optional for "validate")'),
-      path: z.string().min(1).optional().describe('Ad-hoc extension file/directory path to validate ("validate" only)'),
+      action: z.enum(['list', 'show', 'validate', 'test', 'new', 'reload']).describe('Extension operation to perform'),
+      name: z.string().min(1).optional().describe('Extension name (required for "show" and "new", optional for "validate" and "test")'),
+      path: z.string().min(1).optional().describe('Ad-hoc extension file/directory path to validate or test ("validate" and "test" only)'),
+      fixture: z.string().min(1).optional().describe('Project-local JSON/JSONL event fixture to replay ("test" only)'),
+      run: z.string().min(1).optional().describe('Monitor DB event source to replay: "latest" or a session/run id ("test" only)'),
+      event: z.string().min(1).optional().describe('Exact event type filter for replay ("test" only)'),
       scope: z.enum(['local', 'project', 'user']).optional().describe('Scope for "new". Defaults to local.'),
       template: z.enum(['event-logger', 'blank']).optional().describe('Scaffold template for "new". Defaults to event-logger.'),
       force: z.boolean().optional().describe('Overwrite an existing extension file when action is "new". Default: false.'),
     },
-    handler: async ({ action, name, path, scope, template, force }, { cwd: toolCwd }) => {
+    handler: async ({ action, name, path, fixture, run, event, scope, template, force }, { cwd: toolCwd }) => {
+      const hasTestOnlyParams = fixture !== undefined || run !== undefined || event !== undefined;
       if (action === 'list') {
         if (name !== undefined || path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"list" does not accept name, path, scope, template, or force');
+        if (hasTestOnlyParams) throw new Error('"list" does not accept fixture, run, or event');
         const { data } = await apiListExtensions({ cwd: toolCwd });
         return data;
       }
       if (action === 'show') {
         if (!name) throw new Error('"name" is required when action is "show"');
         if (path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"show" does not accept path, scope, template, or force');
+        if (hasTestOnlyParams) throw new Error('"show" does not accept fixture, run, or event');
         const { data } = await apiShowExtension({ cwd: toolCwd, name });
         return data;
       }
       if (action === 'validate') {
         if (scope !== undefined || template !== undefined || force !== undefined) throw new Error('"validate" does not accept scope, template, or force');
+        if (hasTestOnlyParams) throw new Error('"validate" does not accept fixture, run, or event');
         if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for validate');
         const request: { cwd: string; name?: string; path?: string } = { cwd: toolCwd };
         if (name !== undefined) request.name = name;
@@ -553,9 +561,22 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         const { data } = await apiValidateExtensions(request);
         return data;
       }
+      if (action === 'test') {
+        if (scope !== undefined || template !== undefined || force !== undefined) throw new Error('"test" does not accept scope, template, or force');
+        if (name !== undefined && path !== undefined) throw new Error('Specify only one of "name" or "path" for test');
+        const body: ExtensionTestRequest = {};
+        if (name !== undefined) body.name = name;
+        if (path !== undefined) body.path = path;
+        if (fixture !== undefined) body.fixture = fixture;
+        if (run !== undefined) body.run = run;
+        if (event !== undefined) body.event = event;
+        const { data } = await apiTestExtension({ cwd: toolCwd, body });
+        return data;
+      }
       if (action === 'new') {
         if (!name) throw new Error('"name" is required when action is "new"');
         if (path !== undefined) throw new Error('"path" is not supported when action is "new"');
+        if (hasTestOnlyParams) throw new Error('"new" does not accept fixture, run, or event');
         const body: ExtensionNewRequest = { name };
         if (scope !== undefined) body.scope = scope;
         if (template !== undefined) body.template = template as ExtensionNewRequest['template'];
@@ -564,6 +585,7 @@ export async function runMcpProxy(cwd: string): Promise<void> {
         return data;
       }
       if (name !== undefined || path !== undefined || scope !== undefined || template !== undefined || force !== undefined) throw new Error('"reload" does not accept name, path, scope, template, or force');
+      if (hasTestOnlyParams) throw new Error('"reload" does not accept fixture, run, or event');
       const { data } = await apiReloadExtensions({ cwd: toolCwd });
       return data;
     },

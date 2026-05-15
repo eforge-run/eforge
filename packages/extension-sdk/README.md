@@ -18,6 +18,9 @@ Start with the CLI scaffold for a local, gitignored extension:
 eforge extension new build-notifier
 $EDITOR .eforge/extensions/build-notifier.ts
 eforge extension validate build-notifier
+eforge extension test build-notifier --fixture events.json
+# or replay the latest recorded run:
+eforge extension test build-notifier --run latest
 eforge extension reload
 ```
 
@@ -60,7 +63,7 @@ The eforge daemon discovers and loads native extensions from three scopes:
 
 Precedence is `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. Extensions run in the eforge daemon/worker Node process without a sandbox.
 
-Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch is available for `onEvent`; non-event registered capabilities remain deferred.
+Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; non-event registered capabilities remain deferred.
 
 ## Registration methods
 
@@ -77,7 +80,7 @@ Loader-time registration capture is available today: the daemon calls each defau
 
 All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, and `onAgentRun` prompt-context augmentation are wired; blocking gates, tool execution, routing, and provider execution land in subsequent runtime phases.
 
-`onEvent` handlers are non-blocking with respect to the engine pipeline. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields.
+`onEvent` handlers are non-blocking with respect to the engine pipeline. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Use `eforge extension test <name-or-path> --fixture <path>` or `eforge extension test <name-or-path> --run latest` to dry-run matching event hooks and inspect replay counts, matches, emitted diagnostics, and deferred non-event registration families.
 
 `onAgentRun` handlers run before each agent invocation and may return `{ promptAppend: '...' }` to inject role- or phase-scoped context. Each fragment is wrapped in a named provenance section appended to the resolved prompt. Handlers are fail-open: a throw or timeout emits a typed `extension:agent-context:*` diagnostic but does not abort the agent run. Tool fields (`tools`, `allowedTools`, `disallowedTools`) are captured in the type but not applied at runtime in this slice (EXTEND_08B).
 
@@ -153,4 +156,4 @@ Local docs: [`docs/extensions.md`](../../docs/extensions.md) and [`docs/extensio
 
 ## Stability
 
-Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, and `onEvent` execution are available. Runtime execution of deferred capability families will build on this stable contract.
+Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, `onEvent` execution, and `onEvent` replay testing are available. Runtime execution of deferred capability families will build on this stable contract.

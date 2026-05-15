@@ -154,9 +154,27 @@ eforge extension list
 eforge extension show build-notifier
 eforge extension validate
 eforge extension validate ./tools/eforge-audit.ts
+eforge extension test [nameOrPath]
+eforge extension test build-notifier --fixture events.json
+eforge extension test ./tools/eforge-audit.ts --run latest --event plan:build:failed
 eforge extension new <name>
 eforge extension reload
 ```
+
+`eforge extension test [nameOrPath]` validates the selected extension set and dry-runs matching `onEvent` hooks against replayed events. Omit `nameOrPath` to test configured extensions, pass a configured extension name to test one loaded extension, or pass an extension file/directory path for an ad-hoc test. Path detection matches `extension validate`: `./tools/eforge-audit.ts` is a path, while `build-notifier` is a configured extension name.
+
+Replay sources:
+
+- no source: static validation and registration summary only
+- `--fixture <path>`: read project-local fixture events through the daemon
+- `--run latest`: replay events from the latest monitor DB session
+- `--run <sessionId-or-runId>`: replay events from a specific monitor session or run
+- `--event <type>`: filter replay input to an exact event type before matching hooks
+- `--json`: print the raw `ExtensionTestResponse`
+
+Fixture files may contain one JSON event object, a JSON array of event objects, or JSONL with one event object per non-empty line. Every event is validated against the canonical eforge event schema before replay.
+
+Non-JSON output is summary-first. It reports whether the test passed, the source (`none`, `fixture`, or `run`), replay counts (`inputEventCount`, `filteredEventCount`, `emittedEventCount`, and `diagnosticEventCount`), match count, emitted event-handler diagnostics, and deferred registration family counts. Zero matching hooks are valid when the response is otherwise valid; the CLI prints a clear zero-match message and exits 0. The process exits 1 only when the daemon response has `valid: false`.
 
 `eforge extension new <name>` scaffolds a TypeScript extension. Defaults are `--scope local` (project-local `.eforge/extensions/`), `--template event-logger`, and no overwrite. Pass `--scope project` for committed team extensions, `--scope user` for personal cross-project extensions, `--template blank` for a minimal module, or `--force` to overwrite an existing scaffold target. Non-JSON output prints the created path, canonical daemon scope (`project-local`, `project-team`, or `user`), template, overwrite state, and next validation/reload steps.
 
@@ -164,15 +182,17 @@ eforge extension reload
 
 List/show output includes `enabled`, a derived boolean for whether the entry is selected by the current extension config and is not shadowed or excluded. It is `false` when extensions are globally disabled, when include/exclude filters leave the entry out, or when a higher-precedence extension shadows it. A selected entry can still have `enabled: true` with status `skipped` or `error`; use status, trust, and diagnostics to see why it did not load.
 
-Add `--json` to CLI commands for machine-readable provenance. The same data is exposed via `/api/extensions/list`, `/api/extensions/show`, `/api/extensions/validate`, `/api/extensions/new`, and `/api/extensions/reload`.
+Add `--json` to CLI commands for machine-readable provenance. The same data is exposed via `/api/extensions/list`, `/api/extensions/show`, `/api/extensions/validate`, `/api/extensions/new`, `/api/extensions/reload`, and `/api/extensions/test`.
 
-Event replay testing is deferred, as are `extension enable`, `extension disable`, `extension promote`, and `extension demote` workflows.
+`extension enable`, `extension disable`, `extension promote`, and `extension demote` workflows are deferred.
 
 ## Runtime support today
 
 The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection and management tooling, native `onEvent` dispatch, and `onAgentRun` prompt-context augmentation are available.
 
 Event hooks run for real CLI, queue worker, and daemon watcher event streams. Dispatch is non-blocking with respect to the engine pipeline: handlers receive matching events but cannot alter or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with the extension name, matched pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Those diagnostics are recorded by the monitor before shell hooks run, so shell-hook matching has parity with normal engine and extension diagnostic events.
+
+Event replay testing is also available through `eforge extension test`. Replay execution is a dry run for `onEvent` hooks only: it invokes matching event handlers against fixture or monitor DB events and records emitted handler diagnostics, but it does not execute custom tools, policy gates, profile routers, input sources, reviewer perspectives, validation providers, or agent-run hooks. Those non-event registrations are summarized as deferred registration families in the test result.
 
 Agent-run hooks fire before each agent invocation. Handlers can inspect `ctx.role`, `ctx.tier`, `ctx.phase`, and `ctx.stage` to scope their contribution, then return `{ promptAppend: '...' }` to inject additional context. Fragments are appended after any config-level `promptAppend` already resolved by the engine, wrapped in a named provenance section identifying the contributing extension. Multiple extensions contribute in registration order. The runtime is fail-open: a handler that throws or exceeds `extensions.agentContextHookTimeoutMs` emits a typed diagnostic event but does not abort the agent run. Tool fields (`tools`, `allowedTools`, `disallowedTools`) in the return value emit an `extension:agent-context:unsupported` diagnostic and are otherwise ignored - tool injection is tracked for EXTEND_08B.
 
@@ -228,6 +248,7 @@ Pattern semantics match shell hooks. See [`docs/hooks.md`](./hooks.md) for event
 - Project/team extensions (`eforge/extensions/`) are skipped unless `extensions.trustProjectExtensions: true` is set from user or project-local config.
 - Explicit paths outside standard scopes are treated as `external` and trusted when enabled, so use them only for code you control.
 - Do not load extensions from unreviewed repositories or package artifacts.
+- Treat `eforge extension test` as code execution, not static analysis. The replay path is a dry run with respect to eforge engine state, but matching `onEvent` handlers still execute in the daemon process and can perform filesystem, environment, and network operations.
 
 Hash-based trust prompts/stores are not shipped behavior in this slice.
 
