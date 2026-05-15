@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 2,
+  "summary": {
+    "prdId": "make-pi-transport-websocket-close-resilient",
+    "setName": "make-pi-transport-websocket-close-resilient",
+    "featureBranch": "eforge/make-pi-transport-websocket-close-resilient",
+    "baseBranch": "main",
+    "plans": [],
+    "failingPlan": {
+      "planId": "unknown"
+    },
+    "landedCommits": [],
+    "diffStat": "",
+    "modelsUsed": [],
+    "failedAt": "2026-05-15T02:22:55.382Z",
+    "partial": true
+  },
+  "verdict": {
+    "verdict": "manual",
+    "confidence": "low",
+    "rationale": "The failure summary is explicitly marked `partial: true` and contains almost no diagnostic signal: no plans ran, no commits landed, no diff stat, no models used, and the failing plan ID is recorded as `\"unknown\"`. There is no error message or stack trace to distinguish a transient initialization failure (e.g. daemon startup race, lock contention, quota exhaustion) from a configuration or environment problem that would recur on retry. The PRD itself is well-formed and the implementation path is clear, but without knowing why the session failed to even enqueue or launch a plan, choosing `retry` would be speculation. A human should inspect the daemon logs and session event log for the timestamp around `2026-05-15T02:22:55.382Z` to determine the actual failure cause before proceeding.",
+    "completedWork": [
+      "No plans were executed and no commits landed on the feature branch before failure"
+    ],
+    "remainingWork": [
+      "Add `isTransientTransportError(message: string): boolean` helper recognizing at least `WebSocket closed 1012`",
+      "Implement post-result transient close downgrade logic in the build-agent/pipeline layer (builder.ts or build-stages.ts)",
+      "Emit `agent:warning` diagnostic when a transient close is downgraded after completion evidence",
+      "Classify pre-completion transient transport failures as retryable via `withRetry`",
+      "Add retryable terminal subtype to `harness.ts` and `events.schemas.ts` if needed",
+      "Preserve hard-failure behavior for non-transient backend errors",
+      "Write tests covering: post-result transient close, mid-run transient close, non-transient backend error",
+      "Verify `pnpm type-check` exits 0 and all relevant tests pass"
+    ],
+    "risks": [
+      "Root cause of this session failure is unknown - the same initialization or environment problem may recur on retry",
+      "Partial summary flag means daemon/session context may have been corrupted or inaccessible at recovery-analysis time; log inspection is needed before re-queuing",
+      "If the failure was caused by a Pi transport issue on the build infrastructure itself (ironic given the PRD subject), it may require infrastructure-level remediation before a retry is meaningful"
+    ]
+  },
+  "generatedAt": "2026-05-15T02:23:25.160Z"
+}
