@@ -295,3 +295,66 @@ describe('argv builder for spawnPrdChild', () => {
     expect(argv).toContain('pi-local');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Routed-selection argv builder — in-memory override path (persist-failed fallback)
+// ---------------------------------------------------------------------------
+
+/**
+ * Mirrors the argv construction for the in-memory routedProfileOverride path
+ * in spawnPrdChild. When frontmatter.profile is absent but a routed override
+ * is provided (persist-failed fallback), --profile uses the override.
+ */
+function buildQueueExecArgvWithOverride(
+  prdId: string,
+  options: { auto?: boolean; verbose?: boolean },
+  prdSessionId: string,
+  frontmatterProfile?: string,
+  routedProfileOverride?: string,
+): string[] {
+  const args = ['queue', 'exec', prdId];
+  if (options.auto) args.push('--auto');
+  if (options.verbose) args.push('--verbose');
+  args.push('--no-monitor');
+  args.push('--session-id', prdSessionId);
+  if (frontmatterProfile) {
+    args.push('--profile', frontmatterProfile);
+  } else if (routedProfileOverride) {
+    args.push('--profile', routedProfileOverride);
+  }
+  return args;
+}
+
+describe('argv builder for routed-selection scenario', () => {
+  it('uses frontmatter.profile when set (persisted path), ignores routedProfileOverride', () => {
+    const argv = buildQueueExecArgvWithOverride('my-prd', {}, 'session-abc', 'persisted-profile', 'override-profile');
+
+    expect(argv).toContain('--profile');
+    const profileIdx = argv.indexOf('--profile');
+    // frontmatter wins over routedProfileOverride
+    expect(argv[profileIdx + 1]).toBe('persisted-profile');
+  });
+
+  it('uses routedProfileOverride when frontmatter.profile is absent (persist-failed fallback)', () => {
+    const argv = buildQueueExecArgvWithOverride('my-prd', {}, 'session-def', undefined, 'routed-profile');
+
+    expect(argv).toContain('--profile');
+    const profileIdx = argv.indexOf('--profile');
+    expect(argv[profileIdx + 1]).toBe('routed-profile');
+  });
+
+  it('includes no --profile when both frontmatter.profile and routedProfileOverride are absent', () => {
+    const argv = buildQueueExecArgvWithOverride('my-prd', {}, 'session-ghi', undefined, undefined);
+
+    expect(argv).not.toContain('--profile');
+  });
+
+  it('routed selection uses --profile with the routed profile name', () => {
+    const argv = buildQueueExecArgvWithOverride('my-prd', { auto: true }, 'session-xyz', undefined, 'routed-pi-local');
+
+    expect(argv).toContain('--auto');
+    expect(argv).toContain('--profile');
+    const profileIdx = argv.indexOf('--profile');
+    expect(argv[profileIdx + 1]).toBe('routed-pi-local');
+  });
+});

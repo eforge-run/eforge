@@ -141,7 +141,6 @@ describe('extension runtime documentation', () => {
       for (const capability of [
         'registerTool',
         'beforePlanMerge',
-        'registerProfileRouter',
         'registerInputSource',
         'registerReviewerPerspective',
         'registerValidationProvider',
@@ -150,6 +149,13 @@ describe('extension runtime documentation', () => {
         expect(row, `${capability} row`).toBeDefined();
         expect(row).toContain('Deferred');
       }
+    }
+
+    // registerProfileRouter: plan-02 shipped the runtime — all three sources now reflect pre-build dispatch.
+    for (const source of [docsExtensions, docsExtensionsApi, sdkReadme]) {
+      const row = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerProfileRouter'));
+      expect(row, 'registerProfileRouter row').toBeDefined();
+      expect(row).toContain('Yes (pre-build dispatch)');
     }
   });
 

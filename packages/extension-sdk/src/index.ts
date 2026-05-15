@@ -31,6 +31,9 @@ export type {
   EventHookContext,
   AgentRunContext,
   PolicyGateContext,
+  ProfileRouterContext,
+  ProfileSummary,
+  ProfileUsageSummary,
 } from './context.js';
 
 // Hook handler and result types

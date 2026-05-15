@@ -784,6 +784,53 @@ const EforgeEventVariantsSchema = Type.Union([
   }),
   // --- eforge:endregion plan-01-agent-context-runtime ---
 
+  // --- eforge:region plan-01-profile-router-events ---
+  // Profile router dispatch diagnostics (EXTEND_09)
+  Type.Object({
+    type: Type.Literal('queue:profile:selected'),
+    prdId: Type.String(),
+    prdTitle: Type.Optional(Type.String()),
+    profile: Type.String(),
+    baseProfile: Type.Union([Type.String(), Type.Null()]),
+    routerName: Type.String(),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    reason: Type.Optional(Type.String()),
+    confidence: Type.Optional(Type.Union([
+      Type.Literal('low'),
+      Type.Literal('medium'),
+      Type.Literal('high'),
+    ])),
+  }),
+  Type.Object({
+    type: Type.Literal('queue:profile:router-failed'),
+    prdId: Type.String(),
+    routerName: Type.String(),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('queue:profile:router-timeout'),
+    prdId: Type.String(),
+    routerName: Type.String(),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    timeoutMs: Type.Integer({ minimum: 0 }),
+  }),
+  Type.Object({
+    type: Type.Literal('queue:profile:invalid-selection'),
+    prdId: Type.String(),
+    routerName: Type.String(),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    requestedProfile: Type.String(),
+    reason: Type.Union([Type.Literal('not-found'), Type.Literal('load-error')]),
+    message: Type.String(),
+  }),
+  // --- eforge:endregion plan-01-profile-router-events ---
+
   // Planning
   Type.Object({
     type: Type.Literal('planning:start'),

@@ -79,6 +79,10 @@ describe('resolveConfig', () => {
       trustProjectExtensions: false,
       eventHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
       agentContextHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+      profileRouterTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+      include: undefined,
+      exclude: undefined,
+      paths: undefined,
     });
   });
 

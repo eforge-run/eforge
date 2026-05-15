@@ -63,6 +63,10 @@ import { Semaphore, AsyncEventQueue } from './concurrency.js';
 import { withRunId } from './session.js';
 import { applyShardedPlanGuard } from './sharded-plan-guard.js';
 import { QueueScheduler, SCHEDULER_INPUT_TYPES, type SchedulerInputEvent } from './queue/scheduler.js';
+// --- eforge:region plan-02-runtime-and-integration ---
+import type { ProfileUsageProvider } from './profile-usage.js';
+export type { ProfileUsageProvider } from './profile-usage.js';
+// --- eforge:endregion plan-02-runtime-and-integration ---
 
 const exec = promisify(execFile);
 
@@ -85,6 +89,14 @@ export interface EforgeEngineOptions {
   onApproval?: (action: string, details: string) => Promise<boolean>;
   /** Override the active profile for this engine instance. Takes precedence over marker-chain resolution. */
   profileOverride?: string;
+  // --- eforge:region plan-02-runtime-and-integration ---
+  /**
+   * Optional usage provider for profile routers.
+   * The daemon supplies a MonitorDB-backed implementation; CLI/direct runs omit
+   * this so routers receive `{ dataSource: 'none' }` for all profiles.
+   */
+  profileUsageProvider?: ProfileUsageProvider;
+  // --- eforge:endregion plan-02-runtime-and-integration ---
 }
 
 export interface QueueOptions {
@@ -186,6 +198,9 @@ export class EforgeEngine {
   private readonly extensionRegistry: NativeExtensionRegistry;
   private readonly extensionDiagnostics: NativeExtensionDiagnostic[];
   // --- eforge:endregion plan-01-extension-runtime-foundation ---
+  // --- eforge:region plan-02-runtime-and-integration ---
+  private readonly profileUsageProvider?: ProfileUsageProvider;
+  // --- eforge:endregion plan-02-runtime-and-integration ---
 
   private constructor(config: EforgeConfig, options: EforgeEngineOptions = {}, configWarnings: string[] = [], configProfile?: { name: string | null; source: 'local' | 'project' | 'user-local' | 'missing' | 'none' | 'override'; scope: 'local' | 'project' | 'user' | null; config: unknown | null }, extensionRegistry?: NativeExtensionRegistry, extensionDiagnostics: NativeExtensionDiagnostic[] = []) {
     this.config = config;
@@ -197,6 +212,9 @@ export class EforgeEngine {
     };
     this.extensionDiagnostics = extensionDiagnostics;
     // --- eforge:endregion plan-01-extension-runtime-foundation ---
+    // --- eforge:region plan-02-runtime-and-integration ---
+    this.profileUsageProvider = options.profileUsageProvider;
+    // --- eforge:endregion plan-02-runtime-and-integration ---
     this.cwd = options.cwd ?? process.cwd();
     // agentRuntimes is always resolved to a registry by create() before reaching the constructor
     this.agentRuntimes = options.agentRuntimes as AgentRuntimeRegistry;
@@ -1130,6 +1148,9 @@ export class EforgeEngine {
     options: QueueOptions,
     prdSessionId: string,
     pushEvent: (event: EforgeEvent) => void,
+    // --- eforge:region plan-02-runtime-and-integration ---
+    routedProfileOverride?: string,
+    // --- eforge:endregion plan-02-runtime-and-integration ---
   ): Promise<'completed' | 'failed' | 'skipped'> {
     const cwd = this.cwd;
     const agentRuntimes = this.agentRuntimes; // captured for inline recovery
@@ -1139,11 +1160,16 @@ export class EforgeEngine {
     const abortController = options.abortController;
 
     return new Promise((resolvePromise) => {
-      // Pre-flight: when the PRD has a profile override in its frontmatter,
-      // validate it before spawning the worker. On miss, hard-fail the PRD.
+      // Pre-flight: when the PRD has a profile override in its frontmatter (or
+      // a routed override was provided as fallback), validate it before spawning
+      // the worker. On miss, hard-fail the PRD.
       const preflightAndSpawn = async (): Promise<void> => {
-        if (prd.frontmatter.profile) {
-          const overrideName = prd.frontmatter.profile;
+        // --- eforge:region plan-02-runtime-and-integration ---
+        // Effective profile: frontmatter.profile (persisted) takes precedence,
+        // then the in-memory routedProfileOverride (persist-failed fallback).
+        const effectiveProfile = prd.frontmatter.profile ?? routedProfileOverride;
+        if (effectiveProfile) {
+          const overrideName = effectiveProfile;
           const { getConfigDir, getConventionalConfigDir, loadProfile: loadProfileFn } = await import('./config.js');
           const discoveredConfigDir = await getConfigDir(cwd);
           const configDir = discoveredConfigDir ?? getConventionalConfigDir(cwd);
@@ -1171,15 +1197,20 @@ export class EforgeEngine {
             return;
           }
         }
+        // --- eforge:endregion plan-02-runtime-and-integration ---
 
         const args = ['queue', 'exec', prdId];
         if (options.auto) args.push('--auto');
         if (options.verbose) args.push('--verbose');
         args.push('--no-monitor');
         args.push('--session-id', prdSessionId);
+        // --- eforge:region plan-02-runtime-and-integration ---
         if (prd.frontmatter.profile) {
           args.push('--profile', prd.frontmatter.profile);
+        } else if (routedProfileOverride) {
+          args.push('--profile', routedProfileOverride);
         }
+        // --- eforge:endregion plan-02-runtime-and-integration ---
         doSpawn(args);
       };
 
@@ -1670,6 +1701,14 @@ export class EforgeEngine {
     const bus = new EventEmitter();
     const eventQueue = new AsyncEventQueue<EforgeEvent>();
 
+    // --- eforge:region plan-02-runtime-and-integration ---
+    // Resolve configDir needed by profile routers in the scheduler.
+    const schedulerConfigDir = await (async () => {
+      const { getConfigDir, getConventionalConfigDir } = await import('./config.js');
+      return (await getConfigDir(cwd)) ?? getConventionalConfigDir(cwd);
+    })();
+    // --- eforge:endregion plan-02-runtime-and-integration ---
+
     const scheduler = new QueueScheduler({
       bus,
       cwd,
@@ -1679,9 +1718,14 @@ export class EforgeEngine {
       parallelism: this.config.maxConcurrentBuilds,
       abortController,
       eventQueue,
-      spawnPrdChild: (prd, opts, sessionId) => this.spawnPrdChild(prd, opts, sessionId, (event) => eventQueue.push(event)),
+      spawnPrdChild: (prd, opts, sessionId, routedProfileOverride) => this.spawnPrdChild(prd, opts, sessionId, (event) => eventQueue.push(event), routedProfileOverride),
       options,
       initialPrds: orderedPrds,
+      // --- eforge:region plan-02-runtime-and-integration ---
+      extensionRegistry: this.extensionRegistry,
+      profileUsageProvider: this.profileUsageProvider,
+      configDir: schedulerConfigDir,
+      // --- eforge:endregion plan-02-runtime-and-integration ---
     });
 
     // Wire the inject callback BEFORE yielding queue:start so callers that

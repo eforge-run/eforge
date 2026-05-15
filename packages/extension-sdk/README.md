@@ -73,12 +73,14 @@ Loader-time registration capture is available today: the daemon calls each defau
 | `onAgentRun(handler)` | Append prompt context scoped by role/tier/phase (see note) | Yes | Yes (promptAppend only) |
 | `registerTool(tool)` | Register a custom agent tool for provenance and future injection | Yes | Deferred |
 | `beforePlanMerge(handler)` | Policy gate before plan branch is merged | Yes | Deferred |
-| `registerProfileRouter(spec)` | Select agent runtime profile per build | Yes | Deferred |
+| `registerProfileRouter(spec)` | Select agent runtime profile per build (canonical: `selectBuildProfile`) | Yes | Yes (pre-build dispatch) |
 | `registerInputSource(adapter)` | Produce PRD/build-source artifacts | Yes | Deferred |
 | `registerReviewerPerspective(spec)` | Add custom review perspective | Yes | Deferred |
 | `registerValidationProvider(spec)` | Add custom validation step | Yes | Deferred |
 
-All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, and `onAgentRun` prompt-context augmentation are wired; blocking gates, tool execution, routing, and provider execution land in subsequent runtime phases.
+All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, `onAgentRun` prompt-context augmentation, and `registerProfileRouter` pre-build dispatch are wired; blocking gates, tool execution, custom input fetching, reviewer perspective execution, and validation provider execution land in subsequent runtime phases.
+
+`registerProfileRouter` routers run before each queued PRD build. Routers are invoked sequentially in registration order using `selectBuildProfile` (preferred) or the deprecated `resolve` method. A `null`/`undefined` result defers to the next router. Routers that throw or time out emit `queue:profile:*` diagnostics and the next router is consulted (fail-open). An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are invoked. See [`examples/extensions/profile-router.ts`](../../examples/extensions/profile-router.ts) for a three-tier fallback example.
 
 `onEvent` handlers are non-blocking with respect to the engine pipeline. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Use `eforge extension test <name-or-path> --fixture <path>` or `eforge extension test <name-or-path> --run latest` to dry-run matching event hooks and inspect replay counts, matches, emitted diagnostics, and deferred non-event registration families.
 

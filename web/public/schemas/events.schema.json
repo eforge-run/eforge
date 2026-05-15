@@ -1154,6 +1154,188 @@
           "type": "object",
           "required": [
             "type",
+            "prdId",
+            "profile",
+            "baseProfile",
+            "routerName",
+            "extensionName",
+            "extensionPath"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:profile:selected",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "prdTitle": {
+              "type": "string"
+            },
+            "profile": {
+              "type": "string"
+            },
+            "baseProfile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "routerName": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            },
+            "confidence": {
+              "anyOf": [
+                {
+                  "const": "low",
+                  "type": "string"
+                },
+                {
+                  "const": "medium",
+                  "type": "string"
+                },
+                {
+                  "const": "high",
+                  "type": "string"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "routerName",
+            "extensionName",
+            "extensionPath",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:profile:router-failed",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "routerName": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "routerName",
+            "extensionName",
+            "extensionPath",
+            "timeoutMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:profile:router-timeout",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "routerName": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "prdId",
+            "routerName",
+            "extensionName",
+            "extensionPath",
+            "requestedProfile",
+            "reason",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "queue:profile:invalid-selection",
+              "type": "string"
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "routerName": {
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "requestedProfile": {
+              "type": "string"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "const": "not-found",
+                  "type": "string"
+                },
+                {
+                  "const": "load-error",
+                  "type": "string"
+                }
+              ]
+            },
+            "message": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "source"
           ],
           "properties": {

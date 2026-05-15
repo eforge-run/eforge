@@ -210,6 +210,36 @@ const eventRegistry = {
   },
   // --- eforge:endregion plan-01-agent-context-runtime ---
 
+  // --- eforge:region plan-01-profile-router-events ---
+  'queue:profile:selected': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Queue routed ${e.prdId} to profile "${e.profile}" via ${e.extensionName}:${e.routerName}${e.reason ? ` (${e.reason})` : ''}`,
+  },
+
+  'queue:profile:router-failed': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Profile router "${e.routerName}" (${e.extensionName}) failed for ${e.prdId}: ${e.message}`,
+  },
+
+  'queue:profile:router-timeout': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Profile router "${e.routerName}" (${e.extensionName}) timed out after ${e.timeoutMs}ms for ${e.prdId}`,
+  },
+
+  'queue:profile:invalid-selection': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Profile router "${e.routerName}" (${e.extensionName}) returned unknown profile "${e.requestedProfile}" for ${e.prdId}: ${e.message}`,
+  },
+  // --- eforge:endregion plan-01-profile-router-events ---
+
   // -------------------------------------------------------------------------
   // Planning
   // -------------------------------------------------------------------------

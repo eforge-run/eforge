@@ -508,6 +508,12 @@
           "type": "integer",
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
+        },
+        "profileRouterTimeoutMs": {
+          "description": "Timeout in milliseconds for profile router handlers (defaults to eventHookTimeoutMs)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
         }
       },
       "additionalProperties": false,

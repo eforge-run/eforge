@@ -182,6 +182,9 @@ export const extensionConfigSchema = z.object({
   // --- eforge:region plan-01-agent-context-runtime ---
   agentContextHookTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for agent-context hook handlers (defaults to eventHookTimeoutMs)'),
   // --- eforge:endregion plan-01-agent-context-runtime ---
+  // --- eforge:region plan-02-runtime-and-integration ---
+  profileRouterTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for profile router handlers (defaults to eventHookTimeoutMs)'),
+  // --- eforge:endregion plan-02-runtime-and-integration ---
 }).describe('Native eforge extension configuration');
 // --- eforge:endregion plan-01-extension-runtime-foundation ---
 
@@ -359,6 +362,9 @@ export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {
   // --- eforge:region plan-01-agent-context-runtime ---
   agentContextHookTimeoutMs: number;
   // --- eforge:endregion plan-01-agent-context-runtime ---
+  // --- eforge:region plan-02-runtime-and-integration ---
+  profileRouterTimeoutMs: number;
+  // --- eforge:endregion plan-02-runtime-and-integration ---
 };
 // --- eforge:endregion plan-01-extension-runtime-foundation ---
 export type TierConfig = z.output<typeof tierConfigSchema>;
@@ -640,6 +646,9 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     // --- eforge:region plan-01-agent-context-runtime ---
     agentContextHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
     // --- eforge:endregion plan-01-agent-context-runtime ---
+    // --- eforge:region plan-02-runtime-and-integration ---
+    profileRouterTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+    // --- eforge:endregion plan-02-runtime-and-integration ---
   }),
   // --- eforge:endregion plan-01-extension-runtime-foundation ---
   prdQueue: Object.freeze({ dir: 'eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
@@ -734,6 +743,9 @@ export function resolveConfig(
       // --- eforge:region plan-01-agent-context-runtime ---
       agentContextHookTimeoutMs: fileConfig.extensions?.agentContextHookTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.agentContextHookTimeoutMs,
       // --- eforge:endregion plan-01-agent-context-runtime ---
+      // --- eforge:region plan-02-runtime-and-integration ---
+      profileRouterTimeoutMs: fileConfig.extensions?.profileRouterTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.profileRouterTimeoutMs,
+      // --- eforge:endregion plan-02-runtime-and-integration ---
       include: fileConfig.extensions?.include,
       exclude: fileConfig.extensions?.exclude,
       paths: fileConfig.extensions?.paths,

@@ -105,6 +105,23 @@ export interface MonitorDB {
    * `id` that `getDaemonEventsAfter(0)` would surface.
    */
   getMaxDaemonEventId(): number;
+  /**
+   * Aggregate profile usage statistics for runs using `profileName` within
+   * the last `windowMs` milliseconds.
+   *
+   * Returns `null` when no `session:profile` events matching the profile name
+   * exist within the window (caller maps to `{ dataSource: 'none' }`).
+   *
+   * `recentQuotaErrors` counts `agent:stop` events whose error field contains
+   * rate-limit/quota indicators (429, rate_limit, quota, rate limit).
+   */
+  getProfileUsageSummary(profileName: string, windowMs: number): {
+    lastUsedAt?: string;
+    recentRunCount: number;
+    recentTokens?: { input?: number; output?: number; total?: number };
+    recentCostUsd?: number;
+    recentQuotaErrors: number;
+  } | null;
   close(): void;
 }
 
@@ -477,6 +494,98 @@ export function openDatabase(dbPath: string): MonitorDB {
         throw e;
       }
     },
+
+    // --- eforge:region plan-02-runtime-and-integration ---
+    getProfileUsageSummary(profileName, windowMs) {
+      const cutoff = new Date(Date.now() - windowMs).toISOString();
+
+      // Find distinct run_ids for sessions using this profile within the window.
+      const sessionRows = db
+        .prepare(
+          `SELECT DISTINCT e.run_id as runId
+           FROM events e
+           WHERE e.type = 'session:profile'
+             AND json_extract(e.data, '$.profileName') = ?
+             AND e.timestamp >= ?`,
+        )
+        .all(profileName, cutoff) as unknown as { runId: string }[];
+
+      if (sessionRows.length === 0) return null;
+
+      const runIds = sessionRows.map((r) => r.runId);
+      const placeholders = runIds.map(() => '?').join(', ');
+
+      // Last used timestamp
+      const lastUsedRow = db
+        .prepare(
+          `SELECT MAX(e.timestamp) as lastUsedAt
+           FROM events e
+           WHERE e.type = 'session:profile'
+             AND json_extract(e.data, '$.profileName') = ?
+             AND e.run_id IN (${placeholders})`,
+        )
+        .get(profileName, ...runIds) as unknown as { lastUsedAt: string | null };
+
+      // Aggregate agent:usage token totals
+      const usageRow = db
+        .prepare(
+          `SELECT
+             SUM(json_extract(e.data, '$.usage.input')) as totalInput,
+             SUM(json_extract(e.data, '$.usage.output')) as totalOutput,
+             SUM(json_extract(e.data, '$.usage.total')) as totalTokens
+           FROM events e
+           WHERE e.type = 'agent:usage'
+             AND e.run_id IN (${placeholders})`,
+        )
+        .get(...runIds) as unknown as { totalInput: number | null; totalOutput: number | null; totalTokens: number | null };
+
+      // Aggregate agent:result total cost
+      const costRow = db
+        .prepare(
+          `SELECT SUM(json_extract(e.data, '$.result.totalCostUsd')) as totalCost
+           FROM events e
+           WHERE e.type = 'agent:result'
+             AND e.run_id IN (${placeholders})`,
+        )
+        .get(...runIds) as unknown as { totalCost: number | null };
+
+      // Count quota-style errors from agent:stop events with recognizable error messages
+      const quotaRow = db
+        .prepare(
+          `SELECT COUNT(*) as count
+           FROM events e
+           WHERE e.type = 'agent:stop'
+             AND e.run_id IN (${placeholders})
+             AND json_extract(e.data, '$.error') IS NOT NULL
+             AND (
+               json_extract(e.data, '$.error') LIKE '%429%' OR
+               json_extract(e.data, '$.error') LIKE '%rate_limit%' OR
+               json_extract(e.data, '$.error') LIKE '%rate limit%' OR
+               json_extract(e.data, '$.error') LIKE '%quota%'
+             )`,
+        )
+        .get(...runIds) as unknown as { count: number };
+
+      const hasTokens =
+        usageRow.totalInput !== null || usageRow.totalOutput !== null || usageRow.totalTokens !== null;
+
+      return {
+        lastUsedAt: lastUsedRow.lastUsedAt ?? undefined,
+        recentRunCount: runIds.length,
+        ...(hasTokens
+          ? {
+              recentTokens: {
+                input: usageRow.totalInput ?? undefined,
+                output: usageRow.totalOutput ?? undefined,
+                total: usageRow.totalTokens ?? undefined,
+              },
+            }
+          : {}),
+        recentCostUsd: costRow.totalCost ?? undefined,
+        recentQuotaErrors: quotaRow.count ?? 0,
+      };
+    },
+    // --- eforge:endregion plan-02-runtime-and-integration ---
 
     close() {
       db.close();

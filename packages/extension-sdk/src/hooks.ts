@@ -7,7 +7,7 @@
  */
 
 import type { EforgeEvent } from './events.js';
-import type { EventHookContext, AgentRunContext, PolicyGateContext } from './context.js';
+import type { EventHookContext, AgentRunContext, PolicyGateContext, ProfileRouterContext } from './context.js';
 import type { ExtensionTool } from './tools.js';
 import type { TObject } from '@sinclair/typebox';
 import type { EventPattern } from './patterns.js';
@@ -127,25 +127,69 @@ export type AgentRunHandler = (
 
 /**
  * Result returned by a profile router, indicating which profile to activate
- * for the current plan or agent run.
+ * for the current plan build.
  */
 export interface ProfileRouterResult {
   /** The resolved profile name. */
   profile: string;
+  /**
+   * Optional human-readable explanation of why this profile was selected.
+   * Flows into the `queue:profile:selected` wire event so users can see
+   * the router's reasoning in the monitor UI and event log.
+   */
+  reason?: string;
+  /**
+   * Optional confidence level for this selection.
+   * Flows into the `queue:profile:selected` wire event.
+   */
+  confidence?: 'low' | 'medium' | 'high';
 }
 
 /**
  * Specification for a profile router registered via `registerProfileRouter`.
+ *
+ * The canonical method is `selectBuildProfile`, which receives a
+ * `ProfileRouterContext` with full build/queue context (PRD id, title, body,
+ * priority, dependencies, available profiles, and usage statistics).
+ *
+ * The `resolve` method is deprecated. If only `resolve` is provided the
+ * engine will use it as a fallback, but new routers should implement
+ * `selectBuildProfile` instead.
+ *
+ * At least one of `selectBuildProfile` or `resolve` must be provided.
  */
 export interface ProfileRouterSpec {
   /** Unique name for this router (used for logging and conflict detection). */
   name: string;
   /**
-   * Resolve the active profile for a given plan/run context.
-   * Return `null` or `undefined` to defer to the next registered router.
+   * Select the active profile for the given build/queue context.
+   *
+   * Return `null` or `undefined` to defer to the next registered router
+   * (or the default profile if no router selects one).
+   *
+   * This is the canonical method for profile routers. Implement this in
+   * preference to the deprecated `resolve` method.
    */
-  resolve: (ctx: AgentRunContext) => ProfileRouterResult | null | undefined | Promise<ProfileRouterResult | null | undefined>;
+  selectBuildProfile?: (
+    ctx: ProfileRouterContext,
+  ) => ProfileRouterResult | null | undefined | Promise<ProfileRouterResult | null | undefined>;
+  /**
+   * @deprecated Use `selectBuildProfile` instead.
+   *
+   * Resolve the active profile for a given agent run context.
+   * Return `null` or `undefined` to defer to the next registered router.
+   *
+   * This method receives `AgentRunContext` rather than the richer
+   * `ProfileRouterContext`, so it lacks PRD-level context. Prefer
+   * `selectBuildProfile` for new routers.
+   */
+  resolve?: (
+    ctx: AgentRunContext,
+  ) => ProfileRouterResult | null | undefined | Promise<ProfileRouterResult | null | undefined>;
 }
+
+// Re-export ProfileRouterContext for convenience in API signatures
+export type { ProfileRouterContext };
 
 // ---------------------------------------------------------------------------
 // Input source

@@ -204,12 +204,12 @@ All other non-event extension capability execution is intentionally deferred for
 | `onAgentRun` - agent prompt-context augmentation | Yes | Yes | Yes (promptAppend only - tools/allowedTools/disallowedTools deferred to EXTEND_08B) |
 | `registerTool` - custom agent tool | Yes | Yes | Deferred |
 | `beforePlanMerge` - policy gate | Yes | Yes | Deferred |
-| `registerProfileRouter` | Yes | Yes | Deferred |
+| `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
 | `registerInputSource` | Yes | Yes | Deferred |
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-Event-hook and agent-context-hook examples can be loaded, validated, and run at runtime. Blocking policy enforcement, custom tool execution, profile routing, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
+Event-hook, agent-context-hook, and profile-router examples can be loaded, validated, and run at runtime. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. Blocking policy enforcement, custom tool execution, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
 
 ## Schema language
 

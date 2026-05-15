@@ -944,3 +944,250 @@ describe('eventRegistry — extension:agent-context:* diagnostics', () => {
 });
 
 // --- eforge:endregion plan-01-agent-context-runtime ---
+
+// --- eforge:region plan-01-profile-router-events ---
+
+// ---------------------------------------------------------------------------
+// queue:profile:* variants (EXTEND_09)
+// ---------------------------------------------------------------------------
+
+describe('safeParseEforgeEvent — queue:profile:* variants', () => {
+  it('accepts queue:profile:selected with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:selected',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      profile: 'premium',
+      baseProfile: 'standard',
+      routerName: 'cost-aware-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts queue:profile:selected with all optional fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:selected',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      prdTitle: 'Add OAuth support',
+      profile: 'premium',
+      baseProfile: 'standard',
+      routerName: 'cost-aware-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      reason: 'high-priority build',
+      confidence: 'high',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts queue:profile:selected with baseProfile: null', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:selected',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      profile: 'default',
+      baseProfile: null,
+      routerName: 'fallback-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects queue:profile:selected missing routerName', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:selected',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      profile: 'premium',
+      baseProfile: 'standard',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts queue:profile:router-failed with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:router-failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      routerName: 'cost-aware-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      message: 'Router threw an unexpected error',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts queue:profile:router-failed with optional stack', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:router-failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      routerName: 'cost-aware-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      message: 'Router threw an unexpected error',
+      stack: 'Error: Router threw\n    at handler (/ext.ts:5:10)',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects queue:profile:router-failed missing message', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:router-failed',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      routerName: 'cost-aware-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts queue:profile:router-timeout with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:router-timeout',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      routerName: 'slow-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      timeoutMs: 5000,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects queue:profile:router-timeout with non-integer timeoutMs', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:router-timeout',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      routerName: 'slow-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      timeoutMs: '5000',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts queue:profile:invalid-selection with required fields', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:invalid-selection',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      routerName: 'misconfigured-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      requestedProfile: 'nonexistent-profile',
+      reason: 'not-found',
+      message: 'Profile "nonexistent-profile" was not found in the active configuration',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts queue:profile:invalid-selection with reason: load-error', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:invalid-selection',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      routerName: 'misconfigured-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      requestedProfile: 'bad-profile',
+      reason: 'load-error',
+      message: 'Profile "bad-profile" failed to load',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects queue:profile:invalid-selection with unknown reason literal', () => {
+    const result = safeParseEforgeEvent({
+      type: 'queue:profile:invalid-selection',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-feature-auth',
+      routerName: 'misconfigured-router',
+      extensionName: 'my-ext',
+      extensionPath: '/project/.eforge/extensions/my-ext.ts',
+      requestedProfile: 'some-profile',
+      reason: 'invalid-reason',
+      message: 'something went wrong',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('eventRegistry — queue:profile:* diagnostics', () => {
+  it('registers all four profile router events as session-scoped, non-persistent events', () => {
+    expect(eventRegistry['queue:profile:selected']).toMatchObject({ scope: 'session', persist: false });
+    expect(eventRegistry['queue:profile:router-failed']).toMatchObject({ scope: 'session', persist: false });
+    expect(eventRegistry['queue:profile:router-timeout']).toMatchObject({ scope: 'session', persist: false });
+    expect(eventRegistry['queue:profile:invalid-selection']).toMatchObject({ scope: 'session', persist: false });
+  });
+
+  it('summary for queue:profile:selected includes prdId, profile, extensionName, and routerName', () => {
+    const event: EforgeEvent = {
+      type: 'queue:profile:selected',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-auth',
+      profile: 'premium',
+      baseProfile: 'standard',
+      routerName: 'cost-router',
+      extensionName: 'billing-ext',
+      extensionPath: '/ext.ts',
+    };
+    const summary = getEventSummary(event);
+    expect(summary).toContain('prd-auth');
+    expect(summary).toContain('premium');
+    expect(summary).toContain('billing-ext');
+    expect(summary).toContain('cost-router');
+  });
+
+  it('summary for queue:profile:selected includes reason when present', () => {
+    const event: EforgeEvent = {
+      type: 'queue:profile:selected',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-auth',
+      profile: 'premium',
+      baseProfile: null,
+      routerName: 'cost-router',
+      extensionName: 'billing-ext',
+      extensionPath: '/ext.ts',
+      reason: 'high priority task',
+    };
+    const summary = getEventSummary(event);
+    expect(summary).toContain('high priority task');
+  });
+
+  it('safeParseEforgeEvent accepts queue:profile:selected and rejects one missing routerName', () => {
+    const valid = safeParseEforgeEvent({
+      type: 'queue:profile:selected',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-1',
+      profile: 'default',
+      baseProfile: null,
+      routerName: 'my-router',
+      extensionName: 'my-ext',
+      extensionPath: '/ext.ts',
+    });
+    expect(valid.success).toBe(true);
+
+    const invalid = safeParseEforgeEvent({
+      type: 'queue:profile:selected',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      prdId: 'prd-1',
+      profile: 'default',
+      baseProfile: null,
+      // routerName intentionally omitted
+      extensionName: 'my-ext',
+      extensionPath: '/ext.ts',
+    });
+    expect(invalid.success).toBe(false);
+  });
+});
+
+// --- eforge:endregion plan-01-profile-router-events ---

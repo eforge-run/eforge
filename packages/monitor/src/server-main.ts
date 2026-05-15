@@ -18,7 +18,7 @@ import { startServer, type WorkerTracker, type DaemonState } from './server.js';
 import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive, type ExtensionReloadWatcherMetadata } from '@eforge-build/client';
 import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig, type HookConfig } from '@eforge-build/engine/config';
-import { EforgeEngine, type SchedulerControl } from '@eforge-build/engine/eforge';
+import { EforgeEngine, type SchedulerControl, type ProfileUsageProvider } from '@eforge-build/engine/eforge';
 import { withHooks } from '@eforge-build/engine/hooks';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
@@ -30,6 +30,59 @@ import { resolve } from 'node:path';
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
+
+// --- eforge:region plan-02-runtime-and-integration ---
+/** Cooldown window applied after a quota error is detected (10 minutes). */
+export const COOLDOWN_WINDOW_MS = 10 * 60 * 1000;
+/** Default rolling window for usage queries when callers don't specify one (24 hours). */
+export const DEFAULT_USAGE_WINDOW_MS = 24 * 60 * 60 * 1000;
+/** Token input threshold after which `nearLimit` is set (1M input tokens). */
+export const NEAR_LIMIT_TOKEN_THRESHOLD = 1_000_000;
+
+/**
+ * Create a ProfileUsageProvider backed by a MonitorDB instance.
+ *
+ * The provider queries `session:profile`, `agent:usage`, `agent:result`, and
+ * `agent:stop` events to build best-effort usage statistics for each profile.
+ * Cooldown and nearLimit derivation happen here so routers always see a
+ * consistent `ProfileUsageSummary` regardless of which DB method is used.
+ */
+function createProfileUsageProvider(db: MonitorDB): ProfileUsageProvider {
+  return {
+    getUsageSummary(profileName: string, options?: { windowMs?: number }) {
+      const windowMs = options?.windowMs ?? DEFAULT_USAGE_WINDOW_MS;
+      let raw: ReturnType<MonitorDB['getProfileUsageSummary']>;
+      try {
+        raw = db.getProfileUsageSummary(profileName, windowMs);
+      } catch {
+        return null;
+      }
+      if (raw === null) return null;
+
+      const hasQuotaErrors = raw.recentQuotaErrors > 0;
+      const now = Date.now();
+      const cooldownUntil = hasQuotaErrors
+        ? new Date(now + COOLDOWN_WINDOW_MS).toISOString()
+        : undefined;
+
+      const inputTokens = raw.recentTokens?.input ?? 0;
+      const nearLimit = inputTokens >= NEAR_LIMIT_TOKEN_THRESHOLD;
+
+      return {
+        lastUsedAt: raw.lastUsedAt,
+        recentRunCount: raw.recentRunCount,
+        recentTokens: raw.recentTokens,
+        recentCostUsd: raw.recentCostUsd,
+        recentQuotaErrors: raw.recentQuotaErrors,
+        cooldownActive: hasQuotaErrors,
+        ...(cooldownUntil !== undefined ? { cooldownUntil } : {}),
+        nearLimit,
+        dataSource: 'event-history' as const,
+      };
+    },
+  };
+}
+// --- eforge:endregion plan-02-runtime-and-integration ---
 
 const WATCHER_DRAIN_TIMEOUT_MS = 5000;
 const ORPHAN_CHECK_INTERVAL_MS = 5000;
@@ -527,7 +580,10 @@ async function main(): Promise<void> {
 
     let engine: EforgeEngine;
     try {
-      engine = await EforgeEngine.create({ cwd });
+      // --- eforge:region plan-02-runtime-and-integration ---
+      const profileUsageProvider = createProfileUsageProvider(db);
+      // --- eforge:endregion plan-02-runtime-and-integration ---
+      engine = await EforgeEngine.create({ cwd, profileUsageProvider });
     } catch (err) {
       watcherAbort = null;
       daemonState.watcher = { running: false, pid: null, sessionId: null };

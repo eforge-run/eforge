@@ -48,6 +48,18 @@ export type {
   AgentRunHooksExecutionResult,
 } from './agent-context-runtime.js';
 // --- eforge:endregion plan-01-agent-context-runtime ---
+// --- eforge:region plan-02-runtime-and-integration ---
+export {
+  executeProfileRouters,
+  buildProfileRouterContext,
+} from './profile-router-runtime.js';
+export type {
+  RouterSelection,
+  ProfileRouterExecutionResult,
+  ExecuteProfileRoutersOptions,
+  BuildProfileRouterContextDeps,
+} from './profile-router-runtime.js';
+// --- eforge:endregion plan-02-runtime-and-integration ---
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
 // --- eforge:region plan-01-engine-daemon-extension-replay ---
