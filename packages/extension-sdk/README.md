@@ -67,7 +67,7 @@ Loader-time registration capture is available today: the daemon calls each defau
 | Method | Description | Loader-time capture | Runtime execution |
 |--------|-------------|---------------------|-------------------|
 | `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | Yes | Yes |
-| `onAgentRun(handler)` | Augment agent runs with tools and prompt context (scope by `ctx.role`) | Yes | Deferred |
+| `onAgentRun(handler)` | Append prompt context scoped by role/tier/phase (see note) | Yes | Yes (promptAppend only) |
 | `registerTool(tool)` | Register a custom agent tool for provenance and future injection | Yes | Deferred |
 | `beforePlanMerge(handler)` | Policy gate before plan branch is merged | Yes | Deferred |
 | `registerProfileRouter(spec)` | Select agent runtime profile per build | Yes | Deferred |
@@ -75,9 +75,11 @@ Loader-time registration capture is available today: the daemon calls each defau
 | `registerReviewerPerspective(spec)` | Add custom review perspective | Yes | Deferred |
 | `registerValidationProvider(spec)` | Add custom validation step | Yes | Deferred |
 
-All capabilities have full TypeScript type contracts. Loading, registration capture, and `onEvent` dispatch are wired; blocking gates, agent augmentation, tool execution, routing, and provider execution land in subsequent runtime phases.
+All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, and `onAgentRun` prompt-context augmentation are wired; blocking gates, tool execution, routing, and provider execution land in subsequent runtime phases.
 
 `onEvent` handlers are non-blocking with respect to the engine pipeline. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields.
+
+`onAgentRun` handlers run before each agent invocation and may return `{ promptAppend: '...' }` to inject role- or phase-scoped context. Each fragment is wrapped in a named provenance section appended to the resolved prompt. Handlers are fail-open: a throw or timeout emits a typed `extension:agent-context:*` diagnostic but does not abort the agent run. Tool fields (`tools`, `allowedTools`, `disallowedTools`) are captured in the type but not applied at runtime in this slice (EXTEND_08B).
 
 ## Policy decisions
 
@@ -110,10 +112,19 @@ const myTool = defineExtensionTool({
   handler: async ({ path }) => `processed: ${path}`,
 });
 
+// `registerTool` captures the tool at load time for provenance and validation.
+// Runtime injection into agent runs is tracked for EXTEND_08B.
+eforge.registerTool(myTool);
+
+// `onAgentRun` can append role-scoped prompt context (runtime-supported):
 eforge.onAgentRun(async (ctx) => {
   if (ctx.role !== "builder") return;
-  return { tools: [myTool] };
+  return { promptAppend: "Prefer existing design-system components for UI changes." };
 });
+
+// Note: returning `tools`, `allowedTools`, or `disallowedTools` from
+// `onAgentRun` emits an `extension:agent-context:unsupported` diagnostic in
+// EXTEND_08A — tool injection via onAgentRun is tracked for EXTEND_08B.
 ```
 
 ## Event patterns

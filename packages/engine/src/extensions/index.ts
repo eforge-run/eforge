@@ -38,6 +38,16 @@ export type {
   EventHookExecResult,
   NativeEventHookRuntimeOptions,
 } from './event-runtime.js';
+// --- eforge:region plan-01-agent-context-runtime ---
+export {
+  withAgentContextHooks,
+  executeAgentRunHooks,
+} from './agent-context-runtime.js';
+export type {
+  AgentContextHookRuntimeOptions,
+  AgentRunHooksExecutionResult,
+} from './agent-context-runtime.js';
+// --- eforge:endregion plan-01-agent-context-runtime ---
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
 // --- eforge:region plan-01-extension-management-api ---

@@ -179,6 +179,9 @@ export const extensionConfigSchema = z.object({
   // --- eforge:region plan-01-native-event-runtime-foundation ---
   eventHookTimeoutMs: z.number().int().positive().optional().describe('Default timeout in milliseconds for native extension event-hook handlers'),
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+  // --- eforge:region plan-01-agent-context-runtime ---
+  agentContextHookTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for agent-context hook handlers (defaults to eventHookTimeoutMs)'),
+  // --- eforge:endregion plan-01-agent-context-runtime ---
 }).describe('Native eforge extension configuration');
 // --- eforge:endregion plan-01-extension-runtime-foundation ---
 
@@ -353,6 +356,9 @@ export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {
   // --- eforge:region plan-01-native-event-runtime-foundation ---
   eventHookTimeoutMs: number;
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+  // --- eforge:region plan-01-agent-context-runtime ---
+  agentContextHookTimeoutMs: number;
+  // --- eforge:endregion plan-01-agent-context-runtime ---
 };
 // --- eforge:endregion plan-01-extension-runtime-foundation ---
 export type TierConfig = z.output<typeof tierConfigSchema>;
@@ -631,6 +637,9 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     // --- eforge:region plan-01-native-event-runtime-foundation ---
     eventHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
     // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+    // --- eforge:region plan-01-agent-context-runtime ---
+    agentContextHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+    // --- eforge:endregion plan-01-agent-context-runtime ---
   }),
   // --- eforge:endregion plan-01-extension-runtime-foundation ---
   prdQueue: Object.freeze({ dir: 'eforge/queue', autoBuild: true, watchPollIntervalMs: 5000 }),
@@ -722,6 +731,9 @@ export function resolveConfig(
       // --- eforge:region plan-01-native-event-runtime-foundation ---
       eventHookTimeoutMs: fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.eventHookTimeoutMs,
       // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+      // --- eforge:region plan-01-agent-context-runtime ---
+      agentContextHookTimeoutMs: fileConfig.extensions?.agentContextHookTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.agentContextHookTimeoutMs,
+      // --- eforge:endregion plan-01-agent-context-runtime ---
       include: fileConfig.extensions?.include,
       exclude: fileConfig.extensions?.exclude,
       paths: fileConfig.extensions?.paths,

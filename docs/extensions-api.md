@@ -81,14 +81,13 @@ The `event` parameter is narrowed to `EventOfType<T>` when the pattern is an exa
 
 ### `onAgentRun(handler)`
 
-Register a handler invoked before each agent run starts. The handler receives an `AgentRunContext` (which itself extends `EforgeExtensionContext`, so logger and exec are available on the same object) and may return additional prompt context, custom tools, or tool allow/deny lists. Inspect `ctx.role` inside the handler to scope behavior to a particular agent role.
+Register a handler invoked before each agent run starts. The handler receives an `AgentRunContext` (which itself extends `EforgeExtensionContext`, so logger and exec are available on the same object) and may return a `promptAppend` fragment to inject additional context into the agent's prompt. Inspect `ctx.role`, `ctx.tier`, `ctx.phase`, and `ctx.stage` to scope behavior to specific agent roles or lifecycle positions.
 
 ```ts
 eforge.onAgentRun(async (ctx) => {
   if (ctx.role !== "builder") return;
   return {
     promptAppend: "Check the design system before modifying UI components.",
-    tools: [myCustomTool],
   };
 });
 ```
@@ -116,6 +115,14 @@ interface AgentRunContext extends EforgeExtensionContext {
   profile: string;
   planId?: string;
   changedFiles?: string[];
+  // Lifecycle context (populated for pipeline runs):
+  phase?: string;   // 'compile' | 'build' | 'standalone'
+  stage?: string;   // e.g. 'implement', 'review', 'planner', 'module-planner'
+  // Runtime metadata (read-only):
+  harness?: 'claude-sdk' | 'pi';
+  toolbelt?: string | null;
+  toolbeltSource?: 'tier' | 'role' | 'plan' | 'default';
+  projectMcpSelection?: 'all' | 'none' | 'toolbelt';
 }
 ```
 
@@ -124,13 +131,31 @@ interface AgentRunContext extends EforgeExtensionContext {
 ```ts
 interface AgentRunAugmentation {
   promptAppend?: string;
+  /** @deprecated Not applied at runtime in EXTEND_08A — emits unsupported diagnostic. Tracked for EXTEND_08B. */
   tools?: ExtensionTool[];
+  /** @deprecated Not applied at runtime in EXTEND_08A — emits unsupported diagnostic. Tracked for EXTEND_08B. */
   allowedTools?: string[];
+  /** @deprecated Not applied at runtime in EXTEND_08A — emits unsupported diagnostic. Tracked for EXTEND_08B. */
   disallowedTools?: string[];
 }
 ```
 
-**Runtime status:** registration is captured at load time; agent augmentation execution is deferred.
+**Prompt composition:** returned `promptAppend` fragments are appended *after* any config-level `promptAppend` already resolved by the engine, wrapped in a per-extension provenance section:
+
+```
+## Native extension context
+
+### <extension-name>
+<fragment>
+```
+
+Multiple extensions append in registration order. Each handler runs with a configurable timeout (see `extensions.agentContextHookTimeoutMs`).
+
+**Fail-open behavior:** a handler that throws an error emits an `extension:agent-context:failed` event; a handler that exceeds the timeout emits an `extension:agent-context:timeout` event. In both cases the agent run proceeds with the unmodified prompt. Diagnostic events carry metadata (extension name, role, tier, phase, stage, fragment count) but never the prompt fragment text.
+
+**Unsupported fields:** returning `tools`, `allowedTools`, or `disallowedTools` emits an `extension:agent-context:unsupported` diagnostic listing the rejected field names. Those fields are otherwise ignored and the prompt is not modified. This is not an error condition — it is a forward-compatibility signal for EXTEND_08B.
+
+**Runtime status:** Yes (promptAppend only — `tools`/`allowedTools`/`disallowedTools` deferred to EXTEND_08B).
 
 ---
 
@@ -489,7 +514,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
 | `onEvent` | Yes | Yes | Yes |
-| `onAgentRun` | Yes | Yes | Deferred |
+| `onAgentRun` | Yes | Yes | Yes (promptAppend only — tools/allowedTools/disallowedTools deferred to EXTEND_08B)[^1] |
 | `registerTool` / `ExtensionTool` | Yes | Yes | Deferred |
 | `beforePlanMerge` policy gate | Yes | Yes | Deferred |
 | `registerProfileRouter` | Yes | Yes | Deferred |
@@ -497,7 +522,9 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-Loaded extensions therefore appear in provenance and validation output today, including registration summaries and diagnostics. Event hook examples run at runtime and receive correlated events. Agent augmentation, custom tool injection/execution, blocking policy enforcement, profile routing, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
+[^1]: `onAgentRun` handlers that return `tools`, `allowedTools`, or `disallowedTools` emit an `extension:agent-context:unsupported` diagnostic. Those fields are not applied. Handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run.
+
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook and agent-context-hook examples run at runtime. Custom tool injection/execution, blocking policy enforcement, profile routing, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
 
 ---
 

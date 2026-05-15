@@ -71,6 +71,8 @@ async function* runBuilderAttempt(
       ...builderTb,
       parallelStages,
       verificationScope,
+      phase: 'build',
+      stage: 'implement',
       ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
       harness: builderHarness,
     }), ctx)) {
@@ -107,6 +109,8 @@ async function* runEvaluatorAttempt(
       ...evalAgentConfig,
       ...evaluatorTb,
       strictness,
+      phase: 'build',
+      stage: 'evaluate',
       ...(continuationContext && { evaluatorContinuationContext: continuationContext }),
       preImplementCommit: ctx.preImplementCommit,
       harness: evaluatorHarness,
@@ -174,6 +178,8 @@ async function* reviewStageInner(
       strategy,
       perspectives,
       ...reviewerAgentConfig,
+      phase: 'build',
+      stage: 'review',
       harness: reviewerHarness,
     })) {
       reviewTracker.handleEvent(event);
@@ -241,6 +247,8 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
 
   const { harness: fixerHarness, toolbeltSummary: fixerTb } = ctx.agentRuntimes.forRoleResolved('review-fixer', ctx.planFile);
   const fixerConfig = resolveAgentConfig('review-fixer', ctx.config, ctx.planFile, fixerTb);
+  // Add phase/stage for extension hook context
+  const fixerConfigWithPhase = { ...fixerConfig, phase: 'build', stage: 'review-fix' };
   const fixSpan = ctx.tracing.createSpan('review-fixer', { planId: ctx.planId });
   fixSpan.setInput({ planId: ctx.planId, issueCount: ctx.reviewIssues.length });
   const fixTracker = createToolTracker(fixSpan);
@@ -252,7 +260,7 @@ async function* reviewFixStageInner(ctx: BuildStageContext): AsyncGenerator<Efor
       issues: ctx.reviewIssues,
       verbose: ctx.verbose,
       abortController: ctx.abortController,
-      ...fixerConfig,
+      ...fixerConfigWithPhase,
       harness: fixerHarness,
     }), ctx)) {
       if (event.type === 'agent:start' && event.agent === 'review-fixer') {
@@ -311,6 +319,8 @@ async function* testStageInner(ctx: BuildStageContext): AsyncGenerator<EforgeEve
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      phase: 'build',
+      stage: 'test',
       harness: testerHarness,
     }), ctx)) {
       tracker.handleEvent(event);
@@ -406,6 +416,8 @@ async function* runBuilderShardAttempt(
       ...agentConfig,
       ...shardBuilderTb,
       parallelStages,
+      phase: 'build',
+      stage: 'implement',
       // verificationScope is intentionally omitted: shardScope instructs the agent not to verify
       shardScope: input.shardScope,
       ...(input.builderOptions.continuationContext && { continuationContext: input.builderOptions.continuationContext }),
@@ -788,6 +800,8 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      phase: 'build',
+      stage: 'doc-author',
       harness: docAuthorHarness,
     }), ctx)) {
       docTracker.handleEvent(event);
@@ -844,6 +858,8 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      phase: 'build',
+      stage: 'doc-sync',
       harness: docSyncerHarness,
     }), ctx)) {
       docTracker.handleEvent(event);
@@ -902,6 +918,8 @@ registerBuildStage({
       verbose: ctx.verbose,
       abortController: ctx.abortController,
       ...agentConfig,
+      phase: 'build',
+      stage: 'test-write',
       harness: testWriterHarness,
     }), ctx)) {
       tracker.handleEvent(event);

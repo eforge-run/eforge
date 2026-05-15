@@ -698,6 +698,92 @@ const EforgeEventVariantsSchema = Type.Union([
   }),
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
+  // --- eforge:region plan-01-agent-context-runtime ---
+  // Native extension agent-context-hook diagnostics (EXTEND_08A)
+  Type.Object({
+    type: Type.Literal('extension:agent-context:applied'),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    role: AgentRoleSchema,
+    tier: Type.Optional(Type.String()),
+    phase: Type.Optional(Type.String()),
+    stage: Type.Optional(Type.String()),
+    profile: Type.String(),
+    planId: Type.Optional(Type.String()),
+    harness: Type.Optional(Type.Union([Type.Literal('claude-sdk'), Type.Literal('pi')])),
+    toolbelt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    projectMcpSelection: Type.Optional(Type.Union([
+      Type.Literal('all'),
+      Type.Literal('none'),
+      Type.Literal('toolbelt'),
+    ])),
+    promptCharCount: Type.Integer({ minimum: 0 }),
+    fragmentCount: Type.Integer({ minimum: 0 }),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:agent-context:failed'),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    role: AgentRoleSchema,
+    tier: Type.Optional(Type.String()),
+    phase: Type.Optional(Type.String()),
+    stage: Type.Optional(Type.String()),
+    profile: Type.String(),
+    planId: Type.Optional(Type.String()),
+    harness: Type.Optional(Type.Union([Type.Literal('claude-sdk'), Type.Literal('pi')])),
+    toolbelt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    projectMcpSelection: Type.Optional(Type.Union([
+      Type.Literal('all'),
+      Type.Literal('none'),
+      Type.Literal('toolbelt'),
+    ])),
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:agent-context:timeout'),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    role: AgentRoleSchema,
+    tier: Type.Optional(Type.String()),
+    phase: Type.Optional(Type.String()),
+    stage: Type.Optional(Type.String()),
+    profile: Type.String(),
+    planId: Type.Optional(Type.String()),
+    harness: Type.Optional(Type.Union([Type.Literal('claude-sdk'), Type.Literal('pi')])),
+    toolbelt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    projectMcpSelection: Type.Optional(Type.Union([
+      Type.Literal('all'),
+      Type.Literal('none'),
+      Type.Literal('toolbelt'),
+    ])),
+    timeoutMs: Type.Integer({ minimum: 0 }),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:agent-context:unsupported'),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    role: AgentRoleSchema,
+    tier: Type.Optional(Type.String()),
+    phase: Type.Optional(Type.String()),
+    stage: Type.Optional(Type.String()),
+    profile: Type.String(),
+    planId: Type.Optional(Type.String()),
+    harness: Type.Optional(Type.Union([Type.Literal('claude-sdk'), Type.Literal('pi')])),
+    toolbelt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    projectMcpSelection: Type.Optional(Type.Union([
+      Type.Literal('all'),
+      Type.Literal('none'),
+      Type.Literal('toolbelt'),
+    ])),
+    fields: Type.Array(Type.Union([
+      Type.Literal('tools'),
+      Type.Literal('allowedTools'),
+      Type.Literal('disallowedTools'),
+    ]), { minItems: 1 }),
+  }),
+  // --- eforge:endregion plan-01-agent-context-runtime ---
+
   // Planning
   Type.Object({
     type: Type.Literal('planning:start'),
@@ -1484,7 +1570,11 @@ export function isAlwaysYieldedAgentEvent(event: EforgeEvent): boolean {
     event.type === 'agent:activity' ||
     event.type === 'agent:usage' ||
     event.type === 'agent:tool_use' ||
-    event.type === 'agent:tool_result'
+    event.type === 'agent:tool_result' ||
+    event.type === 'extension:agent-context:applied' ||
+    event.type === 'extension:agent-context:failed' ||
+    event.type === 'extension:agent-context:timeout' ||
+    event.type === 'extension:agent-context:unsupported'
   );
 }
 

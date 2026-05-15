@@ -67,18 +67,48 @@ export type PolicyGateHandler = (ctx: PolicyGateContext) => PolicyDecision | Pro
  *
  * All fields are optional. Unspecified fields leave the default agent run
  * configuration unchanged.
+ *
+ * **Runtime support (EXTEND_08A):** only `promptAppend` is applied at runtime.
+ * Returning `tools`, `allowedTools`, or `disallowedTools` emits an
+ * `extension:agent-context:unsupported` diagnostic event and those fields are
+ * otherwise ignored. Tool injection is tracked for EXTEND_08B.
  */
 export interface AgentRunAugmentation {
   /**
-   * Additional text appended to the agent's system or user prompt.
-   * Use sparingly — large appended text can degrade agent performance.
+   * Additional text appended to the agent's prompt, wrapped in a named
+   * provenance section identifying the contributing extension.
+   *
+   * Extension fragments are appended after any config-level `promptAppend`
+   * already resolved by the engine. Use sparingly — large appended text can
+   * degrade agent performance.
    */
   promptAppend?: string;
-  /** Additional `ExtensionTool` instances made available to the agent for this run. */
+  /**
+   * Additional `ExtensionTool` instances made available to the agent for this run.
+   *
+   * @deprecated Tool injection via `onAgentRun` is not yet applied at runtime
+   * (EXTEND_08A). Returning this field emits an
+   * `extension:agent-context:unsupported` diagnostic; the field is otherwise
+   * ignored. Tool injection is tracked for EXTEND_08B.
+   */
   tools?: ExtensionTool<TObject>[];
-  /** Tool names explicitly allowed for this agent run (overrides agent defaults). */
+  /**
+   * Tool names explicitly allowed for this agent run (overrides agent defaults).
+   *
+   * @deprecated Tool allow/deny list modification via `onAgentRun` is not yet
+   * applied at runtime (EXTEND_08A). Returning this field emits an
+   * `extension:agent-context:unsupported` diagnostic; the field is otherwise
+   * ignored. This capability is tracked for EXTEND_08B.
+   */
   allowedTools?: string[];
-  /** Tool names explicitly disallowed for this agent run. */
+  /**
+   * Tool names explicitly disallowed for this agent run.
+   *
+   * @deprecated Tool allow/deny list modification via `onAgentRun` is not yet
+   * applied at runtime (EXTEND_08A). Returning this field emits an
+   * `extension:agent-context:unsupported` diagnostic; the field is otherwise
+   * ignored. This capability is tracked for EXTEND_08B.
+   */
   disallowedTools?: string[];
 }
 

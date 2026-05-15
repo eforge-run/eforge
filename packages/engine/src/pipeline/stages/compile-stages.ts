@@ -64,6 +64,8 @@ async function* runPlannerAttempt(
       defaultReview: ctx.pipeline.defaultReview,
       ...agentConfig,
       ...plannerTb,
+      phase: 'compile',
+      stage: 'planner',
       ...(input.plannerOptions.continuationContext && { continuationContext: input.plannerOptions.continuationContext }),
       harness: plannerHarness,
     })) {
@@ -170,6 +172,8 @@ async function* runModulePlannerAttempt(
       outputDir: ctx.config.plan.outputDir,
       ...agentConfig,
       ...modulePlannerTb,
+      phase: 'compile',
+      stage: 'module-planner',
       harness: modulePlannerHarness,
     })) {
       modTracker.handleEvent(event);
@@ -226,6 +230,8 @@ registerCompileStage({
     verbose: ctx.verbose,
     abortController: ctx.abortController,
     ...composerConfig,
+    phase: 'compile',
+    stage: 'pipeline-composer',
     harness: composerHarness,
   })) {
     if (event.type === 'planning:pipeline') {
@@ -305,6 +311,8 @@ registerCompileStage({
           verbose,
           abortController,
           outputDir: ctx.config.plan.outputDir,
+          phase: 'compile',
+          stage: 'plan-review',
           harness: planReviewerHarness,
         }),
       },
@@ -320,6 +328,8 @@ registerCompileStage({
           abortController,
           outputDir: ctx.config.plan.outputDir,
           continuationContext,
+          phase: 'compile',
+          stage: 'plan-evaluate',
           harness: planEvaluatorHarness,
         }),
       },
@@ -370,12 +380,12 @@ registerCompileStage({
       reviewer: {
         role: 'architecture-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runArchitectureReview({ ...archReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, harness: archReviewerHarness }),
+        run: () => runArchitectureReview({ ...archReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, phase: 'compile', stage: 'architecture-review', harness: archReviewerHarness }),
       },
       evaluator: {
         role: 'architecture-evaluator',
         metadata: { planSet: planSetName },
-        run: (continuationContext) => runArchitectureEvaluate({ ...archEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, harness: archEvaluatorHarness }),
+        run: (continuationContext) => runArchitectureEvaluate({ ...archEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, phase: 'compile', stage: 'architecture-evaluate', harness: archEvaluatorHarness }),
       },
     });
   } catch (err) {
@@ -484,12 +494,12 @@ registerCompileStage({
       reviewer: {
         role: 'cohesion-reviewer',
         metadata: { planSet: planSetName },
-        run: () => runCohesionReview({ ...cohesionReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, harness: cohesionReviewerHarness }),
+        run: () => runCohesionReview({ ...cohesionReviewerConfig, sourceContent, planSetName, architectureContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, phase: 'compile', stage: 'cohesion-review', harness: cohesionReviewerHarness }),
       },
       evaluator: {
         role: 'cohesion-evaluator',
         metadata: { planSet: planSetName },
-        run: (continuationContext) => runCohesionEvaluate({ ...cohesionEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, harness: cohesionEvaluatorHarness }),
+        run: (continuationContext) => runCohesionEvaluate({ ...cohesionEvaluatorConfig, planSetName, sourceContent, cwd, verbose, abortController, outputDir: ctx.config.plan.outputDir, continuationContext, phase: 'compile', stage: 'cohesion-evaluate', harness: cohesionEvaluatorHarness }),
       },
     });
   } catch (err) {

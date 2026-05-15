@@ -66,12 +66,46 @@ export interface EforgeExtensionAPI {
   ): void;
 
   /**
-   * Register an agent-run hook invoked before each agent turn starts.
+   * Register an agent-run hook invoked before each agent run starts.
    *
-   * The handler can return an `AgentRunAugmentation` to inject additional
-   * tools, modify allowed/disallowed tool lists, or append prompt text.
+   * The handler receives an `AgentRunContext` describing the role, tier,
+   * profile, phase, and stage of the run, and may return an
+   * `AgentRunAugmentation` to contribute additional prompt context.
    *
-   * @remarks Runtime not yet wired. Typed contract only in this slice.
+   * Prompt fragments returned via `promptAppend` are appended after any
+   * config-level `promptAppend` already resolved by the engine, wrapped in a
+   * named provenance section:
+   *
+   * ```
+   * ## Native extension context
+   *
+   * ### <extension-name>
+   * <fragment>
+   * ```
+   *
+   * Multiple registered handlers are invoked sequentially in registration order.
+   * Each runs with a per-handler timeout (configurable via
+   * `extensions.agentContextHookTimeoutMs`; defaults to
+   * `extensions.eventHookTimeoutMs`). A handler that throws or times out emits
+   * a typed diagnostic event (`extension:agent-context:failed` or
+   * `extension:agent-context:timeout`) and does not prevent the agent run from
+   * proceeding with the unmodified prompt.
+   *
+   * @remarks Runtime-supported for `promptAppend` (EXTEND_08A). Tool fields
+   * (`tools`, `allowedTools`, `disallowedTools`) are not applied at runtime in
+   * this slice — returning them emits an `extension:agent-context:unsupported`
+   * diagnostic and those fields are otherwise ignored. Tool injection is tracked
+   * for EXTEND_08B.
+   *
+   * @example
+   * ```ts
+   * eforge.onAgentRun(async (ctx) => {
+   *   if (ctx.role !== 'builder') return;
+   *   return {
+   *     promptAppend: 'Check the design system before modifying UI components.',
+   *   };
+   * });
+   * ```
    */
   onAgentRun(handler: AgentRunHandler): void;
 

@@ -78,6 +78,7 @@ describe('resolveConfig', () => {
       enabled: true,
       trustProjectExtensions: false,
       eventHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+      agentContextHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
     });
   });
 

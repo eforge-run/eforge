@@ -2,7 +2,7 @@
 <!-- section: cli -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: d171f301 -->
+<!-- Commit: 8918a27b -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -343,7 +343,7 @@ Run the MCP stdio proxy server (used by Claude Code plugin)
 <!-- section: api -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: d171f301 -->
+<!-- Commit: 8918a27b -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -424,7 +424,7 @@ Use `buildPath(pattern, params)` from `@eforge-build/client` to resolve `:param`
 <!-- section: events -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: d171f301 -->
+<!-- Commit: 8918a27b -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -437,7 +437,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 155
+Total variants: 159
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -451,6 +451,10 @@ Total variants: 155
 | `planning:module:build-config:invalid` | `errors`, `moduleId`, `reason` |
 | `extension:event-handler:failed` | `extensionName`, `extensionPath`, `message`, `pattern`, `stack`, `triggeringEventType` |
 | `extension:event-handler:timeout` | `extensionName`, `extensionPath`, `pattern`, `timeoutMs`, `triggeringEventType` |
+| `extension:agent-context:applied` | `extensionName`, `extensionPath`, `fragmentCount`, `harness`, `phase`, `planId`, `profile`, `projectMcpSelection`, `promptCharCount`, `role`, `stage`, `tier`, `toolbelt` |
+| `extension:agent-context:failed` | `extensionName`, `extensionPath`, `harness`, `message`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stack`, `stage`, `tier`, `toolbelt` |
+| `extension:agent-context:timeout` | `extensionName`, `extensionPath`, `harness`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stage`, `tier`, `timeoutMs`, `toolbelt` |
+| `extension:agent-context:unsupported` | `extensionName`, `extensionPath`, `fields`, `harness`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stage`, `tier`, `toolbelt` |
 | `planning:start` | `label`, `source` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |
@@ -607,7 +611,7 @@ Use `safeParseEforgeEvent(value)` from `@eforge-build/client` to validate at run
 <!-- section: config -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: d171f301 -->
+<!-- Commit: 8918a27b -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -698,7 +702,7 @@ The complete machine-readable schema is at [`/schemas/config.schema.json`](/sche
 <!-- section: tools -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: d171f301 -->
+<!-- Commit: 8918a27b -->
 <!-- Source: packages/eforge/src/cli/mcp-proxy.ts, packages/pi-eforge/extensions/eforge/index.ts, eforge-plugin/skills/, packages/pi-eforge/skills/ -->
 
 # eforge MCP Tools and Skills Reference
