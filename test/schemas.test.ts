@@ -3,6 +3,7 @@ import {
   reviewIssueSchema,
   evaluationEvidenceSchema,
   evaluationVerdictSchema,
+  evaluationSubmissionSchema,
   clarificationQuestionSchema,
   stalenessVerdictSchema,
   expeditionModuleSchema,
@@ -23,6 +24,9 @@ import {
   getPipelineCompositionSchemaYaml,
 } from '@eforge-build/engine/schemas';
 import { safeParseWithSchema } from '@eforge-build/client';
+// --- eforge:region plan-01-evaluation-application-core ---
+import { getEvaluationSubmissionSchemaYaml } from '@eforge-build/engine/schemas';
+// --- eforge:endregion plan-01-evaluation-application-core ---
 
 describe('getSchemaYaml', () => {
   it('returns YAML string containing expected fields', () => {
@@ -232,6 +236,18 @@ describe('other schemas export and validate', () => {
     expect(result.success).toBe(true);
   });
 
+  it('evaluationSubmissionSchema requires a verdicts array', () => {
+    expect(safeParseWithSchema(evaluationSubmissionSchema, {
+      verdicts: [
+        { file: 'src/foo.ts', action: 'accept', reason: 'Correct fix' },
+      ],
+    }).success).toBe(true);
+
+    expect(safeParseWithSchema(evaluationSubmissionSchema, {
+      verdict: { file: 'src/foo.ts', action: 'accept', reason: 'Wrong wrapper field' },
+    }).success).toBe(false);
+  });
+
   it('evaluationEvidenceSchema rejects missing required fields', () => {
     const result = safeParseWithSchema(evaluationEvidenceSchema, {
       staged: 'Code',
@@ -321,6 +337,17 @@ describe('remaining schema YAML getters', () => {
     expect(yaml).toContain('reject');
     expect(yaml).toContain('review');
   });
+
+  // --- eforge:region plan-01-evaluation-application-core ---
+  it('getEvaluationSubmissionSchemaYaml contains verdict submission fields', () => {
+    const yaml = getEvaluationSubmissionSchemaYaml();
+    expect(yaml).toContain('verdicts');
+    expect(yaml).toContain('file');
+    expect(yaml).toContain('action');
+    expect(yaml).toContain('reason');
+    expect(yaml).toContain('hunk');
+  });
+  // --- eforge:endregion plan-01-evaluation-application-core ---
 
   it('getClarificationSchemaYaml contains question fields', () => {
     const yaml = getClarificationSchemaYaml();

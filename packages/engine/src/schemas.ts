@@ -143,6 +143,19 @@ export const evaluationVerdictSchema = Type.Object({
   hunk: Type.Optional(Type.Integer({ minimum: 1, description: 'Hunk number for per-hunk evaluation (1-indexed)' })),
 });
 
+// --- eforge:region plan-01-evaluation-application-core ---
+export type EvaluationEvidence = Static<typeof evaluationEvidenceSchema>;
+export type EvaluationVerdict = Static<typeof evaluationVerdictSchema>;
+
+export const evaluationSubmissionSchema = Type.Object({
+  verdicts: Type.Array(evaluationVerdictSchema, {
+    description: 'Evaluation verdicts covering every captured file or every captured hunk in the immutable evaluation snapshot',
+  }),
+});
+
+export type EvaluationSubmission = Static<typeof evaluationSubmissionSchema>;
+// --- eforge:endregion plan-01-evaluation-application-core ---
+
 // ---------------------------------------------------------------------------
 // Clarification schema
 // ---------------------------------------------------------------------------
@@ -414,6 +427,13 @@ export function getPlanReviewIssueSchemaYaml(): string {
 export function getEvaluationSchemaYaml(): string {
   return getSchemaYaml('evaluation-verdict', evaluationVerdictSchema);
 }
+
+// --- eforge:region plan-01-evaluation-application-core ---
+/** Schema YAML for evaluation verdict submissions (used by evaluator tools). */
+export function getEvaluationSubmissionSchemaYaml(): string {
+  return getSchemaYaml('evaluation-submission', evaluationSubmissionSchema);
+}
+// --- eforge:endregion plan-01-evaluation-application-core ---
 
 /** Schema YAML for clarification questions (used by planner). */
 export function getClarificationSchemaYaml(): string {
