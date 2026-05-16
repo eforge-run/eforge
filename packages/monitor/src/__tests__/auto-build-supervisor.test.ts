@@ -154,7 +154,7 @@ describe('AutoBuildSupervisor', () => {
           schedulerAlive = true;
         },
         emitSchedulerMutation: (reason) => calls.push(`mutation:${reason}`),
-        reloadExtensions: () => calls.push('reload-extensions'),
+        reloadExtensions: () => { calls.push('reload-extensions'); },
         emitEvent: (event) => events.push(event),
       },
     });
@@ -211,6 +211,40 @@ describe('AutoBuildSupervisor', () => {
       watcher: { running: false, pid: null, sessionId: null },
     });
     expect(events.some((e) => e.type === 'daemon:auto-build:disabled')).toBe(true);
+  });
+
+  it('surfaces asynchronous watcher start failures as a faulted snapshot with a reason', async () => {
+    const events: EforgeEvent[] = [];
+    const controller = new AutoBuildSupervisor({
+      effects: {
+        now: () => '2025-01-01T00:00:00.000Z',
+        getWatcher: () => ({ running: false, pid: null, sessionId: null }),
+        isSchedulerAlive: () => false,
+        spawnWatcher: async () => {
+          throw new Error('spawn failed');
+        },
+        emitEvent: (event) => events.push(event),
+      },
+    });
+
+    const starting = controller.enable('start');
+    expect(starting).toMatchObject({ desired: 'enabled', mode: 'starting' });
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    const faulted = controller.getSnapshot();
+    expect(faulted).toMatchObject({
+      enabled: false,
+      desired: 'enabled',
+      mode: 'faulted',
+      reason: 'Watcher failed to start: spawn failed',
+    });
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'daemon:auto-build:transition',
+      nextMode: 'faulted',
+      reason: 'Watcher failed to start: spawn failed',
+    }));
   });
 
   it('pauseOnFailure pauses scheduler and resume re-enables running mode', () => {
@@ -273,13 +307,26 @@ describe('AutoBuildSupervisor', () => {
     });
   });
 
-  it('queue mutation wakes an enabled supervisor that is not running', () => {
+  it('queue mutation is injected into a live scheduler', () => {
     const { controller, calls } = makeController();
     controller.enable('start');
-    controller.pauseOnFailure('build failed');
+    calls.length = 0;
 
     const snapshot = controller.notifyQueueMutation('enqueue');
     expect(calls).toContain('mutation:enqueue');
+    expect(snapshot.mode).toBe('running');
+    expect(snapshot.scheduler?.lastMutationReason).toBe('enqueue');
+  });
+
+  it('queue mutation repairs an enabled supervisor that is not running', () => {
+    const { controller, calls } = makeController();
+    controller.enable('start');
+    controller.pauseOnFailure('build failed');
+    calls.length = 0;
+
+    const snapshot = controller.notifyQueueMutation('enqueue');
+    expect(calls).not.toContain('mutation:enqueue');
+    expect(calls).toContain('resume-scheduler');
     expect(snapshot.mode).toBe('running');
     expect(snapshot.scheduler?.lastMutationReason).toBe('enqueue');
   });
@@ -292,7 +339,7 @@ describe('AutoBuildSupervisor', () => {
     });
 
     const snapshot = controller.notifyQueueMutation('enqueue');
-    expect(calls).toContain('mutation:enqueue');
+    expect(calls).not.toContain('mutation:enqueue');
     expect(calls).not.toContain('spawn-watcher');
     expect(snapshot.mode).toBe('starting');
     expect(snapshot.scheduler?.lastMutationReason).toBe('enqueue');
@@ -319,12 +366,12 @@ describe('AutoBuildSupervisor', () => {
     expect(snapshot.mode).toBe('disabled');
   });
 
-  it('reloadExtensions restarts the watcher when auto-build is enabled', () => {
+  it('reloadExtensions restarts the watcher when auto-build is enabled', async () => {
     const { controller, calls } = makeController();
     controller.enable('start');
     calls.length = 0;
 
-    const snapshot = controller.reloadExtensions();
+    const snapshot = await controller.reloadExtensions();
 
     expect(calls).toEqual(['reload-extensions', 'restart-watcher']);
     expect(snapshot).toMatchObject({
@@ -335,10 +382,10 @@ describe('AutoBuildSupervisor', () => {
     });
   });
 
-  it('reloadExtensions does not start the watcher when auto-build is disabled', () => {
+  it('reloadExtensions does not start the watcher when auto-build is disabled', async () => {
     const { controller, calls } = makeController();
 
-    const snapshot = controller.reloadExtensions();
+    const snapshot = await controller.reloadExtensions();
 
     expect(calls).toEqual(['reload-extensions']);
     expect(snapshot).toMatchObject({

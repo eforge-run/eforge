@@ -15,10 +15,10 @@
 
 import { openDatabase, type MonitorDB } from './db.js';
 import { startServer, type WorkerTracker, type DaemonState } from './server.js';
-import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive, type ExtensionReloadWatcherMetadata } from '@eforge-build/client';
+import { writeLockfile, removeLockfile, isPidAlive, readLockfile, isServerAlive } from '@eforge-build/client';
 import { registerPort, deregisterPort } from './registry.js';
 import { loadConfig, type HookConfig } from '@eforge-build/engine/config';
-import { EforgeEngine, type SchedulerControl, type ProfileUsageProvider } from '@eforge-build/engine/eforge';
+import { EforgeEngine, type SchedulerControl, type SchedulerInputEvent, type ProfileUsageProvider } from '@eforge-build/engine/eforge';
 import { withHooks } from '@eforge-build/engine/hooks';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { withNativeEventHooks, type NativeExtensionRegistry } from '@eforge-build/engine/extensions/index';
@@ -27,6 +27,7 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { openSync, closeSync, mkdirSync, readdirSync, readFileSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { AutoBuildSupervisor, type AutoBuildWatcherState } from './auto-build-supervisor.js';
 
 /** Replaced at build time by tsup `define` with the daemon bundle's package version. */
 declare const EFORGE_VERSION: string;
@@ -305,19 +306,6 @@ export function reconcileOrphanedState(db: MonitorDB, cwd: string): Reconciliati
   return { runsFailed, locksRemoved, durationMs: Date.now() - startedAt };
 }
 
-function writeAutoBuildPausedEvent(db: MonitorDB, sessionId: string, reason: string): void {
-  try {
-    db.insertEvent({
-      runId: sessionId,
-      type: 'daemon:auto-build:paused',
-      data: JSON.stringify({ type: 'daemon:auto-build:paused', reason, timestamp: new Date().toISOString() }),
-      timestamp: new Date().toISOString(),
-    });
-  } catch {
-    // DB may not accept the event if runId doesn't match — best effort
-  }
-}
-
 /**
  * Context passed to maybePauseOnFailure for each event in the drain loop.
  * Exported for unit-testing without spinning up a real watcher.
@@ -326,22 +314,15 @@ export interface PauseOnFailureCtx {
   /** Returns true when the drain loop's controller is still the active one. */
   isActiveController: () => boolean;
   daemonState: DaemonState;
-  db: MonitorDB;
-  sessionId: string;
 }
 
 /**
- * Inspect a single watcher event and pause auto-build if it is the first
- * failed queue:prd:complete for the active watcher session.
+ * Inspect a single watcher event and pause auto-build through the supervisor if
+ * it is the first failed queue:prd:complete for the active watcher session.
  *
- * Guards (must both hold before pausing):
- *  - isActiveController() — a superseded watcher must not pause a fresh one.
- *  - daemonState.autoBuild — avoids double-pause and redundant events.
- *
- * On pause, suspends new PRD launches via `onPauseScheduler` (does NOT abort
- * the watcher). This lets the failed `queue:prd:complete` complete its bus
- * round-trip through `QueueScheduler.onComplete()` so in-memory state is
- * finalized correctly before any re-enable attempt.
+ * The supervisor owns idempotency, scheduler pause, state transition, and
+ * daemon event emission. This helper only enforces the active-generation guard
+ * so superseded watcher drains cannot pause a fresh generation.
  *
  * Exported for unit-testing.
  */
@@ -349,21 +330,9 @@ export function maybePauseOnFailure(event: EforgeEvent, ctx: PauseOnFailureCtx):
   if (
     event.type === 'queue:prd:complete' &&
     event.status === 'failed' &&
-    ctx.isActiveController() &&
-    ctx.daemonState.autoBuild
+    ctx.isActiveController()
   ) {
-    ctx.daemonState.autoBuild = false;
-    // --- eforge:region plan-01-types-and-daemon-emission ---
-    ctx.daemonState.autoBuildPaused = true;
-    // --- eforge:endregion plan-01-types-and-daemon-emission ---
-    writeAutoBuildPausedEvent(ctx.db, ctx.sessionId, `Build failed: ${event.prdId}`);
-    // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
-    // Suspend new PRD launches without aborting the watcher, so the failed
-    // completion event still flows through QueueScheduler.onComplete() and
-    // finalizes in-memory state. Manual disable (POST /api/auto-build enabled:false)
-    // continues to call onKillWatcher for a full abort.
-    ctx.daemonState.onPauseScheduler?.();
-    // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
+    ctx.daemonState.autoBuildController.pauseOnFailure(`Build failed: ${event.prdId}`);
   }
 }
 
@@ -537,46 +506,89 @@ async function main(): Promise<void> {
 
   const workerTracker = persistent ? createWorkerTracker() : undefined;
 
+  // Load config before starting server so we can pass it for validation.
+  let config: Awaited<ReturnType<typeof loadConfig>>['config'] | undefined;
+
   // --- In-process watcher lifecycle for auto-build (persistent mode only) ---
-  // The watcher runs engine.watchQueue() inside the daemon itself. Each start
-  // owns an AbortController; stopping aborts it and waits for the generator to
-  // drain. In-flight PRD build subprocesses are not killed by stopping the
-  // watcher — they complete or are reconciled on next daemon startup.
+  // The watcher runs engine.watchQueue() inside the daemon itself. The
+  // AutoBuildSupervisor owns the desired/runtime state; these closures provide
+  // the side-effect primitives it needs to start, wake, pause, abort, and drain
+  // watcher generations.
   let watcherAbort: AbortController | null = null;
   let watcherDone: Promise<void> | null = null;
+  let watcherGeneration = 0;
+  let watcher: AutoBuildWatcherState = { running: false, pid: null, sessionId: null };
+  let schedulerInject: ((event: SchedulerInputEvent) => void) | undefined;
+  let schedulerControl: SchedulerControl | undefined;
 
-  const daemonState: DaemonState | undefined = persistent ? {
-    autoBuild: false, // will be set from config below
-    autoBuildPaused: false,
-    watcher: {
-      running: false,
-      pid: null,
-      sessionId: null,
-    },
-    onSpawnWatcher: () => { void startWatcher(config?.hooks ?? []); },
-    onKillWatcher: () => { void stopWatcher(); },
-    // --- eforge:region plan-01-extension-management-api ---
-    onReloadExtensions: () => reloadExtensionsWatcher(),
-    // --- eforge:endregion plan-01-extension-management-api ---
-    onShutdown: undefined as (() => void) | undefined,
-    // --- eforge:region plan-01-types-and-daemon-emission ---
-    onDaemonEvent: (event) => writeDaemonEvent(db, event as { type: string } & Record<string, unknown>, daemonSessionId),
-    // --- eforge:endregion plan-01-types-and-daemon-emission ---
-  } : undefined;
+  function currentWatcher(): AutoBuildWatcherState {
+    return { ...watcher };
+  }
+
+  function setWatcher(next: AutoBuildWatcherState): void {
+    watcher = { ...next };
+  }
+
+  function clearSchedulerHandles(): void {
+    schedulerInject = undefined;
+    schedulerControl = undefined;
+  }
+
+  function isSchedulerAlive(): boolean {
+    return schedulerControl?.isAlive() ?? false;
+  }
+
+  function emitSchedulerMutation(reason: 'enqueue' | 'playbook-enqueue' | 'apply-recovery' | 'external'): void {
+    schedulerInject?.({
+      type: 'queue:mutation',
+      reason,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  async function reloadRuntimeConfig(): Promise<void> {
+    try {
+      const { config: reloadedConfig, warnings } = await loadConfig(cwd);
+      for (const warning of warnings) {
+        process.stderr.write(`[eforge] ${warning}\n`);
+      }
+      config = reloadedConfig;
+    } catch {
+      // Keep the previous config if reload-time config parsing fails; startWatcher
+      // will perform its own engine initialization and report any failure.
+    }
+  }
+
+  async function drainWatcher(done: Promise<void> | null): Promise<void> {
+    if (!done) return;
+    await Promise.race([
+      done,
+      new Promise<void>((resolveWait) => setTimeout(resolveWait, WATCHER_DRAIN_TIMEOUT_MS).unref()),
+    ]);
+  }
 
   async function startWatcher(hooks: readonly HookConfig[] = []): Promise<void> {
-    if (!daemonState) return;
-    if (watcherAbort) return; // already running
+    const supervisor = autoBuildSupervisor;
+    if (!supervisor) return;
+
+    if (watcherAbort) {
+      // Retire the previous generation before starting a replacement. Do not
+      // wait for the drain here; in-flight PRD builds continue and stale
+      // generator events are ignored by the generation guard below.
+      void stopWatcher();
+    }
 
     const sessionId = `watcher-${Date.now()}-${randomBytes(6).toString('hex')}`;
     const controller = new AbortController();
+    const generation = ++watcherGeneration;
     watcherAbort = controller;
-    daemonState.watcher = {
+    clearSchedulerHandles();
+    setWatcher({
       running: true,
       // Watcher runs in-process with the daemon; no distinct PID to report.
       pid: null,
       sessionId,
-    };
+    });
 
     let engine: EforgeEngine;
     try {
@@ -585,27 +597,23 @@ async function main(): Promise<void> {
       // --- eforge:endregion plan-02-runtime-and-integration ---
       engine = await EforgeEngine.create({ cwd, profileUsageProvider });
     } catch (err) {
-      watcherAbort = null;
-      daemonState.watcher = { running: false, pid: null, sessionId: null };
-      daemonState.autoBuild = false;
-      daemonState.injectSchedulerEvent = undefined;
-      // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
-      daemonState.onPauseScheduler = undefined;
-      daemonState.onResumeScheduler = undefined;
-      daemonState.isSchedulerAlive = undefined;
-      // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
-      const errMsg = err instanceof Error ? err.message : String(err);
-      const reason = `Watcher failed to initialize: ${errMsg}`;
-      // --- eforge:region plan-01-types-and-daemon-emission ---
-      writeDaemonEvent(db, {
-        type: 'daemon:error',
-        source: 'watcher:init',
-        message: reason,
-        ...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
-      }, daemonSessionId);
-      daemonState.autoBuildPaused = true;
-      // --- eforge:endregion plan-01-types-and-daemon-emission ---
-      writeAutoBuildPausedEvent(db, sessionId, reason);
+      if (watcherAbort === controller && generation === watcherGeneration) {
+        watcherAbort = null;
+        watcherDone = null;
+        clearSchedulerHandles();
+        setWatcher({ running: false, pid: null, sessionId: null });
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const reason = `Watcher failed to initialize: ${errMsg}`;
+        // --- eforge:region plan-01-types-and-daemon-emission ---
+        writeDaemonEvent(db, {
+          type: 'daemon:error',
+          source: 'watcher:init',
+          message: reason,
+          ...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
+        }, daemonSessionId);
+        // --- eforge:endregion plan-01-types-and-daemon-emission ---
+        supervisor.fault(reason, 'watcher');
+      }
       return;
     }
 
@@ -614,34 +622,29 @@ async function main(): Promise<void> {
     if (controller.signal.aborted) {
       if (watcherAbort === controller) {
         watcherAbort = null;
-        daemonState.watcher = { running: false, pid: null, sessionId: null };
-        daemonState.injectSchedulerEvent = undefined;
-        // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
-        daemonState.onPauseScheduler = undefined;
-        daemonState.onResumeScheduler = undefined;
-        daemonState.isSchedulerAlive = undefined;
-        // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
+        watcherDone = null;
+        clearSchedulerHandles();
+        setWatcher({ running: false, pid: null, sessionId: null });
+        supervisor.watcherStopped('watcher stopped before start', currentWatcher());
       }
       return;
     }
 
-    watcherDone = (async () => {
+    const done = (async () => {
       try {
         const events = wrapWatcherEvents(
           engine.watchQueue({
             auto: true,
             abortController: controller,
             onInjectEventRegister: (inject) => {
-              if (daemonState && watcherAbort === controller) {
-                daemonState.injectSchedulerEvent = inject;
+              if (watcherAbort === controller && generation === watcherGeneration) {
+                schedulerInject = inject;
               }
             },
             // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
             onSchedulerControlRegister: (control: SchedulerControl) => {
-              if (daemonState && watcherAbort === controller) {
-                daemonState.onPauseScheduler = () => control.pause();
-                daemonState.onResumeScheduler = () => control.resume();
-                daemonState.isSchedulerAlive = () => control.isAlive();
+              if (watcherAbort === controller && generation === watcherGeneration) {
+                schedulerControl = control;
               }
             },
             // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
@@ -659,10 +662,8 @@ async function main(): Promise<void> {
         // persists each event to SQLite, and withHooks fires user-configured hooks non-blocking.
         // Inspect each event to pause auto-build on the first failed PRD.
         const pauseCtx: PauseOnFailureCtx = {
-          isActiveController: () => watcherAbort === controller,
-          daemonState,
-          db,
-          sessionId,
+          isActiveController: () => watcherAbort === controller && generation === watcherGeneration,
+          daemonState: { autoBuildController: supervisor },
         };
         for await (const event of events) {
           maybePauseOnFailure(event, pauseCtx);
@@ -678,10 +679,9 @@ async function main(): Promise<void> {
           // --- eforge:endregion plan-01-types-and-daemon-emission ---
         }
       } catch (err) {
-        // Only pause if this controller is still the active one — otherwise
+        // Only fault if this controller is still the active one — otherwise
         // a newer startWatcher() has already taken over.
-        if (watcherAbort === controller && daemonState) {
-          daemonState.autoBuild = false;
+        if (watcherAbort === controller && generation === watcherGeneration) {
           const errMsg = err instanceof Error ? err.message : String(err);
           const reason = `Watcher crashed: ${errMsg}`;
           // --- eforge:region plan-01-types-and-daemon-emission ---
@@ -691,95 +691,80 @@ async function main(): Promise<void> {
             message: errMsg,
             ...(err instanceof Error && err.stack ? { stack: err.stack } : {}),
           }, daemonSessionId);
-          daemonState.autoBuildPaused = true;
           // --- eforge:endregion plan-01-types-and-daemon-emission ---
-          writeAutoBuildPausedEvent(db, sessionId, reason);
+          supervisor.fault(reason, 'watcher');
         }
       } finally {
-        if (watcherAbort === controller) {
+        if (watcherAbort === controller && generation === watcherGeneration) {
           watcherAbort = null;
           watcherDone = null;
-          if (daemonState) {
-            daemonState.watcher = { running: false, pid: null, sessionId: null };
-            daemonState.injectSchedulerEvent = undefined;
-            // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
-            daemonState.onPauseScheduler = undefined;
-            daemonState.onResumeScheduler = undefined;
-            daemonState.isSchedulerAlive = undefined;
-            // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
+          clearSchedulerHandles();
+          setWatcher({ running: false, pid: null, sessionId: null });
+          if (supervisor.getSnapshot().mode !== 'faulted') {
+            supervisor.watcherStopped('watcher stopped', currentWatcher());
           }
         }
       }
     })();
+
+    watcherDone = done;
+    supervisor.watcherStarted('watcher started', currentWatcher());
   }
 
   async function stopWatcher(): Promise<void> {
     if (!watcherAbort) return;
+    const controller = watcherAbort;
     const done = watcherDone;
-    watcherAbort.abort();
-    if (!done) return;
-    // Bounded wait so shutdown cannot hang on a stuck generator
-    await Promise.race([
-      done,
-      new Promise<void>((resolveWait) => setTimeout(resolveWait, WATCHER_DRAIN_TIMEOUT_MS).unref()),
-    ]);
+    watcherAbort = null;
+    watcherDone = null;
+    controller.abort();
+    clearSchedulerHandles();
+    setWatcher({ running: false, pid: null, sessionId: null });
+    await drainWatcher(done);
+  }
+
+  async function restartWatcher(hooks: readonly HookConfig[] = [], options: { reloadConfig?: boolean } = {}): Promise<void> {
+    await stopWatcher();
+    if (options.reloadConfig) await reloadRuntimeConfig();
+    await startWatcher(options.reloadConfig ? config?.hooks ?? [] : hooks);
   }
 
   // --- eforge:region plan-01-extension-management-api ---
-  async function reloadExtensionsWatcher(): Promise<ExtensionReloadWatcherMetadata> {
-    if (!daemonState) {
-      return {
-        wasRunning: false,
-        restarted: false,
-        running: false,
-        previousSessionId: null,
-        sessionId: null,
-        message: 'Extension discovery refreshed; no runtime watcher was restarted.',
-      };
-    }
-
-    const wasRunning = watcherAbort !== null && daemonState.watcher.running;
-    const previousSessionId = daemonState.watcher.sessionId;
-    if (!wasRunning) {
-      return {
-        wasRunning: false,
-        restarted: false,
-        running: daemonState.watcher.running,
-        previousSessionId,
-        sessionId: daemonState.watcher.sessionId,
-        message: 'Extension discovery refreshed; no runtime watcher was restarted.',
-      };
-    }
-
-    await stopWatcher();
-    try {
-      const { config: reloadedConfig, warnings } = await loadConfig(cwd);
-      for (const warning of warnings) {
-        process.stderr.write(`[eforge] ${warning}\n`);
-      }
-      config = reloadedConfig;
-    } catch {
-      // Keep the previous config if reload-time config parsing fails; startWatcher
-      // will perform its own engine initialization and report any failure.
-    }
-    await startWatcher(config?.hooks ?? []);
-
-    const restarted = daemonState.watcher.running && daemonState.watcher.sessionId !== previousSessionId;
-    return {
-      wasRunning: true,
-      restarted,
-      running: daemonState.watcher.running,
-      previousSessionId,
-      sessionId: daemonState.watcher.sessionId,
-      message: restarted
-        ? 'Extension discovery refreshed and runtime watcher restarted.'
-        : 'Extension discovery refreshed, but the runtime watcher did not restart.',
-    };
+  function reloadExtensionsWatcher(): void {
+    // The supervisor calls this hook before invoking restartWatcher(). Runtime
+    // config reload is performed inside restartWatcher({ reloadConfig: true })
+    // so the replacement watcher uses the refreshed hook list.
   }
   // --- eforge:endregion plan-01-extension-management-api ---
 
-  // Load config before starting server so we can pass it for validation
-  let config: Awaited<ReturnType<typeof loadConfig>>['config'] | undefined;
+  const autoBuildSupervisor = persistent ? new AutoBuildSupervisor({
+    initialState: {
+      desired: 'disabled',
+      mode: 'disabled',
+      watcher,
+      scheduler: { alive: false, paused: false },
+    },
+    effects: {
+      getWatcher: currentWatcher,
+      isSchedulerAlive,
+      spawnWatcher: () => startWatcher(config?.hooks ?? []),
+      stopWatcher: () => stopWatcher(),
+      restartWatcher: () => restartWatcher(config?.hooks ?? [], { reloadConfig: true }),
+      pauseScheduler: () => schedulerControl?.pause(),
+      resumeScheduler: () => schedulerControl?.resume(),
+      emitSchedulerMutation,
+      reloadExtensions: reloadExtensionsWatcher,
+      // --- eforge:region plan-01-types-and-daemon-emission ---
+      emitEvent: (event) => writeDaemonEvent(db, event as { type: string } & Record<string, unknown>, daemonSessionId),
+      // --- eforge:endregion plan-01-types-and-daemon-emission ---
+    },
+  }) : undefined;
+
+  const daemonState: DaemonState | undefined = autoBuildSupervisor ? {
+    autoBuildController: autoBuildSupervisor,
+    onShutdown: undefined as (() => void) | undefined,
+  } : undefined;
+
   if (persistent) {
     try {
       const { config: loadedConfig, warnings } = await loadConfig(cwd);
@@ -870,9 +855,8 @@ async function main(): Promise<void> {
 
   // --- Start watcher if autoBuild enabled + idle shutdown (persistent mode) ---
   if (persistent && daemonState && config) {
-    daemonState.autoBuild = config.prdQueue.autoBuild;
-    if (daemonState.autoBuild) {
-      void startWatcher(config.hooks);
+    if (config.prdQueue.autoBuild) {
+      daemonState.autoBuildController.enable('startup config');
     }
     // Enable idle auto-shutdown for persistent mode when configured (0 = disabled)
     if (config.daemon.idleShutdownMs > 0) {
@@ -1006,10 +990,12 @@ async function main(): Promise<void> {
     clearInterval(orphanTimer);
     if (stateTimer) clearInterval(stateTimer);
 
-    // Abort the in-process watcher and wait (with timeout) for it to drain.
-    // In-flight PRD build subprocesses are orphaned here; the next daemon
-    // startup's reconciler cleans up their stale locks.
-    void stopWatcher().finally(() => {
+    // Abort the in-process watcher through the supervisor and wait (with
+    // timeout) for it to drain. In-flight PRD build subprocesses are orphaned
+    // here; the next daemon startup's reconciler cleans up their stale locks.
+    const drainingWatcher = watcherDone;
+    daemonState?.autoBuildController.shutdown(reason);
+    void drainWatcher(drainingWatcher).finally(() => {
       deregisterPort(cwd);
       removeLockfile(cwd);
 

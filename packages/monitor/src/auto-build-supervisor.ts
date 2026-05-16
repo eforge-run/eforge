@@ -62,18 +62,18 @@ export interface AutoBuildController {
   notifyQueueMutation(reason?: AutoBuildQueueMutationReason): AutoBuildState;
   pauseOnFailure(reason: string): AutoBuildState;
   shutdown(reason?: string): AutoBuildState;
-  reloadExtensions?(): AutoBuildState;
+  reloadExtensions?(): AutoBuildState | Promise<AutoBuildState>;
 }
 
 export interface AutoBuildSupervisorEffects {
-  spawnWatcher?: () => void;
-  stopWatcher?: () => void;
-  restartWatcher?: () => void;
+  spawnWatcher?: () => void | Promise<void>;
+  stopWatcher?: () => void | Promise<void>;
+  restartWatcher?: () => void | Promise<void>;
   pauseScheduler?: () => void;
   resumeScheduler?: () => void;
   isSchedulerAlive?: () => boolean;
   emitSchedulerMutation?: (reason: AutoBuildQueueMutationReason) => void;
-  reloadExtensions?: () => void;
+  reloadExtensions?: () => void | Promise<void>;
   getWatcher?: () => AutoBuildWatcherState;
   emitEvent?: (event: EforgeEvent) => void;
   now?: () => string;
@@ -108,6 +108,10 @@ function cloneScheduler(scheduler: AutoBuildSchedulerState): AutoBuildSchedulerS
 
 function cloneTransition(transition: AutoBuildTransitionDetail | undefined): AutoBuildTransitionDetail | undefined {
   return transition ? { ...transition } : undefined;
+}
+
+function isPromiseLike(value: unknown): value is PromiseLike<void> {
+  return typeof value === 'object' && value !== null && 'then' in value && typeof value.then === 'function';
 }
 
 export function createAutoBuildSupervisorState(
@@ -177,7 +181,7 @@ export function reduceAutoBuildSupervisor(
           scheduler: { ...state.scheduler, alive: true, paused: false },
         });
       }
-      if (state.mode === 'stopping') {
+      if (state.mode === 'stopping' || state.mode === 'restarting') {
         return transitionTo(state, 'restarting', 'enabled', action.source, action.reason ?? 'enable requested while stopping', action.at);
       }
       if (state.mode === 'faulted') {
@@ -292,26 +296,39 @@ export class AutoBuildSupervisor implements AutoBuildController {
   }
 
   enable(reason = 'enabled'): AutoBuildState {
+    this.refreshRuntimeDetails();
+    if (this.state.desired === 'enabled' && this.state.mode === 'running' && !this.state.scheduler.alive) {
+      this.apply({ type: 'fault', source: 'scheduler', reason: 'scheduler unavailable; restarting watcher', at: this.now() });
+    }
+
     const previousMode = this.state.mode;
     this.apply({ type: 'enable', source: this.source, reason, at: this.now() });
 
+    let emittedResume = false;
     if (this.state.mode === 'restarting') {
+      let restartResult: void | Promise<void>;
       if (this.effects.restartWatcher) {
-        this.effects.restartWatcher();
+        restartResult = this.effects.restartWatcher();
       } else {
-        this.effects.stopWatcher?.();
-        this.effects.spawnWatcher?.();
+        const stopResult = this.effects.stopWatcher?.();
+        const spawnResult = this.effects.spawnWatcher?.();
+        restartResult = isPromiseLike(stopResult) || isPromiseLike(spawnResult)
+          ? Promise.all([stopResult, spawnResult]).then(() => undefined)
+          : undefined;
       }
-      this.apply({ type: 'started', source: 'watcher', reason: 'watcher restarted', at: this.now(), watcher: this.readWatcher() });
+      this.completeWatcherStart(restartResult, 'watcher restarted');
     } else if (this.state.mode === 'starting') {
-      this.effects.spawnWatcher?.();
-      this.apply({ type: 'started', source: 'watcher', reason: previousMode === 'faulted' ? 'watcher restarted after fault' : 'watcher started', at: this.now(), watcher: this.readWatcher() });
+      const spawnResult = this.effects.spawnWatcher?.();
+      this.completeWatcherStart(spawnResult, previousMode === 'faulted' ? 'watcher restarted after fault' : 'watcher started');
     } else if (this.state.mode === 'running') {
       this.effects.resumeScheduler?.();
-      this.emitCompatibilityEvent('daemon:auto-build:resumed');
+      if (previousMode === 'paused') {
+        this.emitCompatibilityEvent('daemon:auto-build:resumed');
+        emittedResume = true;
+      }
     }
 
-    this.emitCompatibilityEvent('daemon:auto-build:enabled');
+    if (!emittedResume) this.emitCompatibilityEvent('daemon:auto-build:enabled');
     return this.getSnapshot();
   }
 
@@ -319,7 +336,7 @@ export class AutoBuildSupervisor implements AutoBuildController {
     this.apply({ type: 'disable', source: this.source, reason, at: this.now() });
     if (this.state.mode === 'stopping') {
       this.effects.pauseScheduler?.();
-      this.effects.stopWatcher?.();
+      void this.effects.stopWatcher?.();
       this.apply({ type: 'stopped', source: 'watcher', reason: 'watcher stopped', at: this.now(), watcher: this.readWatcher() });
     }
     this.emitCompatibilityEvent('daemon:auto-build:disabled');
@@ -327,13 +344,22 @@ export class AutoBuildSupervisor implements AutoBuildController {
   }
 
   notifyQueueMutation(reason: AutoBuildQueueMutationReason = 'external'): AutoBuildState {
-    const beforeMode = this.state.mode;
-    if (this.state.desired === 'enabled') this.effects.emitSchedulerMutation?.(reason);
+    this.refreshRuntimeDetails();
+    let beforeMode = this.state.mode;
+    const liveScheduler = this.state.desired === 'enabled' && this.state.mode === 'running' && this.state.scheduler.alive && !this.state.scheduler.paused;
+
+    if (liveScheduler) {
+      this.effects.emitSchedulerMutation?.(reason);
+    } else if (this.state.desired === 'enabled' && this.state.mode === 'running') {
+      this.apply({ type: 'fault', source: 'scheduler', reason: 'scheduler unavailable during queue mutation', at: this.now() });
+      beforeMode = this.state.mode;
+    }
+
     this.apply({ type: 'queue-mutation', source: 'queue', reason, at: this.now() });
 
     const shouldRepairStoppedSupervisor =
+      this.state.desired === 'enabled' &&
       this.state.mode === 'starting' &&
-      beforeMode !== 'running' &&
       beforeMode !== 'starting' &&
       beforeMode !== 'restarting';
 
@@ -341,7 +367,7 @@ export class AutoBuildSupervisor implements AutoBuildController {
       if (this.effects.isSchedulerAlive?.()) {
         this.effects.resumeScheduler?.();
       } else {
-        this.effects.spawnWatcher?.();
+        void this.effects.spawnWatcher?.();
       }
       this.apply({ type: 'started', source: 'watcher', reason: 'queue mutation wake', at: this.now(), watcher: this.readWatcher() });
     }
@@ -350,7 +376,8 @@ export class AutoBuildSupervisor implements AutoBuildController {
   }
 
   pauseOnFailure(reason: string): AutoBuildState {
-    if (this.state.desired !== 'enabled') return this.getSnapshot();
+    this.refreshRuntimeDetails();
+    if (this.state.desired !== 'enabled' || this.state.mode === 'paused') return this.getSnapshot();
 
     this.effects.pauseScheduler?.();
     this.apply({ type: 'pause-on-failure', source: 'watcher', reason, at: this.now() });
@@ -366,18 +393,18 @@ export class AutoBuildSupervisor implements AutoBuildController {
     this.apply({ type: 'shutdown', source: 'shutdown', reason, at: this.now() });
     if (this.state.mode === 'stopping') {
       this.effects.pauseScheduler?.();
-      this.effects.stopWatcher?.();
+      void this.effects.stopWatcher?.();
       this.apply({ type: 'stopped', source: 'watcher', reason: 'watcher stopped', at: this.now(), watcher: this.readWatcher() });
     }
     return this.getSnapshot();
   }
 
-  reloadExtensions(): AutoBuildState {
-    this.effects.reloadExtensions?.();
+  async reloadExtensions(): Promise<AutoBuildState> {
+    await this.effects.reloadExtensions?.();
     if (this.state.desired === 'enabled') {
       if (this.effects.restartWatcher) {
         this.apply({ type: 'enable', source: 'extension', reason: 'extension reload', at: this.now() });
-        this.effects.restartWatcher();
+        await this.effects.restartWatcher();
         this.apply({ type: 'started', source: 'watcher', reason: 'watcher restarted after extension reload', at: this.now(), watcher: this.readWatcher() });
       } else {
         this.notifyQueueMutation('external');
@@ -386,10 +413,44 @@ export class AutoBuildSupervisor implements AutoBuildController {
     return this.getSnapshot();
   }
 
+  watcherStarted(reason = 'watcher running', watcher: AutoBuildWatcherState = this.readWatcher()): AutoBuildState {
+    this.apply({ type: 'started', source: 'watcher', reason, at: this.now(), watcher });
+    return this.getSnapshot();
+  }
+
+  watcherStopped(reason = 'watcher stopped', watcher: AutoBuildWatcherState = this.readWatcher()): AutoBuildState {
+    this.apply({ type: 'stopped', source: 'watcher', reason, at: this.now(), watcher });
+    return this.getSnapshot();
+  }
+
+  fault(reason: string, source: AutoBuildSupervisorSource = 'watcher'): AutoBuildState {
+    this.apply({ type: 'fault', source, reason, at: this.now() });
+    return this.getSnapshot();
+  }
+
   private apply(action: AutoBuildSupervisorAction): void {
     const result = reduceAutoBuildSupervisor(this.state, action);
     this.state = result.state;
     if (result.transition) this.emitTransition(result.transition);
+  }
+
+  private completeWatcherStart(result: void | Promise<void>, reason: string): void {
+    if (!isPromiseLike(result)) {
+      this.apply({ type: 'started', source: 'watcher', reason, at: this.now(), watcher: this.readWatcher() });
+      return;
+    }
+
+    void result
+      .then(() => {
+        if (this.state.desired === 'enabled' && (this.state.mode === 'starting' || this.state.mode === 'restarting')) {
+          this.apply({ type: 'started', source: 'watcher', reason, at: this.now(), watcher: this.readWatcher() });
+        }
+      })
+      .catch((err: unknown) => {
+        if (this.state.desired !== 'enabled' || (this.state.mode !== 'starting' && this.state.mode !== 'restarting')) return;
+        const message = err instanceof Error ? err.message : String(err);
+        this.apply({ type: 'fault', source: 'watcher', reason: `Watcher failed to start: ${message}`, at: this.now() });
+      });
   }
 
   private emitTransition(transition: AutoBuildTransitionDetail): void {

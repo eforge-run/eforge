@@ -27,6 +27,7 @@ import {
   type WorkerTracker,
 } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
+import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,10 +50,18 @@ async function pathExists(p: string): Promise<boolean> {
   }
 }
 
+let autoBuildWakeReasons: string[];
+
+class RecordingAutoBuildSupervisor extends AutoBuildSupervisor {
+  override notifyQueueMutation(reason?: AutoBuildQueueMutationReason) {
+    autoBuildWakeReasons.push(reason ?? 'external');
+    return super.notifyQueueMutation(reason);
+  }
+}
+
 function makeDaemonState(): DaemonState {
   return {
-    autoBuild: false,
-    watcher: { running: false, pid: null, sessionId: null },
+    autoBuildController: new RecordingAutoBuildSupervisor(),
   };
 }
 
@@ -163,6 +172,7 @@ let spawnCalls: SpawnCall[];
 async function setupServer(): Promise<void> {
   const { tracker, calls } = makeStubTracker();
   spawnCalls = calls;
+  autoBuildWakeReasons = [];
 
   server = await startServer(
     openDatabase(dbPath),
@@ -216,6 +226,7 @@ describe('POST /api/recover/apply — retry', () => {
     // Both sidecar files removed
     expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
     expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
+    expect(autoBuildWakeReasons).toContain('apply-recovery');
   });
 
   it('does not spawn any worker', async () => {
@@ -257,6 +268,7 @@ describe('POST /api/recover/apply — abandon', () => {
     expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.md`))).toBe(false);
     expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.recovery.md`))).toBe(false);
     expect(await pathExists(join(tmpDir, 'eforge', 'queue', 'failed', `${prdId}.recovery.json`))).toBe(false);
+    expect(autoBuildWakeReasons).toContain('apply-recovery');
   });
 });
 
@@ -278,6 +290,7 @@ describe('POST /api/recover/apply — missing sidecar', () => {
     expect(res.status).toBe(404);
     const data = await res.json() as { error: string };
     expect(data.error).toContain(prdId);
+    expect(autoBuildWakeReasons).toEqual([]);
   });
 
   it('does not spawn any worker on 404', async () => {
@@ -313,6 +326,7 @@ describe('POST /api/recover/apply — malformed sidecar', () => {
     const data = await res.json() as { error: string };
     expect(typeof data.error).toBe('string');
     expect(data.error.length).toBeGreaterThan(0);
+    expect(autoBuildWakeReasons).toEqual([]);
   });
 });
 

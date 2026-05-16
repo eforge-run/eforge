@@ -11,6 +11,7 @@ import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
 import { API_ROUTES, writeLockfile, apiListExtensions, apiNewExtension, apiReloadExtensions, apiShowExtension, apiTestExtension, apiValidateExtensions, type EforgeEvent, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse, type ExtensionValidateResponse } from '@eforge-build/client';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
+import { AutoBuildSupervisor } from '@eforge-build/monitor/auto-build-supervisor';
 import { useTempDir } from './test-tmpdir.js';
 
 const makeTempDir = useTempDir('eforge-extension-tooling-routes-');
@@ -573,40 +574,44 @@ describe('extension tooling daemon routes', () => {
     expect(data).toMatchObject(data.watcher);
   });
 
-  it('POST extensionReload reports active watcher restart metadata from daemon state', async () => {
+  it('POST extensionReload reports active watcher restart metadata from the supervisor snapshot', async () => {
     const tmpDir = makeTempDir();
     await setupProject(tmpDir);
     const db = openDatabase(resolve(tmpDir, '.eforge', 'monitor.db'));
-    const onReloadExtensions = vi.fn(async () => ({
-      wasRunning: true,
-      restarted: true,
-      running: true,
-      previousSessionId: 'watcher-old',
-      sessionId: 'watcher-new',
-      message: 'restarted',
-    }));
+    let watcher = { running: true, pid: null, sessionId: 'watcher-old' };
+    const restartWatcher = vi.fn(() => {
+      watcher = { running: true, pid: null, sessionId: 'watcher-new' };
+    });
+    const controller = new AutoBuildSupervisor({
+      initialState: {
+        desired: 'enabled',
+        mode: 'running',
+        watcher,
+        scheduler: { alive: true, paused: false },
+      },
+      effects: {
+        getWatcher: () => watcher,
+        isSchedulerAlive: () => true,
+        restartWatcher,
+      },
+    });
     server = await startServer(db, 0, {
       strictPort: true,
       cwd: tmpDir,
-      daemonState: {
-        autoBuild: true,
-        autoBuildPaused: false,
-        watcher: { running: true, pid: null, sessionId: 'watcher-old' },
-        onReloadExtensions,
-      },
+      daemonState: { autoBuildController: controller },
     });
 
     const res = await fetch(`http://localhost:${server.port}${API_ROUTES.extensionReload}`, { method: 'POST' });
     expect(res.status).toBe(200);
     const data = await res.json() as ExtensionReloadResponse;
-    expect(onReloadExtensions).toHaveBeenCalledOnce();
+    expect(restartWatcher).toHaveBeenCalledOnce();
     expect(data.watcher).toEqual({
       wasRunning: true,
       restarted: true,
       running: true,
       previousSessionId: 'watcher-old',
       sessionId: 'watcher-new',
-      message: 'restarted',
+      message: 'Extension discovery refreshed and runtime watcher restarted.',
     });
     expect(data).toMatchObject(data.watcher);
   });

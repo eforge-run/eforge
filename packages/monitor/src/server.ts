@@ -32,8 +32,8 @@ import type {
   RunSummary,
 } from '@eforge-build/client';
 import { API_ROUTES, DAEMON_API_VERSION, safeParseEforgeEvent, parseWithSchema } from '@eforge-build/client';
-import type { SchedulerInputEvent } from '@eforge-build/engine/eforge';
 import type { EforgeEvent } from '@eforge-build/engine/events';
+import type { AutoBuildController, AutoBuildQueueMutationReason } from './auto-build-supervisor.js';
 // --- eforge:region plan-01-fix-recovery-ux ---
 import { recoveryVerdictSchema } from '@eforge-build/engine/schemas';
 import {
@@ -86,19 +86,14 @@ function isWithinDir(resolvedPath: string, baseDir: string): boolean {
 // --- eforge:endregion plan-03-daemon-mcp-pi ---
 
 /**
- * Emit a `queue:mutation` event onto the active QueueScheduler's bus so it
- * immediately re-scans the queue directory and launches newly-ready PRDs.
- * No-op when the watcher is not running or the inject handle is unavailable.
+ * Notify the auto-build controller about a queue mutation so it can wake the
+ * active scheduler or repair a desired-enabled watcher that is not running.
  */
-function emitMutation(
+function notifyQueueMutation(
   state: DaemonState | undefined,
-  reason: 'enqueue' | 'playbook-enqueue' | 'apply-recovery' | 'external',
+  reason: AutoBuildQueueMutationReason,
 ): void {
-  state?.injectSchedulerEvent?.({
-    type: 'queue:mutation',
-    reason,
-    timestamp: new Date().toISOString(),
-  });
+  state?.autoBuildController.notifyQueueMutation(reason);
 }
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -188,54 +183,10 @@ export interface WorkerTracker {
 }
 
 export interface DaemonState {
-  autoBuild: boolean;
-  /** True when auto-build was paused due to a build failure; cleared on re-enable. */
-  autoBuildPaused: boolean;
-  watcher: {
-    running: boolean;
-    pid: number | null;
-    sessionId: string | null;
-  };
-  /** Callback to spawn the watcher — set by server-main.ts */
-  onSpawnWatcher?: () => void;
-  /** Callback to kill the watcher — set by server-main.ts */
-  onKillWatcher?: () => void;
-  // --- eforge:region plan-01-extension-management-api ---
-  /** Callback to reload extension discovery and restart the active watcher — set by server-main.ts */
-  onReloadExtensions?: () => Promise<ExtensionReloadWatcherMetadata>;
-  // --- eforge:endregion plan-01-extension-management-api ---
+  /** Supervisor-backed auto-build controller; all route mutations delegate here. */
+  autoBuildController: AutoBuildController;
   /** Callback to trigger graceful daemon shutdown — set by server-main.ts */
   onShutdown?: () => void;
-  /**
-   * Injects a scheduler event directly onto the QueueScheduler's bus.
-   * Set by server-main.ts via `onInjectEventRegister` when the watcher starts,
-   * and cleared when the watcher stops. HTTP routes call `emitMutation()` which
-   * delegates here, so the scheduler can react without relying on fs.watch.
-   */
-  injectSchedulerEvent?: (event: SchedulerInputEvent) => void;
-  /**
-   * Emit a daemon-scoped event to persistent storage.
-   * Set by server-main.ts so the HTTP layer can trigger daemon events without
-   * coupling server.ts to the DB write logic or the daemon session id.
-   */
-  onDaemonEvent?: (event: EforgeEvent) => void;
-  // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
-  /**
-   * Pause the scheduler (suspend new PRD launches without aborting the watcher).
-   * Set by server-main.ts via `onSchedulerControlRegister`; cleared when the watcher stops.
-   */
-  onPauseScheduler?: () => void;
-  /**
-   * Resume the scheduler after a pause; triggers an immediate discovery tick.
-   * Set by server-main.ts via `onSchedulerControlRegister`; cleared when the watcher stops.
-   */
-  onResumeScheduler?: () => void;
-  /**
-   * Returns true while the scheduler's underlying AbortController is not yet aborted.
-   * Set by server-main.ts via `onSchedulerControlRegister`; cleared when the watcher stops.
-   */
-  isSchedulerAlive?: () => boolean;
-  // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
 }
 
 interface SSESubscriber {
@@ -619,14 +570,57 @@ export async function startServer(
   }
 
   /**
-   * Build the canonical `AutoBuildState` wire object from daemon state.
+   * Build the canonical `AutoBuildState` wire object from the controller.
    * Used by `GET /api/auto-build`, `POST /api/auto-build` response, and the
    * `stream:hello` snapshot — the single source of this JSON shape.
    */
   function autoBuildStateToWire(state: DaemonState | undefined): AutoBuildState {
+    return state?.autoBuildController.getSnapshot() ?? {
+      enabled: false,
+      watcher: { running: false, pid: null, sessionId: null },
+      desired: 'disabled',
+      mode: 'disabled',
+      scheduler: { alive: false, paused: false },
+    };
+  }
+
+  function autoBuildHeartbeatToWire(state: DaemonState | undefined): {
+    enabled: boolean;
+    paused: boolean;
+    desired?: AutoBuildState['desired'];
+    mode?: AutoBuildState['mode'];
+    scheduler?: AutoBuildState['scheduler'];
+    lastTransition?: AutoBuildState['lastTransition'];
+    reason?: string;
+  } {
+    const snapshot = autoBuildStateToWire(state);
     return {
-      enabled: state?.autoBuild ?? false,
-      watcher: state?.watcher ?? { running: false, pid: null, sessionId: null },
+      enabled: snapshot.enabled,
+      paused: snapshot.mode === 'paused' || snapshot.scheduler?.paused === true,
+      desired: snapshot.desired,
+      mode: snapshot.mode,
+      scheduler: snapshot.scheduler,
+      lastTransition: snapshot.lastTransition,
+      reason: snapshot.reason,
+    };
+  }
+
+  async function reloadAutoBuildExtensions(state: DaemonState | undefined): Promise<ExtensionReloadWatcherMetadata> {
+    const controller = state?.autoBuildController;
+    const before = controller?.getSnapshot() ?? autoBuildStateToWire(undefined);
+    const after = controller?.reloadExtensions
+      ? await controller.reloadExtensions()
+      : before;
+    const restarted = before.watcher.sessionId !== after.watcher.sessionId && after.watcher.running;
+    return {
+      wasRunning: before.watcher.running,
+      restarted,
+      running: after.watcher.running,
+      previousSessionId: before.watcher.sessionId,
+      sessionId: after.watcher.sessionId,
+      message: restarted
+        ? 'Extension discovery refreshed and runtime watcher restarted.'
+        : 'Extension discovery refreshed; no runtime watcher was restarted.',
     };
   }
 
@@ -801,10 +795,7 @@ export async function startServer(
       uptime,
       queueDepth,
       runningBuilds,
-      autoBuild: {
-        enabled: options?.daemonState?.autoBuild ?? false,
-        paused: options?.daemonState?.autoBuildPaused ?? false,
-      },
+      autoBuild: autoBuildHeartbeatToWire(options?.daemonState),
       subscribers: daemonSubscribers.size,
     };
   }
@@ -1768,7 +1759,7 @@ export async function startServer(
         }
         // --- eforge:endregion plan-04-daemon-cli-wiring ---
         const result = options.workerTracker.spawnWorker('enqueue', args, () => {
-          emitMutation(options.daemonState, 'enqueue');
+          notifyQueueMutation(options.daemonState, 'enqueue');
         });
         // --- eforge:region plan-02-daemon-routes ---
         // After successful spawn, if source is a session-plan file under THIS
@@ -1804,7 +1795,7 @@ export async function startServer(
         sendJson(res, {
           sessionId: result.sessionId,
           pid: result.pid,
-          autoBuild: options.daemonState?.autoBuild ?? false,
+          autoBuild: autoBuildStateToWire(options.daemonState).enabled,
         });
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
@@ -1976,7 +1967,7 @@ export async function startServer(
           }
         }
 
-        emitMutation(options.daemonState, 'apply-recovery');
+        notifyQueueMutation(options.daemonState, 'apply-recovery');
         sendJson(res, responseBody);
       } catch (err) {
         sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to apply recovery verdict');
@@ -2021,72 +2012,25 @@ export async function startServer(
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
       }
+      let body: { enabled?: boolean };
       try {
-        const body = await parseJsonBody(req) as { enabled?: boolean };
-        if (typeof body.enabled !== 'boolean') {
-          sendJsonError(res, 400, 'Missing required field: enabled (boolean)');
-          return;
-        }
-        options.daemonState.autoBuild = body.enabled;
-        if (body.enabled) {
-          // --- eforge:region plan-01-scheduler-pause-resume-lifecycle ---
-          // Determine whether to spawn a fresh watcher or resume the existing one.
-          // Three cases require a fresh spawn:
-          //   1. Watcher is not running at all.
-          //   2. Watcher is marked running but the scheduler inject handle is missing
-          //      (aborted/draining window — scheduler is inert).
-          //   3. isSchedulerAlive() explicitly reports the abort controller is dead.
-          const { watcher, injectSchedulerEvent, isSchedulerAlive, onSpawnWatcher, onResumeScheduler } = options.daemonState;
-          const schedulerHandleMissing = !injectSchedulerEvent;
-          const schedulerDead = typeof isSchedulerAlive === 'function' && !isSchedulerAlive();
-          const needsSpawn = !watcher.running || schedulerHandleMissing || schedulerDead;
-          if (needsSpawn) {
-            if (watcher.running && (schedulerHandleMissing || schedulerDead)) {
-              // Watcher is in draining/abort state but scheduler is inert:
-              // emit a daemon:error for observability before restarting.
-              options.daemonState.onDaemonEvent?.({
-                type: 'daemon:error',
-                source: 'auto-build:enable',
-                message: 'Watcher marked running but scheduler is inert (handle missing or aborted); restarting watcher',
-                timestamp: new Date().toISOString(),
-              } as EforgeEvent);
-            }
-            onSpawnWatcher?.();
-          } else {
-            // Live watcher with active scheduler — just resume.
-            onResumeScheduler?.();
-          }
-          // --- eforge:endregion plan-01-scheduler-pause-resume-lifecycle ---
-          // --- eforge:region plan-01-types-and-daemon-emission ---
-          // Emit enabled or resumed based on whether this follows a failure-triggered pause.
-          const wasPaused = options.daemonState.autoBuildPaused;
-          options.daemonState.autoBuildPaused = false;
-          if (wasPaused) {
-            options.daemonState.onDaemonEvent?.({
-              type: 'daemon:auto-build:resumed',
-              timestamp: new Date().toISOString(),
-            } as EforgeEvent);
-          } else {
-            options.daemonState.onDaemonEvent?.({
-              type: 'daemon:auto-build:enabled',
-              timestamp: new Date().toISOString(),
-            } as EforgeEvent);
-          }
-          // --- eforge:endregion plan-01-types-and-daemon-emission ---
-        } else {
-          // Toggle OFF — SIGTERM the watcher. Its abort handler stops new PRD
-          // discovery and startReadyPrds short-circuits on the abort signal,
-          // so in-flight builds drain and the watcher exits without pulling
-          // the next PRD.
-          options.daemonState.onKillWatcher?.();
-          options.daemonState.onDaemonEvent?.({
-            type: 'daemon:auto-build:disabled',
-            timestamp: new Date().toISOString(),
-          } as EforgeEvent);
-        }
-        sendJson(res, autoBuildStateToWire(options.daemonState));
+        body = await parseJsonBody(req) as { enabled?: boolean };
       } catch {
         sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (typeof body.enabled !== 'boolean') {
+        sendJsonError(res, 400, 'Missing required field: enabled (boolean)');
+        return;
+      }
+      try {
+        const { autoBuildController: controller } = options.daemonState;
+        const snapshot = body.enabled
+          ? controller.enable('http enable')
+          : controller.disable('http disable');
+        sendJson(res, snapshot);
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to update auto-build');
       }
       return;
     }
@@ -2097,7 +2041,7 @@ export async function startServer(
         sendJsonError(res, 503, 'Daemon mode not active');
         return;
       }
-      emitMutation(options.daemonState, 'external');
+      notifyQueueMutation(options.daemonState, 'external');
       sendJson(res, { ok: true });
       return;
     }
@@ -2376,17 +2320,7 @@ export async function startServer(
       if (rejectUnsafeExtensionMutationRequest(req, res)) return;
       try {
         const data = await loadExtensionResponse();
-        const currentWatcher = options?.daemonState?.watcher;
-        const watcher = options?.daemonState?.onReloadExtensions
-          ? await options.daemonState.onReloadExtensions()
-          : {
-            wasRunning: currentWatcher?.running ?? false,
-            restarted: false,
-            running: currentWatcher?.running ?? false,
-            previousSessionId: currentWatcher?.sessionId ?? null,
-            sessionId: currentWatcher?.sessionId ?? null,
-            message: 'Extension discovery refreshed; no runtime watcher was restarted.',
-          } satisfies ExtensionReloadWatcherMetadata;
+        const watcher = await reloadAutoBuildExtensions(options?.daemonState);
         sendJson(res, { ...data, ...watcher, watcher });
       } catch (err) {
         sendJsonError(res, cwd ? 500 : 503, err instanceof Error ? err.message : 'Failed to reload extensions');
@@ -2770,7 +2704,7 @@ export async function startServer(
           postMerge: plan.postMerge,
         });
         await commitEnqueuedPrd(result.filePath, result.id, title, cwd);
-        emitMutation(options.daemonState, 'playbook-enqueue');
+        notifyQueueMutation(options.daemonState, 'playbook-enqueue');
         sendJson(res, { id: result.id });
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to enqueue playbook';
