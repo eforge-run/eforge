@@ -693,7 +693,8 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
     expect(backend.prompts[0]).not.toContain('Continuation Context');
     expect(backend.prompts[1]).toContain('Continuation Context');
     expect(backend.prompts[1]).toContain('attempt 1 of 1');
-    expect(backend.prompts[1]).toContain('Do NOT run `git reset --soft HEAD~1` again');
+    expect(backend.prompts[1]).toContain('reusing the same immutable evaluation snapshot');
+    expect(backend.prompts[1]).toContain('must not mutate files or run shell commands');
     const retries = out.filter((e) => e.type === 'agent:retry') as Array<Extract<EforgeEvent, { type: 'agent:retry' }>>;
     expect(retries).toHaveLength(1);
     expect(retries[0]).toMatchObject({
@@ -769,9 +770,14 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
 
     expect(backend.prompts).toHaveLength(1);
     expect(out.filter((e) => e.type === 'agent:retry')).toHaveLength(0);
-    const failures = out.filter((e) => e.type === 'plan:build:failed') as Array<Extract<EforgeEvent, { type: 'plan:build:failed' }>>;
-    expect(failures).toHaveLength(1);
-    expect(failures[0].terminalSubtype).toBeUndefined();
+    expect(out.filter((e) => e.type === 'plan:build:failed')).toHaveLength(0);
+    const warnings = out.filter((e) => e.type === 'agent:warning') as Array<Extract<EforgeEvent, { type: 'agent:warning' }>>;
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({
+      agent: 'evaluator',
+      code: 'evaluation-judgment-failed',
+      message: 'Backend error: HTTP 500',
+    });
   });
 
   it('exhausts retries and surfaces the final build:failed when both attempts throw error_max_turns', async () => {
