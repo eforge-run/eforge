@@ -93,6 +93,29 @@ const _profileRouterStub: sdk.EforgeExtensionFactory = (api) => {
   });
 };
 void _profileRouterStub;
+
+const _policyGateStub: sdk.EforgeExtensionFactory = (api) => {
+  api.beforeQueueDispatch((ctx: sdk.QueueDispatchPolicyGateContext) => {
+    const _gateKind: sdk.PolicyGateKind = ctx.gateKind;
+    const _prdId: string = ctx.prdId;
+    void _gateKind;
+    void _prdId;
+    return { decision: 'allow' };
+  });
+  api.beforePlanMerge((ctx: sdk.PlanMergePolicyGateContext) => {
+    const _legacy: sdk.PolicyGateContext = ctx;
+    void _legacy;
+    return ctx.diff.files.some((file) => file.path.startsWith('infra/'))
+      ? { decision: 'block', reason: 'infra changes are blocked' }
+      : { decision: 'allow' };
+  });
+  api.beforeFinalMerge((ctx: sdk.FinalMergePolicyGateContext) => {
+    const _any: sdk.AnyPolicyGateContext = ctx;
+    void _any;
+    return { decision: 'require-approval', reason: `${ctx.featureBranch} -> ${ctx.baseBranch}` };
+  });
+};
+void _policyGateStub;
 // --- eforge:endregion plan-01-sdk-and-wire-contracts ---
 
 function captureSlackPlanErrorHandler(): sdk.EventHookHandler<'plan:error:set'> {
@@ -278,8 +301,16 @@ type _TypeExports = [
   sdk.EventOfType<'plan:build:complete'>,
   sdk.EventPattern,
   sdk.PolicyDecision,
+  sdk.PolicyGateKind,
+  sdk.QueueDispatchPolicyGateContext,
+  sdk.PlanMergePolicyGateContext,
   sdk.PolicyGateContext,
+  sdk.FinalMergePolicyGateContext,
+  sdk.AnyPolicyGateContext,
   sdk.PolicyGateHandler,
+  sdk.QueueDispatchPolicyGateHandler,
+  sdk.PlanMergePolicyGateHandler,
+  sdk.FinalMergePolicyGateHandler,
   sdk.AgentRunContext,
   sdk.AgentRunHandler,
   sdk.AgentRunAugmentation,

@@ -16,6 +16,8 @@ export type {
   LoadedNativeExtension,
   EventHookRegistration,
   AgentRunRegistration,
+  PolicyGateKind,
+  PolicyGateMethod,
   PolicyGateRegistration,
   ProfileRouterRegistration,
   InputSourceRegistration,
@@ -60,6 +62,31 @@ export type {
   BuildProfileRouterContextDeps,
 } from './profile-router-runtime.js';
 // --- eforge:endregion plan-02-runtime-and-integration ---
+// --- eforge:region plan-01-policy-gate-foundation ---
+export {
+  buildFinalMergePolicyGateContext,
+  buildPlanMergePolicyGateContext,
+  buildPolicyGateContext,
+  buildQueueDispatchPolicyGateContext,
+  executePolicyGate,
+  validatePolicyDecision,
+} from './policy-gate-runtime.js';
+export type {
+  AnyPolicyGateContext,
+  ExecutePolicyGateOptions,
+  FinalMergePolicyGateContext,
+  FinalMergePolicyGateTarget,
+  PlanMergePolicyGateContext,
+  PlanMergePolicyGateTarget,
+  PolicyGateContextHelpersOptions,
+  PolicyGateDecisionKind,
+  PolicyGateExecutionResult,
+  PolicyGateFailurePolicy,
+  PolicyGateTarget,
+  QueueDispatchPolicyGateContext,
+  QueueDispatchPolicyGateTarget,
+} from './policy-gate-runtime.js';
+// --- eforge:endregion plan-01-policy-gate-foundation ---
 export type { NativeExtensionRegistryProjection } from './projector.js';
 export { projectExtensionRegistry } from './projector.js';
 // --- eforge:region plan-01-engine-daemon-extension-replay ---

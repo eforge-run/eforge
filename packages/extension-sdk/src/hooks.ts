@@ -7,7 +7,16 @@
  */
 
 import type { EforgeEvent } from './events.js';
-import type { EventHookContext, AgentRunContext, PolicyGateContext, ProfileRouterContext } from './context.js';
+import type {
+  EventHookContext,
+  AgentRunContext,
+  PolicyGateContext,
+  QueueDispatchPolicyGateContext,
+  PlanMergePolicyGateContext,
+  FinalMergePolicyGateContext,
+  AnyPolicyGateContext,
+  ProfileRouterContext,
+} from './context.js';
 import type { ExtensionTool } from './tools.js';
 import type { TObject } from '@sinclair/typebox';
 import type { EventPattern } from './patterns.js';
@@ -38,8 +47,9 @@ export type EventHookHandler<TType extends EforgeEvent['type']> = (
  *
  * - `allow` — permit the operation to proceed.
  * - `block` — halt the operation with a human-readable `reason`.
- * - `require-approval` — pause and surface the `reason` to the user for
- *   manual approval before proceeding.
+ * - `require-approval` — halt and surface the `reason` as requiring manual
+ *   approval; current engine integrations treat this as blocking until an
+ *   approval workflow is added.
  *
  * Note: A `modify` variant (allowing the gate to mutate the operation payload)
  * is intentionally absent from this slice. It will be introduced only for hook
@@ -56,7 +66,18 @@ export type PolicyDecision =
  * Policy gates return a `PolicyDecision` that determines whether the gated
  * operation is allowed, blocked, or held for approval.
  */
-export type PolicyGateHandler = (ctx: PolicyGateContext) => PolicyDecision | Promise<PolicyDecision>;
+export type PolicyGateHandler<TContext extends AnyPolicyGateContext = PolicyGateContext> = (
+  ctx: TContext,
+) => PolicyDecision | Promise<PolicyDecision>;
+
+/** Handler for `beforeQueueDispatch` policy gates. */
+export type QueueDispatchPolicyGateHandler = PolicyGateHandler<QueueDispatchPolicyGateContext>;
+
+/** Handler for `beforePlanMerge` policy gates. */
+export type PlanMergePolicyGateHandler = PolicyGateHandler<PlanMergePolicyGateContext>;
+
+/** Handler for `beforeFinalMerge` policy gates. */
+export type FinalMergePolicyGateHandler = PolicyGateHandler<FinalMergePolicyGateContext>;
 
 // ---------------------------------------------------------------------------
 // Agent run hook

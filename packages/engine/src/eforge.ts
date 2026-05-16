@@ -886,6 +886,11 @@ export class EforgeEngine {
         cleanupPlanSet: planSet,
         cleanupOutputDir: this.config.plan.outputDir,
         cleanupPrdFilePath: options.prdFilePath ? relative(cwd, options.prdFilePath) : undefined,
+        // --- eforge:region plan-02-policy-gate-engine-integration ---
+        extensionRegistry: this.extensionRegistry,
+        policyGateTimeoutMs: this.config.extensions.policyGateTimeoutMs,
+        policyGateFailurePolicy: this.config.extensions.policyGateFailurePolicy,
+        // --- eforge:endregion plan-02-policy-gate-engine-integration ---
       });
 
       for await (const event of orchestrator.execute(orchConfig)) {

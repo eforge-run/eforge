@@ -39,6 +39,17 @@ export default defineEforgeExtension((eforge) => {
 
 ---
 
+## Configuration fields
+
+Policy gate runtime behavior is controlled by native extension config:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `extensions.policyGateTimeoutMs` | inherits `extensions.eventHookTimeoutMs` | Timeout in milliseconds for each `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge` handler. Must be a positive integer. |
+| `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for thrown, timed-out, or invalid policy gates. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
+
+---
+
 ## `EforgeExtensionAPI` methods
 
 ### `onEvent(pattern, handler)`
@@ -205,9 +216,32 @@ registerTool(tool: ExtensionTool): void
 
 ---
 
+### `beforeQueueDispatch(handler)`
+
+Policy gate that fires before a queued PRD is dispatched to a build worker. Return `{ decision: 'block', reason }` to prevent dispatch.
+
+```ts
+eforge.beforeQueueDispatch(async (ctx) => {
+  if (ctx.priority !== undefined && ctx.priority > 100) {
+    return { decision: "block", reason: "Priority is outside the team-approved range" };
+  }
+  return { decision: "allow" };
+});
+```
+
+**Signature:**
+
+```ts
+beforeQueueDispatch(handler: QueueDispatchPolicyGateHandler): void
+```
+
+**Runtime status:** registration is captured at load time and executed at runtime before queue dispatch. Decisions are blocking; `require-approval` currently blocks because no approval workflow exists.
+
+---
+
 ### `beforePlanMerge(handler)`
 
-Policy gate that fires before a plan's worktree is merged into the main branch. Return `{ decision: 'block', reason }` to prevent the merge.
+Policy gate that fires before a plan's worktree is merged into the integration branch. Return `{ decision: 'block', reason }` to prevent the merge.
 
 ```ts
 eforge.beforePlanMerge(async (ctx) => {
@@ -221,34 +255,45 @@ eforge.beforePlanMerge(async (ctx) => {
 **Signature:**
 
 ```ts
-beforePlanMerge(handler: PolicyGateHandler): void
+beforePlanMerge(handler: PlanMergePolicyGateHandler): void
 ```
 
-**Handler type:**
+**Runtime status:** registration is captured at load time and executed at runtime before each plan merge. Decisions are blocking; `require-approval` currently blocks because no approval workflow exists.
+
+---
+
+### `beforeFinalMerge(handler)`
+
+Policy gate that fires before the completed feature branch is merged into the base branch. Return `{ decision: 'block', reason }` to prevent the final merge.
 
 ```ts
-type PolicyGateHandler = (
-  ctx: PolicyGateContext,
+eforge.beforeFinalMerge(async (ctx) => {
+  if (ctx.diff.files.some((f) => f.path.startsWith("infra/"))) {
+    return { decision: "block", reason: "Final merge touches infra/" };
+  }
+  return { decision: "allow" };
+});
+```
+
+**Signature:**
+
+```ts
+beforeFinalMerge(handler: FinalMergePolicyGateHandler): void
+```
+
+**Handler types:**
+
+```ts
+type PolicyGateHandler<TContext extends AnyPolicyGateContext = PolicyGateContext> = (
+  ctx: TContext,
 ) => PolicyDecision | Promise<PolicyDecision>
+
+type QueueDispatchPolicyGateHandler = PolicyGateHandler<QueueDispatchPolicyGateContext>;
+type PlanMergePolicyGateHandler = PolicyGateHandler<PlanMergePolicyGateContext>;
+type FinalMergePolicyGateHandler = PolicyGateHandler<FinalMergePolicyGateContext>;
 ```
 
-**`PolicyGateContext`** (extends `EforgeExtensionContext`):
-
-```ts
-interface PolicyGateContext extends EforgeExtensionContext {
-  planId: string;
-  diff: ExtensionDiff;
-}
-
-interface ExtensionDiff {
-  files: Array<{
-    path: string;
-    status: "added" | "modified" | "deleted" | "renamed";
-  }>;
-}
-```
-
-**Runtime status:** registration is captured at load time; policy-gate execution is deferred.
+**Runtime status:** registration is captured at load time and executed at runtime before the final merge. Decisions are blocking; `require-approval` currently blocks because no approval workflow exists.
 
 ---
 
@@ -291,7 +336,39 @@ At least one of `selectBuildProfile` or `resolve` must be provided. The `selectB
 
 Return `null` or `undefined` from the handler to defer to the next registered router (or the default profile if no router selects one). The optional `reason` and `confidence` fields flow into the `queue:profile:selected` wire event.
 
-**Runtime status:** `Yes (pre-build dispatch)`. Routers are invoked sequentially in registration order before each queued PRD build, with per-router timeouts controlled by `extensions.profileRouterTimeoutMs` (defaulting to `extensions.eventHookTimeoutMs`) and fail-open semantics. When a PRD's `frontmatter.profile` is already set, routing is skipped entirely. A router that throws emits `queue:profile:router-failed` and the next router is consulted; a timeout emits `queue:profile:router-timeout`; a returned profile that cannot be loaded emits `queue:profile:invalid-selection`. Returning `null` or `undefined` defers to the next router (first-valid-wins). The `queue:profile:selected` event records provenance when a valid profile is chosen. `ctx.usage.profile(name)` returns best-effort data from daemon event history — use it for heuristic decisions, not hard quota enforcement.
+**Runtime status:** `Yes (pre-build dispatch)`. Routers are invoked sequentially in registration order before each queued PRD build, with per-router timeouts controlled by `extensions.profileRouterTimeoutMs` (defaulting to `extensions.eventHookTimeoutMs`) and fail-open semantics:
+
+- **Dispatch-time routing.** Routers run after a PRD is dequeued and before `session:start` is emitted. The selected profile is persisted to the PRD's frontmatter via a `chore(queue): route <prd> to profile <name>` commit before the build subprocess starts.
+- **Explicit-override precedence.** When the PRD's `frontmatter.profile` is already set, routing is skipped entirely — no `queue:profile:*` events are emitted and no router is invoked.
+- **Fail-open.** A router that throws emits `queue:profile:router-failed` and the next router is consulted. A timeout emits `queue:profile:router-timeout`. A returned profile name that cannot be loaded (not found in any scope) emits `queue:profile:invalid-selection`. If no router yields a valid selection, the build proceeds under the default profile (unchanged from current behavior).
+- **First-valid-wins.** Returning `null` or `undefined` defers to the next router. The first non-null result whose profile name successfully loads wins.
+- **`queue:profile:*` event family.** Four event types are emitted during dispatch:
+  - `queue:profile:selected` — a valid profile was selected (includes `prdId`, `profile`, `baseProfile`, `routerName`, `extensionName`, `extensionPath`, optional `reason`/`confidence`).
+  - `queue:profile:router-failed` — a router threw (includes `message`, optional `stack`).
+  - `queue:profile:router-timeout` — a router exceeded its timeout (includes `timeoutMs`).
+  - `queue:profile:invalid-selection` — a router returned a profile that could not be loaded (includes `requestedProfile`, `reason: 'not-found' | 'load-error'`).
+- **Exact-quota caveat.** `ctx.usage.profile(name)` returns best-effort data from daemon event history. It does not query provider APIs for exact quota state. Use it for heuristic decisions (cooldown detection, token accumulation trends) rather than hard quota enforcement.
+
+**Example using `selectBuildProfile`:**
+
+```ts
+eforge.registerProfileRouter({
+  name: 'quota-aware-router',
+  async selectBuildProfile(ctx) {
+    const usage = ctx.usage.profile('primary-profile');
+    if (usage.cooldownActive || usage.nearLimit) {
+      // Fall back to secondary when primary is throttled
+      return { profile: 'secondary-profile', reason: 'primary in cooldown', confidence: 'medium' };
+    }
+    if (ctx.availableProfiles.some((p) => p.name === 'primary-profile')) {
+      return { profile: 'primary-profile', reason: 'primary available', confidence: 'high' };
+    }
+    return null; // Defer to next router or default profile
+  },
+});
+```
+
+See [`examples/extensions/profile-router.ts`](https://github.com/eforge-build/eforge/blob/main/examples/extensions/profile-router.ts) for a complete three-tier fallback example with env-var-driven profile names.
 
 ---
 
@@ -429,6 +506,52 @@ interface EventHookContext extends EforgeExtensionContext {
 }
 ```
 
+### Policy gate contexts
+
+Policy gate contexts are read-only snapshots for the gated operation. They include `ctx.logger` and `ctx.exec`, but those helpers do not sandbox extension code; loaded extensions remain trusted, unsandboxed code running in the daemon/worker process.
+
+```ts
+type PolicyGateKind = "queue-dispatch" | "plan-merge" | "final-merge";
+
+interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
+  gateKind: "queue-dispatch";
+  prdId: string;
+  prdTitle?: string;
+  priority?: number;
+  profile?: string;
+  dependsOn: string[];
+}
+
+interface PlanMergePolicyGateContext extends EforgeExtensionContext {
+  gateKind: "plan-merge";
+  planId: string;
+  diff: ExtensionDiff;
+}
+
+// Backward-compatible alias for the original plan-merge context.
+type PolicyGateContext = PlanMergePolicyGateContext;
+
+interface FinalMergePolicyGateContext extends EforgeExtensionContext {
+  gateKind: "final-merge";
+  featureBranch: string;
+  baseBranch: string;
+  planIds?: string[];
+  diff: ExtensionDiff;
+}
+
+type AnyPolicyGateContext =
+  | QueueDispatchPolicyGateContext
+  | PlanMergePolicyGateContext
+  | FinalMergePolicyGateContext;
+
+interface ExtensionDiff {
+  files: Array<{
+    path: string;
+    status: "added" | "modified" | "deleted" | "renamed";
+  }>;
+}
+```
+
 ---
 
 ## Hook result types
@@ -446,15 +569,17 @@ type PolicyDecision =
 
 - `allow` - the operation proceeds normally.
 - `block` - the operation is rejected. `reason` is surfaced in logs and the monitor UI.
-- `require-approval` - the operation pauses pending explicit operator approval (exact UX determined by the runtime epic). Reserved for future use; in the current policy-gate runtime, treat as equivalent to `block`.
+- `require-approval` - currently blocks the operation because no approval workflow, approval state, or monitor UI exists in this MVP.
 
-A `modify` variant (mutating the diff inline) is intentionally absent. No policy gate in the current scope explicitly allows mutation; introducing it now would create ambiguous contracts. This is noted as a future extension point.
+A `modify` variant (mutating the diff inline) is intentionally absent. `modify` decisions remain deferred; no policy gate in the current scope explicitly allows mutation.
 
 ---
 
 ## Event types and `EventPattern` glob semantics
 
 All event types are defined in `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`.
+
+Policy gate execution emits `extension:policy:decision`, `extension:policy:failed`, and `extension:policy:timeout` diagnostics with extension name/path, registration index, gate kind, method (`beforeQueueDispatch`, `beforePlanMerge`, or `beforeFinalMerge`), the configured failure policy, and target identifiers such as `prdId`, `planId`, or final-merge branch names.
 
 ### `EventOfType<T>`
 
@@ -538,14 +663,16 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, and `registerProfileRouter` pre-build dispatch are also wired. Replay invokes only matching event hooks and summarizes non-event registrations as deferred. Blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are intentionally deferred for later phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, and the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`) are also wired. Replay invokes only matching event hooks and summarizes non-event registrations separately. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred for later phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
 | `onEvent` | Yes | Yes | Yes |
 | `onAgentRun` | Yes | Yes | Yes (promptAppend, per-run tools, allowedTools, disallowedTools)[^1] |
 | `registerTool` / `ExtensionTool` | Yes | Yes | Provenance only; inject per run via `onAgentRun` |
-| `beforePlanMerge` policy gate | Yes | Yes | Deferred |
+| `beforeQueueDispatch` policy gate | Yes | Yes | Yes (blocking policy gate) |
+| `beforePlanMerge` policy gate | Yes | Yes | Yes (blocking policy gate) |
+| `beforeFinalMerge` policy gate | Yes | Yes | Yes (blocking policy gate) |
 | `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
 | `registerInputSource` | Yes | Yes | Deferred |
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
@@ -553,7 +680,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, and profile-router examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, profile-router, and policy-gate examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
 
 ---
 

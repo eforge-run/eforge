@@ -102,6 +102,71 @@ const ShardScopeSchema = Type.Object({
 
 const BuildStageSpecSchema = Type.Union([Type.String(), Type.Array(Type.String())]);
 
+// --- eforge:region plan-01-policy-gate-foundation ---
+const PolicyGateKindSchema = Type.Union([
+  Type.Literal('queue-dispatch'),
+  Type.Literal('plan-merge'),
+  Type.Literal('final-merge'),
+]);
+
+const PolicyGateMethodSchema = Type.Union([
+  Type.Literal('beforeQueueDispatch'),
+  Type.Literal('beforePlanMerge'),
+  Type.Literal('beforeFinalMerge'),
+]);
+
+const PolicyGateFailurePolicySchema = Type.Union([
+  Type.Literal('fail-open'),
+  Type.Literal('fail-closed'),
+]);
+
+const PolicyGateAllowDecisionFields = {
+  decision: Type.Literal('allow'),
+  reason: Type.Optional(Type.String()),
+};
+
+const PolicyGateBlockDecisionFields = {
+  decision: Type.Literal('block'),
+  reason: Type.String({ minLength: 1 }),
+};
+
+const PolicyGateRequireApprovalDecisionFields = {
+  decision: Type.Literal('require-approval'),
+  reason: Type.String({ minLength: 1 }),
+};
+
+const PolicyGateBaseProvenanceFields = {
+  extensionName: Type.String(),
+  extensionPath: Type.String(),
+  registrationIndex: Type.Integer({ minimum: 0 }),
+  failurePolicy: PolicyGateFailurePolicySchema,
+};
+
+const QueueDispatchPolicyGateProvenanceFields = {
+  gateKind: Type.Literal('queue-dispatch'),
+  method: Type.Literal('beforeQueueDispatch'),
+  ...PolicyGateBaseProvenanceFields,
+  prdId: Type.String(),
+  prdTitle: Type.Optional(Type.String()),
+};
+
+const PlanMergePolicyGateProvenanceFields = {
+  gateKind: Type.Literal('plan-merge'),
+  method: Type.Literal('beforePlanMerge'),
+  ...PolicyGateBaseProvenanceFields,
+  planId: Type.String(),
+};
+
+const FinalMergePolicyGateProvenanceFields = {
+  gateKind: Type.Literal('final-merge'),
+  method: Type.Literal('beforeFinalMerge'),
+  ...PolicyGateBaseProvenanceFields,
+  featureBranch: Type.String(),
+  baseBranch: Type.String(),
+  planIds: Type.Optional(Type.Array(Type.String())),
+};
+// --- eforge:endregion plan-01-policy-gate-foundation ---
+
 const ReviewProfileConfigSchema = Type.Object({
   strategy: Type.Union([Type.Literal('auto'), Type.Literal('single'), Type.Literal('parallel')]),
   perspectives: Type.Array(ReviewPerspectiveSchema),
@@ -866,6 +931,89 @@ const EforgeEventVariantsSchema = Type.Union([
     message: Type.String(),
   }),
   // --- eforge:endregion plan-01-profile-router-events ---
+
+  // --- eforge:region plan-01-policy-gate-foundation ---
+  // Blocking policy-gate decisions and diagnostics. Keep these as top-level
+  // variants so generated event documentation lists each public wire shape.
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    ...PolicyGateAllowDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    ...PolicyGateBlockDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    ...PolicyGateRequireApprovalDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...PlanMergePolicyGateProvenanceFields,
+    ...PolicyGateAllowDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...PlanMergePolicyGateProvenanceFields,
+    ...PolicyGateBlockDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...PlanMergePolicyGateProvenanceFields,
+    ...PolicyGateRequireApprovalDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...FinalMergePolicyGateProvenanceFields,
+    ...PolicyGateAllowDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...FinalMergePolicyGateProvenanceFields,
+    ...PolicyGateBlockDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...FinalMergePolicyGateProvenanceFields,
+    ...PolicyGateRequireApprovalDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:failed'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:failed'),
+    ...PlanMergePolicyGateProvenanceFields,
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:failed'),
+    ...FinalMergePolicyGateProvenanceFields,
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:timeout'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    timeoutMs: Type.Integer({ minimum: 0 }),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:timeout'),
+    ...PlanMergePolicyGateProvenanceFields,
+    timeoutMs: Type.Integer({ minimum: 0 }),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:timeout'),
+    ...FinalMergePolicyGateProvenanceFields,
+    timeoutMs: Type.Integer({ minimum: 0 }),
+  }),
+  // --- eforge:endregion plan-01-policy-gate-foundation ---
 
   // Planning
   Type.Object({
@@ -1803,7 +1951,24 @@ export type SessionStreamSnapshot = Static<typeof SessionStreamSnapshotSchema>;
  * Returns `{ success: true, data }` on success or `{ success: false, error }` on failure.
  */
 export function safeParseEforgeEvent(value: unknown): SafeParseResult<EforgeEvent> {
-  return safeParseWithSchema(EforgeEventSchema, value);
+  const result = safeParseWithSchema(EforgeEventSchema, value);
+  if (!result.success) return result;
+
+  if (
+    result.data.type === 'extension:policy:decision' &&
+    (result.data.decision === 'block' || result.data.decision === 'require-approval') &&
+    (typeof result.data.reason !== 'string' || result.data.reason.trim().length === 0)
+  ) {
+    return {
+      success: false,
+      error: {
+        message: '/reason: blocking policy decisions require a non-empty reason',
+        errors: [{ path: '/reason', message: 'blocking policy decisions require a non-empty reason' }],
+      },
+    };
+  }
+
+  return result;
 }
 
 /**

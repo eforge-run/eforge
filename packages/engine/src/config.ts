@@ -182,6 +182,10 @@ export const extensionConfigSchema = z.object({
   // --- eforge:region plan-01-agent-context-runtime ---
   agentContextHookTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for agent-context hook handlers (defaults to eventHookTimeoutMs)'),
   // --- eforge:endregion plan-01-agent-context-runtime ---
+  // --- eforge:region plan-01-policy-gate-foundation ---
+  policyGateTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for policy gate handlers (defaults to eventHookTimeoutMs)'),
+  policyGateFailurePolicy: z.enum(['fail-open', 'fail-closed']).optional().describe('Failure policy for thrown, timed-out, or invalid policy gate handlers'),
+  // --- eforge:endregion plan-01-policy-gate-foundation ---
   // --- eforge:region plan-02-runtime-and-integration ---
   profileRouterTimeoutMs: z.number().int().positive().optional().describe('Timeout in milliseconds for profile router handlers (defaults to eventHookTimeoutMs)'),
   // --- eforge:endregion plan-02-runtime-and-integration ---
@@ -362,6 +366,10 @@ export type ExtensionConfig = z.output<typeof extensionConfigSchema> & {
   // --- eforge:region plan-01-agent-context-runtime ---
   agentContextHookTimeoutMs: number;
   // --- eforge:endregion plan-01-agent-context-runtime ---
+  // --- eforge:region plan-01-policy-gate-foundation ---
+  policyGateTimeoutMs: number;
+  policyGateFailurePolicy: 'fail-open' | 'fail-closed';
+  // --- eforge:endregion plan-01-policy-gate-foundation ---
   // --- eforge:region plan-02-runtime-and-integration ---
   profileRouterTimeoutMs: number;
   // --- eforge:endregion plan-02-runtime-and-integration ---
@@ -646,6 +654,10 @@ export const DEFAULT_CONFIG: EforgeConfig = Object.freeze({
     // --- eforge:region plan-01-agent-context-runtime ---
     agentContextHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
     // --- eforge:endregion plan-01-agent-context-runtime ---
+    // --- eforge:region plan-01-policy-gate-foundation ---
+    policyGateTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+    policyGateFailurePolicy: 'fail-closed' as const,
+    // --- eforge:endregion plan-01-policy-gate-foundation ---
     // --- eforge:region plan-02-runtime-and-integration ---
     profileRouterTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
     // --- eforge:endregion plan-02-runtime-and-integration ---
@@ -743,6 +755,10 @@ export function resolveConfig(
       // --- eforge:region plan-01-agent-context-runtime ---
       agentContextHookTimeoutMs: fileConfig.extensions?.agentContextHookTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.agentContextHookTimeoutMs,
       // --- eforge:endregion plan-01-agent-context-runtime ---
+      // --- eforge:region plan-01-policy-gate-foundation ---
+      policyGateTimeoutMs: fileConfig.extensions?.policyGateTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.policyGateTimeoutMs,
+      policyGateFailurePolicy: fileConfig.extensions?.policyGateFailurePolicy ?? DEFAULT_CONFIG.extensions.policyGateFailurePolicy,
+      // --- eforge:endregion plan-01-policy-gate-foundation ---
       // --- eforge:region plan-02-runtime-and-integration ---
       profileRouterTimeoutMs: fileConfig.extensions?.profileRouterTimeoutMs ?? fileConfig.extensions?.eventHookTimeoutMs ?? DEFAULT_CONFIG.extensions.profileRouterTimeoutMs,
       // --- eforge:endregion plan-02-runtime-and-integration ---

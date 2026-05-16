@@ -80,6 +80,82 @@ describe('WorktreeManager', () => {
     expect(wm.isBuiltOnMerge('plan-01')).toBe(true);
   });
 
+  // --- eforge:region plan-02-policy-gate-engine-integration ---
+  it('captures direct-on-merge base SHA and computes plan diff statuses', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    writeFileSync(join(mergeWorktreePath, 'modified.txt'), 'before\n');
+    writeFileSync(join(mergeWorktreePath, 'deleted.txt'), 'delete me\n');
+    writeFileSync(join(mergeWorktreePath, 'old-name.txt'), 'rename me\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'feature base files'], { cwd: mergeWorktreePath });
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    await wm.acquireForPlan('plan-direct-diff', 'eforge/plan-direct-diff', false);
+
+    writeFileSync(join(mergeWorktreePath, 'added.txt'), 'added\n');
+    writeFileSync(join(mergeWorktreePath, 'modified.txt'), 'after\n');
+    await exec('git', ['rm', 'deleted.txt'], { cwd: mergeWorktreePath });
+    await exec('git', ['mv', 'old-name.txt', 'new-name.txt'], { cwd: mergeWorktreePath });
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'direct plan changes'], { cwd: mergeWorktreePath });
+
+    const diff = await wm.getPlanDiff('plan-direct-diff', { branch: 'eforge/plan-direct-diff' });
+    expect([...diff.files].sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+      { path: 'added.txt', status: 'added' },
+      { path: 'deleted.txt', status: 'deleted' },
+      { path: 'modified.txt', status: 'modified' },
+      { path: 'new-name.txt', status: 'renamed' },
+    ]);
+  });
+
+  it('captures dedicated worktree base SHA and computes plan diffs before feature branch mutations', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    writeFileSync(join(mergeWorktreePath, 'base.txt'), 'base\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'feature base file'], { cwd: mergeWorktreePath });
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+    const planBranch = 'eforge/plan-dedicated-diff';
+    const planPath = await wm.acquireForPlan('plan-dedicated-diff', planBranch, true);
+
+    writeFileSync(join(planPath, 'plan-only.txt'), 'plan change\n');
+    await exec('git', ['add', '.'], { cwd: planPath });
+    await exec('git', ['commit', '-m', 'dedicated plan changes'], { cwd: planPath });
+
+    writeFileSync(join(mergeWorktreePath, 'feature-after-acquire.txt'), 'should not be in plan diff\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'feature branch after plan acquire'], { cwd: mergeWorktreePath });
+
+    const diff = await wm.getPlanDiff('plan-dedicated-diff', { branch: planBranch });
+    expect(diff.files).toEqual([{ path: 'plan-only.txt', status: 'added' }]);
+  });
+
+  it('computes final merge diffs from the merge base so base-only changes are not reported', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath, baseBranch } =
+      await setupRepoWithMergeWorktree(baseDir);
+
+    const wm = new WorktreeManager({ repoRoot, worktreeBase, featureBranch, mergeWorktreePath });
+
+    writeFileSync(join(mergeWorktreePath, 'feature-only.txt'), 'feature change\n');
+    await exec('git', ['add', '.'], { cwd: mergeWorktreePath });
+    await exec('git', ['commit', '-m', 'feature-only change'], { cwd: mergeWorktreePath });
+
+    writeFileSync(join(repoRoot, 'base-only.txt'), 'base change\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'base-only change'], { cwd: repoRoot });
+
+    const diff = await wm.getFinalMergeDiff(baseBranch);
+    expect(diff.files).toEqual([{ path: 'feature-only.txt', status: 'added' }]);
+  });
+  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+
   it('releaseForPlan removes dedicated worktree but not merge worktree', async () => {
     const baseDir = makeTempDir();
     const { repoRoot, featureBranch, worktreeBase, mergeWorktreePath } =

@@ -247,6 +247,29 @@ const eventRegistry = {
   },
   // --- eforge:endregion plan-01-profile-router-events ---
 
+  // --- eforge:region plan-01-policy-gate-foundation ---
+  'extension:policy:decision': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Policy gate ${e.method} (${e.extensionName}) returned ${e.decision}${e.reason ? `: ${e.reason}` : ''}`,
+  },
+
+  'extension:policy:failed': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Policy gate ${e.method} (${e.extensionName}) failed under ${e.failurePolicy}: ${e.message}`,
+  },
+
+  'extension:policy:timeout': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Policy gate ${e.method} (${e.extensionName}) timed out after ${e.timeoutMs}ms under ${e.failurePolicy}`,
+  },
+  // --- eforge:endregion plan-01-policy-gate-foundation ---
+
   // -------------------------------------------------------------------------
   // Planning
   // -------------------------------------------------------------------------

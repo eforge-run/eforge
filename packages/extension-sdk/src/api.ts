@@ -21,7 +21,17 @@
 
 import type { EforgeEvent } from './events.js';
 import type { EventHookContext } from './context.js';
-import type { EventHookHandler, PolicyGateHandler, AgentRunHandler, ProfileRouterSpec, InputSourceAdapter, ReviewerPerspectiveSpec, ValidationProviderSpec } from './hooks.js';
+import type {
+  EventHookHandler,
+  QueueDispatchPolicyGateHandler,
+  PlanMergePolicyGateHandler,
+  FinalMergePolicyGateHandler,
+  AgentRunHandler,
+  ProfileRouterSpec,
+  InputSourceAdapter,
+  ReviewerPerspectiveSpec,
+  ValidationProviderSpec,
+} from './hooks.js';
 import type { EventPattern } from './patterns.js';
 import type { ExtensionTool } from './tools.js';
 
@@ -109,13 +119,23 @@ export interface EforgeExtensionAPI {
   onAgentRun(handler: AgentRunHandler): void;
 
   /**
+   * Register a policy gate evaluated before a queued PRD is dispatched for build.
+   *
+   * Return `{ decision: 'allow' }` to permit dispatch, `{ decision: 'block', reason }`
+   * to halt it, or `{ decision: 'require-approval', reason }` to halt it with an
+   * approval-required reason. The current runtime treats `require-approval` as blocking
+   * until approval workflow support is added.
+   */
+  beforeQueueDispatch(handler: QueueDispatchPolicyGateHandler): void;
+
+  /**
    * Register a policy gate evaluated before a plan's changes are merged into
-   * the main branch.
+   * the integration branch.
    *
    * Return `{ decision: 'allow' }` to permit the merge, `{ decision: 'block', reason }` to
-   * halt it, or `{ decision: 'require-approval', reason }` to pause for manual approval.
-   *
-   * @remarks Runtime not yet wired. Typed contract only in this slice.
+   * halt it, or `{ decision: 'require-approval', reason }` to halt it with an
+   * approval-required reason. The current runtime treats `require-approval` as blocking
+   * until approval workflow support is added.
    *
    * @example
    * ```ts
@@ -127,7 +147,18 @@ export interface EforgeExtensionAPI {
    * });
    * ```
    */
-  beforePlanMerge(handler: PolicyGateHandler): void;
+  beforePlanMerge(handler: PlanMergePolicyGateHandler): void;
+
+  /**
+   * Register a policy gate evaluated before the feature branch is finally merged
+   * into the base branch.
+   *
+   * Return `{ decision: 'allow' }` to permit the merge, `{ decision: 'block', reason }`
+   * to halt it, or `{ decision: 'require-approval', reason }` to halt it with an
+   * approval-required reason. The current runtime treats `require-approval` as blocking
+   * until approval workflow support is added.
+   */
+  beforeFinalMerge(handler: FinalMergePolicyGateHandler): void;
 
   /**
    * Register a profile router that selects which agent runtime profile to use

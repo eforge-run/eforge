@@ -11,7 +11,7 @@ These examples demonstrate the `@eforge-build/extension-sdk` API. Each example i
 | `agent-context.ts` | `onAgentRun(...)` | Runtime-supported prompt-context augmentation |
 | `agent-tools.ts` | `defineExtensionTool(...)`, `registerTool(...)`, `onAgentRun(...)` | Runtime-supported per-run extension tool injection and availability tuning |
 | `profile-router.ts` | `registerProfileRouter(...)` | Runtime-supported pre-build dispatch; explicit `profile:` frontmatter wins; routers fail open |
-| `protected-paths.ts` | `beforePlanMerge(...)` | Loader-captured for provenance/validation; policy-gate enforcement is deferred |
+| `protected-paths.ts` | `beforePlanMerge(...)`, `beforeFinalMerge(...)` | Runtime-supported policy enforcement for plan/final merge protected paths |
 
 ### `minimal-event-logger.ts`
 
@@ -51,9 +51,9 @@ Default profile names are `claude-sdk-4-7` (primary), `pi-codex-5-5` (secondary)
 
 ### `protected-paths.ts`
 
-Uses `eforge.beforePlanMerge` to block merges that touch a protected path. Demonstrates policy gate registration and the `PolicyDecision` discriminated union (`allow` / `block` / `require-approval`).
+Uses `eforge.beforePlanMerge` and `eforge.beforeFinalMerge` to block merges that touch a protected path. Demonstrates runtime-supported policy gate registration and the `PolicyDecision` discriminated union (`allow` / `block` / `require-approval`).
 
-> **Runtime note:** `beforePlanMerge` is loaded and captured for provenance, but policy-gate enforcement remains deferred to a later runtime phase.
+> **Runtime note:** `beforePlanMerge` and `beforeFinalMerge` are runtime-supported blocking policy gates. `require-approval` currently blocks because no approval workflow exists; `beforeEnqueue`, `beforeValidation`, approval UI/state, and `modify` decisions remain deferred.
 
 ## Validation
 

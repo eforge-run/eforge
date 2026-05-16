@@ -38,4 +38,4 @@ eforge is an autonomous build-and-review orchestration engine for code generatio
 - [Project README](https://github.com/eforge-build/eforge#readme): Broader project narrative, screenshots, install notes, and examples
 
 eforge version: 0.7.12
-Docs commit: f64aec79
+Docs commit: 7bd6400e

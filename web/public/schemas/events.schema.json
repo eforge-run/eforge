@@ -1590,6 +1590,971 @@
           "type": "object",
           "required": [
             "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "prdId",
+            "decision"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:decision",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "queue-dispatch",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeQueueDispatch",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "prdTitle": {
+              "type": "string"
+            },
+            "decision": {
+              "const": "allow",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "prdId",
+            "decision",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:decision",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "queue-dispatch",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeQueueDispatch",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "prdTitle": {
+              "type": "string"
+            },
+            "decision": {
+              "const": "block",
+              "type": "string"
+            },
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "prdId",
+            "decision",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:decision",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "queue-dispatch",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeQueueDispatch",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "prdTitle": {
+              "type": "string"
+            },
+            "decision": {
+              "const": "require-approval",
+              "type": "string"
+            },
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "planId",
+            "decision"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:decision",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "plan-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforePlanMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "planId": {
+              "type": "string"
+            },
+            "decision": {
+              "const": "allow",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "planId",
+            "decision",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:decision",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "plan-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforePlanMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "planId": {
+              "type": "string"
+            },
+            "decision": {
+              "const": "block",
+              "type": "string"
+            },
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "planId",
+            "decision",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:decision",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "plan-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforePlanMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "planId": {
+              "type": "string"
+            },
+            "decision": {
+              "const": "require-approval",
+              "type": "string"
+            },
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "featureBranch",
+            "baseBranch",
+            "decision"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:decision",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "final-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeFinalMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "planIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "decision": {
+              "const": "allow",
+              "type": "string"
+            },
+            "reason": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "featureBranch",
+            "baseBranch",
+            "decision",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:decision",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "final-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeFinalMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "planIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "decision": {
+              "const": "block",
+              "type": "string"
+            },
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "featureBranch",
+            "baseBranch",
+            "decision",
+            "reason"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:decision",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "final-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeFinalMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "planIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "decision": {
+              "const": "require-approval",
+              "type": "string"
+            },
+            "reason": {
+              "minLength": 1,
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "prdId",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:failed",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "queue-dispatch",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeQueueDispatch",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "prdTitle": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "planId",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:failed",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "plan-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforePlanMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "planId": {
+              "type": "string"
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "featureBranch",
+            "baseBranch",
+            "message"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:failed",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "final-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeFinalMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "planIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "message": {
+              "type": "string"
+            },
+            "stack": {
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "prdId",
+            "timeoutMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:timeout",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "queue-dispatch",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeQueueDispatch",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "prdId": {
+              "type": "string"
+            },
+            "prdTitle": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "planId",
+            "timeoutMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:timeout",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "plan-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforePlanMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "planId": {
+              "type": "string"
+            },
+            "timeoutMs": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "gateKind",
+            "method",
+            "extensionName",
+            "extensionPath",
+            "registrationIndex",
+            "failurePolicy",
+            "featureBranch",
+            "baseBranch",
+            "timeoutMs"
+          ],
+          "properties": {
+            "type": {
+              "const": "extension:policy:timeout",
+              "type": "string"
+            },
+            "gateKind": {
+              "const": "final-merge",
+              "type": "string"
+            },
+            "method": {
+              "const": "beforeFinalMerge",
+              "type": "string"
+            },
+            "extensionName": {
+              "type": "string"
+            },
+            "extensionPath": {
+              "type": "string"
+            },
+            "registrationIndex": {
+              "minimum": 0,
+              "type": "integer"
+            },
+            "failurePolicy": {
+              "anyOf": [
+                {
+                  "const": "fail-open",
+                  "type": "string"
+                },
+                {
+                  "const": "fail-closed",
+                  "type": "string"
+                }
+              ]
+            },
+            "featureBranch": {
+              "type": "string"
+            },
+            "baseBranch": {
+              "type": "string"
+            },
+            "planIds": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "timeoutMs": {
+              "minimum": 0,
+              "type": "integer"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
             "source"
           ],
           "properties": {

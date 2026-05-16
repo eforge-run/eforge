@@ -12,6 +12,9 @@ import {
   createMergeWorktree,
   mergeFeatureBranchToBase,
   cleanupWorktrees,
+  // --- eforge:region plan-02-policy-gate-engine-integration ---
+  getNameStatusDiff,
+  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 } from '@eforge-build/engine/worktree-ops';
 
 const exec = promisify(execFile);
@@ -53,6 +56,36 @@ describe('worktree integration', () => {
     const base = computeWorktreeBase('/home/user/projects/my-app', 'plan-set-1');
     expect(base).toBe('/home/user/projects/my-app-plan-set-1-worktrees');
   });
+
+  // --- eforge:region plan-02-policy-gate-engine-integration ---
+  it('computes git name-status diff summaries for added, modified, deleted, and renamed files', async () => {
+    const baseDir = makeTempDir();
+    const { repoRoot } = await setupRepo(baseDir);
+
+    writeFileSync(join(repoRoot, 'modified.txt'), 'before\n');
+    writeFileSync(join(repoRoot, 'deleted.txt'), 'delete me\n');
+    writeFileSync(join(repoRoot, 'old-name.txt'), 'rename me\n');
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'base files'], { cwd: repoRoot });
+
+    await exec('git', ['checkout', '-b', 'eforge/diff-summary'], { cwd: repoRoot });
+    writeFileSync(join(repoRoot, 'added.txt'), 'added\n');
+    writeFileSync(join(repoRoot, 'modified.txt'), 'after\n');
+    await exec('git', ['rm', 'deleted.txt'], { cwd: repoRoot });
+    await exec('git', ['mv', 'old-name.txt', 'new-name.txt'], { cwd: repoRoot });
+    await exec('git', ['add', '.'], { cwd: repoRoot });
+    await exec('git', ['commit', '-m', 'feature changes'], { cwd: repoRoot });
+    await exec('git', ['checkout', 'main'], { cwd: repoRoot });
+
+    const diff = await getNameStatusDiff(repoRoot, 'main', 'eforge/diff-summary');
+    expect([...diff.files].sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+      { path: 'added.txt', status: 'added' },
+      { path: 'deleted.txt', status: 'deleted' },
+      { path: 'modified.txt', status: 'modified' },
+      { path: 'new-name.txt', status: 'renamed' },
+    ]);
+  });
+  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
   it('createWorktree creates a new worktree and returns its path', async () => {
     const baseDir = makeTempDir();

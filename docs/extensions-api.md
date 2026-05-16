@@ -34,6 +34,17 @@ export default defineEforgeExtension((eforge) => {
 
 ---
 
+## Configuration fields
+
+Policy gate runtime behavior is controlled by native extension config:
+
+| Field | Default | Meaning |
+|-------|---------|---------|
+| `extensions.policyGateTimeoutMs` | inherits `extensions.eventHookTimeoutMs` | Timeout in milliseconds for each `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge` handler. Must be a positive integer. |
+| `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for thrown, timed-out, or invalid policy gates. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
+
+---
+
 ## `EforgeExtensionAPI` methods
 
 ### `onEvent(pattern, handler)`
@@ -77,7 +88,7 @@ The `event` parameter is narrowed to `EventOfType<T>` when the pattern is an exa
 
 **Runtime status:** registration is captured at load time and matching events are dispatched at runtime. Dispatch is non-blocking with respect to the engine pipeline: handlers cannot alter, block, or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields; monitor recording sees those diagnostics before shell hooks run.
 
-**Replay testing:** `eforge extension test` executes matching `onEvent` handlers against fixture or monitor DB events. It reports replay counts, matched hooks, emitted `extension:event-handler:*` diagnostics, and deferred non-event registration families. Replay testing does not execute `onAgentRun`, custom tools, policy gates, profile routers, input sources, reviewer perspectives, or validation providers.
+**Replay testing:** `eforge extension test` executes matching `onEvent` handlers against fixture or monitor DB events. It reports replay counts, matched hooks, emitted `extension:event-handler:*` diagnostics, and non-event registration summaries. Replay testing does not execute `onAgentRun`, custom tools, policy gates, profile routers, input sources, reviewer perspectives, or validation providers.
 
 ---
 
@@ -200,9 +211,32 @@ registerTool(tool: ExtensionTool): void
 
 ---
 
+### `beforeQueueDispatch(handler)`
+
+Policy gate that fires before a queued PRD is dispatched to a build worker. Return `{ decision: 'block', reason }` to prevent dispatch.
+
+```ts
+eforge.beforeQueueDispatch(async (ctx) => {
+  if (ctx.priority !== undefined && ctx.priority > 100) {
+    return { decision: "block", reason: "Priority is outside the team-approved range" };
+  }
+  return { decision: "allow" };
+});
+```
+
+**Signature:**
+
+```ts
+beforeQueueDispatch(handler: QueueDispatchPolicyGateHandler): void
+```
+
+**Runtime status:** registration is captured at load time and executed at runtime before queue dispatch. Decisions are blocking; `require-approval` currently blocks because no approval workflow exists.
+
+---
+
 ### `beforePlanMerge(handler)`
 
-Policy gate that fires before a plan's worktree is merged into the main branch. Return `{ decision: 'block', reason }` to prevent the merge.
+Policy gate that fires before a plan's worktree is merged into the integration branch. Return `{ decision: 'block', reason }` to prevent the merge.
 
 ```ts
 eforge.beforePlanMerge(async (ctx) => {
@@ -216,34 +250,45 @@ eforge.beforePlanMerge(async (ctx) => {
 **Signature:**
 
 ```ts
-beforePlanMerge(handler: PolicyGateHandler): void
+beforePlanMerge(handler: PlanMergePolicyGateHandler): void
 ```
 
-**Handler type:**
+**Runtime status:** registration is captured at load time and executed at runtime before each plan merge. Decisions are blocking; `require-approval` currently blocks because no approval workflow exists.
+
+---
+
+### `beforeFinalMerge(handler)`
+
+Policy gate that fires before the completed feature branch is merged into the base branch. Return `{ decision: 'block', reason }` to prevent the final merge.
 
 ```ts
-type PolicyGateHandler = (
-  ctx: PolicyGateContext,
+eforge.beforeFinalMerge(async (ctx) => {
+  if (ctx.diff.files.some((f) => f.path.startsWith("infra/"))) {
+    return { decision: "block", reason: "Final merge touches infra/" };
+  }
+  return { decision: "allow" };
+});
+```
+
+**Signature:**
+
+```ts
+beforeFinalMerge(handler: FinalMergePolicyGateHandler): void
+```
+
+**Handler types:**
+
+```ts
+type PolicyGateHandler<TContext extends AnyPolicyGateContext = PolicyGateContext> = (
+  ctx: TContext,
 ) => PolicyDecision | Promise<PolicyDecision>
+
+type QueueDispatchPolicyGateHandler = PolicyGateHandler<QueueDispatchPolicyGateContext>;
+type PlanMergePolicyGateHandler = PolicyGateHandler<PlanMergePolicyGateContext>;
+type FinalMergePolicyGateHandler = PolicyGateHandler<FinalMergePolicyGateContext>;
 ```
 
-**`PolicyGateContext`** (extends `EforgeExtensionContext`):
-
-```ts
-interface PolicyGateContext extends EforgeExtensionContext {
-  planId: string;
-  diff: ExtensionDiff;
-}
-
-interface ExtensionDiff {
-  files: Array<{
-    path: string;
-    status: "added" | "modified" | "deleted" | "renamed";
-  }>;
-}
-```
-
-**Runtime status:** registration is captured at load time; policy-gate execution is deferred.
+**Runtime status:** registration is captured at load time and executed at runtime before the final merge. Decisions are blocking; `require-approval` currently blocks because no approval workflow exists.
 
 ---
 
@@ -456,6 +501,52 @@ interface EventHookContext extends EforgeExtensionContext {
 }
 ```
 
+### Policy gate contexts
+
+Policy gate contexts are read-only snapshots for the gated operation. They include `ctx.logger` and `ctx.exec`, but those helpers do not sandbox extension code; loaded extensions remain trusted, unsandboxed code running in the daemon/worker process.
+
+```ts
+type PolicyGateKind = "queue-dispatch" | "plan-merge" | "final-merge";
+
+interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
+  gateKind: "queue-dispatch";
+  prdId: string;
+  prdTitle?: string;
+  priority?: number;
+  profile?: string;
+  dependsOn: string[];
+}
+
+interface PlanMergePolicyGateContext extends EforgeExtensionContext {
+  gateKind: "plan-merge";
+  planId: string;
+  diff: ExtensionDiff;
+}
+
+// Backward-compatible alias for the original plan-merge context.
+type PolicyGateContext = PlanMergePolicyGateContext;
+
+interface FinalMergePolicyGateContext extends EforgeExtensionContext {
+  gateKind: "final-merge";
+  featureBranch: string;
+  baseBranch: string;
+  planIds?: string[];
+  diff: ExtensionDiff;
+}
+
+type AnyPolicyGateContext =
+  | QueueDispatchPolicyGateContext
+  | PlanMergePolicyGateContext
+  | FinalMergePolicyGateContext;
+
+interface ExtensionDiff {
+  files: Array<{
+    path: string;
+    status: "added" | "modified" | "deleted" | "renamed";
+  }>;
+}
+```
+
 ---
 
 ## Hook result types
@@ -473,15 +564,17 @@ type PolicyDecision =
 
 - `allow` - the operation proceeds normally.
 - `block` - the operation is rejected. `reason` is surfaced in logs and the monitor UI.
-- `require-approval` - the operation pauses pending explicit operator approval (exact UX determined by the runtime epic). Reserved for future use; in the current policy-gate runtime, treat as equivalent to `block`.
+- `require-approval` - currently blocks the operation because no approval workflow, approval state, or monitor UI exists in this MVP.
 
-A `modify` variant (mutating the diff inline) is intentionally absent. No policy gate in the current scope explicitly allows mutation; introducing it now would create ambiguous contracts. This is noted as a future extension point.
+A `modify` variant (mutating the diff inline) is intentionally absent. `modify` decisions remain deferred; no policy gate in the current scope explicitly allows mutation.
 
 ---
 
 ## Event types and `EventPattern` glob semantics
 
 All event types are defined in `packages/client/src/events.schemas.ts` as the `EforgeEvent` discriminated union. The SDK re-exports `EforgeEvent`, `EforgeEventSchema`, `AgentRole`, and `safeParseEforgeEvent` from `@eforge-build/client`.
+
+Policy gate execution emits `extension:policy:decision`, `extension:policy:failed`, and `extension:policy:timeout` diagnostics with extension name/path, registration index, gate kind, method (`beforeQueueDispatch`, `beforePlanMerge`, or `beforeFinalMerge`), the configured failure policy, and target identifiers such as `prdId`, `planId`, or final-merge branch names.
 
 ### `EventOfType<T>`
 
@@ -565,14 +658,16 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, and `registerProfileRouter` pre-build dispatch are also wired. Replay invokes only matching event hooks and summarizes non-event registrations as deferred. Blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are intentionally deferred for later phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, and the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`) are also wired. Replay invokes only matching event hooks and summarizes non-event registrations separately. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are intentionally deferred for later phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
 | `onEvent` | Yes | Yes | Yes |
 | `onAgentRun` | Yes | Yes | Yes (promptAppend, per-run tools, allowedTools, disallowedTools)[^1] |
 | `registerTool` / `ExtensionTool` | Yes | Yes | Provenance only; inject per run via `onAgentRun` |
-| `beforePlanMerge` policy gate | Yes | Yes | Deferred |
+| `beforeQueueDispatch` policy gate | Yes | Yes | Yes (blocking policy gate) |
+| `beforePlanMerge` policy gate | Yes | Yes | Yes (blocking policy gate) |
+| `beforeFinalMerge` policy gate | Yes | Yes | Yes (blocking policy gate) |
 | `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
 | `registerInputSource` | Yes | Yes | Deferred |
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
@@ -580,7 +675,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 
 [^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, and profile-router examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, profile-router, and policy-gate examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are future runtime work.
 
 ---
 

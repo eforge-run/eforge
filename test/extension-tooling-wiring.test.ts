@@ -129,6 +129,9 @@ describe('extension runtime documentation', () => {
   const slackWebhookNotifier = readRepoFile('examples/extensions/slack-webhook-notifier.ts');
   const protectedPaths = readRepoFile('examples/extensions/protected-paths.ts');
   const agentToolsExample = readRepoFile('examples/extensions/agent-tools.ts');
+  const publicConfigSchema = JSON.parse(readRepoFile('web/public/schemas/config.schema.json')) as {
+    properties?: { extensions?: { properties?: Record<string, unknown> } };
+  };
 
   it('marks onEvent and onAgentRun runtime execution as supported while other families remain deferred', () => {
     expect(docsExtensions).toContain('| `onEvent` - typed event subscriptions | Yes | Yes | Yes |');
@@ -150,7 +153,19 @@ describe('extension runtime documentation', () => {
 
     for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
       for (const capability of [
+        'beforeQueueDispatch',
         'beforePlanMerge',
+        'beforeFinalMerge',
+      ]) {
+        const row = source.split('\n').find((line) => line.startsWith(`| \`${capability}`));
+        expect(row, `${capability} support row`).toBeDefined();
+        expect(row).not.toContain('Deferred');
+        expect(row).toContain('Yes');
+      }
+    }
+
+    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
+      for (const capability of [
         'registerInputSource',
         'registerReviewerPerspective',
         'registerValidationProvider',
@@ -192,12 +207,26 @@ describe('extension runtime documentation', () => {
     expect(docsExtensions).not.toContain('Event replay testing is deferred');
   });
 
-  it('documents event hook timeout semantics and example runtime notes', () => {
+  it('documents event hook and policy gate timeout/failure semantics plus example runtime notes', () => {
     for (const source of [configDocs, webConfigDocs, docsExtensions, webExtensions]) {
       expect(source).toContain('agentContextHookTimeoutMs');
+      expect(source).toContain('policyGateTimeoutMs');
+      expect(source).toContain('policyGateFailurePolicy');
+      expect(source).toContain('fail-open');
+      expect(source).toContain('fail-closed');
     }
     expect(configDocs).toContain('eventHookTimeoutMs: 5000');
+    expect(configDocs).toContain('policyGateTimeoutMs: 5000');
+    expect(configDocs).toContain('policyGateFailurePolicy: fail-closed');
     expect(configDocs).toContain('Must be a positive integer');
+    expect(publicConfigSchema.properties?.extensions?.properties?.policyGateTimeoutMs).toMatchObject({
+      type: 'integer',
+      exclusiveMinimum: 0,
+    });
+    expect(publicConfigSchema.properties?.extensions?.properties?.policyGateFailurePolicy).toMatchObject({
+      type: 'string',
+      enum: ['fail-open', 'fail-closed'],
+    });
     expect(minimalEventLogger).not.toContain('Event dispatch remains deferred');
     expect(minimalEventLogger).toContain('onEvent');
     expect(minimalEventLogger).toContain('dispatched at runtime');
@@ -205,8 +234,31 @@ describe('extension runtime documentation', () => {
     expect(slackWebhookNotifier).toContain('EFORGE_SLACK_WEBHOOK_URL');
     expect(slackWebhookNotifier).not.toMatch(/hooks\.slack\.com\/services/i);
     expect(slackWebhookNotifier).not.toMatch(/\bxox[a-z]?-/i);
-    expect(protectedPaths).toContain('Policy enforcement before merge remains');
-    expect(protectedPaths).toContain('deferred until the policy-gate runtime is implemented');
+    expect(protectedPaths).toContain('beforeFinalMerge');
+    expect(protectedPaths).toContain('require-approval` blocks');
+    expect(protectedPaths).not.toContain('Policy enforcement before merge remains');
+    expect(protectedPaths).not.toContain('deferred until the policy-gate runtime is implemented');
+  });
+
+  it('keeps non-shipped policy-gate capabilities explicitly deferred in public docs', () => {
+    for (const source of [
+      docsExtensions,
+      docsExtensionsApi,
+      webExtensions,
+      webExtensionsApi,
+      sdkReadme,
+      configDocs,
+      webConfigDocs,
+      examplesReadme,
+    ]) {
+      expect(source).toContain('beforeEnqueue');
+      expect(source).toContain('beforeValidation');
+      expect(source).toContain('modify');
+      expect(source).toMatch(/approval (?:workflow|workflows|UI|state)[^\n]*(?:deferred|future|no approval workflow)|(?:deferred|future|no approval workflow)[^\n]*approval (?:workflow|workflows|UI|state)/i);
+      expect(source).toMatch(/beforeEnqueue[^\n]*(?:deferred|future)|(?:deferred|future)[^\n]*beforeEnqueue/i);
+      expect(source).toMatch(/beforeValidation[^\n]*(?:deferred|future)|(?:deferred|future)[^\n]*beforeValidation/i);
+      expect(source).toMatch(/modify[^\n]*(?:deferred|future)|(?:deferred|future)[^\n]*modify/i);
+    }
   });
 
   it('documents examples, scaffold templates, and unavailable extension workflows accurately', () => {
@@ -226,7 +278,7 @@ describe('extension runtime documentation', () => {
       'Runtime-supported prompt-context augmentation',
       'Runtime-supported per-run extension tool injection and availability tuning',
       'Runtime-supported pre-build dispatch',
-      'policy-gate enforcement is deferred',
+      'Runtime-supported policy enforcement for plan/final merge protected paths',
       'pnpm test -- test/extension-sdk-example.test.ts',
       'pnpm test -- test/extension-tooling-wiring.test.ts',
       'pnpm docs:check',

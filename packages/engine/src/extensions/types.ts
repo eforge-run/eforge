@@ -7,10 +7,14 @@ export interface InputSourceAdapter { name: string; description: string; fetch: 
 export interface ReviewerPerspectiveSpec { key: string; label: string; promptFragment: string }
 export interface ValidationProviderSpec { name: string; description: string; validate: ExtensionHandler }
 export interface ExtensionTool { name: string; description: string; inputSchema: object; handler: ExtensionHandler }
+export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
+export type PolicyGateMethod = 'beforeQueueDispatch' | 'beforePlanMerge' | 'beforeFinalMerge';
 export interface EforgeExtensionAPIShape {
   onEvent(pattern: EventPattern, handler: ExtensionHandler): void;
   onAgentRun(handler: ExtensionHandler): void;
+  beforeQueueDispatch(handler: ExtensionHandler): void;
   beforePlanMerge(handler: ExtensionHandler): void;
+  beforeFinalMerge(handler: ExtensionHandler): void;
   registerProfileRouter(spec: ProfileRouterSpec): void;
   registerInputSource(adapter: InputSourceAdapter): void;
   registerReviewerPerspective(spec: ReviewerPerspectiveSpec): void;
@@ -78,7 +82,11 @@ export type EventHookRegistration = BaseExtensionRegistration<'eventHook', {
   handler: ExtensionHandler;
 }>;
 export type AgentRunRegistration = BaseExtensionRegistration<'agentRunHook', ExtensionHandler>;
-export type PolicyGateRegistration = BaseExtensionRegistration<'policyGate', ExtensionHandler>;
+export type PolicyGateRegistration = BaseExtensionRegistration<'policyGate', ExtensionHandler> & {
+  gateKind: PolicyGateKind;
+  method: PolicyGateMethod;
+  registrationIndex: number;
+};
 export type ProfileRouterRegistration = BaseExtensionRegistration<'profileRouter', ProfileRouterSpec> & { name: string };
 export type InputSourceRegistration = BaseExtensionRegistration<'inputSource', InputSourceAdapter> & { name: string };
 export type ReviewerPerspectiveRegistration = BaseExtensionRegistration<'reviewerPerspective', ReviewerPerspectiveSpec> & { name: string };

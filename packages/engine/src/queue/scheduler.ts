@@ -15,7 +15,7 @@
 
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
-import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile } from '../prd-queue.js';
+import { loadQueue, resolveQueueOrder, propagateSkip, unblockWaiting, setQueuedPrdProfile, movePrdToSubdir } from '../prd-queue.js';
 import { Semaphore, type AsyncEventQueue } from '../concurrency.js';
 import type { EforgeEvent } from '../events.js';
 import type { EforgeConfig } from '../config.js';
@@ -25,6 +25,7 @@ import type { QueueOptions } from '../eforge.js';
 import type { NativeExtensionRegistry } from '../extensions/types.js';
 import type { ProfileUsageProvider } from '../profile-usage.js';
 import { executeProfileRouters } from '../extensions/profile-router-runtime.js';
+import { buildQueueDispatchPolicyGateContext, executePolicyGate } from '../extensions/policy-gate-runtime.js';
 // --- eforge:endregion plan-02-runtime-and-integration ---
 
 // ---------------------------------------------------------------------------
@@ -60,6 +61,10 @@ type ConfigProfile = {
   config: unknown | null;
 };
 
+// --- eforge:region plan-02-policy-gate-engine-integration ---
+type SchedulerExtensionRegistry = Partial<Pick<NativeExtensionRegistry, 'profileRouters' | 'policyGates'>>;
+// --- eforge:endregion plan-02-policy-gate-engine-integration ---
+
 // ---------------------------------------------------------------------------
 // Constructor options
 // ---------------------------------------------------------------------------
@@ -88,8 +93,8 @@ export interface QueueSchedulerOptions {
   /** Pre-loaded initial PRD list (already ordered and name-filtered). */
   initialPrds: QueuedPrd[];
   // --- eforge:region plan-02-runtime-and-integration ---
-  /** Optional extension registry for profile routers. */
-  extensionRegistry?: Pick<NativeExtensionRegistry, 'profileRouters'>;
+  /** Optional extension registry for profile routers and policy gates. */
+  extensionRegistry?: SchedulerExtensionRegistry;
   /** Optional usage provider for profile router context. */
   profileUsageProvider?: ProfileUsageProvider;
   /** Config directory used to validate router-selected profile names. */
@@ -121,7 +126,7 @@ export class QueueScheduler {
   // --- eforge:region plan-02-runtime-and-integration ---
   /** PRD ids currently in the routing/launch async path — prevents duplicate launches. */
   private readonly launching = new Set<string>();
-  private readonly extensionRegistry?: Pick<NativeExtensionRegistry, 'profileRouters'>;
+  private readonly extensionRegistry?: SchedulerExtensionRegistry;
   private readonly profileUsageProvider?: ProfileUsageProvider;
   private readonly configDir: string;
   // --- eforge:endregion plan-02-runtime-and-integration ---
@@ -459,6 +464,49 @@ export class QueueScheduler {
             return;
           }
 
+          // --- eforge:region plan-02-policy-gate-engine-integration ---
+          const policyGates = this.extensionRegistry?.policyGates;
+          if (policyGates && policyGates.some((registration) => registration.gateKind === 'queue-dispatch')) {
+            const policyResult = await executePolicyGate({
+              registry: { policyGates },
+              gateKind: 'queue-dispatch',
+              context: buildQueueDispatchPolicyGateContext(
+                {
+                  prdId: currentPrd.id,
+                  prdTitle: currentPrd.frontmatter.title,
+                  priority: currentPrd.frontmatter.priority,
+                  profile: currentPrd.frontmatter.profile,
+                  dependsOn: currentPrd.frontmatter.depends_on ?? [],
+                },
+                { cwd: this.cwd },
+              ),
+              timeoutMs: this.config.extensions?.policyGateTimeoutMs ?? 5_000,
+              failurePolicy: this.config.extensions?.policyGateFailurePolicy ?? 'fail-closed',
+            });
+
+            try {
+              if (policyResult.blocked) await movePrdToSubdir(currentPrd.filePath, 'failed', this.cwd);
+            } catch {
+              // Best-effort queue file transition; scheduler completion propagation still runs.
+            }
+
+            for (const policyEvent of policyResult.events) {
+              this.eventQueue.push(policyEvent);
+            }
+
+            if (policyResult.blocked) {
+              this.launching.delete(currentPrd.id);
+              this.eventQueue.push({
+                timestamp: new Date().toISOString(),
+                type: 'queue:prd:complete',
+                prdId: currentPrd.id,
+                status: 'failed',
+              } as EforgeEvent);
+              return;
+            }
+          }
+          // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+
           // Profile routing: only runs when no explicit frontmatter.profile is set
           // and the registry has at least one router.
           const routers = this.extensionRegistry?.profileRouters;
@@ -636,6 +684,11 @@ export class QueueScheduler {
 
     // Re-scan and launch any newly-ready PRDs.
     await this.discoverNewPrds();
+    // discoverNewPrds() resets re-queued blocked PRDs to pending; re-apply
+    // in-memory blocking for dependents of this failed completion before launch.
+    if (finalState?.status === 'failed') {
+      this.propagateBlocked(prdId);
+    }
     this.startReadyPrds();
   }
 

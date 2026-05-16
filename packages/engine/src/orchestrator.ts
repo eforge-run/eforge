@@ -22,6 +22,10 @@ import {
 import { WorktreeManager } from './worktree-manager.js';
 import { executePlans, validate, prdValidate, finalize, type PhaseContext } from './orchestrator/phases.js';
 import { ModelTracker } from './model-tracker.js';
+// --- eforge:region plan-02-policy-gate-engine-integration ---
+import type { NativeExtensionRegistry } from './extensions/types.js';
+import type { PolicyGateFailurePolicy } from './extensions/policy-gate-runtime.js';
+// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 /**
  * Callback that runs a single plan in a worktree.
@@ -90,6 +94,14 @@ export interface OrchestratorOptions {
   cleanupOutputDir?: string;
   /** Path to the PRD file to remove during cleanup. */
   cleanupPrdFilePath?: string;
+  // --- eforge:region plan-02-policy-gate-engine-integration ---
+  /** Optional extension registry for policy gates. */
+  extensionRegistry?: Pick<NativeExtensionRegistry, 'policyGates'>;
+  /** Timeout in milliseconds for policy gate handlers. */
+  policyGateTimeoutMs?: number;
+  /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
+  policyGateFailurePolicy?: PolicyGateFailurePolicy;
+  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 }
 
 /**
@@ -160,6 +172,11 @@ export class Orchestrator {
       modelTracker: new ModelTracker(),
       shouldCleanup: this.options.shouldCleanup, cleanupPlanSet: this.options.cleanupPlanSet,
       cleanupOutputDir: this.options.cleanupOutputDir, cleanupPrdFilePath: this.options.cleanupPrdFilePath,
+      // --- eforge:region plan-02-policy-gate-engine-integration ---
+      extensionRegistry: this.options.extensionRegistry,
+      policyGateTimeoutMs: this.options.policyGateTimeoutMs,
+      policyGateFailurePolicy: this.options.policyGateFailurePolicy,
+      // --- eforge:endregion plan-02-policy-gate-engine-integration ---
     };
     try {
       yield* executePlans(ctx);

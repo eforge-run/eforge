@@ -30,7 +30,7 @@ Then read relevant examples based on the classified capability:
 - `examples/extensions/agent-context.ts` for prompt context.
 - `examples/extensions/agent-tools.ts` for custom agent tools.
 - `examples/extensions/profile-router.ts` for profile selection.
-- `examples/extensions/protected-paths.ts` when explaining deferred policy gates.
+- `examples/extensions/protected-paths.ts` for runtime-supported plan/final merge policy gates.
 
 ### Step 3: Capability classification
 
@@ -42,15 +42,17 @@ Runtime-supported capability families:
 - `onAgentRun` prompt context, per-run tools, and per-run allowed/disallowed tuning.
 - `defineExtensionTool` + `registerTool` + returning `tools` from `onAgentRun` for runtime custom tool injection. `registerTool` alone is provenance capture; runtime tool injection requires returning the tool from `onAgentRun`.
 - `registerProfileRouter` pre-build profile selection.
+- `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge` blocking policy gates. `require-approval` currently blocks because no approval workflow/UI/state exists, and policy gate contexts are read-only snapshots. These helpers do not sandbox extension code; extensions are trusted unsandboxed code.
 
 Runtime-deferred capability families:
 
-- `beforePlanMerge` policy gates.
+- `beforeEnqueue` and `beforeValidation` policy gates.
+- Approval workflow/UI/state and `modify` policy decisions.
 - `registerInputSource` input sources.
 - `registerReviewerPerspective` reviewer perspectives.
 - `registerValidationProvider` validation providers.
 
-If user intent maps to deferred APIs, state that eforge can load/capture the registration for provenance and validation, but it will not execute at runtime yet. Ask whether to omit that portion or include it as a clearly labeled future-facing registration. Avoid promising that deferred capability families will block, fetch, review, or validate builds at runtime.
+If user intent maps to the supported policy-gate subset, explain that the gate executes at runtime and may block queue dispatch, plan merge, or final merge. If user intent maps to deferred APIs, state that eforge can load/capture the registration for provenance and validation, but it will not execute at runtime yet. Ask whether to omit that portion or include it as a clearly labeled future-facing registration. Avoid promising that deferred capability families will enqueue, validate, approve, mutate, fetch, review, or validate builds at runtime.
 
 ### Step 4: Scope selection
 
@@ -72,6 +74,7 @@ If user intent maps to deferred APIs, state that eforge can load/capture the reg
 - Apply TypeScript edits using the required docs and examples as the source of truth.
 - Use environment variables for secrets, tokens, webhook URLs, and other credentials; do not commit secrets into source.
 - Preserve deferred-runtime caveats in code comments when including future-facing registrations.
+- For policy gates, prefer `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`; document that `require-approval` blocks in the current MVP and that extensions remain unsandboxed trusted code.
 
 ### Step 7: Validate
 

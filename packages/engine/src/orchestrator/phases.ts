@@ -19,6 +19,15 @@ import { cleanupPlanFiles } from '../cleanup.js';
 import { execWithTimeout } from '../exec-with-timeout.js';
 import { MIN_POST_MERGE_COMMAND_TIMEOUT_MS } from '../config.js';
 import { ModelTracker, composeCommitMessage } from '../model-tracker.js';
+// --- eforge:region plan-02-policy-gate-engine-integration ---
+import {
+  buildFinalMergePolicyGateContext,
+  buildPlanMergePolicyGateContext,
+  executePolicyGate,
+  type PolicyGateFailurePolicy,
+} from '../extensions/policy-gate-runtime.js';
+import type { NativeExtensionRegistry } from '../extensions/types.js';
+// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 /**
  * Shared context passed between phase functions.
@@ -60,6 +69,14 @@ export interface PhaseContext {
   cleanupOutputDir?: string;
   /** Path to the PRD file to remove during cleanup. */
   cleanupPrdFilePath?: string;
+  // --- eforge:region plan-02-policy-gate-engine-integration ---
+  /** Optional extension registry for policy gates. */
+  extensionRegistry?: Pick<NativeExtensionRegistry, 'policyGates'>;
+  /** Timeout in milliseconds for policy gate handlers. */
+  policyGateTimeoutMs?: number;
+  /** Failure policy for thrown, timed-out, or invalid policy gate handlers. */
+  policyGateFailurePolicy?: PolicyGateFailurePolicy;
+  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 }
 
 /**
@@ -130,6 +147,17 @@ export function shouldSkipMerge(
 
   return null;
 }
+
+// --- eforge:region plan-02-policy-gate-engine-integration ---
+function policyBlockReason(prefix: string, decision: { decision: string; reason?: string }): string {
+  const reason = decision.reason ?? decision.decision;
+  return `${prefix}: ${reason}`;
+}
+
+function hasPolicyGates(ctx: PhaseContext, gateKind: 'plan-merge' | 'final-merge'): boolean {
+  return (ctx.extensionRegistry?.policyGates ?? []).some((registration) => registration.gateKind === gateKind);
+}
+// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 /**
  * Compute the maximum number of plans that could run concurrently
@@ -374,6 +402,32 @@ export async function* executePlans(ctx: PhaseContext): AsyncGenerator<EforgeEve
 
         try {
           const plan = planMap.get(planId)!;
+
+          // --- eforge:region plan-02-policy-gate-engine-integration ---
+          if (hasPolicyGates(ctx, 'plan-merge')) {
+            const diff = await ctx.worktreeManager.getPlanDiff(planId, plan);
+            const policyResult = await executePolicyGate({
+              registry: ctx.extensionRegistry,
+              gateKind: 'plan-merge',
+              context: buildPlanMergePolicyGateContext({ planId, diff }, { cwd: ctx.mergeWorktreePath }),
+              timeoutMs: ctx.policyGateTimeoutMs ?? 5_000,
+              failurePolicy: ctx.policyGateFailurePolicy ?? 'fail-closed',
+            });
+
+            for (const e of policyResult.events) yield e;
+
+            if (policyResult.blocked) {
+              const error = policyBlockReason('Policy gate blocked plan merge', policyResult.decision);
+              ctx.failedMerges.add(planId);
+              yield* transitionPlan(state, planId, 'failed', { error });
+              yield { timestamp: new Date().toISOString(), type: 'plan:build:failed', planId, error };
+
+              const failureEvents = propagateFailure(state, planId, config.plans);
+              for (const e of failureEvents) yield e;
+              continue;
+            }
+          }
+          // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
           const commitSha = await ctx.worktreeManager.mergePlan(planId, plan, {
             mode: config.mode,
@@ -661,6 +715,37 @@ export async function* finalize(ctx: PhaseContext): AsyncGenerator<EforgeEvent> 
         const planList = config.plans.map((p) => `- ${p.id}: ${p.name}`).join('\n');
         commitMessage = composeCommitMessage(`${prefix}(${config.name}): ${config.description}\n\nProfile: ${config.mode}\nPlans:\n${planList}`, ctx.modelTracker);
       }
+      // --- eforge:region plan-02-policy-gate-engine-integration ---
+      if (hasPolicyGates(ctx, 'final-merge')) {
+        const diff = await ctx.worktreeManager.getFinalMergeDiff(config.baseBranch);
+        const policyResult = await executePolicyGate({
+          registry: ctx.extensionRegistry,
+          gateKind: 'final-merge',
+          context: buildFinalMergePolicyGateContext(
+            {
+              featureBranch,
+              baseBranch: config.baseBranch,
+              planIds: config.plans.map((plan) => plan.id),
+              diff,
+            },
+            { cwd: ctx.mergeWorktreePath },
+          ),
+          timeoutMs: ctx.policyGateTimeoutMs ?? 5_000,
+          failurePolicy: ctx.policyGateFailurePolicy ?? 'fail-closed',
+        });
+
+        for (const e of policyResult.events) yield e;
+
+        if (policyResult.blocked) {
+          const reason = policyBlockReason('Policy gate blocked final merge', policyResult.decision);
+          yield { timestamp: new Date().toISOString(), type: 'merge:finalize:skipped', featureBranch, baseBranch: config.baseBranch, reason };
+          state.status = 'failed';
+          state.completedAt = new Date().toISOString();
+          return;
+        }
+      }
+      // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+
       const commitSha = await ctx.worktreeManager.mergeToBase(config.baseBranch, commitMessage, ctx.mergeResolver);
       ctx.featureBranchMerged = true;
       yield { timestamp: new Date().toISOString(), type: 'merge:finalize:complete', featureBranch, baseBranch: config.baseBranch, commitSha };

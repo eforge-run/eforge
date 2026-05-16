@@ -79,6 +79,8 @@ describe('resolveConfig', () => {
       trustProjectExtensions: false,
       eventHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
       agentContextHookTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+      policyGateTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
+      policyGateFailurePolicy: 'fail-closed',
       profileRouterTimeoutMs: DEFAULT_NATIVE_EVENT_HOOK_TIMEOUT_MS,
       include: undefined,
       exclude: undefined,
@@ -89,6 +91,19 @@ describe('resolveConfig', () => {
   it('propagates extensions.eventHookTimeoutMs from file config', () => {
     const config = resolveConfig({ extensions: { eventHookTimeoutMs: 2500 } }, {});
     expect(config.extensions.eventHookTimeoutMs).toBe(2500);
+    expect(config.extensions.policyGateTimeoutMs).toBe(2500);
+  });
+
+  it('supports explicit policy gate timeout and failure policy config', () => {
+    const config = resolveConfig({ extensions: { policyGateTimeoutMs: 1500, policyGateFailurePolicy: 'fail-open' } }, {});
+    expect(config.extensions.policyGateTimeoutMs).toBe(1500);
+    expect(config.extensions.policyGateFailurePolicy).toBe('fail-open');
+  });
+
+  it('prefers explicit policy gate timeout over event hook timeout inheritance', () => {
+    const config = resolveConfig({ extensions: { eventHookTimeoutMs: 2500, policyGateTimeoutMs: 1500 } }, {});
+    expect(config.extensions.eventHookTimeoutMs).toBe(2500);
+    expect(config.extensions.policyGateTimeoutMs).toBe(1500);
   });
 
   it('postMergeCommands parsed from file config', () => {
@@ -190,6 +205,8 @@ describe('mergePartialConfigs', () => {
         exclude: ['old'],
         paths: ['./global.ts'],
         eventHookTimeoutMs: 1234,
+        policyGateTimeoutMs: 4321,
+        policyGateFailurePolicy: 'fail-open',
       },
     };
     const project: PartialEforgeConfig = {
@@ -204,6 +221,8 @@ describe('mergePartialConfigs', () => {
     expect(merged.extensions?.exclude).toEqual(['old']);
     expect(merged.extensions?.paths).toEqual(['./global.ts']);
     expect(merged.extensions?.eventHookTimeoutMs).toBe(1234);
+    expect(merged.extensions?.policyGateTimeoutMs).toBe(4321);
+    expect(merged.extensions?.policyGateFailurePolicy).toBe('fail-open');
   });
 
   it('project extensions.eventHookTimeoutMs overrides the global value', () => {
@@ -212,6 +231,15 @@ describe('mergePartialConfigs', () => {
       { extensions: { eventHookTimeoutMs: 2000 } },
     );
     expect(merged.extensions?.eventHookTimeoutMs).toBe(2000);
+  });
+
+  it('project policy gate timeout and failure policy override global values', () => {
+    const merged = mergePartialConfigs(
+      { extensions: { policyGateTimeoutMs: 1000, policyGateFailurePolicy: 'fail-open' } },
+      { extensions: { policyGateTimeoutMs: 2000, policyGateFailurePolicy: 'fail-closed' } },
+    );
+    expect(merged.extensions?.policyGateTimeoutMs).toBe(2000);
+    expect(merged.extensions?.policyGateFailurePolicy).toBe('fail-closed');
   });
 });
 
@@ -426,6 +454,8 @@ describe('extensionConfigSchema', () => {
         paths: ['./x.ts'],
         trustProjectExtensions: false,
         eventHookTimeoutMs: 2500,
+        policyGateTimeoutMs: 1500,
+        policyGateFailurePolicy: 'fail-closed',
       },
     });
     expect(result.success).toBe(true);
@@ -435,6 +465,14 @@ describe('extensionConfigSchema', () => {
   it('rejects non-positive or fractional native event hook timeouts', () => {
     expect(configYamlSchema.safeParse({ extensions: { eventHookTimeoutMs: 0 } }).success).toBe(false);
     expect(configYamlSchema.safeParse({ extensions: { eventHookTimeoutMs: 1.5 } }).success).toBe(false);
+    expect(configYamlSchema.safeParse({ extensions: { policyGateTimeoutMs: 0 } }).success).toBe(false);
+    expect(configYamlSchema.safeParse({ extensions: { policyGateTimeoutMs: 1.5 } }).success).toBe(false);
+  });
+
+  it('accepts valid policy gate failure policy literals and rejects invalid ones', () => {
+    expect(configYamlSchema.safeParse({ extensions: { policyGateFailurePolicy: 'fail-open' } }).success).toBe(true);
+    expect(configYamlSchema.safeParse({ extensions: { policyGateFailurePolicy: 'fail-closed' } }).success).toBe(true);
+    expect(configYamlSchema.safeParse({ extensions: { policyGateFailurePolicy: 'ignore' } }).success).toBe(false);
   });
 });
 

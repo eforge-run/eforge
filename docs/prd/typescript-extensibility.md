@@ -123,8 +123,8 @@ export default function extension(eforge: EforgeExtensionAPI) {
     ctx.logger.warn(`Plan failed: ${event.planId}`);
   });
 
-  eforge.beforePlanMerge(async ({ diff }, ctx) => {
-    if (diff.files.some((f) => f.path === ".env")) {
+  eforge.beforePlanMerge(async (ctx) => {
+    if (ctx.diff.files.some((f) => f.path === ".env")) {
       return { decision: "block", reason: "Do not modify .env" };
     }
     return { decision: "allow" };
@@ -183,17 +183,22 @@ The second slice maps naturally to the existing `AgentHarness` abstraction and c
 
 ### Phase 3: Policy gates
 
-Blocking hooks with explicit return values:
+Blocking hooks with explicit return values. The shipped MVP executes:
 
-- before enqueue,
 - before queue dispatch,
 - before plan merge,
-- before final merge,
-- before validation.
+- before final merge.
+
+Deferred policy-gate work remains:
+
+- before enqueue,
+- before validation,
+- approval workflow/state/UI,
+- mutation-style decisions.
 
 ```ts
-eforge.beforePlanMerge(async ({ planId, diff }, ctx) => {
-  if (diff.files.some((f) => f.path.endsWith(".sql"))) {
+eforge.beforePlanMerge(async (ctx) => {
+  if (ctx.diff.files.some((f) => f.path.endsWith(".sql"))) {
     return {
       decision: "require-approval",
       reason: "Database changes require human approval",
@@ -205,7 +210,7 @@ eforge.beforePlanMerge(async ({ planId, diff }, ctx) => {
 
 Policy hooks require strict behavior:
 
-- explicit allow/block/modify contracts,
+- explicit allow/block/require-approval contracts,
 - timeout and failure policy,
 - all decisions emitted as events,
 - no hidden mutation.

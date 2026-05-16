@@ -111,6 +111,83 @@ const extensionDiagnosticVariants: EforgeEvent[] = [
 ];
 // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
+// --- eforge:region plan-01-policy-gate-foundation ---
+const extensionPolicyVariants: EforgeEvent[] = [
+  {
+    type: 'extension:policy:decision',
+    timestamp: '2025-01-01T00:00:03.000Z',
+    extensionName: 'guardrails',
+    extensionPath: '/project/.eforge/extensions/guardrails.js',
+    gateKind: 'plan-merge',
+    method: 'beforePlanMerge',
+    registrationIndex: 0,
+    failurePolicy: 'fail-closed',
+    planId: 'plan-01',
+    decision: 'block',
+    reason: 'protected paths changed',
+  },
+  {
+    type: 'extension:policy:failed',
+    timestamp: '2025-01-01T00:00:04.000Z',
+    extensionName: 'guardrails',
+    extensionPath: '/project/.eforge/extensions/guardrails.js',
+    gateKind: 'queue-dispatch',
+    method: 'beforeQueueDispatch',
+    registrationIndex: 1,
+    failurePolicy: 'fail-open',
+    prdId: 'prd-123',
+    prdTitle: 'Add feature',
+    message: 'boom',
+    stack: 'Error: boom',
+  },
+  {
+    type: 'extension:policy:timeout',
+    timestamp: '2025-01-01T00:00:05.000Z',
+    extensionName: 'guardrails',
+    extensionPath: '/project/.eforge/extensions/guardrails.js',
+    gateKind: 'final-merge',
+    method: 'beforeFinalMerge',
+    registrationIndex: 2,
+    failurePolicy: 'fail-closed',
+    featureBranch: 'feature/prd-123',
+    baseBranch: 'main',
+    planIds: ['plan-01'],
+    timeoutMs: 5000,
+  },
+];
+
+const extensionPolicyGateMatrixVariants: EforgeEvent[] = [
+  {
+    type: 'extension:policy:decision', timestamp: '2025-01-01T00:00:10.000Z', extensionName: 'guardrails', extensionPath: '/project/.eforge/extensions/guardrails.js', gateKind: 'queue-dispatch', method: 'beforeQueueDispatch', registrationIndex: 0, failurePolicy: 'fail-open', prdId: 'prd-123', prdTitle: 'Add feature', decision: 'allow',
+  },
+  {
+    type: 'extension:policy:failed', timestamp: '2025-01-01T00:00:11.000Z', extensionName: 'guardrails', extensionPath: '/project/.eforge/extensions/guardrails.js', gateKind: 'queue-dispatch', method: 'beforeQueueDispatch', registrationIndex: 1, failurePolicy: 'fail-open', prdId: 'prd-123', prdTitle: 'Add feature', message: 'boom',
+  },
+  {
+    type: 'extension:policy:timeout', timestamp: '2025-01-01T00:00:12.000Z', extensionName: 'guardrails', extensionPath: '/project/.eforge/extensions/guardrails.js', gateKind: 'queue-dispatch', method: 'beforeQueueDispatch', registrationIndex: 2, failurePolicy: 'fail-closed', prdId: 'prd-123', prdTitle: 'Add feature', timeoutMs: 5000,
+  },
+  {
+    type: 'extension:policy:decision', timestamp: '2025-01-01T00:00:13.000Z', extensionName: 'guardrails', extensionPath: '/project/.eforge/extensions/guardrails.js', gateKind: 'plan-merge', method: 'beforePlanMerge', registrationIndex: 0, failurePolicy: 'fail-closed', planId: 'plan-01', decision: 'block', reason: 'protected paths changed',
+  },
+  {
+    type: 'extension:policy:failed', timestamp: '2025-01-01T00:00:14.000Z', extensionName: 'guardrails', extensionPath: '/project/.eforge/extensions/guardrails.js', gateKind: 'plan-merge', method: 'beforePlanMerge', registrationIndex: 1, failurePolicy: 'fail-open', planId: 'plan-01', message: 'boom',
+  },
+  {
+    type: 'extension:policy:timeout', timestamp: '2025-01-01T00:00:15.000Z', extensionName: 'guardrails', extensionPath: '/project/.eforge/extensions/guardrails.js', gateKind: 'plan-merge', method: 'beforePlanMerge', registrationIndex: 2, failurePolicy: 'fail-closed', planId: 'plan-01', timeoutMs: 5000,
+  },
+  {
+    type: 'extension:policy:decision', timestamp: '2025-01-01T00:00:16.000Z', extensionName: 'guardrails', extensionPath: '/project/.eforge/extensions/guardrails.js', gateKind: 'final-merge', method: 'beforeFinalMerge', registrationIndex: 0, failurePolicy: 'fail-closed', featureBranch: 'feature/prd-123', baseBranch: 'main', planIds: ['plan-01'], decision: 'require-approval', reason: 'approval required',
+  },
+  {
+    type: 'extension:policy:failed', timestamp: '2025-01-01T00:00:17.000Z', extensionName: 'guardrails', extensionPath: '/project/.eforge/extensions/guardrails.js', gateKind: 'final-merge', method: 'beforeFinalMerge', registrationIndex: 1, failurePolicy: 'fail-open', featureBranch: 'feature/prd-123', baseBranch: 'main', planIds: ['plan-01'], message: 'boom',
+  },
+  {
+    type: 'extension:policy:timeout', timestamp: '2025-01-01T00:00:18.000Z', extensionName: 'guardrails', extensionPath: '/project/.eforge/extensions/guardrails.js', gateKind: 'final-merge', method: 'beforeFinalMerge', registrationIndex: 2, failurePolicy: 'fail-closed', featureBranch: 'feature/prd-123', baseBranch: 'main', planIds: ['plan-01'], timeoutMs: 5000,
+  },
+];
+
+// --- eforge:endregion plan-01-policy-gate-foundation ---
+
 // ---------------------------------------------------------------------------
 // JSON round-trip tests
 // ---------------------------------------------------------------------------
@@ -149,6 +226,28 @@ describe('safeParseEforgeEvent — new variants', () => {
     }
   });
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
+  // --- eforge:region plan-01-policy-gate-foundation ---
+  it('accepts extension policy decision, failure, and timeout events', () => {
+    for (const event of extensionPolicyVariants) {
+      const result = safeParseEforgeEvent(event);
+      expect(result.success, `${event.type} should be accepted`).toBe(true);
+    }
+  });
+
+  it('accepts policy decision, failed, and timeout events for every gate kind', () => {
+    for (const event of extensionPolicyGateMatrixVariants) {
+      const result = safeParseEforgeEvent(event);
+      expect(result.success, `${event.type} should be accepted`).toBe(true);
+    }
+  });
+
+  it('round-trips extension policy events through JSON', () => {
+    for (const event of extensionPolicyVariants) {
+      expect(JSON.parse(JSON.stringify(event))).toEqual(event);
+    }
+  });
+  // --- eforge:endregion plan-01-policy-gate-foundation ---
 
   it('accepts plan:status:change with every valid status value', () => {
     const statuses = ['pending', 'running', 'completed', 'failed', 'blocked', 'merged'] as const;
@@ -245,6 +344,25 @@ describe('eventRegistry — extension diagnostics', () => {
 });
 // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
+// --- eforge:region plan-01-policy-gate-foundation ---
+describe('eventRegistry — extension policy gates', () => {
+  it('registers policy events as session-scoped, non-persistent events with summaries', () => {
+    for (const event of extensionPolicyVariants) {
+      expect(eventRegistry[event.type]).toMatchObject({ scope: 'session', persist: false });
+    }
+    expect(getEventSummary(extensionPolicyVariants[0]!)).toBe(
+      'Policy gate beforePlanMerge (guardrails) returned block: protected paths changed',
+    );
+    expect(getEventSummary(extensionPolicyVariants[1]!)).toBe(
+      'Policy gate beforeQueueDispatch (guardrails) failed under fail-open: boom',
+    );
+    expect(getEventSummary(extensionPolicyVariants[2]!)).toBe(
+      'Policy gate beforeFinalMerge (guardrails) timed out after 5000ms under fail-closed',
+    );
+  });
+});
+// --- eforge:endregion plan-01-policy-gate-foundation ---
+
 describe('eventRegistry — daemon:auto-build:disabled', () => {
   it('registers the disabled event as daemon-scoped, persisted, summarized, and projected', () => {
     expect(eventRegistry['daemon:auto-build:disabled']).toMatchObject({
@@ -305,6 +423,66 @@ describe('safeParseEforgeEvent — rejection of invalid payloads', () => {
     expect(result.success).toBe(false);
   });
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
+  // --- eforge:region plan-01-policy-gate-foundation ---
+  it('rejects extension:policy:decision with invalid decision literal', () => {
+    const result = safeParseEforgeEvent({
+      ...extensionPolicyVariants[0]!,
+      decision: 'modify',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects blocking extension:policy:decision events without a reason', () => {
+    const eventMissingReason = { ...extensionPolicyVariants[0]! } as Record<string, unknown>;
+    delete eventMissingReason.reason;
+    expect(safeParseEforgeEvent(eventMissingReason).success).toBe(false);
+
+    const approvalMissingReason = { ...extensionPolicyGateMatrixVariants[6]! } as Record<string, unknown>;
+    delete approvalMissingReason.reason;
+    expect(safeParseEforgeEvent(approvalMissingReason).success).toBe(false);
+  });
+
+  it('rejects extension:policy:timeout with invalid failure policy', () => {
+    const result = safeParseEforgeEvent({
+      ...extensionPolicyVariants[2]!,
+      failurePolicy: 'ignore',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects extension policy events missing required provenance fields', () => {
+    const eventMissingExtensionPath = { ...extensionPolicyVariants[0]! } as Record<string, unknown>;
+    delete eventMissingExtensionPath.extensionPath;
+    const result = safeParseEforgeEvent(eventMissingExtensionPath);
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects extension policy events with invalid registration indexes', () => {
+    const result = safeParseEforgeEvent({
+      ...extensionPolicyVariants[1]!,
+      registrationIndex: -1,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects policy events with missing or mismatched gate-specific target fields', () => {
+    expect(safeParseEforgeEvent({
+      ...extensionPolicyVariants[0]!,
+      planId: undefined,
+    }).success).toBe(false);
+
+    expect(safeParseEforgeEvent({
+      ...extensionPolicyVariants[1]!,
+      method: 'beforePlanMerge',
+    }).success).toBe(false);
+
+    expect(safeParseEforgeEvent({
+      ...extensionPolicyVariants[2]!,
+      baseBranch: undefined,
+    }).success).toBe(false);
+  });
+  // --- eforge:endregion plan-01-policy-gate-foundation ---
 
   it('rejects plan:status:change with an invalid status value', () => {
     const result = safeParseEforgeEvent({

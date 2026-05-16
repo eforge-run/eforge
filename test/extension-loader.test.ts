@@ -183,11 +183,14 @@ describe('native extension loader', () => {
   it('captures all registration families', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
-    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'capture.js'), `
+    const extensionPath = resolve(getScopeDirectory('project-local', opts), 'extensions', 'capture.js');
+    await writeModule(extensionPath, `
       export default function extension(eforge) {
         eforge.onEvent('*', () => {});
         eforge.onAgentRun(() => undefined);
+        eforge.beforeQueueDispatch(() => ({ decision: 'allow' }));
         eforge.beforePlanMerge(() => ({ decision: 'allow' }));
+        eforge.beforeFinalMerge(() => ({ decision: 'allow' }));
         eforge.registerProfileRouter({ name: 'router', resolve: () => null });
         eforge.registerInputSource({ name: 'input', description: 'input', fetch: async () => null });
         eforge.registerReviewerPerspective({ key: 'perspective', label: 'Perspective', promptFragment: 'Review this' });
@@ -200,7 +203,11 @@ describe('native extension loader', () => {
 
     expect(result.registry.eventHooks).toEqual([expect.objectContaining({ extensionName: 'capture', value: expect.objectContaining({ pattern: '*' }) })]);
     expect(result.registry.agentRunHooks).toEqual([expect.objectContaining({ extensionName: 'capture' })]);
-    expect(result.registry.policyGates).toEqual([expect.objectContaining({ extensionName: 'capture' })]);
+    expect(result.registry.policyGates).toEqual([
+      expect.objectContaining({ extensionName: 'capture', extensionPath, gateKind: 'queue-dispatch', method: 'beforeQueueDispatch', registrationIndex: 0 }),
+      expect.objectContaining({ extensionName: 'capture', extensionPath, gateKind: 'plan-merge', method: 'beforePlanMerge', registrationIndex: 1 }),
+      expect.objectContaining({ extensionName: 'capture', extensionPath, gateKind: 'final-merge', method: 'beforeFinalMerge', registrationIndex: 2 }),
+    ]);
     expect(result.registry.profileRouters).toEqual([expect.objectContaining({ name: 'router', extensionName: 'capture' })]);
     expect(result.registry.inputSources).toEqual([expect.objectContaining({ name: 'input', extensionName: 'capture' })]);
     expect(result.registry.reviewerPerspectives).toEqual([expect.objectContaining({ name: 'perspective', extensionName: 'capture' })]);
@@ -211,7 +218,7 @@ describe('native extension loader', () => {
     expect(projection.totals).toEqual({
       eventHooks: 1,
       agentRunHooks: 1,
-      policyGates: 1,
+      policyGates: 3,
       profileRouters: 1,
       inputSources: 1,
       reviewerPerspectives: 1,
@@ -222,6 +229,27 @@ describe('native extension loader', () => {
       name: 'capture',
       registrations: projection.totals,
     })]);
+  });
+
+  it('diagnoses invalid handlers for all policy gate methods', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-local', opts), 'extensions', 'invalid-policy.js'), `
+      export default function extension(eforge) {
+        eforge.beforeQueueDispatch(null);
+        eforge.beforePlanMerge('nope');
+        eforge.beforeFinalMerge({});
+      }
+    `);
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.registry.policyGates).toHaveLength(0);
+    expect(result.diagnostics.filter((diagnostic) => diagnostic.code === 'extension:invalid-registration')).toEqual([
+      expect.objectContaining({ message: expect.stringContaining('beforeQueueDispatch requires a handler function') }),
+      expect.objectContaining({ message: expect.stringContaining('beforePlanMerge requires a handler function') }),
+      expect.objectContaining({ message: expect.stringContaining('beforeFinalMerge requires a handler function') }),
+    ]);
   });
 
   it('EforgeEngine.create applies extension config overrides before loading', async () => {
