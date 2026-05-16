@@ -509,6 +509,20 @@
           "exclusiveMinimum": 0,
           "maximum": 9007199254740991
         },
+        "policyGateTimeoutMs": {
+          "description": "Timeout in milliseconds for policy gate handlers (defaults to eventHookTimeoutMs)",
+          "type": "integer",
+          "exclusiveMinimum": 0,
+          "maximum": 9007199254740991
+        },
+        "policyGateFailurePolicy": {
+          "description": "Failure policy for thrown, timed-out, or invalid policy gate handlers",
+          "type": "string",
+          "enum": [
+            "fail-open",
+            "fail-closed"
+          ]
+        },
         "profileRouterTimeoutMs": {
           "description": "Timeout in milliseconds for profile router handlers (defaults to eventHookTimeoutMs)",
           "type": "integer",

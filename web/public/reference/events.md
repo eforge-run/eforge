@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: f64aec79 -->
+<!-- Commit: a7388542 -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -13,7 +13,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 165
+Total variants: 168
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -36,6 +36,9 @@ Total variants: 165
 | `queue:profile:router-failed` | `extensionName`, `extensionPath`, `message`, `prdId`, `routerName`, `stack` |
 | `queue:profile:router-timeout` | `extensionName`, `extensionPath`, `prdId`, `routerName`, `timeoutMs` |
 | `queue:profile:invalid-selection` | `extensionName`, `extensionPath`, `message`, `prdId`, `reason`, `requestedProfile`, `routerName` |
+| `extension:policy:decision` | `baseBranch`, `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `method`, `planId`, `planIds`, `prdId`, `prdTitle`, `reason`, `registrationIndex` |
+| `extension:policy:failed` | `baseBranch`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `message`, `method`, `planId`, `planIds`, `prdId`, `prdTitle`, `registrationIndex`, `stack` |
+| `extension:policy:timeout` | `baseBranch`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `method`, `planId`, `planIds`, `prdId`, `prdTitle`, `registrationIndex`, `timeoutMs` |
 | `planning:start` | `label`, `source` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |

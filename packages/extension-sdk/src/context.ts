@@ -92,6 +92,13 @@ export interface EforgeExtensionContext {
 }
 
 // ---------------------------------------------------------------------------
+// Policy gate kinds
+// ---------------------------------------------------------------------------
+
+/** Supported blocking policy-gate invocation points. */
+export type PolicyGateKind = 'queue-dispatch' | 'plan-merge' | 'final-merge';
+
+// ---------------------------------------------------------------------------
 // Per-hook contexts
 // ---------------------------------------------------------------------------
 
@@ -200,14 +207,59 @@ export interface AgentRunContext extends EforgeExtensionContext {
 }
 
 /**
- * Context passed to policy-gate handlers (e.g. `beforePlanMerge`).
+ * Context passed to `beforeQueueDispatch` policy-gate handlers.
  */
-export interface PolicyGateContext extends EforgeExtensionContext {
+export interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
+  /** Identifies this policy gate invocation point. */
+  gateKind: 'queue-dispatch';
+  /** The PRD/queue item identifier being considered for dispatch. */
+  prdId: string;
+  /** The PRD title, when available from the queue item. */
+  prdTitle?: string;
+  /** Numeric dispatch priority, if set in queue frontmatter. */
+  priority?: number;
+  /** IDs of PRDs this item depends on. */
+  dependsOn: string[];
+}
+
+/**
+ * Context passed to `beforePlanMerge` policy-gate handlers.
+ */
+export interface PlanMergePolicyGateContext extends EforgeExtensionContext {
+  /** Identifies this policy gate invocation point. */
+  gateKind: 'plan-merge';
   /** The plan ID for the operation being gated. */
   planId: string;
   /** Summary of file-level changes included in the merge. */
   diff: ExtensionDiff;
 }
+
+/**
+ * Backward-compatible alias for the original plan-merge policy-gate context.
+ */
+export type PolicyGateContext = PlanMergePolicyGateContext;
+
+/**
+ * Context passed to `beforeFinalMerge` policy-gate handlers.
+ */
+export interface FinalMergePolicyGateContext extends EforgeExtensionContext {
+  /** Identifies this policy gate invocation point. */
+  gateKind: 'final-merge';
+  /** Feature branch being merged into the base branch. */
+  featureBranch: string;
+  /** Base branch receiving the final merge. */
+  baseBranch: string;
+  /** Plan IDs included in the final merge, when known. */
+  planIds?: string[];
+  /** Summary of file-level changes included in the final merge. */
+  diff: ExtensionDiff;
+}
+
+/** Union of all policy-gate contexts. */
+export type AnyPolicyGateContext =
+  | QueueDispatchPolicyGateContext
+  | PlanMergePolicyGateContext
+  | FinalMergePolicyGateContext;
 
 // ---------------------------------------------------------------------------
 // Profile router context types

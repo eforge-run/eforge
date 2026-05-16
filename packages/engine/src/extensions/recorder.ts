@@ -6,6 +6,8 @@ import type {
   InputSourceAdapter,
   NativeExtensionDiagnostic,
   NativeExtensionRecorderState,
+  PolicyGateKind,
+  PolicyGateMethod,
   ProfileRouterSpec,
   ReviewerPerspectiveSpec,
   ValidationProviderSpec,
@@ -37,6 +39,24 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
     });
   };
 
+  let policyGateRegistrationIndex = 0;
+  const recordPolicyGate = (method: PolicyGateMethod, gateKind: PolicyGateKind, handler: unknown): void => {
+    if (typeof handler !== 'function') {
+      addDiagnostic(`${method} requires a handler function`);
+      return;
+    }
+    state.policyGates.push({
+      kind: 'policyGate',
+      extensionName,
+      extensionPath,
+      gateKind,
+      method,
+      registrationIndex: policyGateRegistrationIndex,
+      value: handler as ExtensionHandler,
+    });
+    policyGateRegistrationIndex += 1;
+  };
+
   const api: EforgeExtensionAPIShape = {
     onEvent(pattern: EventPattern, handler: unknown): void {
       if (!isNonEmptyString(pattern)) {
@@ -61,12 +81,14 @@ export function createExtensionRecorder(extensionName: string, extensionPath: st
       }
       state.agentRunHooks.push({ kind: 'agentRunHook', extensionName, extensionPath, value: handler as ExtensionHandler });
     },
+    beforeQueueDispatch(handler: unknown): void {
+      recordPolicyGate('beforeQueueDispatch', 'queue-dispatch', handler);
+    },
     beforePlanMerge(handler: unknown): void {
-      if (typeof handler !== 'function') {
-        addDiagnostic('beforePlanMerge requires a handler function');
-        return;
-      }
-      state.policyGates.push({ kind: 'policyGate', extensionName, extensionPath, value: handler as ExtensionHandler });
+      recordPolicyGate('beforePlanMerge', 'plan-merge', handler);
+    },
+    beforeFinalMerge(handler: unknown): void {
+      recordPolicyGate('beforeFinalMerge', 'final-merge', handler);
     },
     registerProfileRouter(spec: unknown): void {
       if (

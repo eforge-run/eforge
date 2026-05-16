@@ -193,6 +193,11 @@ export const IGNORED_EVENT_TYPES = [
   'extension:agent-context:unsupported',
   'extension:agent-tools:applied',
   // --- eforge:endregion plan-01-agent-context-runtime ---
+  // --- eforge:region plan-01-policy-gate-foundation ---
+  'extension:policy:decision',
+  'extension:policy:failed',
+  'extension:policy:timeout',
+  // --- eforge:endregion plan-01-policy-gate-foundation ---
   'planning:start',
   'planning:skip',
   'planning:submission',
