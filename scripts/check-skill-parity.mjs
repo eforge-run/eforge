@@ -40,7 +40,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, "..");
 
-// Explicit pairing — the 11 consumer-facing skills that must stay in sync.
+// Explicit pairing — the 12 consumer-facing skills that must stay in sync.
 const SKILL_PAIRS = [
   { plugin: "profile", pi: "eforge-profile" },
   { plugin: "profile-new", pi: "eforge-profile-new" },
@@ -48,6 +48,9 @@ const SKILL_PAIRS = [
   { plugin: "config", pi: "eforge-config" },
   { plugin: "init", pi: "eforge-init" },
   { plugin: "plan", pi: "eforge-plan" },
+  // --- eforge:region plan-01-extend-authoring-ux ---
+  { plugin: "extend", pi: "eforge-extend" },
+  // --- eforge:endregion plan-01-extend-authoring-ux ---
   { plugin: "restart", pi: "eforge-restart" },
   { plugin: "status", pi: "eforge-status" },
   { plugin: "update", pi: "eforge-update" },
