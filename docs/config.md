@@ -23,6 +23,7 @@ extensions:
   enabled: true               # Discover and load native eforge extensions
   eventHookTimeoutMs: 5000    # Native onEvent handler timeout in ms (positive integer)
   agentContextHookTimeoutMs: 5000 # Optional onAgentRun handler timeout; defaults to eventHookTimeoutMs
+  profileRouterTimeoutMs: 5000 # Optional registerProfileRouter timeout; defaults to eventHookTimeoutMs
   trustProjectExtensions: false # Trust checked-in eforge/extensions/ modules (user/local config only)
   # include:                  # Allowlist by native extension name
   # exclude:                  # Denylist by native extension name
@@ -108,13 +109,14 @@ Each command in `postMergeCommands` and the planner-generated validate commands 
 
 ## Native extensions
 
-The top-level `extensions` block controls native eforge TypeScript/JavaScript extension discovery, loader-time registration capture, and event-hook timeout behavior. See [extensions.md](extensions.md) for discovery, trust, diagnostics, and runtime limitations.
+The top-level `extensions` block controls native eforge TypeScript/JavaScript extension discovery, loader-time registration capture, and native hook timeout behavior. See [extensions.md](extensions.md) for discovery, trust, diagnostics, and runtime limitations.
 
 ```yaml
 extensions:
   enabled: true
   eventHookTimeoutMs: 5000
   agentContextHookTimeoutMs: 5000
+  profileRouterTimeoutMs: 5000
   include:
     - build-notifier
   exclude:
@@ -130,6 +132,7 @@ extensions:
 | `extensions.include` | unset | Optional allowlist for auto-discovered extension names. Only listed names are considered. |
 | `extensions.eventHookTimeoutMs` | `5000` | Timeout in milliseconds for each native `onEvent` handler invocation. Must be a positive integer. |
 | `extensions.agentContextHookTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `onAgentRun` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
+| `extensions.profileRouterTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `registerProfileRouter` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Explicit extension files or directories to validate/load in addition to auto-discovery. Relative paths resolve from the project root. |
 | `extensions.trustProjectExtensions` | `false` | Allows checked-in project/team extensions from `eforge/extensions/` to load. User and project-local extensions load when enabled. |

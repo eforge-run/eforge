@@ -139,6 +139,7 @@ extensions:
   enabled: true                  # default
   eventHookTimeoutMs: 5000       # native onEvent timeout in ms
   agentContextHookTimeoutMs: 5000 # optional onAgentRun timeout; defaults to eventHookTimeoutMs
+  profileRouterTimeoutMs: 5000   # optional registerProfileRouter timeout; defaults to eventHookTimeoutMs
   include:
     - build-notifier             # optional allowlist by name
   exclude:

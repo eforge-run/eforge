@@ -33,6 +33,7 @@ extensions:
   enabled: true                  # default: true
   eventHookTimeoutMs: 5000       # default: 5000; positive integer milliseconds
   # agentContextHookTimeoutMs: 5000  # default: inherits eventHookTimeoutMs; positive integer milliseconds
+  # profileRouterTimeoutMs: 5000 # default: inherits eventHookTimeoutMs; positive integer milliseconds
   # include: [build-notifier]    # optional allowlist by extension name
   # exclude: [experimental]      # optional denylist by extension name
   # paths:                       # optional explicit extension modules/directories
@@ -51,6 +52,7 @@ Fields:
 | `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |
 | `extensions.trustProjectExtensions` | `false` | Trust gate for checked-in project/team extensions under `eforge/extensions/`. User and project-local extensions are trusted when loading is enabled. |
 | `extensions.agentContextHookTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `onAgentRun` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
+| `extensions.profileRouterTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each profile-router handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 
 The trust flag is intentionally restricted: checked-in `eforge/config.yaml` cannot silently turn on trust for checked-in extensions. Set `extensions.trustProjectExtensions: true` in user config (`~/.config/eforge/config.yaml`) or project-local config (`.eforge/config.yaml`) when you intentionally trust this project's committed extensions.
 
@@ -214,7 +216,7 @@ Other non-event extension capability execution is intentionally deferred for lat
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-Event-hook, agent-context-hook, and profile-router examples can be loaded, validated, and run at runtime. Event-oriented examples include [`examples/extensions/minimal-event-logger.ts`](https://github.com/eforge-build/eforge/tree/main/examples/extensions/minimal-event-logger.ts) and the safe [`examples/extensions/slack-webhook-notifier.ts`](https://github.com/eforge-build/eforge/tree/main/examples/extensions/slack-webhook-notifier.ts), which only sends a Slack-compatible webhook when `EFORGE_SLACK_WEBHOOK_URL` is set. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](https://github.com/eforge-build/eforge/tree/main/examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. Blocking policy enforcement, custom tool execution, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
+Event-hook, agent-context-hook, and profile-router examples can be loaded, validated, and run at runtime. Event-oriented examples include [`examples/extensions/minimal-event-logger.ts`](https://github.com/eforge-build/eforge/tree/main/examples/extensions/minimal-event-logger.ts) and the safe [`examples/extensions/slack-webhook-notifier.ts`](https://github.com/eforge-build/eforge/tree/main/examples/extensions/slack-webhook-notifier.ts), which only sends a Slack-compatible webhook when `EFORGE_SLACK_WEBHOOK_URL` is set. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with `extensions.profileRouterTimeoutMs` timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](https://github.com/eforge-build/eforge/tree/main/examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. Blocking policy enforcement, custom tool execution, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
 
 ## Schema language
 

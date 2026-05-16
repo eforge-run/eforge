@@ -244,7 +244,7 @@ interface ExtensionDiff {
 
 ### `registerProfileRouter(spec)`
 
-Register a function that selects an agent runtime profile for each build dispatched from the queue. Called before each plan's build phase begins.
+Register a function that selects an agent runtime profile for each build dispatched from the queue. Called before a queued PRD build begins.
 
 **Signature:**
 
@@ -281,7 +281,7 @@ At least one of `selectBuildProfile` or `resolve` must be provided. The `selectB
 
 Return `null` or `undefined` from the handler to defer to the next registered router (or the default profile if no router selects one). The optional `reason` and `confidence` fields flow into the `queue:profile:selected` wire event.
 
-**Runtime status:** `Yes (pre-build dispatch)`. Routers are invoked sequentially in registration order before each queued PRD build, with per-router timeouts and fail-open semantics. When a PRD's `frontmatter.profile` is already set, routing is skipped entirely. A router that throws emits `queue:profile:router-failed` and the next router is consulted; a timeout emits `queue:profile:router-timeout`; a returned profile that cannot be loaded emits `queue:profile:invalid-selection`. Returning `null` or `undefined` defers to the next router (first-valid-wins). The `queue:profile:selected` event records provenance when a valid profile is chosen. `ctx.usage.profile(name)` returns best-effort data from daemon event history — use it for heuristic decisions, not hard quota enforcement.
+**Runtime status:** `Yes (pre-build dispatch)`. Routers are invoked sequentially in registration order before each queued PRD build, with per-router timeouts controlled by `extensions.profileRouterTimeoutMs` (defaulting to `extensions.eventHookTimeoutMs`) and fail-open semantics. When a PRD's `frontmatter.profile` is already set, routing is skipped entirely. A router that throws emits `queue:profile:router-failed` and the next router is consulted; a timeout emits `queue:profile:router-timeout`; a returned profile that cannot be loaded emits `queue:profile:invalid-selection`. Returning `null` or `undefined` defers to the next router (first-valid-wins). The `queue:profile:selected` event records provenance when a valid profile is chosen. `ctx.usage.profile(name)` returns best-effort data from daemon event history — use it for heuristic decisions, not hard quota enforcement.
 
 ---
 
@@ -559,6 +559,6 @@ Profile toolbelts and extensions are complementary but intentionally separate:
 | **Can add custom tools** | Indirectly (MCP) | Yes (`ExtensionTool`) |
 | **Scope model** | profiles/, user/project/local | extensions/, user/project/local |
 
-Toolbelt filtering applies only to project MCP servers declared in `.mcp.json`. It does not filter engine-internal tools, harness built-ins, or extension-contributed custom tools. Extensions that use `onAgentRun` to add tools bypass toolbelt filtering by design - these are trusted extension-contributed capabilities, not MCP-discovered ones.
+Toolbelt filtering applies only to project MCP servers declared in `.mcp.json`. It does not filter engine-internal tools, harness built-ins, or future extension-contributed custom tools. In the current runtime, `registerTool` registrations and `onAgentRun` tool fields are captured for provenance only; they are not injected into agent runs or affected by toolbelt filtering.
 
 Profile routers receive available profile names and best-effort usage summaries through `ProfileRouterContext`; agent-run hooks also receive read-only runtime metadata such as `profile`, `harness`, and toolbelt selection. Extensions must not write profile marker files or redefine toolbelt declarations.

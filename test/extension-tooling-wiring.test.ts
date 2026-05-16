@@ -162,6 +162,17 @@ describe('extension runtime documentation', () => {
       expect(row, 'registerProfileRouter row').toBeDefined();
       expect(row).toContain('Yes (pre-build dispatch)');
     }
+
+    for (const source of [configDocs, webConfigDocs]) {
+      expect(source).toContain('pre-build `registerProfileRouter` dispatch');
+      expect(source).not.toMatch(/profile routing[^.\n]*(?:deferred|future)|(?:deferred|future)[^.\n]*profile routing/i);
+    }
+  });
+
+  it('keeps generated raw mirrors in sync with the public content docs', () => {
+    expect(readRepoFile('web/public/docs/extensions.md')).toBe(webExtensions);
+    expect(readRepoFile('web/public/docs/extensions-api.md')).toBe(webExtensionsApi);
+    expect(readRepoFile('web/public/docs/configuration.md')).toBe(webConfigDocs);
   });
 
   it('documents extension management commands and replay workflows', () => {
@@ -188,6 +199,7 @@ describe('extension runtime documentation', () => {
     expect(slackWebhookNotifier).toContain("onEvent('plan:error:set'");
     expect(slackWebhookNotifier).toContain('EFORGE_SLACK_WEBHOOK_URL');
     expect(slackWebhookNotifier).not.toMatch(/hooks\.slack\.com\/services/i);
+    expect(slackWebhookNotifier).not.toMatch(/\bxox[a-z]?-/i);
     expect(protectedPaths).toContain('Policy enforcement before merge remains');
     expect(protectedPaths).toContain('deferred until the policy-gate runtime is implemented');
   });
@@ -203,6 +215,19 @@ describe('extension runtime documentation', () => {
       expect(examplesReadme).toContain(example);
     }
 
+    for (const expected of [
+      'Runtime-supported event dispatch and replay',
+      'Runtime-supported for `promptAppend`',
+      'Runtime-supported pre-build dispatch',
+      'policy-gate enforcement is deferred',
+      'pnpm test -- test/extension-sdk-example.test.ts',
+      'pnpm test -- test/extension-tooling-wiring.test.ts',
+      'pnpm docs:check',
+      'eforge extension test ./examples/extensions/slack-webhook-notifier.ts --fixture events.json',
+    ]) {
+      expect(examplesReadme).toContain(expected);
+    }
+
     for (const source of [docsExtensions, webExtensions, sdkReadme]) {
       expect(source).toContain('event-logger');
       expect(source).toContain('blank');
@@ -214,11 +239,19 @@ describe('extension runtime documentation', () => {
       expect(source).toContain('extension enable`, `extension disable`, `extension promote`, and `extension demote` workflows are deferred');
     }
 
-    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
+    for (const source of [
+      docsExtensions,
+      docsExtensionsApi,
+      webExtensions,
+      webExtensionsApi,
+      sdkReadme,
+      configDocs,
+      webConfigDocs,
+      examplesReadme,
+    ]) {
       expect(source).not.toContain('/eforge:extend');
-      expect(source).not.toMatch(/eforge extension (enable|disable|promote|demote) <name>/);
-      expect(source).not.toContain('profile routing, input-source execution');
-      expect(source).not.toContain('profile routing, custom input fetching');
+      expect(source).not.toMatch(/\beforge extension (enable|disable|promote|demote)(?:\s|`|$)/);
+      expect(source).not.toMatch(/profile routing[^.\n]*(?:deferred|future)|(?:deferred|future)[^.\n]*profile routing/i);
     }
   });
 });
