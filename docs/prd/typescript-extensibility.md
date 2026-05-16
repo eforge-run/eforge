@@ -324,7 +324,7 @@ This should retry/requeue a build with the next profile rather than mutating har
 
 ### Usage signal caveat
 
-Exact quota data may not be available for subscription/OAuth providers. The usage API may need to combine:
+Exact quota data may not be available for OAuth, credit-limited, or provider-metered accounts. The usage API may need to combine:
 
 - eforge token/cost events,
 - local rolling counters,

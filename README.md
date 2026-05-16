@@ -7,7 +7,7 @@
 
 An open source agentic build system. Detailed plans go in. A planner sizes the work and shapes the pipeline - small intent runs through a fast path, large intent compiles into a dependency graph of sub-plans that build in parallel across isolated worktrees and merge in topological order. Implementation, blind review, and validation are always separated across agents and stages. The build phase runs in the background while you plan the next thing.
 
-Drive eforge from Pi, Claude Code, or the CLI. Pipeline stages delegate to either pi-agent-core or the Claude Agent SDK - the interface you drive and the harness that executes are independent. The project direction is Pi-centric: provider-flexible, local, inspectable agent orchestration where runtime choice, cost, and token efficiency stay visible.
+Drive eforge from Pi, Claude Code, or the CLI. Pipeline stages delegate to either pi-agent-core or the Claude Agent SDK - the interface you drive and the harness that executes are independent. Pi is the recommended eforge execution harness for new users: provider-flexible, local, inspectable agent orchestration where runtime choice, cost, and token efficiency stay visible. The Anthropic Claude Agent SDK remains supported as an Anthropic-specific secondary path for users who intentionally choose it.
 
 Harness engineering - the discipline of designing everything around an LLM that makes it a reliable system - applies at two levels here: each pipeline stage delegates to a harness for its agent loop, and the pipeline itself is a higher-order harness across planning, building, review, and validation.
 
@@ -39,7 +39,7 @@ Because the coding agent you drive from and the agent library eforge delegates t
 
 - **Plan and execute in Pi.** Drive eforge from Pi and delegate to pi-agent-core across OpenAI, Anthropic, OpenRouter, local models, and more.
 - **Use Claude Code as the host surface.** Drive eforge from Claude Code while choosing the execution harness separately in your active profile.
-- **Mix planning and build runtimes.** Plan in Pi with one provider, then execute specific tiers through another provider or through the Claude Agent SDK when that tradeoff makes sense.
+- **Mix planning and build runtimes.** Plan in Pi with one provider, then execute specific tiers through another provider or through the Anthropic-specific Claude Agent SDK when that API-priced tradeoff makes sense.
 - **Run builds on local models when API spend matters.** Switch to a profile that delegates to a local model like Qwen 3.6 27B via pi-agent-core - work keeps moving with no per-token API cost.
 
 <img src="docs/images/claude-code-handoff.png" alt="eforge invoked from Claude Code" width="800">
@@ -69,7 +69,7 @@ For a deeper look at the engine internals, see the [architecture docs](docs/arch
 
 ## Install
 
-**Prerequisites:** Node.js 22+, [Pi](https://github.com/earendil-works/pi-mono), [Claude Code](https://claude.ai/code), or an npm-capable shell, plus an LLM provider credential for your chosen runtime - a provider-specific API key or OAuth token for the `pi` harness, or an Anthropic API key for the `claude-sdk` harness
+**Prerequisites:** Node.js 22+, [Pi](https://github.com/earendil-works/pi-mono), [Claude Code](https://claude.ai/code), or an npm-capable shell, plus an LLM provider credential for your chosen runtime - a provider-specific API key or OAuth token for the recommended `pi` harness, or an Anthropic API key for the supported secondary `claude-sdk` harness. Starting June 15, 2026, Anthropic says Claude Agent SDK and `claude -p` usage no longer count toward Claude plan limits; eligible plans may receive a separate monthly Agent SDK credit, usage beyond that credit is billed at standard API rates when extra usage is enabled, otherwise requests stop, and API-key users remain pay-as-you-go. See https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan.
 
 Pi package (recommended):
 
@@ -94,7 +94,7 @@ Claude Code plugin:
 
 The main `@eforge-build/eforge` npm package is the standalone CLI and daemon runtime. The Pi integration is published separately as `@eforge-build/pi-eforge`.
 
-The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. If you already have user-scope profiles in `~/.config/eforge/profiles/`, it offers to activate one of those instead of creating a new project profile. Otherwise it walks you through a Quick setup (one harness and model for every tier) or a Mix-and-match flow (different harness, provider, or model per tier). In Claude Code you choose between `claude-sdk` and `pi`; in Pi the harness is pinned to `pi` and you pick from available providers and models. For further customization, run `/eforge:config --edit`.
+The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. If you already have user-scope profiles in `~/.config/eforge/profiles/`, it offers to activate one of those instead of creating a new project profile. Otherwise it walks you through a Quick setup (one harness/provider with suggested tier models, including an optional separate implementation model) or a Mix-and-match flow (different harness, provider, or model per tier). In Claude Code, use the recommended Pi path when you want Claude Code as the host surface while builds execute through a Pi profile; choose `claude-sdk` only when you intentionally want the Anthropic Claude Agent SDK. In Pi the harness is pinned to `pi` and you pick from available providers and models. For further customization, run `/eforge:config --edit`.
 
 The Pi package also provides native interactive commands for agent runtime profile management (`/eforge:profile`, `/eforge:profile-new`) and config viewing (`/eforge:config`) with interactive overlay UX. Both the Claude Code plugin and the Pi extension expose `/eforge:plan` for structured planning conversations - exploring scope, code impact, architecture, design decisions, documentation, and risks - before handing off to `/eforge:build`. Both surfaces also expose `/eforge:playbook` for creating, editing, running, and managing reusable automation playbooks that encode recurring workflows as named, version-controlled templates.
 
@@ -115,35 +115,39 @@ npx @eforge-build/eforge playbook promote tech-debt-sweep
 
 Or install globally: `npm install -g @eforge-build/eforge`
 
-For standalone use, run `/eforge:init` (in Claude Code or Pi) to create both `eforge/config.yaml` and an active agent runtime profile under `eforge/profiles/<name>.yaml`. A profile configures one harness, model, and effort level per build tier (planning → implementation → review → evaluation). A minimal Claude Agent SDK profile looks like:
+For standalone use, run `/eforge:init` (in Claude Code or Pi) to create both `eforge/config.yaml` and an active agent runtime profile under `eforge/profiles/<name>.yaml`. A profile configures one harness, model, and effort level per build tier (planning → implementation → review → evaluation). A minimal Pi-first profile looks like:
 
 ```yaml
-# eforge/profiles/claude-sdk.yaml
+# eforge/profiles/pi-openrouter.yaml
 agents:
   tiers:
     planning:
-      harness: claude-sdk
-      model:
-        id: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
     implementation:
-      harness: claude-sdk
-      model:
-        id: claude-sonnet-4-6
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
       effort: medium
+      pi:
+        provider: openrouter
     review:
-      harness: claude-sdk
-      model:
-        id: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
     evaluation:
-      harness: claude-sdk
-      model:
-        id: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
 ```
 
-For Pi (OpenAI Codex, OpenRouter, local models, and more), set `harness: pi` on each tier and add a `pi: { provider: <provider> }` block. See [docs/config.md](docs/config.md) for the full schema.
+Claude Code can still be the host surface while this Pi profile executes builds. For the supported secondary Claude Agent SDK path, set `harness: claude-sdk` and use Anthropic model IDs such as `claude-opus-4-7` or `claude-sonnet-4-6`. Starting June 15, 2026, Anthropic says Claude Agent SDK and `claude -p` usage no longer count toward Claude plan limits; eligible plans may receive a separate monthly Agent SDK credit, usage beyond that credit is billed at standard API rates when extra usage is enabled, otherwise requests stop, and API-key users remain pay-as-you-go. See https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan, and see [docs/config.md](docs/config.md) for the full schema.
 
 ## Configuration
 
@@ -189,7 +193,7 @@ eforge is licensed under [Apache-2.0](LICENSE).
 
 eforge's harness abstraction allows different AI providers. Each harness carries its own license terms:
 
-- **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`) is proprietary software owned by Anthropic PBC. By using eforge with this harness, you agree to Anthropic's [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) (API users) or [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) (Free/Pro/Max users), plus the [Acceptable Use Policy](https://www.anthropic.com/legal/aup). See [Anthropic's legal page](https://code.claude.com/docs/en/legal-and-compliance) for details.
+- **Claude Agent SDK** (`@anthropic-ai/claude-agent-sdk`) is proprietary software owned by Anthropic PBC. By using eforge with this harness, you agree to Anthropic's [Commercial Terms](https://www.anthropic.com/legal/commercial-terms) (API users) or [Consumer Terms](https://www.anthropic.com/legal/consumer-terms) (Free/Pro/Max users), plus the [Acceptable Use Policy](https://www.anthropic.com/legal/aup). See [Anthropic's legal page](https://code.claude.com/docs/en/legal-and-compliance) for details. Starting June 15, 2026, Anthropic says Claude Agent SDK and `claude -p` usage no longer count toward Claude plan limits; eligible plans may receive a separate monthly Agent SDK credit, usage beyond that credit is billed at standard API rates when extra usage is enabled, otherwise requests stop, and API-key users remain pay-as-you-go. See https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan.
 
   **Note:** If you are building a product or service on top of eforge, Anthropic requires API key authentication through [Claude Console](https://platform.claude.com/) - OAuth tokens from Free, Pro, or Max plans may not be used for third-party products.
 

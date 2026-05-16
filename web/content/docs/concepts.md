@@ -48,10 +48,10 @@ This three-step pattern (blind review - fix - evaluate) applies to code review, 
 
 eforge is harness-agnostic. A **harness** is the agent execution backend - the thing that runs the LLM and tools for each agent stage. Two harnesses ship with eforge:
 
-- **`pi`** - Uses pi-agent-core for multi-provider support (OpenAI, Anthropic, Google, Mistral, Groq, xAI, Bedrock, OpenRouter, local models, and more).
-- **`claude-sdk`** - Uses the Anthropic Claude Agent SDK with Anthropic API credentials.
+- **`pi`** - Recommended for new eforge setup. Uses pi-agent-core for provider-flexible execution across OpenAI, Anthropic, Google, Mistral, Groq, xAI, Bedrock, OpenRouter, local models, and more.
+- **`claude-sdk`** - Supported secondary path for users who intentionally want the Anthropic Claude Agent SDK with Anthropic API credentials; see the Getting Started caveat for Agent SDK credit/API pricing.
 
-The harness you use to *drive* eforge (Claude Code or Pi) and the harness that *executes* builds are independent. You can plan in Claude Code and build with Pi, or plan in Pi and execute through the Claude Agent SDK. You can also switch harnesses mid-project by changing your active profile.
+The harness you use to *drive* eforge (Claude Code or Pi) and the harness that *executes* builds are independent. You can plan in Claude Code and build with Pi, or plan in Pi and execute through the Anthropic-specific Claude Agent SDK. You can also switch harnesses mid-project by changing your active profile.
 
 ## Tiers
 

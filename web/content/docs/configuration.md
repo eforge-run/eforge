@@ -33,24 +33,32 @@ Tiers are the primary configuration axis. Each tier is a self-contained recipe: 
 agents:
   tiers:
     planning:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
     implementation:
-      harness: claude-sdk
-      model: claude-sonnet-4-6
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
       effort: medium
+      pi:
+        provider: openrouter
     review:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
     evaluation:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
 ```
 
-You only need to list tiers you want to change - unspecified tiers keep their engine defaults.
+Pi is the recommended harness for new profiles. The engine still has current compatibility fallback defaults for omitted tiers; those defaults are `claude-sdk`, so Pi profiles should list all four tiers explicitly.
 
 **Effort levels**: `low`, `medium`, `high`, `xhigh`, `max`. Higher effort means more agent turns and more thorough output, at higher cost.
 
@@ -58,7 +66,7 @@ You only need to list tiers you want to change - unspecified tiers keep their en
 
 ## Using the Pi Harness
 
-To build with a provider other than Anthropic, set `harness: pi` and add a `pi.provider` block:
+Pi is the recommended provider-flexible execution harness for new eforge setup. Set `harness: pi` and add a `pi.provider` block:
 
 ```yaml
 agents:
@@ -78,6 +86,23 @@ agents:
 ```
 
 Pi supports OpenAI, Google, Mistral, Groq, xAI, Bedrock, Azure, OpenRouter, and local models. Authentication resolves from provider-specific environment variables or `~/.pi/agent/auth.json`. For OAuth providers (OpenAI Codex, GitHub Copilot), run `pi auth login <provider>` first.
+
+## Optional Claude SDK Harness
+
+`claude-sdk` remains supported for Anthropic Claude Agent SDK users:
+
+```yaml
+agents:
+  tiers:
+    implementation:
+      harness: claude-sdk
+      model: claude-sonnet-4-6
+      effort: medium
+      claudeSdk:
+        disableSubagents: true
+```
+
+Claude Agent SDK usage follows Anthropic's Agent SDK credit/API-pricing policy described in Getting Started; choose this path only when you intentionally want the Anthropic-specific SDK.
 
 ## Agent Runtime Profiles
 
@@ -157,27 +182,35 @@ tags:
 agents:
   tiers:
     planning:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
       toolbelt: none
 
     implementation:
-      harness: claude-sdk
-      model: claude-sonnet-4-6
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
       effort: medium
+      pi:
+        provider: openrouter
       toolbelt: browser-ui
 
     review:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
       toolbelt: browser-ui
 
     evaluation:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
       toolbelt: none
 ```
 

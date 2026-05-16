@@ -39,7 +39,7 @@ The agent stage that applies reviewer suggestions as candidate changes before ev
 
 ## Harness
 
-The agent execution backend used by a stage. eforge ships `claude-sdk` for the Anthropic Claude Agent SDK and `pi` for pi-agent-core multi-provider support.
+The agent execution backend used by a stage. eforge recommends `pi` for provider-flexible execution through pi-agent-core, and also supports `claude-sdk` as an Anthropic-specific secondary path through the Claude Agent SDK.
 
 ## Playbook
 

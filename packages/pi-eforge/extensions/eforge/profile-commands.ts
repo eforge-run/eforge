@@ -233,16 +233,16 @@ async function pickCustomTier(
   const harnessItems =
     defaultHarness === "claude-sdk"
       ? [
-          { value: "claude-sdk", label: "Claude SDK", description: "Claude Code's built-in SDK" },
-          { value: "pi", label: "Pi", description: "Multi-provider via Pi SDK" },
+          { value: "claude-sdk", label: "Claude SDK", description: "Anthropic-specific Agent SDK (credit/API-priced)" },
+          { value: "pi", label: "Pi", description: "Recommended provider-flexible harness via Pi SDK" },
         ]
       : [
           {
             value: "pi",
             label: "Pi",
-            description: "Multi-provider via Pi SDK (OpenRouter, Anthropic, OpenAI, Google, etc.)",
+            description: "Recommended provider-flexible harness (OpenRouter, Anthropic, OpenAI, Google, local, etc.)",
           },
-          { value: "claude-sdk", label: "Claude SDK", description: "Claude Code's built-in SDK" },
+          { value: "claude-sdk", label: "Claude SDK", description: "Anthropic-specific Agent SDK (credit/API-priced)" },
         ];
 
   const harness = (await showSelectOverlay(ctx, `eforge - ${tierLabel}: Harness`, harnessItems)) as
@@ -468,7 +468,7 @@ export async function handleProfileNewCommand(
       // Custom flow — seed defaults from the immediately previous tier
       const prevTier = i > 0 ? TIER_ORDER[i - 1] : null;
       const prevSelection = prevTier ? tierSelections[prevTier] : null;
-      const defaultHarness = prevSelection?.harness ?? (name.startsWith("claude-") ? "claude-sdk" : "pi");
+      const defaultHarness = prevSelection?.harness ?? "pi";
       const result = await pickCustomTier(ctx, tierLabel, defaultHarness as "claude-sdk" | "pi", prevSelection?.provider);
       if (!result) return;
       selection = result;

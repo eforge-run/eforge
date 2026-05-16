@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 52b8aa5f -->
+<!-- Commit: 0b53b320 -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -43,14 +43,18 @@ tools:
 agents:
   tiers:
     implementation:
-      harness: claude-sdk
-      model: claude-sonnet-4-6
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
       effort: medium
+      pi:
+        provider: openrouter
       toolbelt: browser-ui
     planning:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
       toolbelt: none
 ```
 
