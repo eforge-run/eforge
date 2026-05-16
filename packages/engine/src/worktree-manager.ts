@@ -15,6 +15,10 @@ import {
   mergeFeatureBranchToBase,
   recoverDriftedWorktree,
   cleanupWorktrees,
+  // --- eforge:region plan-02-policy-gate-engine-integration ---
+  getNameStatusDiff,
+  type ExtensionDiff,
+  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
   type MergeResolver,
 } from './worktree-ops.js';
 import type { ModelTracker } from './model-tracker.js';
@@ -39,6 +43,10 @@ export interface ManagedWorktree {
   status: WorktreeStatus;
   /** True if the plan was built directly on the merge worktree (no dedicated worktree). */
   builtOnMerge: boolean;
+  // --- eforge:region plan-02-policy-gate-engine-integration ---
+  /** Base commit captured before plan build mutations for policy diff summaries. */
+  baseSha?: string;
+  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 }
 
 /** Result of cleanupAll() - reports what happened during cleanup. */
@@ -80,6 +88,15 @@ export class WorktreeManager {
     branch: string,
     needsPlanWorktrees: boolean,
   ): Promise<string> {
+    // --- eforge:region plan-02-policy-gate-engine-integration ---
+    const { stdout: baseShaOut } = await exec(
+      'git',
+      ['rev-parse', needsPlanWorktrees ? this.featureBranch : 'HEAD'],
+      { cwd: needsPlanWorktrees ? this.repoRoot : this.mergeWorktreePath },
+    );
+    const baseSha = baseShaOut.trim();
+    // --- eforge:endregion plan-02-policy-gate-engine-integration ---
+
     if (needsPlanWorktrees) {
       const worktreePath = await createWorktree(
         this.repoRoot,
@@ -94,6 +111,9 @@ export class WorktreeManager {
         branch,
         status: 'active',
         builtOnMerge: false,
+        // --- eforge:region plan-02-policy-gate-engine-integration ---
+        baseSha,
+        // --- eforge:endregion plan-02-policy-gate-engine-integration ---
       });
       return worktreePath;
     }
@@ -106,6 +126,9 @@ export class WorktreeManager {
       branch,
       status: 'active',
       builtOnMerge: true,
+      // --- eforge:region plan-02-policy-gate-engine-integration ---
+      baseSha,
+      // --- eforge:endregion plan-02-policy-gate-engine-integration ---
     });
     return this.mergeWorktreePath;
   }
@@ -132,6 +155,38 @@ export class WorktreeManager {
   isBuiltOnMerge(planId: string): boolean {
     return this.worktrees.get(planId)?.builtOnMerge ?? false;
   }
+
+  // --- eforge:region plan-02-policy-gate-engine-integration ---
+  /**
+   * Return the path/status diff a plan would contribute before merge mutation.
+   */
+  async getPlanDiff(
+    planId: string,
+    plan: { branch: string },
+  ): Promise<ExtensionDiff> {
+    const managed = this.worktrees.get(planId);
+    if (!managed?.baseSha) return { files: [] };
+
+    if (managed.builtOnMerge) {
+      return getNameStatusDiff(this.mergeWorktreePath, managed.baseSha, 'HEAD');
+    }
+
+    return getNameStatusDiff(this.repoRoot, managed.baseSha, plan.branch);
+  }
+
+  /**
+   * Return the path/status diff that would be merged from featureBranch to baseBranch.
+   */
+  async getFinalMergeDiff(baseBranch: string): Promise<ExtensionDiff> {
+    const { stdout: mergeBaseOut } = await exec(
+      'git',
+      ['merge-base', baseBranch, this.featureBranch],
+      { cwd: this.repoRoot },
+    );
+    const mergeBase = mergeBaseOut.trim();
+    return getNameStatusDiff(this.repoRoot, mergeBase, this.featureBranch);
+  }
+  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
   /**
    * Merge a completed plan into the feature branch.

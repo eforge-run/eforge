@@ -13,6 +13,67 @@ import { retryOnLock, forgeCommit } from './git.js';
 
 const exec = promisify(execFile);
 
+// --- eforge:region plan-02-policy-gate-engine-integration ---
+export interface ExtensionDiff {
+  files: Array<{
+    path: string;
+    status: 'added' | 'modified' | 'deleted' | 'renamed';
+  }>;
+}
+
+function diffStatus(code: string): ExtensionDiff['files'][number]['status'] {
+  const statusCode = code[0];
+  if (statusCode === 'A') return 'added';
+  if (statusCode === 'D') return 'deleted';
+  if (statusCode === 'R') return 'renamed';
+  return 'modified';
+}
+
+export function parseGitNameStatus(output: string): ExtensionDiff {
+  const files: ExtensionDiff['files'] = [];
+
+  if (output.includes('\0')) {
+    const tokens = output.split('\0');
+    while (tokens.length > 0 && tokens[tokens.length - 1] === '') tokens.pop();
+
+    let i = 0;
+    while (i < tokens.length) {
+      const code = tokens[i] ?? '';
+      const statusCode = code[0];
+      const path = statusCode === 'R'
+        ? (tokens[i + 2] ?? tokens[i + 1] ?? '')
+        : (tokens[i + 1] ?? '');
+      if (path.length > 0) files.push({ path, status: diffStatus(code) });
+      i += statusCode === 'R' ? 3 : 2;
+    }
+
+    return { files };
+  }
+
+  for (const line of output.trim().split('\n')) {
+    if (!line.trim()) continue;
+    const parts = line.split('\t');
+    const code = parts[0] ?? '';
+    const statusCode = code[0];
+    const path = statusCode === 'R'
+      ? (parts[2] ?? parts[1] ?? '')
+      : (parts[1] ?? '');
+    if (path.length > 0) files.push({ path, status: diffStatus(code) });
+  }
+
+  return { files };
+}
+
+export async function getNameStatusDiff(
+  cwd: string,
+  fromRef: string,
+  toRef: string,
+): Promise<ExtensionDiff> {
+  const { stdout } = await exec('git', ['diff', '--name-status', '--find-renames', '-z', '--end-of-options', fromRef, toRef, '--'], { cwd });
+  return parseGitNameStatus(stdout);
+}
+// --- eforge:endregion plan-02-policy-gate-engine-integration ---
+
 /**
  * Compute the worktree base directory for a plan set.
  * Per ADR-004: ../{project}-{setName}-worktrees/

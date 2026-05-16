@@ -10,6 +10,7 @@ import type { PlanRunner } from '@eforge-build/engine/orchestrator';
 import type { EforgeState, EforgeEvent, OrchestrationConfig, PlanState } from '@eforge-build/engine/events';
 import type { PipelineComposition } from '@eforge-build/engine/schemas';
 import { ModelTracker } from '@eforge-build/engine/model-tracker';
+import type { PolicyGateKind, PolicyGateMethod, PolicyGateRegistration } from '@eforge-build/engine/extensions/types';
 import { useTempDir } from './test-tmpdir.js';
 
 // --- Helpers ---
@@ -43,6 +44,24 @@ function makeState(
 
 const TEST_REVIEW = { strategy: 'auto' as const, perspectives: ['code'], maxRounds: 1, evaluatorStrictness: 'standard' as const };
 const TEST_BUILD = ['implement', 'review-cycle'];
+
+// --- eforge:region plan-02-policy-gate-engine-integration ---
+function makePolicyGate(
+  gateKind: PolicyGateKind,
+  method: PolicyGateMethod,
+  value: PolicyGateRegistration['value'],
+): PolicyGateRegistration {
+  return {
+    kind: 'policyGate',
+    extensionName: 'test-policy',
+    extensionPath: '/tmp/test-policy.js',
+    value,
+    gateKind,
+    method,
+    registrationIndex: 0,
+  };
+}
+// --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
 function makePlans(
   specs: Array<{ id: string; dependsOn?: string[] }>,
@@ -370,6 +389,159 @@ describe('executePlans - build:failed handling', () => {
     // Overall build status should be failed
     expect(state.status).toBe('failed');
   });
+
+  // --- eforge:region plan-02-policy-gate-engine-integration ---
+  it('blocks plan merge before mergePlan and propagates dependent failures', async () => {
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+        { id: 'plan-b', name: 'Plan B', dependsOn: ['plan-a'], branch: 'feature/plan-b', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+    const state = initializeState(config, '/tmp/repo').state;
+    let mergePlanCalls = 0;
+    let getPlanDiffCalls = 0;
+    let seenPolicyContext: { planId?: string; diff?: { files: Array<{ path: string; status: string }> } } | undefined;
+
+    const planRunner: PlanRunner = async function* () {};
+    const stubWorktreeManager = {
+      acquireForPlan: async () => '/tmp/fake-worktree',
+      releaseForPlan: async () => {},
+      getPlanDiff: async () => {
+        getPlanDiffCalls++;
+        return { files: [{ path: 'blocked.ts', status: 'modified' as const }] };
+      },
+      mergePlan: async () => { mergePlanCalls++; throw new Error('mergePlan must not be called'); },
+    } as unknown as WorktreeManager;
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot: '/tmp/repo',
+      planRunner,
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: [],
+      featureBranchMerged: false,
+      modelTracker: new ModelTracker(),
+      extensionRegistry: {
+        policyGates: [makePolicyGate('plan-merge', 'beforePlanMerge', ((gateContext: unknown) => {
+          seenPolicyContext = gateContext as typeof seenPolicyContext;
+          return { decision: 'block', reason: 'protected paths changed' };
+        }) as PolicyGateRegistration['value'])],
+      },
+      policyGateTimeoutMs: 5000,
+      policyGateFailurePolicy: 'fail-closed',
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of executePlans(ctx)) events.push(event);
+
+    expect(getPlanDiffCalls).toBe(1);
+    expect(seenPolicyContext).toEqual(expect.objectContaining({
+      planId: 'plan-a',
+      diff: { files: [{ path: 'blocked.ts', status: 'modified' }] },
+    }));
+    expect(mergePlanCalls).toBe(0);
+    expect(ctx.failedMerges.has('plan-a')).toBe(true);
+    expect(state.plans['plan-a'].status).toBe('failed');
+    expect(state.plans['plan-b'].status).toBe('blocked');
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'extension:policy:decision',
+      gateKind: 'plan-merge',
+      planId: 'plan-a',
+      decision: 'block',
+      reason: 'protected paths changed',
+    }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'plan:build:failed', planId: 'plan-a', error: expect.stringContaining('protected paths changed') }));
+    expect(events).toContainEqual(expect.objectContaining({ type: 'plan:build:failed', planId: 'plan-b', error: expect.stringContaining('plan-a') }));
+  });
+
+  it('blocks final merge before mergeToBase and marks final state failed', async () => {
+    const repoRoot = makeTempDir();
+    execFileSync('git', ['init', '-b', 'main'], { cwd: repoRoot });
+
+    const config = makeConfig({
+      plans: [
+        { id: 'plan-a', name: 'Plan A', dependsOn: [], branch: 'feature/plan-a', build: TEST_BUILD, review: TEST_REVIEW },
+      ],
+    });
+    const state = initializeState(config, repoRoot).state;
+    state.plans['plan-a'].status = 'merged';
+    state.plans['plan-a'].merged = true;
+    let mergeToBaseCalls = 0;
+    let getFinalMergeDiffCalls = 0;
+    let seenPolicyContext: { featureBranch?: string; baseBranch?: string; planIds?: string[]; diff?: { files: Array<{ path: string; status: string }> } } | undefined;
+
+    const stubWorktreeManager = {
+      getFinalMergeDiff: async () => {
+        getFinalMergeDiffCalls++;
+        return { files: [{ path: 'blocked.ts', status: 'modified' as const }] };
+      },
+      mergeToBase: async () => { mergeToBaseCalls++; throw new Error('mergeToBase must not be called'); },
+    } as unknown as WorktreeManager;
+
+    const ctx: PhaseContext = {
+      state,
+      config,
+      repoRoot,
+      planRunner: async function* () {},
+      parallelism: 1,
+      postMergeCommands: [],
+      validateCommands: [],
+      maxValidationRetries: 0,
+      minCompletionPercent: 0,
+      gapClosePerformed: false,
+      mergeWorktreePath: '/tmp/merge-worktree',
+      featureBranch: state.featureBranch,
+      worktreeManager: stubWorktreeManager,
+      failedMerges: new Set(),
+      recentlyMergedIds: ['plan-a'],
+      featureBranchMerged: false,
+      modelTracker: new ModelTracker(),
+      extensionRegistry: {
+        policyGates: [makePolicyGate('final-merge', 'beforeFinalMerge', ((gateContext: unknown) => {
+          seenPolicyContext = gateContext as typeof seenPolicyContext;
+          return { decision: 'require-approval', reason: 'manual approval required' };
+        }) as PolicyGateRegistration['value'])],
+      },
+      policyGateTimeoutMs: 5000,
+      policyGateFailurePolicy: 'fail-closed',
+    };
+
+    const events: EforgeEvent[] = [];
+    for await (const event of finalize(ctx)) events.push(event);
+
+    expect(getFinalMergeDiffCalls).toBe(1);
+    expect(seenPolicyContext).toEqual(expect.objectContaining({
+      featureBranch: state.featureBranch,
+      baseBranch: 'main',
+      planIds: ['plan-a'],
+      diff: { files: [{ path: 'blocked.ts', status: 'modified' }] },
+    }));
+    expect(mergeToBaseCalls).toBe(0);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: 'extension:policy:decision',
+      gateKind: 'final-merge',
+      featureBranch: state.featureBranch,
+      baseBranch: 'main',
+      decision: 'require-approval',
+      reason: 'manual approval required',
+    }));
+    expect(events.filter((event) => event.type === 'merge:finalize:skipped')).toEqual([
+      expect.objectContaining({ reason: expect.stringContaining('manual approval required') }),
+    ]);
+    expect(state.status).toBe('failed');
+  });
+  // --- eforge:endregion plan-02-policy-gate-engine-integration ---
 
   it('promotes plan failure to run-level state.status without requiring finalize', async () => {
     // Regression: after the throw->stream switch for build:failed, executePlans

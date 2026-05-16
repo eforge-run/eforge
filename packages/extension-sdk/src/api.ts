@@ -122,7 +122,8 @@ export interface EforgeExtensionAPI {
    * Register a policy gate evaluated before a queued PRD is dispatched for build.
    *
    * Return `{ decision: 'allow' }` to permit dispatch, `{ decision: 'block', reason }`
-   * to halt it, or `{ decision: 'require-approval', reason }` to pause for manual approval.
+   * to halt it, or `{ decision: 'require-approval', reason }` to halt it with an
+   * approval-required reason until approval workflow support is added.
    */
   beforeQueueDispatch(handler: QueueDispatchPolicyGateHandler): void;
 
@@ -131,7 +132,8 @@ export interface EforgeExtensionAPI {
    * the main branch.
    *
    * Return `{ decision: 'allow' }` to permit the merge, `{ decision: 'block', reason }` to
-   * halt it, or `{ decision: 'require-approval', reason }` to pause for manual approval.
+   * halt it, or `{ decision: 'require-approval', reason }` to halt it with an
+   * approval-required reason until approval workflow support is added.
    *
    * @example
    * ```ts
@@ -150,7 +152,8 @@ export interface EforgeExtensionAPI {
    * into the base branch.
    *
    * Return `{ decision: 'allow' }` to permit the merge, `{ decision: 'block', reason }`
-   * to halt it, or `{ decision: 'require-approval', reason }` to pause for manual approval.
+   * to halt it, or `{ decision: 'require-approval', reason }` to halt it with an
+   * approval-required reason until approval workflow support is added.
    */
   beforeFinalMerge(handler: FinalMergePolicyGateHandler): void;
 

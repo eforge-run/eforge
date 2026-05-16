@@ -218,6 +218,8 @@ export interface QueueDispatchPolicyGateContext extends EforgeExtensionContext {
   prdTitle?: string;
   /** Numeric dispatch priority, if set in queue frontmatter. */
   priority?: number;
+  /** Current PRD frontmatter profile, before profile routers run. */
+  profile?: string;
   /** IDs of PRDs this item depends on. */
   dependsOn: string[];
 }

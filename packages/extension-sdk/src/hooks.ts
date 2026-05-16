@@ -47,8 +47,9 @@ export type EventHookHandler<TType extends EforgeEvent['type']> = (
  *
  * - `allow` — permit the operation to proceed.
  * - `block` — halt the operation with a human-readable `reason`.
- * - `require-approval` — pause and surface the `reason` to the user for
- *   manual approval before proceeding.
+ * - `require-approval` — halt and surface the `reason` as requiring manual
+ *   approval; current engine integrations treat this as blocking until an
+ *   approval workflow is added.
  *
  * Note: A `modify` variant (allowing the gate to mutate the operation payload)
  * is intentionally absent from this slice. It will be introduced only for hook

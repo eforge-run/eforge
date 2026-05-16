@@ -39,6 +39,8 @@ export interface QueueDispatchPolicyGateContext extends PolicyGateContextBase {
   prdId: string;
   prdTitle?: string;
   priority?: number;
+  /** Current PRD frontmatter profile, before profile routers run. */
+  profile?: string;
   dependsOn: string[];
 }
 
@@ -65,6 +67,8 @@ export interface QueueDispatchPolicyGateTarget {
   prdId: string;
   prdTitle?: string;
   priority?: number;
+  /** Current PRD frontmatter profile, before profile routers run. */
+  profile?: string;
   dependsOn?: string[];
 }
 
@@ -202,6 +206,7 @@ export function buildQueueDispatchPolicyGateContext(
     prdId: target.prdId,
     ...(target.prdTitle !== undefined && { prdTitle: target.prdTitle }),
     ...(target.priority !== undefined && { priority: target.priority }),
+    ...(target.profile !== undefined && { profile: target.profile }),
     dependsOn: [...(target.dependsOn ?? [])],
     ...makeHelpers('queue-dispatch', options),
   });
