@@ -1,0 +1,73 @@
+name: implement-adaptive-reviewer-subset-selection
+description: Implement adaptive reviewer subset selection for build-phase
+  review-cycle, including deterministic selector logic, engine orchestration
+  wiring, observability formatting, tests, and roadmap cleanup.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm build
+plans:
+  - id: plan-01-adaptive-review-cycle-perspectives
+    name: Adaptive Review-Cycle Perspective Selection
+    depends_on: []
+    branch: implement-adaptive-reviewer-subset-selection/plan-01-adaptive-review-cycle-perspectives
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Touches build-stage orchestration and the safety-sensitive verify
+          perspective policy; deterministic selector behavior and event ordering
+          need careful implementation.
+      reviewer:
+        effort: high
+        rationale: Review must verify no direct decision emission bypasses, no unsafe
+          verify pruning, and no schema drift.
+      tester:
+        effort: high
+        rationale: Integration coverage needs real git/evaluation flow plus StubHarness
+          agent sequencing across multiple review rounds.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - test-write
+      - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - security
+      - api
+      - docs
+      - test
+      - verify
+    maxRounds: 3
+    evaluatorStrictness: standard
+  rationale: This is a cohesive multi-file engine/UI/test/documentation change,
+    but it does not require delegated module planning, so excursion is
+    appropriate. A planner plus plan review should catch orchestration and
+    safety-policy gaps before implementation. The build runs implementation,
+    then writes tests and syncs docs in parallel, followed by a parallel review
+    cycle to exercise the adaptive reviewer behavior and a final test cycle to
+    validate the resulting code. The review config uses all relevant build-time
+    perspectives, including api for wire compatibility, docs for roadmap/UI
+    documentation, test for coverage, security for dependency/code relevance
+    rules, and verify for the safety-sensitive verification policy.
