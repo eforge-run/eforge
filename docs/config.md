@@ -10,7 +10,7 @@
 > ```
 > Running eforge without migrating now aborts with a clear `ConfigMigrationError`.
 
-All fields are optional with defaults shown below:
+All fields are optional. The current engine compatibility fallback defaults are listed in [Built-in Tier Defaults](#built-in-tier-defaults); for new projects, create an explicit Pi profile or Pi tier entries like the example below:
 
 ```yaml
 plugins:
@@ -38,26 +38,32 @@ agents:
   #                            # If eforge/prompts/reviewer.md exists, it replaces the bundled reviewer prompt.
   # tiers:                    # Per-tier recipes — each tier is a self-contained harness + model + effort unit
   #   planning:               # Four built-in tiers: planning, implementation, review, evaluation
-  #     harness: claude-sdk   #   harness: 'claude-sdk' or 'pi'
-  #     model: claude-opus-4-7 #  model: plain string model identifier
+  #     harness: pi           #   harness: 'pi' (recommended) or 'claude-sdk' (supported secondary)
+  #     model: anthropic/claude-opus-4-6 # model: plain string model identifier
   #     effort: high          #   effort: 'low', 'medium', 'high', 'xhigh', 'max'
   #     # thinking: true      #   Optional: enable thinking; coerced to adaptive for adaptive-only models
-  #     # pi:                 #   Pi-specific sub-block (ignored unless harness: pi)
-  #     #   provider: openrouter
+  #     pi:                   #   Pi-specific sub-block (required for harness: pi)
+  #       provider: openrouter
   #     # claudeSdk:          #   Claude SDK-specific sub-block (ignored unless harness: claude-sdk)
   #     #   disableSubagents: false
   #   implementation:
-  #     harness: claude-sdk
-  #     model: claude-sonnet-4-6
+  #     harness: pi
+  #     model: anthropic/claude-sonnet-4-6
   #     effort: medium
+  #     pi:
+  #       provider: openrouter
   #   review:
-  #     harness: claude-sdk
-  #     model: claude-opus-4-7
+  #     harness: pi
+  #     model: anthropic/claude-opus-4-6
   #     effort: high
+  #     pi:
+  #       provider: openrouter
   #   evaluation:
-  #     harness: claude-sdk
-  #     model: claude-opus-4-7
+  #     harness: pi
+  #     model: anthropic/claude-opus-4-6
   #     effort: high
+  #     pi:
+  #       provider: openrouter
   # roles:                    # Per-agent role overrides
   #   formatter:              # Per-role options: tier, effort, thinking, maxTurns, promptAppend,
   #     effort: low           #   allowedTools, disallowedTools, shards (builder-only)
@@ -144,7 +150,7 @@ eforge uses four tiers as the single configuration axis for agent routing. Each 
 | `review` | `claude-sdk` | `claude-opus-4-7` | `high` |
 | `evaluation` | `claude-sdk` | `claude-opus-4-7` | `high` |
 
-Override any tier by specifying it under `agents.tiers` in `eforge/config.yaml`. You only need to list the tiers you want to change - unspecified tiers keep their engine defaults.
+Override any tier by specifying it under `agents.tiers` in `eforge/config.yaml`. The table above is the current engine compatibility fallback, not the recommended new-user setup. Pi is the recommended execution harness for new projects; if you want a Pi profile, list all four tiers explicitly because unspecified tiers keep the `claude-sdk` compatibility defaults.
 
 ### Complete Tier Recipe
 
@@ -154,8 +160,8 @@ Each tier supports the following fields:
 agents:
   tiers:
     planning:
-      harness: claude-sdk       # Required: 'claude-sdk' or 'pi'
-      model: claude-opus-4-7   # Required: plain string model identifier
+      harness: pi               # Required: 'pi' (recommended) or 'claude-sdk'
+      model: anthropic/claude-opus-4-6 # Required: plain string model identifier
       effort: high             # Required: 'low', 'medium', 'high', 'xhigh', 'max'
       thinking: true           # Optional: enable thinking; coerced to adaptive for adaptive-only models
       maxTurns: 30             # Optional: max turns override for all roles in this tier
@@ -172,7 +178,7 @@ agents:
 
 ### Pi Backend Tiers
 
-To use the Pi multi-provider backend for a tier, set `harness: pi` and provide a `pi.provider`:
+Pi is the recommended provider-flexible backend for new eforge setup. To use it for a tier, set `harness: pi` and provide a `pi.provider`:
 
 ```yaml
 agents:
@@ -218,6 +224,8 @@ The Pi backend uses file-backed auth storage (`~/.pi/agent/auth.json`) which sup
 
 ### Claude SDK Tiers
 
+The `claude-sdk` harness remains supported as an Anthropic-specific secondary path. Starting June 15, 2026, Anthropic says Claude Agent SDK and `claude -p` usage no longer count toward Claude plan limits; eligible plans may receive a separate monthly Agent SDK credit, usage beyond that credit is billed at standard API rates when extra usage is enabled, otherwise requests stop, and API-key users remain pay-as-you-go.
+
 The `claudeSdk:` sub-block on a tier holds options specific to the Claude SDK harness:
 
 - **`disableSubagents: true`** appends `'Task'` to every agent run's `disallowedTools` for all roles in that tier, preventing agents from spawning Claude Code subagents. Useful for debugging, cost control, or determinism.
@@ -239,10 +247,10 @@ Per-role `agents.roles.<role>.disallowedTools` values are preserved; `'Task'` is
 
 Model references are **plain strings**, not objects. Examples:
 
+- `anthropic/claude-opus-4-6` - Pi / OpenRouter model identifier (provider prefix + model name)
+- `gemini-flash` - Pi / Google provider model identifier
 - `claude-opus-4-7` - Claude SDK model identifier
 - `claude-sonnet-4-6`
-- `anthropic/claude-opus-4-6` - Pi / OpenRouter model identifier (provider prefix + model name)
-- `gemini-flash` - Google provider model identifier
 
 Specify the model directly on the tier recipe:
 
@@ -250,9 +258,11 @@ Specify the model directly on the tier recipe:
 agents:
   tiers:
     planning:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
 ```
 
 > **Migration note:** The old object form (`model: { id: claude-sonnet-4-6 }`) is no longer valid. Use plain strings. The `provider:` field that used to live on model refs now lives on the tier's `pi.provider`. See [config-migration.md](config-migration.md) for worked examples.
@@ -383,9 +393,11 @@ tags:
 agents:
   tiers:
     planning:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
 ```
 
 When creating a profile via `POST /api/profile/create` or the `eforge_profile` tool, the metadata fields are passed as a **nested `metadata` object** in the request payload (different from the flat file shape):
@@ -395,11 +407,11 @@ Example `eforge_profile` tool call with metadata:
 ```json
 {
   "action": "create",
-  "name": "claude-max",
+  "name": "pi-openrouter",
   "scope": "project",
   "agents": { "tiers": { "..." : "..." } },
   "metadata": {
-    "description": "High-capability profile for complex tasks",
+    "description": "Pi/OpenRouter profile for complex tasks",
     "whenToUse": ["Architecture planning", "Complex refactors"],
     "tags": ["production", "high-quality"]
   }
@@ -431,19 +443,25 @@ tools:
 agents:
   tiers:
     implementation:
-      harness: claude-sdk
-      model: claude-sonnet-4-6
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
       effort: medium
+      pi:
+        provider: openrouter
       toolbelt: browser-ui   # Use the 'browser-ui' toolbelt for this tier
     review:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
       toolbelt: none         # Pass no MCP servers to reviewers
     planning:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
                              # toolbelt omitted - planning agents receive all .mcp.json servers
 ```
 

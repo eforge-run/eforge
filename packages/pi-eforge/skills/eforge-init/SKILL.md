@@ -47,10 +47,10 @@ If any profiles exist, present them in a combined table:
 
 | Name | Scope | Harness | Planning model |
 |------|-------|---------|----------------|
-| `<name>` | `local` | `<agents.tiers.planning.harness>` | `<agents.tiers.planning.model.id>` |
-| `<name>` | `user`  | `<agents.tiers.planning.harness>` | `<agents.tiers.planning.model.id>` |
+| `<name>` | `local` | `<agents.tiers.planning.harness>` | `<agents.tiers.planning.model>` |
+| `<name>` | `user`  | `<agents.tiers.planning.harness>` | `<agents.tiers.planning.model>` |
 
-Ask: "Would you like to use one of these existing profiles, or create a new project profile?"
+Ask: "Would you like to use one of these existing profiles, or create a new project profile?" If the chosen profile uses `claude-sdk`, mention that it is supported but optional and Anthropic-specific. Starting June 15, 2026, Anthropic says Claude Agent SDK and `claude -p` usage no longer count toward Claude plan limits; eligible plans may receive a separate monthly Agent SDK credit, usage beyond that credit is billed at standard API rates when extra usage is enabled, otherwise requests stop, and API-key users remain pay-as-you-go.
 
 **On pick (existing profile):**
 
@@ -76,9 +76,9 @@ Skip Steps 2–6. Proceed directly to the result message.
 
 ### Step 2: Setup mode
 
-When creating a new project profile in this flow, the harness is always `pi`. Ask the user: "Quick setup (one provider and model for every tier) or mix-and-match (pick a different provider/model/effort per tier)?"
+When creating a new project profile in this flow, the harness is always `pi`. Ask the user: "Quick setup (one provider and suggested tier models, including an optional separate implementation model) or mix-and-match (pick a different provider/model/effort per tier)?"
 
-Do not suggest a default - both options should be presented equally.
+Pi is the recommended execution harness for new eforge setup. Existing local- or user-scope `claude-sdk` profiles remain supported; if the user selects one, mention that it is Anthropic-specific and follows the Agent SDK credit/API-pricing caveat above.
 
 ### Step 3a: Quick path
 
@@ -88,9 +88,8 @@ When the user chooses Quick setup:
 2. **Planning/review/evaluation model**: Call `eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` to get available models (sorted newest-first). Show the top 10 and ask the user to pick.
 3. **Implementation model**: Prompt:
    > Pick a separate **implementation**-tier model? (Recommended — most build steps run at the implementation tier, so a cheaper/smaller model here saves a lot. Press enter to reuse `<planning-id>`.)
-   Show the same top-10 list with the user's planning pick highlighted as the default. If the user accepts the default, set `implementation.model.id = planning.model.id`.
-
-Assemble the single-provider profile (same provider for all tiers, no mix):
+   Show the same top-10 list with the user's planning pick highlighted as the default. If the user accepts the default, set `implementation.model = planning.model`.
+4. Assemble the single-provider profile (same provider for all tiers):
 
 ```yaml
 profile:
@@ -98,28 +97,28 @@ profile:
     tiers:
       planning:
         harness: pi
-        provider: anthropic      # use the chosen provider
-        model:
-          id: <picked>
+        model: <picked>
         effort: high
+        pi:
+          provider: <chosen>
       implementation:
         harness: pi
-        provider: anthropic
-        model:
-          id: <picked-or-planning>
+        model: <picked-or-planning>
         effort: medium
+        pi:
+          provider: <chosen>
       review:
         harness: pi
-        provider: anthropic
-        model:
-          id: <picked>
+        model: <picked>
         effort: high
+        pi:
+          provider: <chosen>
       evaluation:
         harness: pi
-        provider: anthropic
-        model:
-          id: <picked>
+        model: <picked>
         effort: high
+        pi:
+          provider: <chosen>
 ```
 
 ### Step 3b: Mix-and-match path
@@ -127,11 +126,11 @@ profile:
 When the user chooses Mix-and-match, walk tiers `planning -> implementation -> review -> evaluation`:
 
 For each tier:
-- **Provider**: Ask which provider to use. Default = previous tier's provider (planning tier has no default). Call `eforge_models` with `{ action: "providers", harness: "pi" }` for the list.
-- **Model**: Ask which model. Default = previous tier's model when the provider is unchanged. Call `eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` and show the top 10 newest-first.
+- **Provider**: Ask which provider to use. Default = previous tier's provider. Call `eforge_models` with `{ action: "providers", harness: "pi" }` for the list.
+- **Model**: Ask which model. Default = previous tier's model when provider is unchanged. Call `eforge_models` with `{ action: "list", harness: "pi", provider: "<chosen>" }` and show the top 10 newest-first.
 - **Effort**: Ask from `low | medium | high | xhigh | max`. Default: `high` for planning/review/evaluation, `medium` for implementation.
 
-Assembled profile shape example (two different Pi providers):
+Assembled profile shape:
 
 ```yaml
 profile:
@@ -139,28 +138,28 @@ profile:
     tiers:
       planning:
         harness: pi
-        provider: anthropic
-        model:
-          id: claude-opus-4-7
+        model: anthropic/claude-opus-4-6
         effort: high
+        pi:
+          provider: openrouter
       implementation:
         harness: pi
-        provider: openrouter
-        model:
-          id: mistral-large
+        model: qwen3-coder
         effort: medium
+        pi:
+          provider: local
       review:
         harness: pi
-        provider: anthropic
-        model:
-          id: claude-opus-4-7
+        model: anthropic/claude-opus-4-6
         effort: high
+        pi:
+          provider: openrouter
       evaluation:
         harness: pi
-        provider: anthropic
-        model:
-          id: claude-opus-4-7
+        model: gemini-flash
         effort: high
+        pi:
+          provider: google
 ```
 
 ### Step 4: Profile name
@@ -168,10 +167,8 @@ profile:
 Derive a candidate profile name from the assembled profile using these rules (mirrors the server-side `deriveProfileName` helper):
 
 - **Same provider+model across all four tiers**: use the sanitized model ID. Sanitize by lowercasing, replacing `.` with `-`, stripping a leading `claude-` prefix, and collapsing repeated dashes. Example: `claude-opus-4-7` → `opus-4-7`.
-- **Same provider, model varies across tiers**: use `pi-<provider>` (e.g. `pi-anthropic`).
-- **Multiple providers**: use `mixed-<planning-tier-provider>` (e.g. `mixed-anthropic`).
-
-> Note: For the Pi Quick path, expect the candidate name to be the sanitized planning model id when all tiers share the same model, or `pi-<provider>` when tiers differ.
+- **Same provider, model varies across tiers**: use `pi-<provider>` (e.g. `pi-openrouter`).
+- **Multiple providers**: use `mixed-<planning-tier-provider>` (e.g. `mixed-openrouter`).
 
 Show the candidate name to the user: "I'd name this profile `<candidate>`. Does that work, or would you like a different name?" Accept a one-word override (alphanumeric + dashes). If the user accepts, proceed with the candidate. Set `profile.name` to the final name before calling the tool.
 
@@ -185,10 +182,10 @@ Call `eforge_init` with:
     "name": "<finalName>",
     "agents": {
       "tiers": {
-        "planning":       { "harness": "pi", "provider": "...", "model": { "id": "..." }, "effort": "..." },
-        "implementation": { "harness": "pi", "provider": "...", "model": { "id": "..." }, "effort": "..." },
-        "review":         { "harness": "pi", "provider": "...", "model": { "id": "..." }, "effort": "..." },
-        "evaluation":     { "harness": "pi", "provider": "...", "model": { "id": "..." }, "effort": "..." }
+        "planning":       { "harness": "...", "model": "...", "effort": "...", "pi": { "provider": "..." } },
+        "implementation": { "harness": "...", "model": "...", "effort": "...", "pi": { "provider": "..." } },
+        "review":         { "harness": "...", "model": "...", "effort": "...", "pi": { "provider": "..." } },
+        "evaluation":     { "harness": "...", "model": "...", "effort": "...", "pi": { "provider": "..." } }
       }
     }
   },
@@ -197,7 +194,7 @@ Call `eforge_init` with:
 }
 ```
 
-Include `force: true` if `$ARGUMENTS` contains `--force` or `force`.
+Include `force: true` if `$ARGUMENTS` contains `--force` or `force`. Include `pi: { "provider": "..." }` on every tier entry.
 
 ### Step 6: Migrate (`--migrate`)
 

@@ -11,13 +11,13 @@ eforge is an agentic build system that turns specifications into code. You descr
 
 - **Node.js 22+**
 - One of: [Pi](https://github.com/earendil-works/pi-mono), [Claude Code](https://claude.ai/code), or an npm-capable shell
-- An LLM credential for the runtime you choose: a provider-specific API key or OAuth token for the `pi` harness, or an Anthropic API key for the `claude-sdk` harness
+- An LLM credential for the runtime you choose: a provider-specific API key or OAuth token for the recommended `pi` harness, or an Anthropic API key for the supported secondary `claude-sdk` harness
 
 ## Install
 
 ### Pi package (recommended)
 
-Start with Pi if you want the direction eforge is heading: provider-flexible, local, inspectable agent orchestration.
+Start with Pi, the recommended eforge execution harness for new users, if you want provider-flexible, local, inspectable agent orchestration.
 
 ```bash
 pi install npm:@eforge-build/pi-eforge
@@ -32,7 +32,7 @@ pi install -l npm:@eforge-build/pi-eforge
 
 ### Claude Code plugin
 
-Use the Claude Code plugin if Claude Code is already your daily environment. The surface you use to drive eforge and the runtime profile that executes builds are separate choices.
+Use the Claude Code plugin if Claude Code is already your daily environment. Claude Code can host the workflow while your active profile executes builds through the recommended Pi harness.
 
 Run these three commands inside Claude Code:
 
@@ -42,7 +42,7 @@ Run these three commands inside Claude Code:
 /eforge:init
 ```
 
-The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. It walks you through a Quick setup (one harness and model for every tier) or a Mix-and-match flow (different harness, provider, or model per tier).
+The `/eforge:init` command creates `eforge/config.yaml` with sensible defaults and adds `.eforge/` to your `.gitignore`. It walks you through a Quick setup (one harness/provider with suggested tier models, including an optional separate implementation model) or a Mix-and-match flow (different harness, provider, or model per tier). Choose Pi for the recommended provider-flexible path; `claude-sdk` remains available as a supported Anthropic-specific secondary path. Starting June 15, 2026, Anthropic says Claude Agent SDK and `claude -p` usage no longer count toward Claude plan limits; eligible plans may receive a separate monthly Agent SDK credit, usage beyond that credit is billed at standard API rates when extra usage is enabled, otherwise requests stop, and API-key users remain pay-as-you-go. See https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan.
 
 ### Standalone CLI
 

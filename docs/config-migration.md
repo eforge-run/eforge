@@ -86,7 +86,7 @@ agents:
         provider: openrouter
 ```
 
-Unset tiers fall back to the engine defaults (all `claude-sdk` harness; `claude-opus-4-7` for `planning`/`review`/`evaluation`, `claude-sonnet-4-6` for `implementation`). If your old config used `pi` everywhere, you must list all four tiers - omitting any tier means it reverts to the `claude-sdk` default.
+Unset tiers fall back to the current engine compatibility defaults (all `claude-sdk` harness; `claude-opus-4-7` for `planning`/`review`/`evaluation`, `claude-sonnet-4-6` for `implementation`). Pi is recommended for new profiles, but these fallback defaults remain for compatibility. If your old config used `pi` everywhere, or you are migrating to a new Pi profile, list all four Pi tiers explicitly - omitting any tier means it reverts to the `claude-sdk` default.
 
 ---
 

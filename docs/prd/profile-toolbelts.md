@@ -60,27 +60,35 @@ tags:
 agents:
   tiers:
     planning:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
       toolbelt: none
 
     implementation:
-      harness: claude-sdk
-      model: claude-sonnet-4-6
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
       effort: medium
+      pi:
+        provider: openrouter
       toolbelt: browser-ui
 
     review:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
       toolbelt: browser-ui
 
     evaluation:
-      harness: claude-sdk
-      model: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
       toolbelt: none
 ```
 

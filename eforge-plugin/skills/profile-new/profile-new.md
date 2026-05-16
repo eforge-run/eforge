@@ -5,7 +5,9 @@ argument-hint: "[name]"
 
 # /eforge:profile-new
 
-Interactively create a new named agent runtime profile (e.g. `claude-max`, `pi-anthropic`, `mixed`). The profile can live at project scope (`eforge/profiles/<name>.yaml`) or user scope (`~/.config/eforge/profiles/<name>.yaml`). It configures a harness, model, and effort level per build tier (planning → implementation → review → evaluation), then optionally activates itself.
+Interactively create a new named agent runtime profile (e.g. `pi-anthropic`, `pi-openrouter`, `local-qwen`, `mixed`). The profile can live at project scope (`eforge/profiles/<name>.yaml`) or user scope (`~/.config/eforge/profiles/<name>.yaml`). It configures a harness, model, and effort level per build tier (planning → implementation → review → evaluation), then optionally activates itself.
+
+Pi is the recommended eforge execution harness for new profiles because it is provider-flexible. Claude Code or Pi can still be the host surface; the active profile chooses the execution harness. The `claude-sdk` harness remains supported as an optional Anthropic-specific path. Starting June 15, 2026, Anthropic says Claude Agent SDK and `claude -p` usage no longer count toward Claude plan limits; eligible plans may receive a separate monthly Agent SDK credit, usage beyond that credit is billed at standard API rates when extra usage is enabled, otherwise requests stop, and API-key users remain pay-as-you-go.
 
 ## Workflow
 
@@ -22,7 +24,7 @@ If the user does not specify, default to project scope. Remember the chosen scop
 ### Step 1: Determine the profile name
 
 - If `$ARGUMENTS` is non-empty, treat the first token as the profile name.
-- Otherwise ask the user: "What should this profile be called? (e.g. `claude-max`, `pi-anthropic`, `mixed`)"
+- Otherwise ask the user: "What should this profile be called? (e.g. `pi-anthropic`, `pi-openrouter`, `local-qwen`, `mixed`)"
 
 The name will be used as the filename (local: `.eforge/profiles/<name>.yaml`, project: `eforge/profiles/<name>.yaml`, user: `~/.config/eforge/profiles/<name>.yaml`).
 
@@ -35,70 +37,87 @@ For each tier, present the following options:
 **Copy from a previously configured tier** (available from `implementation` onward): From the second tier onward, present one `Copy from <tierName> (<modelId>)` entry per tier already configured in this session (e.g. on `review`: `Copy from planning` and `Copy from implementation`, in `TIER_ORDER` order). The default selection is copy-from-immediately-previous when the user just presses enter.
 
 **Custom**: walk the sub-flow:
-1. **Harness**: ask `claude-sdk` or `pi`.
+1. **Harness**: ask `pi` (recommended/provider-flexible) or `claude-sdk` (optional Anthropic-specific Agent SDK with credit/API-priced usage).
 2. **Provider** (pi only): call `mcp__eforge__eforge_models` with `{ action: "providers", harness: "pi" }`, show the list, confirm.
 3. **Model**: call `mcp__eforge__eforge_models` with `{ action: "list", harness: "<harness>", provider: "<provider>" }` (omit `provider` for claude-sdk). Show top 10 (id + `releasedAt` when available); add a "see all" affordance if the list is longer. Default to the newest model. Confirm.
 4. **Effort**: ask from `low | medium | high | xhigh | max`. Default: `high` for planning/review/evaluation, `medium` for implementation.
 
-For the **planning** tier present only **Custom**, since no prior tier exists yet.
+For the **planning** tier present only **Custom**, since no prior tier exists yet. Start that first custom tier with `pi` selected first unless the user explicitly asks for `claude-sdk`.
 
-Record each tier's `harness`, (optional) `provider`, `model.id`, and `effort`.
+Record each tier's `harness`, optional `pi.provider`, `model`, and `effort`.
 
 ### Step 3: Preview the profile
 
-Show the user a rendered preview of the YAML that will land in the chosen scope directory. Example for an all-claude-sdk profile:
+Show the user a rendered preview of the YAML that will land in the chosen scope directory. Example Pi-first profile:
 
 ```yaml
 agents:
   tiers:
     planning:
-      harness: claude-sdk
-      model:
-        id: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
     implementation:
-      harness: claude-sdk
-      model:
-        id: claude-sonnet-4-6
+      harness: pi
+      model: anthropic/claude-sonnet-4-6
       effort: medium
+      pi:
+        provider: openrouter
     review:
-      harness: claude-sdk
-      model:
-        id: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
     evaluation:
-      harness: claude-sdk
-      model:
-        id: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
 ```
 
-Example with a mixed claude-sdk/pi-anthropic setup:
+Example with mixed Pi providers:
 
 ```yaml
 agents:
   tiers:
     planning:
-      harness: claude-sdk
-      model:
-        id: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
     implementation:
       harness: pi
-      provider: anthropic
-      model:
-        id: claude-sonnet-4-6
+      model: qwen3-coder
       effort: medium
+      pi:
+        provider: local
     review:
-      harness: claude-sdk
-      model:
-        id: claude-opus-4-7
+      harness: pi
+      model: anthropic/claude-opus-4-6
       effort: high
+      pi:
+        provider: openrouter
     evaluation:
       harness: pi
-      provider: anthropic
-      model:
-        id: claude-opus-4-7
+      model: gemini-flash
+      effort: high
+      pi:
+        provider: google
+```
+
+Optional `claude-sdk` tiers omit the `pi` block and use Anthropic model IDs:
+
+```yaml
+agents:
+  tiers:
+    review:
+      harness: claude-sdk
+      model: claude-opus-4-7
       effort: high
 ```
 
@@ -115,10 +134,10 @@ Call `mcp__eforge__eforge_profile` with:
   scope: "<local|project|user>",
   agents: {
     tiers: {
-      planning:       { harness, model: { id }, effort, provider? },
-      implementation: { harness, model: { id }, effort, provider? },
-      review:         { harness, model: { id }, effort, provider? },
-      evaluation:     { harness, model: { id }, effort, provider? },
+      planning:       { harness, model, effort, pi?: { provider } },
+      implementation: { harness, model, effort, pi?: { provider } },
+      review:         { harness, model, effort, pi?: { provider } },
+      evaluation:     { harness, model, effort, pi?: { provider } },
     }
   },
   metadata: {          // optional — descriptive only, does not affect runtime behavior
@@ -130,7 +149,7 @@ Call `mcp__eforge__eforge_profile` with:
 }
 ```
 
-Omit `provider` for the `claude-sdk` harness. Include it for the `pi` harness.
+Omit `pi` for the `claude-sdk` harness. Include `pi: { provider: "..." }` for the `pi` harness.
 
 The `metadata` field is **optional and descriptive only** — it surfaces in profile list/show UX but does not affect active profile selection or runtime behavior. You may omit it entirely or include only the fields that are useful. Users can also edit the YAML file directly to add or update metadata later.
 
