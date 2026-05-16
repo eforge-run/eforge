@@ -1,5 +1,17 @@
 import type { Decision } from '@/lib/reducer';
 
+type CycleTerminatedDecision = Extract<Decision, { kind: 'cycle-terminated' }>;
+type EnrichedCycleTerminatedDecision = CycleTerminatedDecision & {
+  lastReviewIssueCount?: number;
+  finalEvaluationRan?: boolean;
+  finalEvaluationAccepted?: number;
+  finalEvaluationRejected?: number;
+};
+
+function enrichedCycleTerminated(decision: CycleTerminatedDecision): EnrichedCycleTerminatedDecision {
+  return decision as EnrichedCycleTerminatedDecision;
+}
+
 // ---------------------------------------------------------------------------
 // Color families by decision kind
 // ---------------------------------------------------------------------------
@@ -58,14 +70,16 @@ export function decisionSummary(decision: Decision): string {
         : 'inferred: none (fallback to single)';
     case 'perspectives-respawned':
       return `round ${decision.round + 1} — ${decision.perspectives.length > 0 ? decision.perspectives.join(', ') : 'auto'}`;
-    case 'cycle-terminated':
-      if (decision.lastReviewIssueCount !== undefined) {
-        const final = decision.finalEvaluationRan
-          ? `final evaluation: ${decision.finalEvaluationAccepted ?? 0} accepted / ${decision.finalEvaluationRejected ?? 0} rejected`
+    case 'cycle-terminated': {
+      const enriched = enrichedCycleTerminated(decision);
+      if (enriched.lastReviewIssueCount !== undefined) {
+        const final = enriched.finalEvaluationRan
+          ? `final evaluation: ${enriched.finalEvaluationAccepted ?? 0} accepted / ${enriched.finalEvaluationRejected ?? 0} rejected`
           : 'final evaluation: not run';
-        return `${decision.reason} — round ${decision.round + 1}, last review: ${decision.lastReviewIssueCount} issue(s), ${final}`;
+        return `${enriched.reason} — round ${enriched.round + 1}, last review: ${enriched.lastReviewIssueCount} issue(s), ${final}`;
       }
       return `${decision.reason} — round ${decision.round + 1}, ${decision.issuesRemaining} issues remaining`;
+    }
     case 'evaluator-strictness':
       return `${decision.strictness} (${decision.source})`;
     case 'recovery-verdict':
@@ -120,21 +134,23 @@ export function decisionDetail(decision: Decision): string {
       lines.push(`Round: ${decision.round + 1}`);
       lines.push(`Perspectives: ${decision.perspectives.length > 0 ? decision.perspectives.join(', ') : '(auto)'}`);
       break;
-    case 'cycle-terminated':
+    case 'cycle-terminated': {
+      const enriched = enrichedCycleTerminated(decision);
       lines.push(`Reason: ${decision.reason}`);
       lines.push(`Round: ${decision.round + 1}`);
-      if (decision.lastReviewIssueCount !== undefined) {
-        lines.push(`Last review issue count: ${decision.lastReviewIssueCount}`);
-        lines.push(`Final evaluation ran: ${decision.finalEvaluationRan ? 'yes' : 'no'}`);
-        if (decision.finalEvaluationRan) {
-          lines.push(`Final evaluation accepted: ${decision.finalEvaluationAccepted ?? 0}`);
-          lines.push(`Final evaluation rejected: ${decision.finalEvaluationRejected ?? 0}`);
+      if (enriched.lastReviewIssueCount !== undefined) {
+        lines.push(`Last review issue count: ${enriched.lastReviewIssueCount}`);
+        lines.push(`Final evaluation ran: ${enriched.finalEvaluationRan ? 'yes' : 'no'}`);
+        if (enriched.finalEvaluationRan) {
+          lines.push(`Final evaluation accepted: ${enriched.finalEvaluationAccepted ?? 0}`);
+          lines.push(`Final evaluation rejected: ${enriched.finalEvaluationRejected ?? 0}`);
         }
         lines.push(`Post-evaluation issue count: ${decision.issuesRemaining}`);
       } else {
         lines.push(`Issues remaining: ${decision.issuesRemaining}`);
       }
       break;
+    }
     case 'evaluator-strictness':
       lines.push(`Strictness: ${decision.strictness}`);
       lines.push(`Source: ${decision.source}`);

@@ -980,7 +980,7 @@ registerBuildStage({
         finalEvaluationAccepted: finalEvaluation.accepted,
         finalEvaluationRejected: finalEvaluation.rejected,
       }),
-    });
+    } as unknown as Parameters<typeof emitBuildDecision>[1]);
     // --- eforge:endregion plan-02-build-evaluator-enforcement ---
   }
 });
