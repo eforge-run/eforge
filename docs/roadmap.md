@@ -8,14 +8,6 @@
 
 ---
 
-## Orchestrator Intelligence
-
-**Goal**: Make the orchestrator's review-cycle decisions adaptive and observable.
-
-- **Adaptive reviewer subset selection** - Wire protocol (`perspectives-respawned` event with `dropped: []`) and UI rendering are in place, but the selection logic in `packages/engine/src/pipeline/stages/build-stages.ts` still respawns the full perspective set every round. Implement subset selection: drop perspectives whose concerns are stale given the prior round's results and the nature of the fixes, and account for overlap between perspectives so concerns aren't double-counted.
-
----
-
 ## Extensibility
 
 **Goal**: Make eforge a platform that agent runtime profiles and TypeScript modules can extend without forking the engine.
@@ -31,4 +23,3 @@
 - **Low-fidelity input handling** - When the user provides a high-level prompt with minimal detail, launch an exploration agent (or parallel exploratory agents) that performs thorough codebase exploration before compiling plans. Bypassed for detailed PRDs. Scope levels (expedition/errand/excursion) classify intended depth but don't perform exploration; this fills that gap.
 - **Schema library unification on TypeBox** - TypeBox is canonical for eforge-owned domain schemas; Zod is isolated to third-party SDK compatibility adapters. The first migration slice (client wire schemas, engine structured output, and custom-tool contracts) is complete. Config, input artifact, and MCP proxy schemas remain Zod until a follow-up PRD lands.
 - **TypeScript project references** - Adopt `tsconfig.json` `references` across workspace members for automatic topological ordering.
-

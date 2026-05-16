@@ -58,6 +58,22 @@ const enrichedCycleTerminatedDecision: BuildDecision = {
   finalEvaluationRejected: 1,
 };
 
+const perspectivesRespawnedDecision: BuildDecision = {
+  kind: 'perspectives-respawned',
+  rationale: 'Adaptive selection retained code and dropped api',
+  round: 1,
+  perspectives: ['code'],
+  dropped: ['api'],
+};
+
+const perspectivesRespawnedWithoutDroppedDecision: BuildDecision = {
+  kind: 'perspectives-respawned',
+  rationale: 'Initial round keeps configured perspectives',
+  round: 0,
+  perspectives: ['code', 'docs'],
+  dropped: [],
+};
+
 const scopeDecision: PlanningDecision = {
   kind: 'scope-selected',
   rationale: 'Standard excursion scope',
@@ -156,6 +172,24 @@ describe('handlePlanBuildDecision', () => {
     expect(decisionSummary(stored)).not.toContain('issues remaining');
     expect(decisionDetail(stored)).toContain('Final evaluation accepted: 1');
     expect(decisionDetail(stored)).toContain('Post-evaluation issue count: 0');
+  });
+
+  it('renders dropped perspectives in respawned decision summary and detail', () => {
+    const event = makeDecisionEvent(PLAN_A, perspectivesRespawnedDecision);
+    const delta = handlePlanBuildDecision(event, initialRunState);
+    const stored = delta!.decisions![PLAN_A][0].decision;
+
+    expect(decisionSummary(stored)).toContain('dropped: api');
+    expect(decisionDetail(stored)).toContain('Dropped: api');
+  });
+
+  it('renders an explicit empty dropped list in respawned decision details', () => {
+    const event = makeDecisionEvent(PLAN_A, perspectivesRespawnedWithoutDroppedDecision);
+    const delta = handlePlanBuildDecision(event, initialRunState);
+    const stored = delta!.decisions![PLAN_A][0].decision;
+
+    expect(decisionSummary(stored)).not.toContain('dropped:');
+    expect(decisionDetail(stored)).toContain('Dropped: (none)');
   });
 });
 
