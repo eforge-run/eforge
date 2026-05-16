@@ -63,28 +63,28 @@ The eforge daemon discovers and loads native extensions from three scopes:
 
 Precedence is `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. Extensions run in the eforge daemon/worker Node process without a sandbox.
 
-Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation and `registerProfileRouter` pre-build dispatch are wired. Policy gates, custom tools, input sources, reviewer perspectives, and validation providers remain captured for provenance with runtime execution deferred.
+Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, and `registerProfileRouter` pre-build dispatch are wired. Policy gates, input sources, reviewer perspectives, and validation providers remain captured for provenance with runtime execution deferred.
 
 ## Registration methods
 
 | Method | Description | Loader-time capture | Runtime execution |
 |--------|-------------|---------------------|-------------------|
 | `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | Yes | Yes |
-| `onAgentRun(handler)` | Append prompt context scoped by role/tier/phase (see note) | Yes | Yes (promptAppend only) |
-| `registerTool(tool)` | Register a custom agent tool for provenance and future injection | Yes | Deferred |
+| `onAgentRun(handler)` | Append prompt context, inject extension tools, and tune tool availability scoped by role/tier/phase | Yes | Yes |
+| `registerTool(tool)` | Register a custom agent tool for loader/list provenance and validation | Yes | Provenance only; inject per run via `onAgentRun` |
 | `beforePlanMerge(handler)` | Policy gate before plan branch is merged | Yes | Deferred |
 | `registerProfileRouter(spec)` | Select agent runtime profile per build (canonical: `selectBuildProfile`) | Yes | Yes (pre-build dispatch) |
 | `registerInputSource(adapter)` | Produce PRD/build-source artifacts | Yes | Deferred |
 | `registerReviewerPerspective(spec)` | Add custom review perspective | Yes | Deferred |
 | `registerValidationProvider(spec)` | Add custom validation step | Yes | Deferred |
 
-All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, `onAgentRun` prompt-context augmentation, and `registerProfileRouter` pre-build dispatch are wired; blocking gates, tool execution, custom input fetching, reviewer perspective execution, and validation provider execution land in subsequent runtime phases.
+All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, `onAgentRun` prompt-context augmentation, per-run extension tool injection, tool availability tuning, and `registerProfileRouter` pre-build dispatch are wired; blocking gates, custom input fetching, reviewer perspective execution, and validation provider execution land in subsequent runtime phases.
 
 `registerProfileRouter` routers run before each queued PRD build. Per-router timeout is controlled by `extensions.profileRouterTimeoutMs`, which defaults to `extensions.eventHookTimeoutMs`. Routers are invoked sequentially in registration order using `selectBuildProfile` (preferred) or the deprecated `resolve` method. A `null`/`undefined` result defers to the next router. Routers that throw or time out emit `queue:profile:*` diagnostics and the next router is consulted (fail-open). An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are invoked. See [`examples/extensions/profile-router.ts`](../../examples/extensions/profile-router.ts) for a three-tier fallback example.
 
 `onEvent` handlers are non-blocking with respect to the engine pipeline. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Use `eforge extension test <name-or-path> --fixture <path>` or `eforge extension test <name-or-path> --run latest` to dry-run matching event hooks and inspect replay counts, matches, emitted diagnostics, and deferred non-event registration families.
 
-`onAgentRun` handlers run before each agent invocation and may return `{ promptAppend: '...' }` to inject role- or phase-scoped context. Each fragment is wrapped in a named provenance section appended to the resolved prompt. Handlers are fail-open: a throw or timeout emits a typed `extension:agent-context:*` diagnostic but does not abort the agent run. Tool fields (`tools`, `allowedTools`, `disallowedTools`) are captured in the type but not applied at runtime in this slice (EXTEND_08B).
+`onAgentRun` handlers run before each agent invocation and may return `{ promptAppend, tools, allowedTools, disallowedTools }` to inject role- or phase-scoped context, expose extension tools for that run, and tune the harness allow/deny lists. Each prompt fragment is wrapped in a named provenance section appended to the resolved prompt. Handlers are fail-open: a throw or timeout emits a typed `extension:agent-context:*` diagnostic but does not abort the agent run. `registerTool` records loader-time provenance; returning `tools` from `onAgentRun` is the per-run injection path.
 
 ## Policy decisions
 
@@ -118,18 +118,21 @@ const myTool = defineExtensionTool({
 });
 
 // `registerTool` captures the tool at load time for provenance and validation.
-// Runtime injection into agent runs is tracked for EXTEND_08B.
 eforge.registerTool(myTool);
 
-// `onAgentRun` can append role-scoped prompt context (runtime-supported):
+// `onAgentRun` injects the tool only for selected runs.
 eforge.onAgentRun(async (ctx) => {
   if (ctx.role !== "builder") return;
-  return { promptAppend: "Prefer existing design-system components for UI changes." };
+  const toolName = ctx.effectiveToolName(myTool.name);
+  return {
+    tools: [myTool],
+    disallowedTools: ["dangerous_shell_escape"],
+    promptAppend: `Use ${toolName} when you need this extension-provided helper.`,
+  };
 });
 
-// Note: returning `tools`, `allowedTools`, or `disallowedTools` from
-// `onAgentRun` emits an `extension:agent-context:unsupported` diagnostic in
-// EXTEND_08A — tool injection via onAgentRun is tracked for EXTEND_08B.
+// `allowedTools` and `disallowedTools` tune per-run harness availability.
+// They are not toolbelt configuration; toolbelts select project MCP servers from `.mcp.json`.
 ```
 
 ## Event patterns
@@ -158,4 +161,4 @@ Local docs: [`docs/extensions.md`](../../docs/extensions.md) and [`docs/extensio
 
 ## Stability
 
-Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, `onEvent` execution/replay testing, `onAgentRun` prompt-context augmentation, and `registerProfileRouter` pre-build dispatch are available. Runtime execution of deferred capability families will build on this stable contract.
+Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, `onEvent` execution/replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, and `registerProfileRouter` pre-build dispatch are available. Runtime execution of deferred capability families will build on this stable contract.

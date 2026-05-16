@@ -1,5 +1,5 @@
 /**
- * Tests for agent-context-runtime.ts (EXTEND_08A).
+ * Tests for agent-context-runtime.ts.
  *
  * Covers:
  *   - Prompt composition with provenance section
@@ -7,7 +7,7 @@
  *   - Role/tier/phase filtering inside handlers
  *   - Fail-open on handler throw
  *   - Fail-open on timeout
- *   - Unsupported-field diagnostic
+ *   - Tool and availability augmentation
  *   - Coexistence with config promptAppend
  *   - No raw prompt text in emitted events
  *   - StubHarness-driven wiring (registry decorator)
@@ -18,8 +18,8 @@ import {
   withAgentContextHooks,
 } from '@eforge-build/engine/extensions';
 import type { AgentRunRegistration, NativeExtensionRegistry } from '@eforge-build/engine/extensions';
-import type { AgentRunOptions } from '@eforge-build/engine/harness';
-import type { AgentRunContext, AgentRunAugmentation } from '@eforge-build/extension-sdk';
+import type { AgentRunOptions, CustomTool } from '@eforge-build/engine/harness';
+import { Type, type AgentRunContext, type AgentRunAugmentation } from '@eforge-build/extension-sdk';
 import { singletonRegistry } from '@eforge-build/engine/agent-runtime-registry';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, filterEvents } from './test-events.js';
@@ -42,8 +42,8 @@ function makeHook(
   };
 }
 
-function makeRegistry(agentRunHooks: AgentRunRegistration[]): Pick<NativeExtensionRegistry, 'agentRunHooks'> {
-  return { agentRunHooks };
+function makeRegistry(agentRunHooks: AgentRunRegistration[]): Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'> {
+  return { agentRunHooks, tools: [] };
 }
 
 const BASE_OPTIONS: AgentRunOptions = {
@@ -102,8 +102,9 @@ describe('executeAgentRunHooks — prompt composition', () => {
   });
 
   it('emits extension:agent-context:applied event when fragment is contributed', async () => {
+    const fragmentText = 'UNIQUE_FRAGMENT_EVENT_SAFETY';
     const result = await executeAgentRunHooks(
-      [makeHook('my-ext', () => ({ promptAppend: 'X' }))],
+      [makeHook('my-ext', () => ({ promptAppend: fragmentText }))],
       BASE_OPTIONS,
       'builder',
       'plan-01',
@@ -117,7 +118,7 @@ describe('executeAgentRunHooks — prompt composition', () => {
     expect(applied[0]!.planId).toBe('plan-01');
     // Must NOT contain the fragment text itself
     const eventStr = JSON.stringify(applied[0]);
-    expect(eventStr).not.toContain('Extra context here.');
+    expect(eventStr).not.toContain(fragmentText);
   });
 });
 
@@ -281,8 +282,12 @@ describe('executeAgentRunHooks — fail-open on handler throw', () => {
     expect(failed[0]!.extensionName).toBe('error-ext');
     expect(failed[0]!.message).toBe('Handler crashed');
 
-    // No applied event should be emitted
+    // No applied event should be emitted, and failed hooks contribute no tools or availability.
     expect(result.diagnostics.some(d => d.type === 'extension:agent-context:applied')).toBe(false);
+    expect(result.diagnostics.some(d => d.type === 'extension:agent-tools:applied')).toBe(false);
+    expect(result.customTools).toBeUndefined();
+    expect(result.allowedTools).toBeUndefined();
+    expect(result.disallowedTools).toBeUndefined();
   });
 
   it('continues with next hook after one throws', async () => {
@@ -347,8 +352,12 @@ describe('executeAgentRunHooks — fail-open on timeout', () => {
     expect(timeouts[0]!.extensionName).toBe('slow-ext');
     expect(timeouts[0]!.timeoutMs).toBe(VERY_SHORT_TIMEOUT_MS);
 
-    // No applied event
+    // No applied event, and timed-out hooks contribute no tools or availability.
     expect(result.diagnostics.some(d => d.type === 'extension:agent-context:applied')).toBe(false);
+    expect(result.diagnostics.some(d => d.type === 'extension:agent-tools:applied')).toBe(false);
+    expect(result.customTools).toBeUndefined();
+    expect(result.allowedTools).toBeUndefined();
+    expect(result.disallowedTools).toBeUndefined();
   }, 3000);
 
   it('timeout event does not include prompt text', async () => {
@@ -369,86 +378,299 @@ describe('executeAgentRunHooks — fail-open on timeout', () => {
 });
 
 // ---------------------------------------------------------------------------
-// executeAgentRunHooks — unsupported-field diagnostic
+// executeAgentRunHooks — tool and availability augmentation
 // ---------------------------------------------------------------------------
 
-describe('executeAgentRunHooks — unsupported tool fields', () => {
-  it('emits unsupported diagnostic when handler returns tools', async () => {
+describe('executeAgentRunHooks — tool and availability augmentation', () => {
+  const makeTool = (name: string, handler: (input: unknown) => string | Promise<string> = () => 'ok') => ({
+    name,
+    description: `${name} tool`,
+    inputSchema: Type.Object({}),
+    handler,
+  });
+
+  it('injects returned extension tools and emits extension:agent-tools:applied', async () => {
     const result = await executeAgentRunHooks(
-      [makeHook('tool-ext', () => ({ tools: [{ name: 'my-tool' }] } as unknown as AgentRunAugmentation))],
+      [makeHook('tool-ext', () => ({ tools: [makeTool('inspect_context')] }))],
+      BASE_OPTIONS,
+      'builder',
+      'plan-01',
+      { ...RUNTIME_OPTIONS, effectiveCustomToolName: name => `mcp__eforge_engine__${name}` },
+    );
+
+    expect(result.customTools?.map(t => t.name)).toEqual(['inspect_context']);
+    const events = result.diagnostics.filter(d => d.type === 'extension:agent-tools:applied');
+    expect(events).toHaveLength(1);
+    expect(events[0]!.toolNames).toEqual(['inspect_context']);
+    expect(events[0]!.effectiveToolNames).toEqual(['mcp__eforge_engine__inspect_context']);
+    expect(events[0]!.toolCount).toBe(1);
+    expect(result.diagnostics.some(d => d.type === 'extension:agent-context:unsupported')).toBe(false);
+  });
+
+  it('keeps existing custom tools first and excludes duplicate extension names', async () => {
+    const existingTool: CustomTool = {
+      name: 'existing_tool',
+      description: 'existing',
+      inputSchema: Type.Object({}),
+      handler: async () => 'existing',
+    };
+    const result = await executeAgentRunHooks(
+      [makeHook('tool-ext', () => ({ tools: [makeTool('existing_tool'), makeTool('fresh_tool'), makeTool('fresh_tool')] }))],
+      { ...BASE_OPTIONS, customTools: [existingTool] },
+      'builder',
+      undefined,
+      RUNTIME_OPTIONS,
+    );
+
+    expect(result.customTools?.map(t => t.name)).toEqual(['existing_tool', 'fresh_tool']);
+    const event = result.diagnostics.find(d => d.type === 'extension:agent-tools:applied');
+    expect(event?.excludedToolNames).toEqual(['existing_tool', 'fresh_tool']);
+  });
+
+  it('excludes duplicate extension tool names across different extensions', async () => {
+    const result = await executeAgentRunHooks(
+      [
+        makeHook('first-ext', () => ({ tools: [makeTool('shared_tool')] })),
+        makeHook('second-ext', () => ({ tools: [makeTool('shared_tool'), makeTool('second_tool')] })),
+      ],
       BASE_OPTIONS,
       'builder',
       undefined,
       RUNTIME_OPTIONS,
     );
 
-    const unsupported = result.diagnostics.filter(d => d.type === 'extension:agent-context:unsupported');
-    expect(unsupported).toHaveLength(1);
-    expect(unsupported[0]!.fields).toContain('tools');
+    expect(result.customTools?.map(t => t.name)).toEqual(['shared_tool', 'second_tool']);
+    const toolEvents = result.diagnostics.filter(d => d.type === 'extension:agent-tools:applied');
+    expect(toolEvents).toHaveLength(2);
+    expect(toolEvents[0]).toMatchObject({
+      extensionName: 'first-ext',
+      toolNames: ['shared_tool'],
+      excludedToolNames: [],
+    });
+    expect(toolEvents[1]).toMatchObject({
+      extensionName: 'second-ext',
+      toolNames: ['second_tool'],
+      excludedToolNames: ['shared_tool'],
+    });
   });
 
-  it('emits unsupported diagnostic when handler returns allowedTools', async () => {
+  it('merges allowlists with harness-effective custom tool names', async () => {
+    const existingTool: CustomTool = {
+      name: 'engine_tool',
+      description: 'engine',
+      inputSchema: Type.Object({}),
+      handler: async () => 'engine',
+    };
     const result = await executeAgentRunHooks(
-      [makeHook('tool-ext', () => ({ allowedTools: ['bash'] } as unknown as AgentRunAugmentation))],
+      [makeHook('tool-ext', () => ({
+        tools: [makeTool('extension_tool')],
+        allowedTools: ['Read'],
+      }))],
+      { ...BASE_OPTIONS, allowedTools: ['Bash'], customTools: [existingTool] },
+      'builder',
+      undefined,
+      { ...RUNTIME_OPTIONS, effectiveCustomToolName: name => `mcp__eforge_engine__${name}` },
+    );
+
+    expect(result.allowedTools).toEqual([
+      'Bash',
+      'Read',
+      'mcp__eforge_engine__engine_tool',
+      'mcp__eforge_engine__extension_tool',
+    ]);
+  });
+
+  it('adds accepted extension tools to an existing allowlist without extension allowlist entries', async () => {
+    const result = await executeAgentRunHooks(
+      [makeHook('tool-ext', () => ({
+        tools: [makeTool('extension_tool')],
+      }))],
+      { ...BASE_OPTIONS, allowedTools: ['Bash'] },
+      'builder',
+      undefined,
+      { ...RUNTIME_OPTIONS, effectiveCustomToolName: name => `mcp__eforge_engine__${name}` },
+    );
+
+    expect(result.allowedTools).toEqual([
+      'Bash',
+      'mcp__eforge_engine__extension_tool',
+    ]);
+  });
+
+  it('emits tool event for availability-only contributions without unsupported diagnostics', async () => {
+    const result = await executeAgentRunHooks(
+      [makeHook('availability-ext', () => ({
+        allowedTools: ['Read'],
+        disallowedTools: ['Write'],
+      }))],
       BASE_OPTIONS,
       'builder',
       undefined,
       RUNTIME_OPTIONS,
     );
 
-    const unsupported = result.diagnostics.filter(d => d.type === 'extension:agent-context:unsupported');
-    expect(unsupported).toHaveLength(1);
-    expect(unsupported[0]!.fields).toContain('allowedTools');
+    expect(result.customTools).toBeUndefined();
+    expect(result.allowedTools).toEqual(['Read']);
+    expect(result.disallowedTools).toEqual(['Write']);
+    const event = result.diagnostics.find(d => d.type === 'extension:agent-tools:applied');
+    expect(event?.toolNames).toEqual([]);
+    expect(event?.allowedToolsAdded).toEqual(['Read']);
+    expect(event?.disallowedToolsAdded).toEqual(['Write']);
+    expect(result.diagnostics.some(d => d.type === 'extension:agent-context:unsupported')).toBe(false);
   });
 
-  it('emits unsupported diagnostic when handler returns disallowedTools', async () => {
+  it('removes denied names from the final allowlist when allow and deny contributions conflict', async () => {
     const result = await executeAgentRunHooks(
-      [makeHook('tool-ext', () => ({ disallowedTools: ['bash'] } as unknown as AgentRunAugmentation))],
+      [makeHook('availability-ext', () => ({
+        allowedTools: ['Read', 'Write'],
+        disallowedTools: ['Write'],
+      }))],
+      { ...BASE_OPTIONS, allowedTools: ['Bash'] },
+      'builder',
+      undefined,
+      RUNTIME_OPTIONS,
+    );
+
+    expect(result.allowedTools).toEqual(['Bash', 'Read']);
+    expect(result.disallowedTools).toEqual(['Write']);
+  });
+
+  it('records tool provenance, effective names, and project MCP metadata in tool events', async () => {
+    let visibleName = '';
+    const registeredTool = makeTool('registered_tool');
+    const result = await executeAgentRunHooks(
+      [makeHook('tool-ext', (ctx) => {
+        visibleName = ctx.effectiveToolName('registered_tool');
+        return {
+          tools: [registeredTool, makeTool('inline_tool')],
+          allowedTools: ['Read'],
+          disallowedTools: ['Write'],
+        };
+      })],
+      {
+        ...BASE_OPTIONS,
+        tier: 'implementation',
+        phase: 'build',
+        stage: 'implement',
+        harness: 'claude-sdk',
+        toolbelt: 'default',
+        projectMcpSelection: 'toolbelt',
+        projectMcpServerNames: ['filesystem', 'github'],
+      },
+      'builder',
+      'plan-01',
+      {
+        ...RUNTIME_OPTIONS,
+        effectiveCustomToolName: name => `mcp__eforge_engine__${name}`,
+        registeredTools: [{
+          kind: 'tool',
+          extensionName: 'tool-ext',
+          extensionPath: '/extensions/tool-ext.js',
+          name: 'registered_tool',
+          value: registeredTool as never,
+        }],
+      },
+    );
+
+    expect(visibleName).toBe('mcp__eforge_engine__registered_tool');
+    const event = result.diagnostics.find(d => d.type === 'extension:agent-tools:applied');
+    expect(event).toMatchObject({
+      extensionName: 'tool-ext',
+      role: 'builder',
+      planId: 'plan-01',
+      tier: 'implementation',
+      phase: 'build',
+      stage: 'implement',
+      profile: 'default',
+      harness: 'claude-sdk',
+      toolbelt: 'default',
+      projectMcpSelection: 'toolbelt',
+      projectMcpServerNames: ['filesystem', 'github'],
+      toolNames: ['registered_tool', 'inline_tool'],
+      effectiveToolNames: ['mcp__eforge_engine__registered_tool', 'mcp__eforge_engine__inline_tool'],
+      registeredToolNames: ['registered_tool'],
+      inlineToolNames: ['inline_tool'],
+      allowedToolsAdded: ['Read'],
+      disallowedToolsAdded: ['Write'],
+      toolCount: 2,
+      allowedToolCount: 1,
+      disallowedToolCount: 1,
+      excludedToolCount: 0,
+    });
+  });
+
+  it('applies deny-wins and excludes disallowed returned tools', async () => {
+    const result = await executeAgentRunHooks(
+      [makeHook('tool-ext', () => ({
+        tools: [makeTool('blocked_tool'), makeTool('allowed_tool')],
+        disallowedTools: ['blocked_tool'],
+      }))],
       BASE_OPTIONS,
       'builder',
       undefined,
       RUNTIME_OPTIONS,
     );
 
-    const unsupported = result.diagnostics.filter(d => d.type === 'extension:agent-context:unsupported');
-    expect(unsupported).toHaveLength(1);
-    expect(unsupported[0]!.fields).toContain('disallowedTools');
+    expect(result.customTools?.map(t => t.name)).toEqual(['allowed_tool']);
+    expect(result.disallowedTools).toEqual(['blocked_tool']);
+    const event = result.diagnostics.find(d => d.type === 'extension:agent-tools:applied');
+    expect(event?.excludedToolNames).toContain('blocked_tool');
   });
 
-  it('emits unsupported diagnostic alongside applied when both promptAppend and tools are returned', async () => {
+  it('applies deny-wins when disallowedTools uses harness-effective names', async () => {
     const result = await executeAgentRunHooks(
-      [makeHook('mixed-ext', () => ({
-        promptAppend: 'Valid context.',
-        tools: [{ name: 'my-tool' }],
-      } as unknown as AgentRunAugmentation))],
+      [makeHook('tool-ext', () => ({
+        tools: [makeTool('blocked_tool'), makeTool('allowed_tool')],
+        disallowedTools: ['mcp__eforge_engine__blocked_tool'],
+      }))],
+      BASE_OPTIONS,
+      'builder',
+      undefined,
+      { ...RUNTIME_OPTIONS, effectiveCustomToolName: name => `mcp__eforge_engine__${name}` },
+    );
+
+    expect(result.customTools?.map(t => t.name)).toEqual(['allowed_tool']);
+    expect(result.disallowedTools).toEqual(['mcp__eforge_engine__blocked_tool']);
+    const event = result.diagnostics.find(d => d.type === 'extension:agent-tools:applied');
+    expect(event).toMatchObject({
+      toolNames: ['allowed_tool'],
+      effectiveToolNames: ['mcp__eforge_engine__allowed_tool'],
+      excludedToolNames: ['blocked_tool'],
+    });
+  });
+
+  it('skips invalid returned tools without throwing', async () => {
+    const result = await executeAgentRunHooks(
+      [makeHook('tool-ext', () => ({ tools: [{ name: 'bad_tool' }] } as unknown as AgentRunAugmentation))],
       BASE_OPTIONS,
       'builder',
       undefined,
       RUNTIME_OPTIONS,
     );
 
-    // Prompt IS augmented (promptAppend is applied)
-    expect(result.finalPrompt).toContain('Valid context.');
-
-    // Both applied and unsupported diagnostics emitted
-    expect(result.diagnostics.some(d => d.type === 'extension:agent-context:applied')).toBe(true);
-    expect(result.diagnostics.some(d => d.type === 'extension:agent-context:unsupported')).toBe(true);
+    expect(result.customTools).toBeUndefined();
+    const event = result.diagnostics.find(d => d.type === 'extension:agent-tools:applied');
+    expect(event?.excludedToolNames).toContain('bad_tool');
   });
 
-  it('does not mutate allowedTools or disallowedTools on options', async () => {
+  it('does not mutate allowedTools, disallowedTools, or customTools on options', async () => {
+    const existingTool = makeTool('engine_tool') as unknown as CustomTool;
     const opts: AgentRunOptions = {
       ...BASE_OPTIONS,
       allowedTools: ['read'],
       disallowedTools: [],
+      customTools: [existingTool],
     };
     const originalAllowed = [...(opts.allowedTools ?? [])];
     const originalDisallowed = [...(opts.disallowedTools ?? [])];
+    const originalCustomTools = [...(opts.customTools ?? [])];
 
     await executeAgentRunHooks(
       [makeHook('tool-ext', () => ({
+        tools: [makeTool('extension_tool')],
         allowedTools: ['bash', 'write'],
         disallowedTools: ['read'],
-      } as unknown as AgentRunAugmentation))],
+      }))],
       opts,
       'builder',
       undefined,
@@ -457,6 +679,7 @@ describe('executeAgentRunHooks — unsupported tool fields', () => {
 
     expect(opts.allowedTools).toEqual(originalAllowed);
     expect(opts.disallowedTools).toEqual(originalDisallowed);
+    expect(opts.customTools).toEqual(originalCustomTools);
   });
 });
 
@@ -497,7 +720,7 @@ describe('withAgentContextHooks — registry decorator', () => {
     const extRegistry = makeRegistry([]);
 
     const decorated = withAgentContextHooks(innerRegistry, {
-      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks'>,
+      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'>,
       profileName: 'default',
       cwd: '/tmp',
       timeoutMs: 1000,
@@ -515,7 +738,7 @@ describe('withAgentContextHooks — registry decorator', () => {
     ]);
 
     const decorated = withAgentContextHooks(innerRegistry, {
-      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks'>,
+      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'>,
       profileName: 'default',
       cwd: '/tmp',
       timeoutMs: 1000,
@@ -533,7 +756,7 @@ describe('withAgentContextHooks — registry decorator', () => {
     ]);
 
     const decorated = withAgentContextHooks(innerRegistry, {
-      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks'>,
+      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'>,
       profileName: 'default',
       cwd: '/tmp',
       timeoutMs: 1000,
@@ -561,7 +784,7 @@ describe('withAgentContextHooks — registry decorator', () => {
     ]);
 
     const decorated = withAgentContextHooks(innerRegistry, {
-      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks'>,
+      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'>,
       profileName: 'default',
       cwd: '/tmp',
       timeoutMs: 1000,
@@ -588,7 +811,7 @@ describe('withAgentContextHooks — registry decorator', () => {
     ]);
 
     const decorated = withAgentContextHooks(innerRegistry, {
-      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks'>,
+      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'>,
       profileName: 'default',
       cwd: '/tmp',
       timeoutMs: 1000,
@@ -618,7 +841,7 @@ describe('withAgentContextHooks — registry decorator', () => {
     ]);
 
     const decorated = withAgentContextHooks(innerRegistry, {
-      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks'>,
+      extensionRegistry: extRegistry as Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'>,
       profileName: 'default',
       cwd: '/tmp',
       timeoutMs: 1000,
@@ -636,9 +859,12 @@ describe('withAgentContextHooks — registry decorator', () => {
     const harness = decorated.forRole('builder');
     await collectEvents(harness.run(originalOpts, 'builder'));
 
-    // allowedTools and disallowedTools on the original options must be unchanged
-    expect(stub.calls[0]!.allowedTools).toEqual(['read']);
-    expect(stub.calls[0]!.disallowedTools).toEqual([]);
+    // Decorator delegates with merged options, but never mutates the original options or arrays.
+    expect(stub.calls[0]).not.toBe(originalOpts);
+    expect(stub.calls[0]!.allowedTools).toEqual(['read', 'bash']);
+    expect(stub.calls[0]!.disallowedTools).toEqual(['write']);
+    expect(originalOpts.allowedTools).toEqual(['read']);
+    expect(originalOpts.disallowedTools).toEqual([]);
   });
 });
 

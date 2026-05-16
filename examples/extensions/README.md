@@ -8,7 +8,8 @@ These examples demonstrate the `@eforge-build/extension-sdk` API. Each example i
 |---------|-------------|----------------|
 | `minimal-event-logger.ts` | `onEvent('plan:build:failed', ...)` | Runtime-supported event dispatch and replay |
 | `slack-webhook-notifier.ts` | `onEvent('plan:error:set', ...)` | Runtime-supported event dispatch and replay; webhook send is skipped unless `EFORGE_SLACK_WEBHOOK_URL` is set |
-| `agent-context.ts` | `onAgentRun(...)` | Runtime-supported for `promptAppend`; `tools`/`allowedTools`/`disallowedTools` return fields are unsupported and emit diagnostics |
+| `agent-context.ts` | `onAgentRun(...)` | Runtime-supported prompt-context augmentation |
+| `agent-tools.ts` | `defineExtensionTool(...)`, `registerTool(...)`, `onAgentRun(...)` | Runtime-supported per-run extension tool injection and availability tuning |
 | `profile-router.ts` | `registerProfileRouter(...)` | Runtime-supported pre-build dispatch; explicit `profile:` frontmatter wins; routers fail open |
 | `protected-paths.ts` | `beforePlanMerge(...)` | Loader-captured for provenance/validation; policy-gate enforcement is deferred |
 
@@ -32,7 +33,13 @@ Appends role- and tier-scoped context to agent prompts at runtime using the `onA
 
 The returned fragment is appended after any config-level `promptAppend`, wrapped in a named provenance section (`## Native extension context / ### <extension-name>`). Handlers are fail-open: a throw or timeout emits a typed `extension:agent-context:*` diagnostic but does not abort the agent run.
 
-> **Runtime note:** `promptAppend` is runtime-supported. Returning `tools`, `allowedTools`, or `disallowedTools` emits an `extension:agent-context:unsupported` diagnostic; tool injection is tracked for EXTEND_08B.
+> **Runtime note:** `promptAppend` is runtime-supported. Use `agent-tools.ts` for the supported custom-tool injection pattern.
+
+### `agent-tools.ts`
+
+Defines a TypeBox-backed tool with `defineExtensionTool`, registers it with `eforge.registerTool(...)` for loader-time provenance, and returns it from `eforge.onAgentRun(...)` only for builder runs. The prompt text uses `ctx.effectiveToolName(...)` so the agent sees the harness-visible tool name.
+
+The example also includes a conservative `disallowedTools` entry to show that `allowedTools` and `disallowedTools` are per-run harness availability tuning, not toolbelt configuration. Toolbelts continue to select only project MCP servers declared in `.mcp.json`.
 
 ### `profile-router.ts`
 

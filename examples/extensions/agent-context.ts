@@ -6,11 +6,9 @@
  * is appended AFTER the resolved `promptAppend` from the eforge config, in
  * a named provenance section.
  *
- * Supported fields in this slice:
- *   - `promptAppend` — appended to the agent's final prompt with provenance
- *
- * Unsupported tool fields (returning them emits an unsupported diagnostic; tracked for EXTEND_08B):
- *   - `tools`, `allowedTools`, `disallowedTools`
+ * This example focuses on prompt context. See `agent-tools.ts` for the
+ * supported pattern for per-run extension tool injection and availability
+ * tuning with `tools`, `allowedTools`, and `disallowedTools`.
  */
 
 import type { EforgeExtensionFactory } from '@eforge-build/extension-sdk';

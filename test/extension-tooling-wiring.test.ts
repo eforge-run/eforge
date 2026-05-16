@@ -128,23 +128,28 @@ describe('extension runtime documentation', () => {
   const minimalEventLogger = readRepoFile('examples/extensions/minimal-event-logger.ts');
   const slackWebhookNotifier = readRepoFile('examples/extensions/slack-webhook-notifier.ts');
   const protectedPaths = readRepoFile('examples/extensions/protected-paths.ts');
+  const agentToolsExample = readRepoFile('examples/extensions/agent-tools.ts');
 
   it('marks onEvent and onAgentRun runtime execution as supported while other families remain deferred', () => {
     expect(docsExtensions).toContain('| `onEvent` - typed event subscriptions | Yes | Yes | Yes |');
     expect(docsExtensionsApi).toContain('| `onEvent` | Yes | Yes | Yes |');
     expect(sdkReadme).toContain('| `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | Yes | Yes |');
 
-    // onAgentRun is now partially supported (promptAppend only)
+    // onAgentRun now supports prompt and per-run tool augmentation.
     for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
       const onAgentRunRow = source.split('\n').find((line) => line.startsWith('| `onAgentRun'));
       expect(onAgentRunRow, 'onAgentRun row').toBeDefined();
       expect(onAgentRunRow).not.toContain('Deferred');
       expect(onAgentRunRow).toContain('Yes');
+
+      const registerToolRow = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerTool'));
+      expect(registerToolRow, 'registerTool row').toBeDefined();
+      expect(registerToolRow).not.toContain('Deferred');
+      expect(registerToolRow).toContain('Provenance');
     }
 
     for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
       for (const capability of [
-        'registerTool',
         'beforePlanMerge',
         'registerInputSource',
         'registerReviewerPerspective',
@@ -209,6 +214,7 @@ describe('extension runtime documentation', () => {
       'minimal-event-logger.ts',
       'slack-webhook-notifier.ts',
       'agent-context.ts',
+      'agent-tools.ts',
       'profile-router.ts',
       'protected-paths.ts',
     ]) {
@@ -217,7 +223,8 @@ describe('extension runtime documentation', () => {
 
     for (const expected of [
       'Runtime-supported event dispatch and replay',
-      'Runtime-supported for `promptAppend`',
+      'Runtime-supported prompt-context augmentation',
+      'Runtime-supported per-run extension tool injection and availability tuning',
       'Runtime-supported pre-build dispatch',
       'policy-gate enforcement is deferred',
       'pnpm test -- test/extension-sdk-example.test.ts',
@@ -227,6 +234,11 @@ describe('extension runtime documentation', () => {
     ]) {
       expect(examplesReadme).toContain(expected);
     }
+
+    expect(agentToolsExample).toContain('defineExtensionTool');
+    expect(agentToolsExample).toContain('registerTool');
+    expect(agentToolsExample).toContain('onAgentRun');
+    expect(agentToolsExample).toContain('effectiveToolName');
 
     for (const source of [docsExtensions, webExtensions, sdkReadme]) {
       expect(source).toContain('event-logger');

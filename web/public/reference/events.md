@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: e7d1da4d -->
+<!-- Commit: aefeaa45 -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -13,7 +13,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 164
+Total variants: 165
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -31,6 +31,7 @@ Total variants: 164
 | `extension:agent-context:failed` | `extensionName`, `extensionPath`, `harness`, `message`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stack`, `stage`, `tier`, `toolbelt` |
 | `extension:agent-context:timeout` | `extensionName`, `extensionPath`, `harness`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stage`, `tier`, `timeoutMs`, `toolbelt` |
 | `extension:agent-context:unsupported` | `extensionName`, `extensionPath`, `fields`, `harness`, `phase`, `planId`, `profile`, `projectMcpSelection`, `role`, `stage`, `tier`, `toolbelt` |
+| `extension:agent-tools:applied` | `allowedToolCount`, `allowedToolsAdded`, `disallowedToolCount`, `disallowedToolsAdded`, `effectiveToolNames`, `excludedToolCount`, `excludedToolNames`, `extensionName`, `extensionPath`, `harness`, `inlineToolNames`, `phase`, `planId`, `profile`, `projectMcpSelection`, `projectMcpServerNames`, `registeredToolNames`, `role`, `stage`, `tier`, `toolCount`, `toolNames`, `toolbelt` |
 | `queue:profile:selected` | `baseProfile`, `confidence`, `extensionName`, `extensionPath`, `prdId`, `prdTitle`, `profile`, `reason`, `routerName` |
 | `queue:profile:router-failed` | `extensionName`, `extensionPath`, `message`, `prdId`, `routerName`, `stack` |
 | `queue:profile:router-timeout` | `extensionName`, `extensionPath`, `prdId`, `routerName`, `timeoutMs` |

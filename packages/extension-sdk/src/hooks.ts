@@ -68,10 +68,11 @@ export type PolicyGateHandler = (ctx: PolicyGateContext) => PolicyDecision | Pro
  * All fields are optional. Unspecified fields leave the default agent run
  * configuration unchanged.
  *
- * **Runtime support (EXTEND_08A):** only `promptAppend` is applied at runtime.
- * Returning `tools`, `allowedTools`, or `disallowedTools` emits an
- * `extension:agent-context:unsupported` diagnostic event and those fields are
- * otherwise ignored. Tool injection is tracked for EXTEND_08B.
+ * Runtime applies `promptAppend`, per-run `tools`, and additive
+ * `allowedTools`/`disallowedTools` availability tuning. Returned tools are
+ * injected only for the run whose hook returned them; loader-time
+ * `registerTool()` entries are provenance and validation metadata, not
+ * automatic injection.
  */
 export interface AgentRunAugmentation {
   /**
@@ -86,28 +87,26 @@ export interface AgentRunAugmentation {
   /**
    * Additional `ExtensionTool` instances made available to the agent for this run.
    *
-   * @deprecated Tool injection via `onAgentRun` is not yet applied at runtime
-   * (EXTEND_08A). Returning this field emits an
-   * `extension:agent-context:unsupported` diagnostic; the field is otherwise
-   * ignored. Tool injection is tracked for EXTEND_08B.
+   * Existing engine custom tools keep precedence. Extension tools are appended
+   * only when their bare name does not duplicate an existing custom tool or an
+   * earlier accepted extension tool. A returned tool is skipped when it is
+   * denied by the final denylist.
    */
   tools?: ExtensionTool<TObject>[];
   /**
-   * Tool names explicitly allowed for this agent run (overrides agent defaults).
+   * Tool names explicitly allowed for this agent run.
    *
-   * @deprecated Tool allow/deny list modification via `onAgentRun` is not yet
-   * applied at runtime (EXTEND_08A). Returning this field emits an
-   * `extension:agent-context:unsupported` diagnostic; the field is otherwise
-   * ignored. This capability is tracked for EXTEND_08B.
+   * Values are merged additively with the run's base allowlist. When an
+   * allowlist is active, the runtime also preserves harness-effective names for
+   * engine custom tools and accepted extension tools.
    */
   allowedTools?: string[];
   /**
    * Tool names explicitly disallowed for this agent run.
    *
-   * @deprecated Tool allow/deny list modification via `onAgentRun` is not yet
-   * applied at runtime (EXTEND_08A). Returning this field emits an
-   * `extension:agent-context:unsupported` diagnostic; the field is otherwise
-   * ignored. This capability is tracked for EXTEND_08B.
+   * Values are merged additively with the run's base denylist. Deny wins: a
+   * returned extension tool whose bare or harness-effective name is denied is
+   * not injected into the run.
    */
   disallowedTools?: string[];
 }

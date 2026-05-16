@@ -13,6 +13,10 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as sdk from '@eforge-build/extension-sdk';
 
+// --- eforge:region plan-02-docs-examples ---
+import agentTools from '../examples/extensions/agent-tools.js';
+// --- eforge:endregion plan-02-docs-examples ---
+
 // Import example default exports so TypeScript verifies they conform to the
 // SDK factory contract. The `void` references below exist solely to keep the
 // imports from being elided by tree-shakers while keeping eslint/no-unused happy.
@@ -29,6 +33,9 @@ import slackWebhookNotifier from '../examples/extensions/slack-webhook-notifier.
 const EXTENSION_EXAMPLE_DIR = resolve(fileURLToPath(new URL('../examples/extensions', import.meta.url)));
 const importedExampleFiles = [
   'agent-context.ts',
+  // --- eforge:region plan-02-docs-examples ---
+  'agent-tools.ts',
+  // --- eforge:endregion plan-02-docs-examples ---
   'minimal-event-logger.ts',
   'profile-router.ts',
   'protected-paths.ts',
@@ -37,6 +44,10 @@ const importedExampleFiles = [
 
 const _factoryCheck1: sdk.EforgeExtensionFactory = minimalEventLogger;
 const _factoryCheck2: sdk.EforgeExtensionFactory = protectedPaths;
+// --- eforge:region plan-02-docs-examples ---
+const _factoryCheck7: sdk.EforgeExtensionFactory = agentTools;
+void _factoryCheck7;
+// --- eforge:endregion plan-02-docs-examples ---
 // --- eforge:region plan-02-runtime-and-integration ---
 const _factoryCheck4: sdk.EforgeExtensionFactory = profileRouter;
 void _factoryCheck4;
@@ -138,6 +149,40 @@ describe('extension examples', () => {
       .filter((file) => file.endsWith('.ts'))
       .sort();
     expect(importedExampleFiles).toEqual(exampleFiles);
+  });
+
+  it('agent tools example registers provenance and injects the tool only for builder runs with the effective name in prompt text', async () => {
+    let registeredTool: sdk.ExtensionTool | undefined;
+    let agentRunHandler: sdk.AgentRunHandler | undefined;
+    const api = {
+      registerTool(tool: sdk.ExtensionTool) {
+        registeredTool = tool;
+      },
+      onAgentRun(handler: sdk.AgentRunHandler) {
+        agentRunHandler = handler;
+      },
+    } as unknown as sdk.EforgeExtensionAPI;
+
+    agentTools(api);
+
+    expect(registeredTool?.name).toBe('project_convention_lookup');
+    expect(agentRunHandler).toBeDefined();
+
+    const baseCtx = {
+      tier: 'implementation',
+      profile: 'default',
+      effectiveToolName: (name: string) => `mcp__eforge_engine__${name}`,
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      exec: { run: async () => ({ stdout: '', stderr: '', exitCode: 0 }) },
+    } as Omit<sdk.AgentRunContext, 'role'>;
+
+    const reviewerAugmentation = await agentRunHandler!({ ...baseCtx, role: 'reviewer' });
+    expect(reviewerAugmentation).toBeUndefined();
+
+    const builderAugmentation = await agentRunHandler!({ ...baseCtx, role: 'builder' });
+    expect(builderAugmentation?.tools).toEqual([registeredTool]);
+    expect(builderAugmentation?.disallowedTools).toEqual(['dangerous_shell_escape']);
+    expect(builderAugmentation?.promptAppend).toContain('mcp__eforge_engine__project_convention_lookup');
   });
 
   it('slack webhook notifier skips without credentials and does not call fetch', async () => {

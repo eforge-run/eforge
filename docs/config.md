@@ -109,7 +109,7 @@ Each command in `postMergeCommands` and the planner-generated validate commands 
 
 ## Native extensions
 
-The top-level `extensions` block controls native eforge TypeScript/JavaScript extension discovery, loader-time registration capture, and native hook timeout behavior. See [extensions.md](extensions.md) for discovery, trust, diagnostics, and runtime limitations.
+The top-level `extensions` block controls native eforge TypeScript/JavaScript extension discovery, loader-time registration capture, native hook timeout behavior, and runtime agent-run augmentation. See [extensions.md](extensions.md) for discovery, trust, diagnostics, and runtime support.
 
 ```yaml
 extensions:
@@ -141,7 +141,7 @@ Auto-discovery scans `~/.config/eforge/extensions/`, `eforge/extensions/`, and `
 
 Project/team extensions are committed code and are skipped unless `extensions.trustProjectExtensions: true` is set from a trusted layer (user config or project-local config). Extensions execute in the eforge daemon/worker Node process without a sandbox.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, pre-build `registerProfileRouter` dispatch, and management commands (`eforge extension list/show/validate/test/new/reload`). Blocking policy enforcement, tool injection/execution, input-source execution, reviewer perspective execution, and validation-provider execution are deferred runtime phases.
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, and management commands (`eforge extension list/show/validate/test/new/reload`). `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are deferred runtime phases.
 
 ## Tiers
 
@@ -490,7 +490,7 @@ The registry resolves each tier's effective project MCP server set when the daem
 | `toolbelt: none` | No project MCP servers |
 | `toolbelt: <name>` | Only the servers listed in `tools.toolbelts.<name>.mcpServers` |
 
-Filtering applies **only to project MCP servers from `.mcp.json`**. Engine-internal tools (such as `eforge_engine` custom tools), Claude built-ins, Pi built-ins, and extension-contributed tools are never filtered regardless of the toolbelt setting.
+Filtering applies **only to project MCP servers from `.mcp.json`**. Engine-internal custom tools (such as `eforge_engine` tools), Claude built-ins, Pi built-ins, and extension-contributed tools are never filtered regardless of the toolbelt setting. Extensions use TypeScript (`defineExtensionTool`, `registerTool`, and per-run `onAgentRun({ tools: [...] })`) to contribute tools; toolbelts do not select or configure those tools.
 
 If a named toolbelt cannot be resolved against the loaded `tools.toolbelts` map at registry construction time, the daemon throws a path-specific error (`agents.tiers.<tierName>.toolbelt references "<name>"`) rather than silently falling back to all servers.
 
@@ -509,11 +509,11 @@ These fields use MCP server names (e.g. `playwright`, `sourcegraph`) as they app
 
 The harness debug payload also separates server categories: `projectMcpServerNames` (filtered project servers) and `internalMcpServerNames` (engine-internal servers such as `eforge_engine`). The old single `mcpServerNames` field that conflated the two is removed.
 
-Toolbelts apply only to project MCP servers from `.mcp.json`. They do not filter Pi extensions, Claude Code plugins, engine-internal custom tools (such as `eforge_engine`), harness built-ins, or extension-contributed tools.
+Toolbelts apply only to project MCP servers from `.mcp.json`. They do not filter Pi extensions, Claude Code plugins, engine-internal custom tools (such as `eforge_engine`), harness built-ins, or extension-contributed tools. Per-run `allowedTools` and `disallowedTools` values tune harness availability for that run; they are not toolbelt configuration.
 
 Pi extensions and Claude Code plugins are out of scope for the profile-toolbelts MVP - toolbelts are MCP-only and declarative.
 
-Toolbelts and TypeScript extensions are complementary. Toolbelts answer "Which project MCP servers should this tier expose?" Extensions answer "What should eforge do when something happens?" Extensions may inspect toolbelt and profile metadata when making routing decisions, but extensions should not redefine toolbelts or act as a hidden profile/config layer.
+Toolbelts and TypeScript extensions are complementary. Toolbelts answer "Which project MCP servers from `.mcp.json` should this tier expose?" Extensions answer "What should eforge do when something happens?" and may contribute TypeScript-defined tools per agent run. Extensions may inspect toolbelt and profile metadata when making routing decisions, but extensions should not redefine toolbelts or act as a hidden profile/config layer.
 
 ## Plugins
 

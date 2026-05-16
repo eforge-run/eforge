@@ -70,7 +70,8 @@ export interface EforgeExtensionAPI {
    *
    * The handler receives an `AgentRunContext` describing the role, tier,
    * profile, phase, and stage of the run, and may return an
-   * `AgentRunAugmentation` to contribute additional prompt context.
+   * `AgentRunAugmentation` to contribute prompt context, per-run tools, and
+   * additive tool allow/deny tuning.
    *
    * Prompt fragments returned via `promptAppend` are appended after any
    * config-level `promptAppend` already resolved by the engine, wrapped in a
@@ -88,14 +89,12 @@ export interface EforgeExtensionAPI {
    * `extensions.agentContextHookTimeoutMs`; defaults to
    * `extensions.eventHookTimeoutMs`). A handler that throws or times out emits
    * a typed diagnostic event (`extension:agent-context:failed` or
-   * `extension:agent-context:timeout`) and does not prevent the agent run from
-   * proceeding with the unmodified prompt.
+   * `extension:agent-context:timeout`); that handler's prompt/tool changes are
+   * skipped and the agent run continues.
    *
-   * @remarks Runtime-supported for `promptAppend` (EXTEND_08A). Tool fields
-   * (`tools`, `allowedTools`, `disallowedTools`) are not applied at runtime in
-   * this slice — returning them emits an `extension:agent-context:unsupported`
-   * diagnostic and those fields are otherwise ignored. Tool injection is tracked
-   * for EXTEND_08B.
+   * @remarks Runtime-supported. Tools are injected only when returned from a
+   * successful handler for the current run. Use `ctx.effectiveToolName(name)`
+   * when prompt text should mention the harness-visible tool name.
    *
    * @example
    * ```ts
@@ -208,7 +207,9 @@ export interface EforgeExtensionAPI {
   /**
    * Register a custom agent tool contributed by this extension.
    *
-   * @remarks Runtime capture only in this slice; agent injection is not yet wired.
+   * @remarks Loader-time provenance and validation metadata. Registration does
+   * not inject the tool into every run; return the tool from `onAgentRun()` for
+   * the specific runs that should receive it.
    */
   registerTool(tool: ExtensionTool): void;
   // --- eforge:endregion plan-01-extension-runtime-foundation ---
