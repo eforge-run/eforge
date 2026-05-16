@@ -1,0 +1,106 @@
+name: extend-08b-extension-contributed-agent-tools-and-tool-availability
+description: Implement EXTEND_08B extension-contributed agent tools, per-run
+  tool availability tuning, observability events, tests, and documentation
+  updates.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-runtime-wire-contract
+    name: Runtime and Wire Contract for Extension Agent Tools
+    depends_on: []
+    branch: extend-08b-extension-contributed-agent-tools-and-tool-availability/plan-01-runtime-wire-contract
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: This plan changes the extension runtime seam, wire event schemas, SDK
+          contract comments, and merge semantics for tool availability. The
+          harness implementations already expose customTools, but the merge
+          policy and observability require careful coordination.
+      reviewer:
+        effort: high
+        rationale: Review must verify source-boundary preservation, fail-open semantics,
+          and wire-schema compatibility for a cross-package runtime feature.
+      tester:
+        effort: high
+        rationale: Tests must cover prompt behavior regressions, tool injection,
+          duplicate handling, allow/deny merging, and event schema validation.
+  - id: plan-02-docs-examples
+    name: Documentation and Examples for Extension Agent Tools
+    depends_on:
+      - plan-01-runtime-wire-contract
+    branch: extend-08b-extension-contributed-agent-tools-and-tool-availability/plan-02-docs-examples
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - docs
+        - api
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: medium
+        rationale: This plan is documentation- and example-heavy after the runtime
+          contract is available; it requires consistency across public docs but
+          no novel engine design.
+      reviewer:
+        effort: medium
+        rationale: Review should focus on public API accuracy, absence of stale
+          EXTEND_08B deferred language, and example/test parity.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - docs
+      - test
+      - verify
+      - security
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a focused but cross-cutting feature touching extension
+    runtime behavior, event schemas, SDK docs/examples, and tests, so excursion
+    is appropriate rather than expedition. The compile pipeline uses planner
+    plus plan-review-cycle to catch scope and merge-policy issues before build.
+    The build pipeline runs documentation authoring alongside implementation,
+    then writes tests, syncs docs against the implementation, performs iterative
+    review, and runs test-cycle for regression validation. Parallel review
+    perspectives cover code quality, public API contracts, docs, tests, behavior
+    verification, and tool-availability safety concerns without requiring
+    expedition-level module planning.
