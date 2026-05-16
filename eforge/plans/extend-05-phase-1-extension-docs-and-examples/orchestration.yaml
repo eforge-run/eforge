@@ -1,0 +1,66 @@
+name: extend-05-phase-1-extension-docs-and-examples
+description: EXTEND_05 phase-1 native extension documentation, examples,
+  generated docs, and validation alignment
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- test/extension-sdk-example.test.ts
+    test/extension-tooling-wiring.test.ts test/docs-link-check.test.ts
+    test/reference-content.test.ts
+  - pnpm docs:check
+plans:
+  - id: plan-01-extension-docs-examples-sync
+    name: Synchronize Extension Docs, Examples, and Validation
+    depends_on: []
+    branch: extend-05-phase-1-extension-docs-and-examples/plan-01-extension-docs-examples-sync
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - api
+        - docs
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - - doc-sync
+      - test-write
+    - test-cycle
+    - review-cycle
+    - validate
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - docs
+      - api
+      - test
+      - security
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: Excursion fits because this is a cohesive
+    docs/examples/generated-artifacts alignment task that a single planner can
+    enumerate without delegated module planning. The compile pipeline adds a
+    plan review gate because accuracy around shipped versus deferred extension
+    APIs is important. The build pipeline runs documentation authoring alongside
+    implementation, then syncs existing docs and writes/updates validation
+    coverage, followed by tests, multi-perspective review, and final validation
+    for docs drift and targeted test commands. Review uses parallel
+    docs/api/test/security/verify perspectives to catch overpromised APIs, stale
+    generated docs, unsafe notifier examples, and missing validation without
+    expedition overhead.
