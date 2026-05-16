@@ -37,7 +37,15 @@ export interface HeartbeatPayload {
   uptime: number;
   queueDepth: number;
   runningBuilds: number;
-  autoBuild: { enabled: boolean; paused: boolean };
+  autoBuild: {
+    enabled: boolean;
+    paused: boolean;
+    desired?: AutoBuildState['desired'];
+    mode?: AutoBuildState['mode'];
+    scheduler?: AutoBuildState['scheduler'];
+    lastTransition?: AutoBuildState['lastTransition'];
+    reason?: string;
+  };
   subscribers: number;
 }
 

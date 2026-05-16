@@ -32,7 +32,28 @@ function makeQueue(overrides: Partial<QueueItem> = {}): QueueItem {
 }
 
 function makeAutoBuild(): AutoBuildState {
-  return { enabled: true, watcher: { running: true, pid: 9, sessionId: null } };
+  return {
+    enabled: true,
+    watcher: { running: true, pid: 9, sessionId: 'watcher-session-1' },
+    desired: 'enabled',
+    mode: 'running',
+    scheduler: {
+      alive: true,
+      paused: false,
+      lastMutationReason: 'enqueue',
+      runningCount: 1,
+      limit: 3,
+    } as AutoBuildState['scheduler'] & { runningCount: number; limit: number },
+    lastTransition: {
+      at: '2024-01-15T08:59:00.000Z',
+      previousMode: 'starting',
+      nextMode: 'running',
+      desired: 'enabled',
+      reason: 'watcher ready',
+      source: 'startup',
+    },
+    reason: 'watcher ready',
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -107,7 +128,28 @@ function makeDaemonSnapshot() {
       uptime: 60000,
       queueDepth: 0,
       runningBuilds: 0,
-      autoBuild: { enabled: true, paused: false },
+      autoBuild: {
+        enabled: true,
+        paused: false,
+        desired: 'enabled',
+        mode: 'running',
+        scheduler: {
+          alive: true,
+          paused: false,
+          lastMutationReason: 'enqueue',
+          runningCount: 1,
+          limit: 3,
+        } as AutoBuildState['scheduler'] & { runningCount: number; limit: number },
+        lastTransition: {
+          at: '2024-01-15T08:59:00.000Z',
+          previousMode: 'starting',
+          nextMode: 'running',
+          desired: 'enabled',
+          reason: 'watcher ready',
+          source: 'startup',
+        },
+        reason: 'watcher ready',
+      },
       subscribers: 1,
     },
     recentActivity: [] as Array<{ id: number; event: object }>,
@@ -137,10 +179,11 @@ afterEach(() => {
 describe('useDaemonEvents', () => {
   it('seeds state from snapshot frame on mount', async () => {
     const { result } = renderHook(() => useDaemonEvents());
+    const snapshot = makeDaemonSnapshot();
 
     // Push a snapshot frame to trigger BATCH_SEED
     act(() => {
-      pushFrame({ kind: 'snapshot', snapshot: makeDaemonSnapshot() });
+      pushFrame({ kind: 'snapshot', snapshot });
     });
 
     await waitFor(() => {
@@ -154,7 +197,11 @@ describe('useDaemonEvents', () => {
     expect(result.current.daemonState.sessionMetadata).toEqual({
       'session-1': { planCount: 2, baseProfile: 'errand' },
     });
+    expect(result.current.daemonState.autoBuild).toEqual(snapshot.autoBuild);
     expect(result.current.daemonState.autoBuild?.enabled).toBe(true);
+    expect(result.current.daemonState.autoBuild?.mode).toBe('running');
+    expect(result.current.daemonState.autoBuild?.scheduler?.lastMutationReason).toBe('enqueue');
+    expect(result.current.daemonState.autoBuild?.lastTransition?.reason).toBe('watcher ready');
   });
 
   it('populates latestHeartbeat from snapshot liveness field', async () => {
@@ -168,6 +215,12 @@ describe('useDaemonEvents', () => {
 
     expect(result.current.daemonState.latestHeartbeat).not.toBeNull();
     expect(result.current.daemonState.latestHeartbeat!.payload.uptime).toBe(60000);
+    expect(result.current.daemonState.latestHeartbeat!.payload.autoBuild.mode).toBe('running');
+    expect(result.current.daemonState.latestHeartbeat!.payload.autoBuild.scheduler).toMatchObject({
+      lastMutationReason: 'enqueue',
+      runningCount: 1,
+      limit: 3,
+    });
   });
 
   it('processes SSE event frames via the reducer', async () => {
@@ -228,6 +281,18 @@ describe('useDaemonEvents', () => {
     const newState: AutoBuildState = {
       enabled: false,
       watcher: { running: false, pid: null, sessionId: null },
+      desired: 'disabled',
+      mode: 'disabled',
+      scheduler: { alive: false, paused: false, lastMutationReason: 'manual toggle' },
+      lastTransition: {
+        at: '2024-01-15T10:05:00.000Z',
+        previousMode: 'running',
+        nextMode: 'disabled',
+        desired: 'disabled',
+        reason: 'manual toggle',
+        source: 'http',
+      },
+      reason: 'manual toggle',
     };
 
     act(() => {
@@ -235,6 +300,8 @@ describe('useDaemonEvents', () => {
     });
 
     expect(result.current.daemonState.autoBuild?.enabled).toBe(false);
+    expect(result.current.daemonState.autoBuild?.mode).toBe('disabled');
+    expect(result.current.daemonState.autoBuild?.scheduler?.lastMutationReason).toBe('manual toggle');
   });
 
   it('daemon:auto-build:paused event frame disables autoBuild', async () => {

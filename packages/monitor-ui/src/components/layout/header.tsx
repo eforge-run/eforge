@@ -39,8 +39,18 @@ function getProjectLabel(projectContext: ProjectContext | null | undefined): str
   return null;
 }
 
+function getAutoBuildToggleCopy(autoBuildState: AutoBuildState): { label: string; title: string } {
+  const mode = autoBuildState.mode ?? 'unknown';
+  const desired = autoBuildState.desired ?? 'not reported';
+  return {
+    label: autoBuildState.mode ? `Auto-build: ${mode}` : 'Auto-build',
+    title: `Desired: ${desired}; runtime mode: ${mode}`,
+  };
+}
+
 export function Header({ autoBuildState, autoBuildToggling, onToggleAutoBuild, projectContext, sidebarCollapsed, onToggleSidebar, daemonState }: HeaderProps) {
   const projectLabel = getProjectLabel(projectContext);
+  const autoBuildToggleCopy = autoBuildState ? getAutoBuildToggleCopy(autoBuildState) : null;
 
   return (
     <header className="col-span-full bg-card border-b border-border px-6 py-3.5 flex items-center gap-3 shadow-sm shadow-black/30">
@@ -55,9 +65,12 @@ export function Header({ autoBuildState, autoBuildToggling, onToggleAutoBuild, p
       )}
       <div className="ml-auto text-xs flex items-center gap-2">
         <DaemonStatusPill daemonState={daemonState} />
-        {autoBuildState !== null && (
-          <label className={cn('flex items-center gap-1.5 text-text-dim', autoBuildToggling ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}>
-            <span>Auto-build</span>
+        {autoBuildState !== null && autoBuildToggleCopy !== null && (
+          <label
+            className={cn('flex items-center gap-1.5 text-text-dim', autoBuildToggling ? 'cursor-not-allowed opacity-50' : 'cursor-pointer')}
+            title={autoBuildToggleCopy.title}
+          >
+            <span>{autoBuildToggleCopy.label}</span>
             <Switch
               checked={autoBuildState.enabled}
               onCheckedChange={onToggleAutoBuild}

@@ -58,6 +58,10 @@ export function DaemonStatusPill({ daemonState }: DaemonStatusPillProps) {
   const label = daemonState.latestHeartbeat
     ? `alive ${formatRelativeTime(now - daemonState.latestHeartbeat.at)}`
     : 'daemon offline';
+  const runtimeMode = daemonState.autoBuild?.mode;
+  const title = runtimeMode
+    ? `Open daemon activity drawer (auto-build mode: ${runtimeMode})`
+    : 'Open daemon activity drawer';
 
   return (
     <>
@@ -68,7 +72,7 @@ export function DaemonStatusPill({ daemonState }: DaemonStatusPillProps) {
           'flex items-center gap-1.5 px-2 h-7 rounded text-xs text-text-dim',
           'hover:bg-accent hover:text-accent-foreground transition-colors cursor-pointer',
         )}
-        title="Open daemon activity drawer"
+        title={title}
       >
         <span className={cn('w-2 h-2 rounded-full flex-shrink-0', dotColorClass)} />
         <span>{label}</span>
@@ -77,6 +81,7 @@ export function DaemonStatusPill({ daemonState }: DaemonStatusPillProps) {
       <DaemonDrawer
         open={drawerOpen}
         onClose={() => setDrawerOpen(false)}
+        autoBuild={daemonState.autoBuild}
         latestHeartbeat={daemonState.latestHeartbeat}
         activity={activity}
         now={now}

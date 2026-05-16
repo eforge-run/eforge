@@ -5,12 +5,9 @@
  * through `useSWR(...)` with the shared fetcher from `lib/swr-fetcher.ts`.
  */
 import { API_ROUTES, buildPath } from '@eforge-build/client/browser';
-import type { ApplyRecoveryResponse } from '@eforge-build/client/browser';
+import type { ApplyRecoveryResponse, AutoBuildState } from '@eforge-build/client/browser';
 
-export interface AutoBuildState {
-  enabled: boolean;
-  watcher: { running: boolean; pid: number | null; sessionId: string | null };
-}
+export type { AutoBuildState } from '@eforge-build/client/browser';
 
 export async function setAutoBuild(enabled: boolean): Promise<AutoBuildState | null> {
   try {

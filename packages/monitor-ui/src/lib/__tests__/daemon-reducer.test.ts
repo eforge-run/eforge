@@ -54,7 +54,19 @@ function makeQueueItem(overrides: Partial<QueueItem> = {}): QueueItem {
 function makeAutoBuildState(enabled = true): AutoBuildState {
   return {
     enabled,
-    watcher: { running: true, pid: 1234, sessionId: null },
+    watcher: { running: true, pid: 1234, sessionId: 'watcher-session-1' },
+    desired: enabled ? 'enabled' : 'disabled',
+    mode: enabled ? 'running' : 'disabled',
+    scheduler: { alive: enabled, paused: false, lastMutationReason: 'enqueue' },
+    lastTransition: {
+      at: '2024-01-15T09:59:00.000Z',
+      previousMode: enabled ? 'starting' : 'running',
+      nextMode: enabled ? 'running' : 'disabled',
+      desired: enabled ? 'enabled' : 'disabled',
+      reason: enabled ? 'startup complete' : 'manual disable',
+      source: 'test',
+    },
+    reason: enabled ? 'startup complete' : 'manual disable',
   };
 }
 
@@ -81,6 +93,9 @@ describe('daemonReducer', () => {
       expect(state.queue).toEqual(queue);
       expect(state.sessionMetadata).toEqual(sessionMetadata);
       expect(state.autoBuild).toEqual(autoBuild);
+      expect(state.autoBuild?.mode).toBe('running');
+      expect(state.autoBuild?.scheduler?.lastMutationReason).toBe('enqueue');
+      expect(state.autoBuild?.lastTransition?.reason).toBe('startup complete');
     });
 
     it('preserves connectionStatus across BATCH_SEED', () => {
@@ -531,7 +546,22 @@ function makeHeartbeatPayload(overrides: Partial<HeartbeatPayload> = {}): Heartb
     uptime: 60_000,
     queueDepth: 0,
     runningBuilds: 0,
-    autoBuild: { enabled: true, paused: false },
+    autoBuild: {
+      enabled: true,
+      paused: false,
+      desired: 'enabled',
+      mode: 'running',
+      scheduler: { alive: true, paused: false, lastMutationReason: 'enqueue' },
+      lastTransition: {
+        at: '2024-01-15T09:59:00.000Z',
+        previousMode: 'starting',
+        nextMode: 'running',
+        desired: 'enabled',
+        reason: 'startup complete',
+        source: 'test',
+      },
+      reason: 'startup complete',
+    },
     subscribers: 1,
     ...overrides,
   };
@@ -777,6 +807,39 @@ describe('ADD_EVENT: daemon:auto-build extensions', () => {
     const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
 
     expect(next.autoBuild?.enabled).toBe(true); // unchanged
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('daemon:auto-build:transition projects enriched FSM fields without replacing watcher detail', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      autoBuild: makeAutoBuildState(false),
+    };
+    const event = makeEvent('daemon:auto-build:transition', {
+      previousMode: 'starting',
+      nextMode: 'running',
+      desired: 'enabled',
+      reason: 'watcher ready',
+      source: 'scheduler',
+    });
+
+    const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.autoBuild).toMatchObject({
+      enabled: true,
+      desired: 'enabled',
+      mode: 'running',
+      watcher: state.autoBuild?.watcher,
+      lastTransition: {
+        at: '2024-01-15T10:00:00.000Z',
+        previousMode: 'starting',
+        nextMode: 'running',
+        desired: 'enabled',
+        reason: 'watcher ready',
+        source: 'scheduler',
+      },
+      reason: 'watcher ready',
+    });
     expect(next.daemonActivity).toHaveLength(1);
   });
 });
