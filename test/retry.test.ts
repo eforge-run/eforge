@@ -22,6 +22,7 @@ import {
   type BuilderContinuationInput,
 } from '@eforge-build/engine/retry';
 import { builderEvaluate } from '@eforge-build/engine/agents/builder';
+import { runPlanEvaluate } from '@eforge-build/engine/agents/plan-evaluator';
 import { StubHarness } from './stub-harness.js';
 
 // ---------------------------------------------------------------------------
@@ -178,8 +179,8 @@ describe('DEFAULT_RETRY_POLICIES — builder policy', () => {
 describe('DEFAULT_RETRY_POLICIES — evaluator policy', () => {
   const evaluator = DEFAULT_RETRY_POLICIES.evaluator!;
 
-  it('retryableSubtypes includes error_max_turns', () => {
-    expect(evaluator.retryableSubtypes.has('error_max_turns')).toBe(true);
+  it('retryableSubtypes contains only error_max_turns and error_transient_transport', () => {
+    expect(evaluator.retryableSubtypes).toEqual(new Set(['error_max_turns', 'error_transient_transport']));
   });
 
   it('has maxAttempts = 2 (matches prior maxContinuations: 1 + initial attempt)', () => {
@@ -193,9 +194,9 @@ describe('DEFAULT_RETRY_POLICIES — evaluator policy', () => {
 
 describe('DEFAULT_RETRY_POLICIES — plan-evaluator / cohesion-evaluator / architecture-evaluator', () => {
   for (const role of ['plan-evaluator', 'cohesion-evaluator', 'architecture-evaluator'] as const) {
-    it(`${role} policy retries on error_max_turns`, () => {
+    it(`${role} policy retries only on error_max_turns and error_transient_transport`, () => {
       const policy = DEFAULT_RETRY_POLICIES[role]!;
-      expect(policy.retryableSubtypes.has('error_max_turns')).toBe(true);
+      expect(policy.retryableSubtypes).toEqual(new Set(['error_max_turns', 'error_transient_transport']));
       expect(policy.maxAttempts).toBe(2);
     });
   }
@@ -658,6 +659,119 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
     expect(backend.prompts).toHaveLength(2);
   });
 
+  it('retries transient transport evaluator failure when unstaged changes remain', async () => {
+    const backend = new StubHarness([
+      { error: new Error('Backend error: WebSocket error') },
+      { text: '<evaluation></evaluation>' },
+    ]);
+    const plan = makePlanFile();
+
+    const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+      yield* builderEvaluate(plan, {
+        harness: backend,
+        cwd: input.worktreePath,
+        ...input.evaluatorOptions,
+      });
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp',
+      planId: plan.id,
+      evaluatorOptions: {},
+      checkHasUnstagedChanges: async () => true,
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(runEvaluator, policy, initial)) {
+      out.push(ev);
+    }
+
+    expect(backend.prompts).toHaveLength(2);
+    expect(backend.prompts[0]).not.toContain('Continuation Context');
+    expect(backend.prompts[1]).toContain('Continuation Context');
+    expect(backend.prompts[1]).toContain('attempt 1 of 1');
+    expect(backend.prompts[1]).toContain('Do NOT run `git reset --soft HEAD~1` again');
+    const retries = out.filter((e) => e.type === 'agent:retry') as Array<Extract<EforgeEvent, { type: 'agent:retry' }>>;
+    expect(retries).toHaveLength(1);
+    expect(retries[0]).toMatchObject({
+      agent: 'evaluator',
+      subtype: 'error_transient_transport',
+      attempt: 1,
+      maxAttempts: 2,
+      label: 'evaluator-continuation',
+      planId: plan.id,
+    });
+    expect(out.filter((e) => e.type === 'plan:build:evaluate:continuation')).toHaveLength(1);
+    expect(out.filter((e) => e.type === 'plan:build:failed')).toHaveLength(0);
+  });
+
+  it('evaluator abort-success: first attempt throws transient transport but worktree is clean — no retry', async () => {
+    const backend = new StubHarness([
+      { error: new Error('Backend error: WebSocket error') },
+    ]);
+    const plan = makePlanFile();
+
+    const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+      yield* builderEvaluate(plan, {
+        harness: backend,
+        cwd: input.worktreePath,
+        ...input.evaluatorOptions,
+      });
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp',
+      planId: plan.id,
+      evaluatorOptions: {},
+      checkHasUnstagedChanges: async () => false,
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(runEvaluator, policy, initial)) {
+      out.push(ev);
+    }
+
+    expect(backend.prompts).toHaveLength(1);
+    expect(out.filter((e) => e.type === 'agent:retry')).toHaveLength(0);
+    expect(out.filter((e) => e.type === 'plan:build:failed')).toHaveLength(0);
+  });
+
+  it('does not retry non-transient backend evaluator failure', async () => {
+    const backend = new StubHarness([
+      { error: new Error('Backend error: HTTP 500') },
+    ]);
+    const plan = makePlanFile();
+
+    const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+      yield* builderEvaluate(plan, {
+        harness: backend,
+        cwd: input.worktreePath,
+        ...input.evaluatorOptions,
+      });
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES.evaluator as RetryPolicy<EvaluatorContinuationInput>;
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp',
+      planId: plan.id,
+      evaluatorOptions: {},
+      checkHasUnstagedChanges: async () => true,
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(runEvaluator, policy, initial)) {
+      out.push(ev);
+    }
+
+    expect(backend.prompts).toHaveLength(1);
+    expect(out.filter((e) => e.type === 'agent:retry')).toHaveLength(0);
+    const failures = out.filter((e) => e.type === 'plan:build:failed') as Array<Extract<EforgeEvent, { type: 'plan:build:failed' }>>;
+    expect(failures).toHaveLength(1);
+    expect(failures[0].terminalSubtype).toBeUndefined();
+  });
+
   it('exhausts retries and surfaces the final build:failed when both attempts throw error_max_turns', async () => {
     const backend = new StubHarness([
       { error: new AgentTerminalError('error_max_turns', 'first attempt max turns') },
@@ -731,6 +845,65 @@ describe('withRetry + StubHarness + builderEvaluate', () => {
     // Held-back terminal build:failed was dropped (abort-success treats the
     // state as success).
     expect(out.find((e) => e.type === 'plan:build:failed')).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// withRetry + StubHarness + runPlanEvaluate — compile evaluator integration
+// ---------------------------------------------------------------------------
+
+const makePlanEvaluateInput = (backend: StubHarness, input: EvaluatorContinuationInput) => ({
+  harness: backend,
+  planSetName: 'test-set',
+  sourceContent: '# Source\n\nSome PRD.',
+  cwd: input.worktreePath,
+  continuationContext: input.evaluatorOptions.evaluatorContinuationContext,
+});
+
+describe('withRetry + StubHarness + runPlanEvaluate', () => {
+  it('retries transient transport plan-evaluator failure with evaluator continuation input', async () => {
+    const backend = new StubHarness([
+      { error: new Error('Backend error: WebSocket error') },
+      { text: '<evaluation></evaluation>' },
+    ]);
+
+    const runEvaluator = async function* (input: EvaluatorContinuationInput): AsyncGenerator<EforgeEvent> {
+      yield* runPlanEvaluate(makePlanEvaluateInput(backend, input));
+    };
+
+    const policy = DEFAULT_RETRY_POLICIES['plan-evaluator'] as RetryPolicy<EvaluatorContinuationInput>;
+    const initial: EvaluatorContinuationInput = {
+      worktreePath: '/tmp',
+      evaluatorOptions: {},
+      checkHasUnstagedChanges: async () => true,
+    };
+
+    const out: EforgeEvent[] = [];
+    for await (const ev of withRetry(runEvaluator, policy, initial)) {
+      out.push(ev);
+    }
+
+    expect(backend.prompts).toHaveLength(2);
+    expect(backend.prompts[0]).not.toContain('Continuation Context');
+    expect(backend.prompts[1]).toContain('Continuation Context');
+    expect(backend.prompts[1]).toContain('attempt 1 of 1');
+
+    const retries = out.filter((e) => e.type === 'agent:retry') as Array<Extract<EforgeEvent, { type: 'agent:retry' }>>;
+    expect(retries).toHaveLength(1);
+    expect(retries[0]).toMatchObject({
+      agent: 'plan-evaluator',
+      subtype: 'error_transient_transport',
+      attempt: 1,
+      maxAttempts: 2,
+      label: 'plan-evaluator-continuation',
+    });
+
+    const continuations = out.filter((e) => e.type === 'planning:evaluate:continuation') as Array<Extract<EforgeEvent, { type: 'planning:evaluate:continuation' }>>;
+    expect(continuations).toHaveLength(1);
+    expect(continuations[0]).toMatchObject({
+      attempt: 1,
+      maxContinuations: 1,
+    });
   });
 });
 

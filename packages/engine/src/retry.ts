@@ -681,7 +681,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   evaluator: {
     agent: 'evaluator',
     maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS,
+    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => {
       const planId = (info.prevInput as EvaluatorContinuationInput).planId ?? '';
@@ -699,7 +699,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   'plan-evaluator': {
     agent: 'plan-evaluator',
     maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS,
+    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => [{
       timestamp: new Date().toISOString(),
@@ -712,7 +712,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   'cohesion-evaluator': {
     agent: 'cohesion-evaluator',
     maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS,
+    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => [{
       timestamp: new Date().toISOString(),
@@ -725,7 +725,7 @@ export const DEFAULT_RETRY_POLICIES: Partial<Record<AgentRole, RetryPolicy<unkno
   'architecture-evaluator': {
     agent: 'architecture-evaluator',
     maxAttempts: 2,
-    retryableSubtypes: RETRYABLE_MAX_TURNS,
+    retryableSubtypes: RETRYABLE_MAX_TURNS_OR_TRANSIENT_TRANSPORT,
     buildContinuationInput: (info) => buildEvaluatorContinuationInput(info as RetryAttemptInfo<EvaluatorContinuationInput>) as Promise<ContinuationDecision<unknown>>,
     onRetry: (info) => [{
       timestamp: new Date().toISOString(),
