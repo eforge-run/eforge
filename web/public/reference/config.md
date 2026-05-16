@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 3b8c1fc3 -->
+<!-- Commit: 7bd6400e -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
