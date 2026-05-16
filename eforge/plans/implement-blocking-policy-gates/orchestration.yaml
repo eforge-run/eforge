@@ -1,0 +1,136 @@
+name: implement-blocking-policy-gates
+description: Implement runtime-supported blocking policy gates for queue
+  dispatch, plan merge, and final merge with typed SDK contexts, policy runtime,
+  config, event schemas, engine integration, docs, examples, and tests.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test -- test/config.test.ts test/extension-loader.test.ts
+    test/extension-sdk-example.test.ts
+    test/extension-policy-gate-runtime.test.ts test/queue-scheduler.test.ts
+    test/orchestration-logic.test.ts test/worktree-integration.test.ts
+    test/worktree-manager.test.ts
+    packages/client/src/__tests__/events-schemas.test.ts
+    test/extension-authoring-skill.test.ts test/extension-tooling-wiring.test.ts
+  - pnpm docs:generate && pnpm docs:check
+plans:
+  - id: plan-01-policy-gate-foundation
+    name: Policy Gate SDK, Config, Events, and Runtime Foundation
+    depends_on: []
+    branch: implement-blocking-policy-gates/plan-01-policy-gate-foundation
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Adds a public SDK surface, engine registration metadata, config
+          defaults, wire event schemas, and a new runtime executor that later
+          plans depend on.
+      reviewer:
+        effort: high
+        rationale: Public API and wire-protocol changes need careful API, event-schema,
+          and test review.
+  - id: plan-02-policy-gate-engine-integration
+    name: Policy Gate Queue and Merge Integration
+    depends_on:
+      - plan-01-policy-gate-foundation
+    branch: implement-blocking-policy-gates/plan-02-policy-gate-engine-integration
+    build:
+      - implement
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - security
+        - test
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Wires blocking behavior into scheduler and orchestration paths and
+          adds git diff helpers before mutating merges.
+      reviewer:
+        effort: high
+        rationale: Blocking policy gates affect build outcomes, queue state, and merge
+          safety; review must inspect failure paths and event ordering.
+      tester:
+        effort: high
+        rationale: Integration tests must cover queue dispatch, plan merge, final merge,
+          and git diff behavior across multiple code paths.
+  - id: plan-03-policy-gate-docs-examples-skills
+    name: Policy Gate Documentation, Examples, and Integration Skill Updates
+    depends_on:
+      - plan-01-policy-gate-foundation
+      - plan-02-policy-gate-engine-integration
+    branch: implement-blocking-policy-gates/plan-03-policy-gate-docs-examples-skills
+    build:
+      - implement
+      - doc-sync
+      - test-cycle
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - docs
+        - api
+        - test
+      maxRounds: 1
+      evaluatorStrictness: standard
+    agents:
+      builder:
+        effort: medium
+        rationale: Mostly documentation/example updates plus generated docs drift, with
+          a plugin version bump due skill changes.
+      reviewer:
+        effort: high
+        rationale: Docs must avoid overpromising deferred gates and must stay consistent
+          across public docs, SDK README, examples, Claude plugin, and Pi skill
+          surfaces.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - test-write
+    - doc-sync
+    - review-cycle
+    - test-cycle
+    - validate
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - security
+      - test
+      - docs
+      - verify
+    maxRounds: 3
+    evaluatorStrictness: strict
+  rationale: "Excursion fits because the work is cross-cutting but cohesive: one
+    policy-gate runtime capability touching SDK, engine, client events,
+    scheduler/orchestrator integration, docs, and tests. A single planner can
+    decompose this with dependencies, so expedition module planning is
+    unnecessary. The build pipeline includes documentation authoring/sync and
+    test writing because the PRD changes public APIs, docs, examples, event
+    schemas, and behavior. Review is strict and parallel across code, API,
+    security, test, docs, and verify perspectives because blocking policy gates
+    affect safety-critical merge and dispatch behavior."
