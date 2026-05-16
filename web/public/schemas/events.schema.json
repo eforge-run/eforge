@@ -7695,6 +7695,168 @@
                 },
                 "paused": {
                   "type": "boolean"
+                },
+                "desired": {
+                  "anyOf": [
+                    {
+                      "const": "enabled",
+                      "type": "string"
+                    },
+                    {
+                      "const": "disabled",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "mode": {
+                  "anyOf": [
+                    {
+                      "const": "disabled",
+                      "type": "string"
+                    },
+                    {
+                      "const": "starting",
+                      "type": "string"
+                    },
+                    {
+                      "const": "running",
+                      "type": "string"
+                    },
+                    {
+                      "const": "paused",
+                      "type": "string"
+                    },
+                    {
+                      "const": "stopping",
+                      "type": "string"
+                    },
+                    {
+                      "const": "restarting",
+                      "type": "string"
+                    },
+                    {
+                      "const": "faulted",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "scheduler": {
+                  "type": "object",
+                  "required": [
+                    "alive",
+                    "paused"
+                  ],
+                  "properties": {
+                    "alive": {
+                      "type": "boolean"
+                    },
+                    "paused": {
+                      "type": "boolean"
+                    },
+                    "lastMutationReason": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "lastTransition": {
+                  "type": "object",
+                  "required": [
+                    "at",
+                    "previousMode",
+                    "nextMode",
+                    "desired",
+                    "source"
+                  ],
+                  "properties": {
+                    "at": {
+                      "type": "string"
+                    },
+                    "previousMode": {
+                      "anyOf": [
+                        {
+                          "const": "disabled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "starting",
+                          "type": "string"
+                        },
+                        {
+                          "const": "running",
+                          "type": "string"
+                        },
+                        {
+                          "const": "paused",
+                          "type": "string"
+                        },
+                        {
+                          "const": "stopping",
+                          "type": "string"
+                        },
+                        {
+                          "const": "restarting",
+                          "type": "string"
+                        },
+                        {
+                          "const": "faulted",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "nextMode": {
+                      "anyOf": [
+                        {
+                          "const": "disabled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "starting",
+                          "type": "string"
+                        },
+                        {
+                          "const": "running",
+                          "type": "string"
+                        },
+                        {
+                          "const": "paused",
+                          "type": "string"
+                        },
+                        {
+                          "const": "stopping",
+                          "type": "string"
+                        },
+                        {
+                          "const": "restarting",
+                          "type": "string"
+                        },
+                        {
+                          "const": "faulted",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "desired": {
+                      "anyOf": [
+                        {
+                          "const": "enabled",
+                          "type": "string"
+                        },
+                        {
+                          "const": "disabled",
+                          "type": "string"
+                        }
+                      ]
+                    },
+                    "reason": {
+                      "type": "string"
+                    },
+                    "source": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "reason": {
+                  "type": "string"
                 }
               }
             },
@@ -7851,6 +8013,104 @@
             },
             "prdsEnqueued": {
               "type": "number"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type",
+            "previousMode",
+            "nextMode",
+            "desired",
+            "source"
+          ],
+          "properties": {
+            "type": {
+              "const": "daemon:auto-build:transition",
+              "type": "string"
+            },
+            "previousMode": {
+              "anyOf": [
+                {
+                  "const": "disabled",
+                  "type": "string"
+                },
+                {
+                  "const": "starting",
+                  "type": "string"
+                },
+                {
+                  "const": "running",
+                  "type": "string"
+                },
+                {
+                  "const": "paused",
+                  "type": "string"
+                },
+                {
+                  "const": "stopping",
+                  "type": "string"
+                },
+                {
+                  "const": "restarting",
+                  "type": "string"
+                },
+                {
+                  "const": "faulted",
+                  "type": "string"
+                }
+              ]
+            },
+            "nextMode": {
+              "anyOf": [
+                {
+                  "const": "disabled",
+                  "type": "string"
+                },
+                {
+                  "const": "starting",
+                  "type": "string"
+                },
+                {
+                  "const": "running",
+                  "type": "string"
+                },
+                {
+                  "const": "paused",
+                  "type": "string"
+                },
+                {
+                  "const": "stopping",
+                  "type": "string"
+                },
+                {
+                  "const": "restarting",
+                  "type": "string"
+                },
+                {
+                  "const": "faulted",
+                  "type": "string"
+                }
+              ]
+            },
+            "desired": {
+              "anyOf": [
+                {
+                  "const": "enabled",
+                  "type": "string"
+                },
+                {
+                  "const": "disabled",
+                  "type": "string"
+                }
+              ]
+            },
+            "reason": {
+              "type": "string"
+            },
+            "source": {
+              "type": "string"
             }
           }
         },

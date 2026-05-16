@@ -253,6 +253,12 @@ export { ORCHESTRATION_MODES, SEVERITY_ORDER, isAlwaysYieldedAgentEvent, EforgeE
 export type {
   HealthResponse,
   AutoBuildState,
+  // --- eforge:region plan-01-supervisor-foundation ---
+  AutoBuildDesired,
+  AutoBuildRuntimeMode,
+  AutoBuildSchedulerState,
+  AutoBuildTransitionDetail,
+  // --- eforge:endregion plan-01-supervisor-foundation ---
   ProjectContext,
   ConfigShowResponse,
   ConfigValidateResponse,

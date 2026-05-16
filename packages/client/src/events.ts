@@ -41,6 +41,12 @@ export type {
   BuildDecision,
   PlanningDecision,
   PlanningDecisionEvent,
+  // --- eforge:region plan-01-supervisor-foundation ---
+  AutoBuildDesired,
+  AutoBuildRuntimeMode,
+  AutoBuildSchedulerState,
+  AutoBuildTransitionDetail,
+  // --- eforge:endregion plan-01-supervisor-foundation ---
 } from './events.schemas.js';
 
 export {

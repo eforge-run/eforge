@@ -432,6 +432,46 @@ const BuildFailureSummarySchema = Type.Object({
   prdContent: Type.Optional(Type.String()),
 });
 
+// --- eforge:region plan-01-supervisor-foundation ---
+const AutoBuildDesiredSchema = Type.Union([
+  Type.Literal('enabled'),
+  Type.Literal('disabled'),
+]);
+
+const AutoBuildRuntimeModeSchema = Type.Union([
+  Type.Literal('disabled'),
+  Type.Literal('starting'),
+  Type.Literal('running'),
+  Type.Literal('paused'),
+  Type.Literal('stopping'),
+  Type.Literal('restarting'),
+  Type.Literal('faulted'),
+]);
+
+const AutoBuildSchedulerStateSchema = Type.Object({
+  alive: Type.Boolean(),
+  paused: Type.Boolean(),
+  lastMutationReason: Type.Optional(Type.String()),
+});
+
+const AutoBuildTransitionDetailSchema = Type.Object({
+  at: Type.String(),
+  previousMode: AutoBuildRuntimeModeSchema,
+  nextMode: AutoBuildRuntimeModeSchema,
+  desired: AutoBuildDesiredSchema,
+  reason: Type.Optional(Type.String()),
+  source: Type.String(),
+});
+
+const AutoBuildDetailFields = {
+  desired: Type.Optional(AutoBuildDesiredSchema),
+  mode: Type.Optional(AutoBuildRuntimeModeSchema),
+  scheduler: Type.Optional(AutoBuildSchedulerStateSchema),
+  lastTransition: Type.Optional(AutoBuildTransitionDetailSchema),
+  reason: Type.Optional(Type.String()),
+};
+// --- eforge:endregion plan-01-supervisor-foundation ---
+
 // ---------------------------------------------------------------------------
 // Queue event schemas
 // ---------------------------------------------------------------------------
@@ -1655,7 +1695,13 @@ const EforgeEventVariantsSchema = Type.Union([
     uptime: Type.Number(),
     queueDepth: Type.Number(),
     runningBuilds: Type.Number(),
-    autoBuild: Type.Object({ enabled: Type.Boolean(), paused: Type.Boolean() }),
+    autoBuild: Type.Object({
+    enabled: Type.Boolean(),
+    paused: Type.Boolean(),
+    // --- eforge:region plan-01-supervisor-foundation ---
+    ...AutoBuildDetailFields,
+    // --- eforge:endregion plan-01-supervisor-foundation ---
+  }),
     subscribers: Type.Number(),
   }),
 
@@ -1689,6 +1735,16 @@ const EforgeEventVariantsSchema = Type.Union([
     trigger: Type.String(),
     prdsEnqueued: Type.Number(),
   }),
+  // --- eforge:region plan-01-supervisor-foundation ---
+  Type.Object({
+    type: Type.Literal('daemon:auto-build:transition'),
+    previousMode: AutoBuildRuntimeModeSchema,
+    nextMode: AutoBuildRuntimeModeSchema,
+    desired: AutoBuildDesiredSchema,
+    reason: Type.Optional(Type.String()),
+    source: Type.String(),
+  }),
+  // --- eforge:endregion plan-01-supervisor-foundation ---
 
   // Daemon recovery
   Type.Object({ type: Type.Literal('daemon:recovery:start') }),
@@ -1785,6 +1841,12 @@ export type FailingPlanEntry = Static<typeof FailingPlanEntrySchema>;
 export type BuildFailureSummary = Static<typeof BuildFailureSummarySchema>;
 export type QueueEvent = Static<typeof QueueEventSchema>;
 export type PlanningDecisionEvent = Static<typeof PlanningDecisionEventSchema>;
+// --- eforge:region plan-01-supervisor-foundation ---
+export type AutoBuildDesired = Static<typeof AutoBuildDesiredSchema>;
+export type AutoBuildRuntimeMode = Static<typeof AutoBuildRuntimeModeSchema>;
+export type AutoBuildSchedulerState = Static<typeof AutoBuildSchedulerStateSchema>;
+export type AutoBuildTransitionDetail = Static<typeof AutoBuildTransitionDetailSchema>;
+// --- eforge:endregion plan-01-supervisor-foundation ---
 
 // ---------------------------------------------------------------------------
 // Re-export constants and utilities
@@ -1832,6 +1894,9 @@ const DaemonStreamLivenessSchema = Type.Object({
   autoBuild: Type.Object({
     enabled: Type.Boolean(),
     paused: Type.Boolean(),
+    // --- eforge:region plan-01-supervisor-foundation ---
+    ...AutoBuildDetailFields,
+    // --- eforge:endregion plan-01-supervisor-foundation ---
   }),
   subscribers: Type.Number(),
 });
@@ -1894,6 +1959,9 @@ const DaemonAutoBuildSchema = Type.Object({
     pid: Type.Union([Type.Number(), Type.Null()]),
     sessionId: Type.Union([Type.String(), Type.Null()]),
   }),
+  // --- eforge:region plan-01-supervisor-foundation ---
+  ...AutoBuildDetailFields,
+  // --- eforge:endregion plan-01-supervisor-foundation ---
 });
 
 /**

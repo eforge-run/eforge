@@ -44,7 +44,15 @@ export interface ProjectableState {
       uptime: number;
       queueDepth: number;
       runningBuilds: number;
-      autoBuild: { enabled: boolean; paused: boolean };
+      autoBuild: {
+        enabled: boolean;
+        paused: boolean;
+        desired?: AutoBuildState['desired'];
+        mode?: AutoBuildState['mode'];
+        scheduler?: AutoBuildState['scheduler'];
+        lastTransition?: AutoBuildState['lastTransition'];
+        reason?: string;
+      };
       subscribers: number;
     };
   } | null;
@@ -1267,6 +1275,38 @@ const eventRegistry = {
     persist: true,
     summary: (e) => `Auto-build triggered: ${e.prdsEnqueued} PRD(s) enqueued`,
   },
+
+  // --- eforge:region plan-01-supervisor-foundation ---
+  'daemon:auto-build:transition': {
+    scope: 'daemon',
+    persist: true,
+    summary: (e) =>
+      `Auto-build ${e.previousMode} → ${e.nextMode} (${e.desired})${e.reason ? `: ${e.reason}` : ''}`,
+    project(event, state) {
+      if (!state.autoBuild) return undefined;
+      const enabled =
+        event.desired === 'enabled' &&
+        (event.nextMode === 'starting' || event.nextMode === 'running' || event.nextMode === 'restarting');
+      return {
+        autoBuild: {
+          ...state.autoBuild,
+          enabled,
+          desired: event.desired,
+          mode: event.nextMode,
+          lastTransition: {
+            at: event.timestamp,
+            previousMode: event.previousMode,
+            nextMode: event.nextMode,
+            desired: event.desired,
+            reason: event.reason,
+            source: event.source,
+          },
+          reason: event.reason,
+        },
+      };
+    },
+  },
+  // --- eforge:endregion plan-01-supervisor-foundation ---
 
   // -------------------------------------------------------------------------
   // Daemon recovery

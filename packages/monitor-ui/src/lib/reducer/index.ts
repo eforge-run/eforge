@@ -301,6 +301,9 @@ export const IGNORED_EVENT_TYPES = [
   'daemon:auto-build:disabled',
   'daemon:auto-build:resumed',
   'daemon:auto-build:triggered',
+  // --- eforge:region plan-01-supervisor-foundation ---
+  'daemon:auto-build:transition',
+  // --- eforge:endregion plan-01-supervisor-foundation ---
   'daemon:recovery:start',
   'daemon:recovery:run-marked-failed',
   'daemon:recovery:lock-removed',

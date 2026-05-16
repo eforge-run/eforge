@@ -1141,7 +1141,24 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       uptime: 60000,
       queueDepth: 0,
       runningBuilds: 1,
-      autoBuild: { enabled: true, paused: false },
+      autoBuild: {
+        enabled: true,
+        paused: false,
+        // --- eforge:region plan-01-supervisor-foundation ---
+        desired: 'enabled',
+        mode: 'running',
+        scheduler: { alive: true, paused: false },
+        lastTransition: {
+          at: '2025-01-01T00:00:00.000Z',
+          previousMode: 'starting',
+          nextMode: 'running',
+          desired: 'enabled',
+          source: 'watcher',
+          reason: 'watcher started',
+        },
+        reason: 'watcher started',
+        // --- eforge:endregion plan-01-supervisor-foundation ---
+      },
       subscribers: 2,
     },
   },
@@ -1199,6 +1216,20 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
       prdsEnqueued: 1,
     },
   },
+  // --- eforge:region plan-01-supervisor-foundation ---
+  {
+    label: 'daemon:auto-build:transition',
+    payload: {
+      type: 'daemon:auto-build:transition',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      previousMode: 'starting',
+      nextMode: 'running',
+      desired: 'enabled',
+      reason: 'watcher started',
+      source: 'watcher',
+    },
+  },
+  // --- eforge:endregion plan-01-supervisor-foundation ---
 
   // Daemon recovery
   {

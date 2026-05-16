@@ -7,6 +7,33 @@ export interface HealthResponse {
 }
 
 // GET /api/auto-build, POST /api/auto-build
+// --- eforge:region plan-01-supervisor-foundation ---
+export type AutoBuildDesired = 'enabled' | 'disabled';
+export type AutoBuildRuntimeMode =
+  | 'disabled'
+  | 'starting'
+  | 'running'
+  | 'paused'
+  | 'stopping'
+  | 'restarting'
+  | 'faulted';
+
+export interface AutoBuildSchedulerState {
+  alive: boolean;
+  paused: boolean;
+  lastMutationReason?: string;
+}
+
+export interface AutoBuildTransitionDetail {
+  at: string;
+  previousMode: AutoBuildRuntimeMode;
+  nextMode: AutoBuildRuntimeMode;
+  desired: AutoBuildDesired;
+  reason?: string;
+  source: string;
+}
+// --- eforge:endregion plan-01-supervisor-foundation ---
+
 export interface AutoBuildState {
   enabled: boolean;
   watcher: {
@@ -14,6 +41,13 @@ export interface AutoBuildState {
     pid: number | null;
     sessionId: string | null;
   };
+  // --- eforge:region plan-01-supervisor-foundation ---
+  desired?: AutoBuildDesired;
+  mode?: AutoBuildRuntimeMode;
+  scheduler?: AutoBuildSchedulerState;
+  lastTransition?: AutoBuildTransitionDetail;
+  reason?: string;
+  // --- eforge:endregion plan-01-supervisor-foundation ---
 }
 
 // GET /api/project-context
