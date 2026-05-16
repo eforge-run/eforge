@@ -102,8 +102,9 @@ describe('executeAgentRunHooks — prompt composition', () => {
   });
 
   it('emits extension:agent-context:applied event when fragment is contributed', async () => {
+    const fragmentText = 'UNIQUE_FRAGMENT_EVENT_SAFETY';
     const result = await executeAgentRunHooks(
-      [makeHook('my-ext', () => ({ promptAppend: 'X' }))],
+      [makeHook('my-ext', () => ({ promptAppend: fragmentText }))],
       BASE_OPTIONS,
       'builder',
       'plan-01',
@@ -117,7 +118,7 @@ describe('executeAgentRunHooks — prompt composition', () => {
     expect(applied[0]!.planId).toBe('plan-01');
     // Must NOT contain the fragment text itself
     const eventStr = JSON.stringify(applied[0]);
-    expect(eventStr).not.toContain('Extra context here.');
+    expect(eventStr).not.toContain(fragmentText);
   });
 });
 

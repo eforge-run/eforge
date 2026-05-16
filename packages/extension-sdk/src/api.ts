@@ -89,8 +89,8 @@ export interface EforgeExtensionAPI {
    * `extensions.agentContextHookTimeoutMs`; defaults to
    * `extensions.eventHookTimeoutMs`). A handler that throws or times out emits
    * a typed diagnostic event (`extension:agent-context:failed` or
-   * `extension:agent-context:timeout`) and does not prevent the agent run from
-   * proceeding with the unmodified prompt.
+   * `extension:agent-context:timeout`); that handler's prompt/tool changes are
+   * skipped and the agent run continues.
    *
    * @remarks Runtime-supported. Tools are injected only when returned from a
    * successful handler for the current run. Use `ctx.effectiveToolName(name)`

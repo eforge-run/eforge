@@ -83,7 +83,7 @@ The `event` parameter is narrowed to `EventOfType<T>` when the pattern is an exa
 
 ### `onAgentRun(handler)`
 
-Register a handler invoked before each agent run starts. The handler receives an `AgentRunContext` (which itself extends `EforgeExtensionContext`, so logger and exec are available on the same object) and may return a `promptAppend` fragment to inject additional context into the agent's prompt. Inspect `ctx.role`, `ctx.tier`, `ctx.phase`, and `ctx.stage` to scope behavior to specific agent roles or lifecycle positions.
+Register a handler invoked before each agent run starts. The handler receives an `AgentRunContext` (which itself extends `EforgeExtensionContext`, so logger and exec are available on the same object) and may return a `promptAppend` fragment, per-run extension `tools`, or additive `allowedTools` / `disallowedTools` tuning. Inspect `ctx.role`, `ctx.tier`, `ctx.phase`, and `ctx.stage` to scope behavior to specific agent roles or lifecycle positions.
 
 ```ts
 eforge.onAgentRun(async (ctx) => {
@@ -125,6 +125,7 @@ interface AgentRunContext extends EforgeExtensionContext {
   toolbelt?: string | null;
   toolbeltSource?: 'tier' | 'role' | 'plan' | 'default';
   projectMcpSelection?: 'all' | 'none' | 'toolbelt';
+  effectiveToolName(name: string): string;
 }
 ```
 
@@ -133,11 +134,11 @@ interface AgentRunContext extends EforgeExtensionContext {
 ```ts
 interface AgentRunAugmentation {
   promptAppend?: string;
-  /** @deprecated Not applied at runtime in EXTEND_08A — emits unsupported diagnostic. Tracked for EXTEND_08B. */
+  /** Additional extension tools made available only for this run. */
   tools?: ExtensionTool[];
-  /** @deprecated Not applied at runtime in EXTEND_08A — emits unsupported diagnostic. Tracked for EXTEND_08B. */
+  /** Tool names additively allowed for this run when a harness allowlist is active. */
   allowedTools?: string[];
-  /** @deprecated Not applied at runtime in EXTEND_08A — emits unsupported diagnostic. Tracked for EXTEND_08B. */
+  /** Tool names additively disallowed for this run; deny wins. */
   disallowedTools?: string[];
 }
 ```
@@ -153,17 +154,17 @@ interface AgentRunAugmentation {
 
 Multiple extensions append in registration order. Each handler runs with a configurable timeout (see `extensions.agentContextHookTimeoutMs`).
 
-**Fail-open behavior:** a handler that throws an error emits an `extension:agent-context:failed` event; a handler that exceeds the timeout emits an `extension:agent-context:timeout` event. In both cases the agent run proceeds with the unmodified prompt. Diagnostic events carry metadata (extension name, role, tier, phase, stage, fragment count) but never the prompt fragment text.
+**Fail-open behavior:** a handler that throws an error emits an `extension:agent-context:failed` event; a handler that exceeds the timeout emits an `extension:agent-context:timeout` event. In both cases that handler's prompt/tool changes are skipped and the agent run continues. Diagnostic events carry metadata (extension name, role, tier, phase, stage, fragment count) but never the prompt fragment text.
 
-**Unsupported fields:** returning `tools`, `allowedTools`, or `disallowedTools` emits an `extension:agent-context:unsupported` diagnostic listing the rejected field names. Those fields are otherwise ignored and the prompt is not modified. This is not an error condition — it is a forward-compatibility signal for EXTEND_08B.
+**Tool injection and availability tuning:** returning `tools` injects extension-defined tools only for the current run. Returning `allowedTools` and `disallowedTools` additively tunes the harness allow/deny lists for the current run; deny wins when the same name appears in both. Use `ctx.effectiveToolName(name)` when prompt text needs to mention the harness-visible name for an extension tool.
 
-**Runtime status:** Yes (promptAppend only — `tools`/`allowedTools`/`disallowedTools` deferred to EXTEND_08B).
+**Runtime status:** Yes. Prompt context, per-run extension tool injection, and per-run tool availability tuning are applied at runtime.
 
 ---
 
 ### `registerTool(tool)`
 
-Register a custom agent tool independently of an `onAgentRun` return value. This is useful for extensions that want their tool contribution to appear in loader-time provenance even before agent-run execution is active.
+Register a custom agent tool independently of an `onAgentRun` return value. This records loader-time provenance and validation metadata so list/show/validate tooling can report the contribution. It does not globally expose the tool to every agent run; return the tool from `onAgentRun` for the roles or stages that should receive it.
 
 ```ts
 import { Type, defineExtensionTool } from "@eforge-build/extension-sdk";
@@ -178,6 +179,15 @@ const lookupComponent = defineExtensionTool({
 });
 
 eforge.registerTool(lookupComponent);
+
+eforge.onAgentRun((ctx) => {
+  if (ctx.role !== "builder") return;
+  const toolName = ctx.effectiveToolName(lookupComponent.name);
+  return {
+    tools: [lookupComponent],
+    promptAppend: `Use ${toolName} when you need design-system component details.`,
+  };
+});
 ```
 
 **Signature:**
@@ -186,7 +196,7 @@ eforge.registerTool(lookupComponent);
 registerTool(tool: ExtensionTool): void
 ```
 
-**Runtime status:** registration is captured at load time; agent tool injection and execution are deferred.
+**Runtime status:** registration is captured at load time for provenance. Agent tool injection and execution happen only when an `onAgentRun` handler returns the tool for a specific run.
 
 ---
 
@@ -549,28 +559,28 @@ const lookupTool = defineExtensionTool({
 });
 ```
 
-`ExtensionTool` is a narrower public type than the engine's internal `CustomTool`. The loader captures `ExtensionTool` registrations at load time. Agent injection and execution are deferred; the public shape stays narrow so the engine's internal representation can evolve without breaking extension authors.
+`ExtensionTool` is a narrower public type than the engine's internal `CustomTool`. The loader captures `ExtensionTool` registrations at load time for provenance and validation; `onAgentRun` return values inject accepted tools for a specific run. The public shape stays narrow so the engine's internal representation can evolve without breaking extension authors.
 
 ---
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation and `registerProfileRouter` pre-build dispatch are also wired. Replay invokes only matching event hooks and summarizes non-event registrations as deferred. Blocking policy enforcement, custom tool injection/execution, input-source execution, reviewer perspective execution, and validation-provider execution are intentionally deferred for later phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, and `registerProfileRouter` pre-build dispatch are also wired. Replay invokes only matching event hooks and summarizes non-event registrations as deferred. Blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are intentionally deferred for later phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
 | `onEvent` | Yes | Yes | Yes |
-| `onAgentRun` | Yes | Yes | Yes (promptAppend only — tools/allowedTools/disallowedTools deferred to EXTEND_08B)[^1] |
-| `registerTool` / `ExtensionTool` | Yes | Yes | Deferred |
+| `onAgentRun` | Yes | Yes | Yes (promptAppend, per-run tools, allowedTools, disallowedTools)[^1] |
+| `registerTool` / `ExtensionTool` | Yes | Yes | Provenance only; inject per run via `onAgentRun` |
 | `beforePlanMerge` policy gate | Yes | Yes | Deferred |
 | `registerProfileRouter` | Yes | Yes | Yes (pre-build dispatch) |
 | `registerInputSource` | Yes | Yes | Deferred |
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-[^1]: `onAgentRun` handlers that return `tools`, `allowedTools`, or `disallowedTools` emit an `extension:agent-context:unsupported` diagnostic. Those fields are not applied. Handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run.
+[^1]: `onAgentRun` handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run. Tool names in prompt text should use `ctx.effectiveToolName(name)` when they refer to extension tools.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, and profile-router examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Custom tool injection/execution, blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, agent-tool, and profile-router examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
 
 ---
 
@@ -586,6 +596,6 @@ Profile toolbelts and extensions are complementary but intentionally separate:
 | **Can add custom tools** | Indirectly (MCP) | Yes (`ExtensionTool`) |
 | **Scope model** | profiles/, user/project/local | extensions/, user/project/local |
 
-Toolbelt filtering applies only to project MCP servers declared in `.mcp.json`. It does not filter engine-internal tools, harness built-ins, or future extension-contributed custom tools. In the current runtime, `registerTool` registrations and `onAgentRun` tool fields are captured for provenance only; they are not injected into agent runs or affected by toolbelt filtering.
+Toolbelt filtering applies only to project MCP servers declared in `.mcp.json`. It does not filter engine-internal custom tools, harness built-ins, or extension-contributed custom tools. `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the supported per-run injection path. `allowedTools` and `disallowedTools` tune harness availability for a single run and are not toolbelt configuration.
 
 Profile routers receive available profile names and best-effort usage summaries through `ProfileRouterContext`; agent-run hooks also receive read-only runtime metadata such as `profile`, `harness`, and toolbelt selection. Extensions must not write profile marker files or redefine toolbelt declarations.
