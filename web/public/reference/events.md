@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 7bd6400e -->
+<!-- Commit: 9697980c -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -13,7 +13,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 180
+Total variants: 181
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -180,6 +180,7 @@ Total variants: 180
 | `daemon:auto-build:disabled` | - |
 | `daemon:auto-build:resumed` | - |
 | `daemon:auto-build:triggered` | `prdsEnqueued`, `trigger` |
+| `daemon:auto-build:transition` | `desired`, `nextMode`, `previousMode`, `reason`, `source` |
 | `daemon:recovery:start` | - |
 | `daemon:recovery:run-marked-failed` | `planSet`, `reason`, `runId` |
 | `daemon:recovery:lock-removed` | `path`, `pid` |

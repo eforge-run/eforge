@@ -124,8 +124,9 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe('DAEMON_API_VERSION', () => {
-  it('is 30', () => {
-    expect(DAEMON_API_VERSION).toBe(30);
+  it('is 31', () => {
+    // v31 adds the persisted daemon:auto-build:transition event and optional auto-build lifecycle wire detail.
+    expect(DAEMON_API_VERSION).toBe(31);
   });
 });
 

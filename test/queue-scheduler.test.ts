@@ -268,6 +268,31 @@ describe('QueueScheduler — queue dispatch policy gates', () => {
 // ---------------------------------------------------------------------------
 
 describe('QueueScheduler — queue:mutation event', () => {
+  it('dispatches an independent queued PRD while parallel capacity remains', async () => {
+    const { cwd, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
+
+    const runningPrd = makeQueuedPrd('already-running');
+    const scheduler = makeScheduler([runningPrd]);
+    await scheduler.start();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(spawnPrdChild).toHaveBeenCalledTimes(1);
+
+    await writeFile(join(cwd, 'eforge', 'queue', 'independent-prd.md'), '---\ntitle: Independent PRD\n---\n\n# Independent PRD');
+    const mutationEvent: SchedulerInputEvent = {
+      type: 'queue:mutation',
+      reason: 'enqueue',
+      timestamp: new Date().toISOString(),
+    };
+    bus.emit('queue:mutation', mutationEvent);
+
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(spawnPrdChild).toHaveBeenCalledTimes(2);
+    expect(spawnPrdChild.mock.calls.map((call) => call[0].id)).toContain('independent-prd');
+
+    eventQueue.removeProducer();
+  });
+
   it('triggers discoverNewPrds and startReadyPrds when injected', async () => {
     const { cwd, queueDir, bus, eventQueue, spawnPrdChild, makeScheduler } = await createTestEnv();
 

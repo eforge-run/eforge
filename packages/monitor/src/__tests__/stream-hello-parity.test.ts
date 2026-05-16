@@ -22,6 +22,7 @@ import { openDatabase } from '../db.js';
 import { startServer } from '../server.js';
 import { withRecording } from '../recorder.js';
 import type { MonitorServer, DaemonState } from '../server.js';
+import { AutoBuildSupervisor } from '../auto-build-supervisor.js';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 
 function makeTmpCwd(): string {
@@ -186,15 +187,28 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     writeFileSync(join(failedDir, 'failed-prd.recovery.json'), recoverySidecar, 'utf-8');
 
     // --- Configure daemonState ---
-    const daemonState: DaemonState = {
-      autoBuild: true,
-      autoBuildPaused: false,
-      watcher: {
-        running: true,
-        pid: 99,
-        sessionId: 'sess-99',
+    const controller = new AutoBuildSupervisor({
+      initialState: {
+        desired: 'enabled',
+        mode: 'running',
+        watcher: { running: true, pid: 99, sessionId: 'sess-99' },
+        scheduler: { alive: true, paused: false, lastMutationReason: 'enqueue' },
+        lastTransition: {
+          at: now,
+          previousMode: 'starting',
+          nextMode: 'running',
+          desired: 'enabled',
+          source: 'test',
+          reason: 'seeded',
+        },
+        reason: 'seeded',
       },
-    };
+      effects: {
+        getWatcher: () => ({ running: true, pid: 99, sessionId: 'sess-99' }),
+        isSchedulerAlive: () => true,
+      },
+    });
+    const daemonState: DaemonState = { autoBuildController: controller };
 
     // --- Start server ---
     const server = await startServer(db, 0, { cwd, daemonState });
@@ -239,6 +253,18 @@ describe('stream:hello snapshot parity with REST endpoints', () => {
     expect(restAutoBuild).toEqual({
       enabled: true,
       watcher: { running: true, pid: 99, sessionId: 'sess-99' },
+      desired: 'enabled',
+      mode: 'running',
+      scheduler: { alive: true, paused: false, lastMutationReason: 'enqueue' },
+      lastTransition: {
+        at: now,
+        previousMode: 'starting',
+        nextMode: 'running',
+        desired: 'enabled',
+        source: 'test',
+        reason: 'seeded',
+      },
+      reason: 'seeded',
     });
 
     // --- Assert parity ---

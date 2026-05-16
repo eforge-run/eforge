@@ -1,5 +1,5 @@
 /**
- * Wire roundtrip tests for the 19 new daemon EforgeEvent variants added in the
+ * Wire roundtrip tests for the 20 new daemon EforgeEvent variants added in the
  * plan-01-types-and-daemon-emission region of events.ts.
  *
  * Each fixture is statically typed as `EforgeEvent`, so field-name or type
@@ -100,6 +100,17 @@ const variants: EforgeEvent[] = [
     trigger: 'file',
     prdsEnqueued: 2,
   },
+  // --- eforge:region plan-01-supervisor-foundation ---
+  {
+    type: 'daemon:auto-build:transition',
+    timestamp: '2025-01-01T00:02:03.000Z',
+    previousMode: 'starting',
+    nextMode: 'running',
+    desired: 'enabled',
+    reason: 'watcher started',
+    source: 'watcher',
+  },
+  // --- eforge:endregion plan-01-supervisor-foundation ---
 
   // Daemon recovery
   {
@@ -157,7 +168,7 @@ const variants: EforgeEvent[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Expected type literals (hard-coded to the 19 new daemon variants)
+// Expected type literals (hard-coded to the 20 new daemon variants)
 // ---------------------------------------------------------------------------
 
 const EXPECTED_LITERALS = new Set([
@@ -173,6 +184,9 @@ const EXPECTED_LITERALS = new Set([
   'daemon:auto-build:disabled',
   'daemon:auto-build:resumed',
   'daemon:auto-build:triggered',
+  // --- eforge:region plan-01-supervisor-foundation ---
+  'daemon:auto-build:transition',
+  // --- eforge:endregion plan-01-supervisor-foundation ---
   'daemon:recovery:start',
   'daemon:recovery:run-marked-failed',
   'daemon:recovery:lock-removed',
@@ -187,7 +201,7 @@ const EXPECTED_LITERALS = new Set([
 // ---------------------------------------------------------------------------
 
 describe('EforgeEvent wire roundtrip', () => {
-  it('roundtrips all 19 new daemon variants through JSON', () => {
+  it('roundtrips all 20 new daemon variants through JSON', () => {
     for (const event of variants) {
       const parsed = JSON.parse(JSON.stringify(event));
       expect(parsed).toEqual(event);
@@ -195,9 +209,9 @@ describe('EforgeEvent wire roundtrip', () => {
     }
   });
 
-  it('covers all 19 new daemon variant type literals', () => {
+  it('covers all 20 new daemon variant type literals', () => {
     const types = new Set(variants.map((e) => e.type));
-    expect(types.size).toBe(19);
+    expect(types.size).toBe(20);
     expect(types).toEqual(EXPECTED_LITERALS);
   });
 });

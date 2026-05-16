@@ -37,6 +37,8 @@ export function useDaemonEvents(): UseDaemonEventsResult {
         )) {
           if (frame.kind === 'snapshot') {
             const snapshot = frame.snapshot;
+            const autoBuild = snapshot.autoBuild;
+            const livenessAutoBuild = snapshot.liveness.autoBuild;
             // Dispatch BATCH_SEED with the snapshot fields, plus recentActivity and
             // a synthetic latestHeartbeat from the liveness field so the daemon
             // liveness pill renders green immediately on (re)connect.
@@ -45,7 +47,7 @@ export function useDaemonEvents(): UseDaemonEventsResult {
               runs: snapshot.runs,
               queue: snapshot.queue,
               sessionMetadata: snapshot.sessionMetadata,
-              autoBuild: snapshot.autoBuild,
+              autoBuild,
               recentActivity: snapshot.recentActivity.map((a) => ({
                 id: String(a.id),
                 event: a.event as EforgeEvent,
@@ -56,7 +58,7 @@ export function useDaemonEvents(): UseDaemonEventsResult {
                   uptime: snapshot.liveness.uptime,
                   queueDepth: snapshot.liveness.queueDepth,
                   runningBuilds: snapshot.liveness.runningBuilds,
-                  autoBuild: snapshot.liveness.autoBuild,
+                  autoBuild: livenessAutoBuild,
                   subscribers: snapshot.liveness.subscribers,
                 },
               },

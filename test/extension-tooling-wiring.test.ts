@@ -104,15 +104,16 @@ describe('native extension event runtime wiring', () => {
     expect(wrapBlock.indexOf('withRecording(')).toBeLessThan(wrapBlock.indexOf('withHooks('));
   });
 
-  it('reloads the in-process watcher without using worker cancellation paths', () => {
-    const reloadBlock = daemonSource.slice(
-      daemonSource.indexOf('async function reloadExtensionsWatcher()'),
-      daemonSource.indexOf('// Load config before starting server'),
+  it('reloads the in-process watcher through the auto-build supervisor', () => {
+    const supervisorBlock = daemonSource.slice(
+      daemonSource.indexOf('const autoBuildSupervisor = persistent ? new AutoBuildSupervisor({'),
+      daemonSource.indexOf('const daemonState: DaemonState'),
     );
-    expect(reloadBlock).toContain('await stopWatcher();');
-    expect(reloadBlock).toContain('await startWatcher(');
-    expect(reloadBlock).not.toContain('cancelWorker');
-    expect(reloadBlock).not.toContain('process.kill');
+    expect(supervisorBlock).toContain('new AutoBuildSupervisor');
+    expect(supervisorBlock).toContain('reloadExtensions: reloadExtensionsWatcher');
+    expect(supervisorBlock).toContain('restartWatcher: () => restartWatcher(config?.hooks ?? [], { reloadConfig: true })');
+    expect(supervisorBlock).not.toContain('cancelWorker');
+    expect(supervisorBlock).not.toContain('process.kill');
   });
 });
 

@@ -14,16 +14,32 @@ import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { useTempDir } from './test-tmpdir.js';
 import { openDatabase } from '@eforge-build/monitor/db';
-import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
+import { startServer, type DaemonState, type MonitorServer } from '@eforge-build/monitor/server';
 import { API_ROUTES } from '@eforge-build/client';
+import { AutoBuildSupervisor, type AutoBuildQueueMutationReason } from '@eforge-build/monitor/auto-build-supervisor';
 
 const makeTempDir = useTempDir('eforge-playbook-api-');
 
 let server: MonitorServer | undefined;
+let autoBuildWakeReasons: string[] = [];
+
+class RecordingAutoBuildSupervisor extends AutoBuildSupervisor {
+  override notifyQueueMutation(reason?: AutoBuildQueueMutationReason) {
+    autoBuildWakeReasons.push(reason ?? 'external');
+    return super.notifyQueueMutation(reason);
+  }
+}
+
+function makeDaemonState(): DaemonState {
+  return {
+    autoBuildController: new RecordingAutoBuildSupervisor(),
+  };
+}
 
 afterEach(async () => {
   await server?.stop();
   server = undefined;
+  autoBuildWakeReasons = [];
 });
 
 // ---------------------------------------------------------------------------
@@ -296,7 +312,7 @@ describe('POST /api/playbook/enqueue', () => {
     await writeFile(resolve(teamDir, 'my-feature.md'), validPlaybookRaw(), 'utf-8');
 
     const db = openDatabase(resolve(tmpDir, 'monitor.db'));
-    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir });
+    server = await startServer(db, 0, { strictPort: true, cwd: tmpDir, daemonState: makeDaemonState() });
 
     const res = await post(`http://localhost:${server.port}${API_ROUTES.playbookEnqueue}`, {
       name: 'my-feature',
@@ -320,6 +336,8 @@ describe('POST /api/playbook/enqueue', () => {
     // Verify the queue directory is clean (no untracked or modified files)
     const gitStatus = execFileSync('git', ['status', '--porcelain', 'eforge/queue/'], { cwd: tmpDir }).toString().trim();
     expect(gitStatus).toBe('');
+
+    expect(autoBuildWakeReasons).toContain('playbook-enqueue');
   });
 
   it('persists dependsOn in PRD frontmatter when afterQueueId is provided', async () => {
