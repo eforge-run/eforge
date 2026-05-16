@@ -22,9 +22,12 @@
  * If none of the three profiles exist in the configured scopes, this router
  * defers (returns `null`) so other routers or the default profile take over.
  *
- * Fail-open semantics apply: if this router throws, the engine emits a
- * `queue:profile:router-failed` diagnostic and continues with the default
- * profile. No `setActiveProfile` calls are made — routing is dispatch-time only.
+ * Runtime status: `registerProfileRouter` runs before each queued PRD build.
+ * Explicit `profile:` frontmatter takes absolute precedence, so routers are not
+ * invoked when a queued PRD already chooses a profile. Fail-open semantics
+ * apply: if this router throws, the engine emits a `queue:profile:router-failed`
+ * diagnostic and continues with the next router/default profile. No
+ * `setActiveProfile` calls are made — routing is dispatch-time only.
  */
 
 import { defineEforgeExtension } from '@eforge-build/extension-sdk';

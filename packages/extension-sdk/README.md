@@ -24,7 +24,7 @@ eforge extension test build-notifier --run latest
 eforge extension reload
 ```
 
-By default this uses the `event-logger` template in `.eforge/extensions/` and refuses to overwrite an existing file unless `--force` is passed. Use `--scope project` for `eforge/extensions/` or `--scope user` for your user config directory.
+By default this uses the `event-logger` template in `.eforge/extensions/` and refuses to overwrite an existing file unless `--force` is passed. Use `--template blank` for a minimal module. Use `--scope project` for `eforge/extensions/` or `--scope user` for your user config directory.
 
 An extension is a TypeScript module with a default-export factory:
 
@@ -63,7 +63,7 @@ The eforge daemon discovers and loads native extensions from three scopes:
 
 Precedence is `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. Extensions run in the eforge daemon/worker Node process without a sandbox.
 
-Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; non-event registered capabilities remain deferred.
+Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation and `registerProfileRouter` pre-build dispatch are wired. Policy gates, custom tools, input sources, reviewer perspectives, and validation providers remain captured for provenance with runtime execution deferred.
 
 ## Registration methods
 
@@ -80,7 +80,7 @@ Loader-time registration capture is available today: the daemon calls each defau
 
 All capabilities have full TypeScript type contracts. Loading, registration capture, `onEvent` dispatch, `onAgentRun` prompt-context augmentation, and `registerProfileRouter` pre-build dispatch are wired; blocking gates, tool execution, custom input fetching, reviewer perspective execution, and validation provider execution land in subsequent runtime phases.
 
-`registerProfileRouter` routers run before each queued PRD build. Routers are invoked sequentially in registration order using `selectBuildProfile` (preferred) or the deprecated `resolve` method. A `null`/`undefined` result defers to the next router. Routers that throw or time out emit `queue:profile:*` diagnostics and the next router is consulted (fail-open). An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are invoked. See [`examples/extensions/profile-router.ts`](../../examples/extensions/profile-router.ts) for a three-tier fallback example.
+`registerProfileRouter` routers run before each queued PRD build. Per-router timeout is controlled by `extensions.profileRouterTimeoutMs`, which defaults to `extensions.eventHookTimeoutMs`. Routers are invoked sequentially in registration order using `selectBuildProfile` (preferred) or the deprecated `resolve` method. A `null`/`undefined` result defers to the next router. Routers that throw or time out emit `queue:profile:*` diagnostics and the next router is consulted (fail-open). An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are invoked. See [`examples/extensions/profile-router.ts`](../../examples/extensions/profile-router.ts) for a three-tier fallback example.
 
 `onEvent` handlers are non-blocking with respect to the engine pipeline. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with extension name, pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Use `eforge extension test <name-or-path> --fixture <path>` or `eforge extension test <name-or-path> --run latest` to dry-run matching event hooks and inspect replay counts, matches, emitted diagnostics, and deferred non-event registration families.
 
@@ -158,4 +158,4 @@ Local docs: [`docs/extensions.md`](../../docs/extensions.md) and [`docs/extensio
 
 ## Stability
 
-Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, `onEvent` execution, and `onEvent` replay testing are available. Runtime execution of deferred capability families will build on this stable contract.
+Public exports are stability-promised within a major version. Runtime loading, daemon integration, CLI/API/MCP/Pi inspection, diagnostics, registration capture, `onEvent` execution/replay testing, `onAgentRun` prompt-context augmentation, and `registerProfileRouter` pre-build dispatch are available. Runtime execution of deferred capability families will build on this stable contract.

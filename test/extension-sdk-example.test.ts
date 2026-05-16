@@ -8,23 +8,45 @@
  */
 
 import { describe, it, expect } from 'vitest';
+import { readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as sdk from '@eforge-build/extension-sdk';
 
 // Import example default exports so TypeScript verifies they conform to the
-// SDK factory contract. The factories are not invoked (no runtime wiring in
-// this slice); the `void` references below exist solely to keep the imports
-// from being elided by tree-shakers while keeping eslint/no-unused happy.
+// SDK factory contract. The `void` references below exist solely to keep the
+// imports from being elided by tree-shakers while keeping eslint/no-unused happy.
 import minimalEventLogger from '../examples/extensions/minimal-event-logger.js';
 import protectedPaths from '../examples/extensions/protected-paths.js';
 // --- eforge:region plan-02-runtime-and-integration ---
 import profileRouter from '../examples/extensions/profile-router.js';
 // --- eforge:endregion plan-02-runtime-and-integration ---
+// --- eforge:region plan-01-extension-docs-examples-sync ---
+import agentContext from '../examples/extensions/agent-context.js';
+import slackWebhookNotifier from '../examples/extensions/slack-webhook-notifier.js';
+// --- eforge:endregion plan-01-extension-docs-examples-sync ---
+
+const EXTENSION_EXAMPLE_DIR = resolve(fileURLToPath(new URL('../examples/extensions', import.meta.url)));
+const importedExampleFiles = [
+  'agent-context.ts',
+  'minimal-event-logger.ts',
+  'profile-router.ts',
+  'protected-paths.ts',
+  'slack-webhook-notifier.ts',
+].sort();
+
 const _factoryCheck1: sdk.EforgeExtensionFactory = minimalEventLogger;
 const _factoryCheck2: sdk.EforgeExtensionFactory = protectedPaths;
 // --- eforge:region plan-02-runtime-and-integration ---
 const _factoryCheck4: sdk.EforgeExtensionFactory = profileRouter;
 void _factoryCheck4;
 // --- eforge:endregion plan-02-runtime-and-integration ---
+// --- eforge:region plan-01-extension-docs-examples-sync ---
+const _factoryCheck5: sdk.EforgeExtensionFactory = agentContext;
+const _factoryCheck6: sdk.EforgeExtensionFactory = slackWebhookNotifier;
+void _factoryCheck5;
+void _factoryCheck6;
+// --- eforge:endregion plan-01-extension-docs-examples-sync ---
 const _factoryCheck3: sdk.EforgeExtensionFactory = (api) => {
   api.registerTool({
     name: 'test:noop',
@@ -61,6 +83,141 @@ const _profileRouterStub: sdk.EforgeExtensionFactory = (api) => {
 };
 void _profileRouterStub;
 // --- eforge:endregion plan-01-sdk-and-wire-contracts ---
+
+function captureSlackPlanErrorHandler(): sdk.EventHookHandler<'plan:error:set'> {
+  let handler: sdk.EventHookHandler<'plan:error:set'> | undefined;
+  const api = {
+    onEvent(pattern: sdk.EventPattern, registered: sdk.EventHookHandler<'plan:error:set'>) {
+      expect(pattern).toBe('plan:error:set');
+      handler = registered;
+    },
+  } as unknown as sdk.EforgeExtensionAPI;
+
+  slackWebhookNotifier(api);
+  expect(handler).toBeDefined();
+  return handler!;
+}
+
+function createEventContext(
+  event: sdk.EventOfType<'plan:error:set'>,
+  logs: { info: string[]; warn: string[] },
+): sdk.EventHookContext {
+  return {
+    event,
+    logger: {
+      debug() {},
+      info(message: string) {
+        logs.info.push(message);
+      },
+      warn(message: string) {
+        logs.warn.push(message);
+      },
+      error() {},
+    },
+    exec: {
+      run: async () => ({ stdout: '', stderr: '', exitCode: 0 }),
+    },
+  } as sdk.EventHookContext;
+}
+
+function restoreEnv(name: string, value: string | undefined): void {
+  if (value === undefined) {
+    delete process.env[name];
+  } else {
+    process.env[name] = value;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Example import and runtime-safety smoke checks
+// ---------------------------------------------------------------------------
+
+describe('extension examples', () => {
+  it('imports every TypeScript example file', () => {
+    const exampleFiles = readdirSync(EXTENSION_EXAMPLE_DIR)
+      .filter((file) => file.endsWith('.ts'))
+      .sort();
+    expect(importedExampleFiles).toEqual(exampleFiles);
+  });
+
+  it('slack webhook notifier skips without credentials and does not call fetch', async () => {
+    const envName = 'EFORGE_SLACK_WEBHOOK_URL';
+    const originalWebhookUrl = process.env[envName];
+    const originalFetch = globalThis.fetch;
+    const logs = { info: [] as string[], warn: [] as string[] };
+    let fetchCalled = false;
+
+    try {
+      delete process.env[envName];
+      globalThis.fetch = (async () => {
+        fetchCalled = true;
+        throw new Error('fetch should not be called without a webhook URL');
+      }) as typeof fetch;
+
+      const event: sdk.EventOfType<'plan:error:set'> = {
+        type: 'plan:error:set',
+        planId: 'plan-a',
+        error: 'build crashed',
+      };
+      const handler = captureSlackPlanErrorHandler();
+      await handler(event, createEventContext(event, logs));
+
+      expect(fetchCalled).toBe(false);
+      expect(logs.info).toContain('EFORGE_SLACK_WEBHOOK_URL is unset; skipping Slack-compatible plan error notification');
+      expect(logs.warn).toEqual([]);
+    } finally {
+      restoreEnv(envName, originalWebhookUrl);
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('slack webhook notifier posts only to the webhook URL from the environment', async () => {
+    const envName = 'EFORGE_SLACK_WEBHOOK_URL';
+    const originalWebhookUrl = process.env[envName];
+    const originalFetch = globalThis.fetch;
+    const webhookUrl = 'https://example.test/eforge-slack-webhook';
+    const logs = { info: [] as string[], warn: [] as string[] };
+    const fetchCalls: Array<{ input: Parameters<typeof fetch>[0]; init: Parameters<typeof fetch>[1] }> = [];
+
+    try {
+      process.env[envName] = webhookUrl;
+      globalThis.fetch = (async (input, init) => {
+        fetchCalls.push({ input, init });
+        return { ok: true, status: 200 } as Response;
+      }) as typeof fetch;
+
+      const event: sdk.EventOfType<'plan:error:set'> = {
+        type: 'plan:error:set',
+        planId: 'plan-a',
+        error: 'build crashed',
+      };
+      const handler = captureSlackPlanErrorHandler();
+      await handler(event, createEventContext(event, logs));
+
+      expect(fetchCalls).toHaveLength(1);
+      expect(String(fetchCalls[0]?.input)).toBe(webhookUrl);
+      expect(fetchCalls[0]?.init?.method).toBe('POST');
+      expect(fetchCalls[0]?.init?.headers).toEqual({ 'content-type': 'application/json' });
+      expect(JSON.parse(String(fetchCalls[0]?.init?.body))).toEqual({
+        text: 'eforge plan plan-a failed: build crashed',
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: '*:warning: eforge plan error*\n*Plan:* plan-a\n*Error:* build crashed',
+            },
+          },
+        ],
+      });
+      expect(logs.info).toContain('Sent Slack-compatible plan error notification for plan-a');
+      expect(logs.warn).toEqual([]);
+    } finally {
+      restoreEnv(envName, originalWebhookUrl);
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Type-level barrel surface check — references every documented type-only

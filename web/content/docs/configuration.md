@@ -137,6 +137,9 @@ Precedence is `project-local > project-team > user`. Use project-local extension
 ```yaml
 extensions:
   enabled: true                  # default
+  eventHookTimeoutMs: 5000       # native onEvent timeout in ms
+  agentContextHookTimeoutMs: 5000 # optional onAgentRun timeout; defaults to eventHookTimeoutMs
+  profileRouterTimeoutMs: 5000   # optional registerProfileRouter timeout; defaults to eventHookTimeoutMs
   include:
     - build-notifier             # optional allowlist by name
   exclude:
@@ -148,7 +151,7 @@ extensions:
 
 Supported extension entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. The loader executes the default-export factory in the eforge daemon/worker Node process without a sandbox, records registrations, and surfaces status, diagnostics, shadows, trust, source, strategy, registration counts, and event replay results through `eforge extension list/show/validate/test` and extension API routes.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, and management commands (`eforge extension list/show/validate/test/new/reload`). Blocking policy enforcement, tool injection/execution, profile routing, input-source execution, reviewer perspective execution, and validation-provider execution are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, pre-build `registerProfileRouter` dispatch, and management commands (`eforge extension list/show/validate/test/new/reload`). Blocking policy enforcement, tool injection/execution, input-source execution, reviewer perspective execution, and validation-provider execution are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
 
 ## Profile Toolbelts for UI Work
 
