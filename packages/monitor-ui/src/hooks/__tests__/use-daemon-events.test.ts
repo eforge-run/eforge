@@ -263,6 +263,31 @@ describe('useDaemonEvents', () => {
     });
   });
 
+  it('daemon:auto-build:disabled event frame disables autoBuild', async () => {
+    const { result } = renderHook(() => useDaemonEvents());
+
+    act(() => {
+      pushFrame({ kind: 'snapshot', snapshot: makeDaemonSnapshot() });
+    });
+    await waitFor(() => expect(result.current.connectionStatus).toBe('connected'));
+
+    act(() => {
+      pushFrame({
+        kind: 'event',
+        event: {
+          type: 'daemon:auto-build:disabled',
+          sessionId: undefined,
+          timestamp: '2024-01-15T10:05:00.000Z',
+        },
+        eventId: '102',
+      });
+    });
+
+    await waitFor(() => {
+      expect(result.current.daemonState.autoBuild?.enabled).toBe(false);
+    });
+  });
+
   it('dedupes recentActivity on re-seed', async () => {
     const { result } = renderHook(() => useDaemonEvents());
 

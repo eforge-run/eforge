@@ -32,6 +32,7 @@ const NEW_PERSISTED_TYPES = [
   'daemon:scheduler:capacity-blocked',
   'daemon:scheduler:dependency-blocked',
   'daemon:auto-build:enabled',
+  'daemon:auto-build:disabled',
   'daemon:auto-build:resumed',
   'daemon:auto-build:triggered',
   'daemon:recovery:start',

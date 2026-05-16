@@ -214,6 +214,14 @@ describe('safeParseEforgeEvent — new variants', () => {
       expect(result.data.runId).toBe('run-xyz');
     }
   });
+
+  it('accepts daemon:auto-build:disabled with only the common envelope', () => {
+    const result = safeParseEforgeEvent({
+      type: 'daemon:auto-build:disabled',
+      timestamp: '2025-01-01T00:00:00.000Z',
+    });
+    expect(result.success).toBe(true);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -236,6 +244,35 @@ describe('eventRegistry — extension diagnostics', () => {
   });
 });
 // --- eforge:endregion plan-01-native-event-runtime-foundation ---
+
+describe('eventRegistry — daemon:auto-build:disabled', () => {
+  it('registers the disabled event as daemon-scoped, persisted, summarized, and projected', () => {
+    expect(eventRegistry['daemon:auto-build:disabled']).toMatchObject({
+      scope: 'daemon',
+      persist: true,
+      summary: 'Auto-build disabled',
+    });
+
+    const event = {
+      type: 'daemon:auto-build:disabled',
+      timestamp: '2025-01-01T00:00:00.000Z',
+    } as const;
+    expect(getEventSummary(event)).toBe('Auto-build disabled');
+
+    const state = {
+      runs: [],
+      queue: [],
+      autoBuild: { enabled: true, watcher: { running: true, pid: 1234, sessionId: null } },
+      latestHeartbeat: null,
+    };
+    const project = eventRegistry['daemon:auto-build:disabled'].project;
+    expect(project?.(event, state)).toEqual({
+      autoBuild: { enabled: false, watcher: { running: true, pid: 1234, sessionId: null } },
+    });
+    expect(project?.(event, { ...state, autoBuild: { ...state.autoBuild, enabled: false } })).toBeUndefined();
+    expect(project?.(event, { ...state, autoBuild: null })).toBeUndefined();
+  });
+});
 
 // ---------------------------------------------------------------------------
 // Schema validation — invalid payloads rejected

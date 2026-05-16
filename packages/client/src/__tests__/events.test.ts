@@ -1,5 +1,5 @@
 /**
- * Wire roundtrip tests for the 18 new daemon EforgeEvent variants added in the
+ * Wire roundtrip tests for the 19 new daemon EforgeEvent variants added in the
  * plan-01-types-and-daemon-emission region of events.ts.
  *
  * Each fixture is statically typed as `EforgeEvent`, so field-name or type
@@ -87,6 +87,10 @@ const variants: EforgeEvent[] = [
     timestamp: '2025-01-01T00:02:00.000Z',
   },
   {
+    type: 'daemon:auto-build:disabled',
+    timestamp: '2025-01-01T00:02:00.500Z',
+  },
+  {
     type: 'daemon:auto-build:resumed',
     timestamp: '2025-01-01T00:02:01.000Z',
   },
@@ -153,7 +157,7 @@ const variants: EforgeEvent[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Expected type literals (hard-coded to the 18 new daemon variants)
+// Expected type literals (hard-coded to the 19 new daemon variants)
 // ---------------------------------------------------------------------------
 
 const EXPECTED_LITERALS = new Set([
@@ -166,6 +170,7 @@ const EXPECTED_LITERALS = new Set([
   'daemon:scheduler:capacity-blocked',
   'daemon:scheduler:dependency-blocked',
   'daemon:auto-build:enabled',
+  'daemon:auto-build:disabled',
   'daemon:auto-build:resumed',
   'daemon:auto-build:triggered',
   'daemon:recovery:start',
@@ -182,7 +187,7 @@ const EXPECTED_LITERALS = new Set([
 // ---------------------------------------------------------------------------
 
 describe('EforgeEvent wire roundtrip', () => {
-  it('roundtrips all 18 new daemon variants through JSON', () => {
+  it('roundtrips all 19 new daemon variants through JSON', () => {
     for (const event of variants) {
       const parsed = JSON.parse(JSON.stringify(event));
       expect(parsed).toEqual(event);
@@ -190,9 +195,9 @@ describe('EforgeEvent wire roundtrip', () => {
     }
   });
 
-  it('covers all 18 new daemon variant type literals', () => {
+  it('covers all 19 new daemon variant type literals', () => {
     const types = new Set(variants.map((e) => e.type));
-    expect(types.size).toBe(18);
+    expect(types.size).toBe(19);
     expect(types).toEqual(EXPECTED_LITERALS);
   });
 });
