@@ -68,7 +68,7 @@ describe('/eforge:extend skill files and manifests', () => {
       commands: string[];
     };
 
-    expect(compareSemver(manifest.version, '0.25.6')).toBeGreaterThan(0);
+    expect(compareSemver(manifest.version, '0.25.7')).toBeGreaterThan(0);
     expect(manifest.commands).toContain('./skills/extend/extend.md');
 
     const pluginRoot = repoPath('eforge-plugin');
@@ -126,6 +126,14 @@ describe('/eforge:extend workflow content', () => {
     'packages/pi-eforge/skills/eforge-extend/SKILL.md',
   ] as const;
 
+  function extractPolicyGuidance(source: string): string {
+    const start = source.indexOf('Runtime-supported capability families:');
+    const end = source.indexOf('### Step 4: Scope selection', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+    return source.slice(start, end).trim();
+  }
+
   it('documents the required authoring workflow in both skills', () => {
     const requiredTerms = [
       'docs/extensions.md',
@@ -142,7 +150,15 @@ describe('/eforge:extend workflow content', () => {
       'defineExtensionTool',
       'registerTool',
       'registerProfileRouter',
+      'beforeQueueDispatch',
       'beforePlanMerge',
+      'beforeFinalMerge',
+      'beforeEnqueue',
+      'beforeValidation',
+      'supported policy-gate subset',
+      'Approval workflow/UI/state and `modify` policy decisions',
+      'require-approval` blocks',
+      'unsandboxed trusted code',
       'registerInputSource',
       'registerReviewerPerspective',
       'registerValidationProvider',
@@ -166,6 +182,13 @@ describe('/eforge:extend workflow content', () => {
         expect(source, `${relative} should mention ${term}`).toContain(term);
       }
     }
+  });
+
+  it('keeps Claude and Pi policy-gate guidance text in sync', () => {
+    const pluginSkill = readRepoFile('eforge-plugin/skills/extend/extend.md');
+    const piSkill = readRepoFile('packages/pi-eforge/skills/eforge-extend/SKILL.md');
+
+    expect(extractPolicyGuidance(pluginSkill)).toBe(extractPolicyGuidance(piSkill));
   });
 
   it('uses platform-appropriate eforge_extension tool names', () => {

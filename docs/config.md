@@ -24,6 +24,8 @@ extensions:
   eventHookTimeoutMs: 5000    # Native onEvent handler timeout in ms (positive integer)
   agentContextHookTimeoutMs: 5000 # Optional onAgentRun handler timeout; defaults to eventHookTimeoutMs
   profileRouterTimeoutMs: 5000 # Optional registerProfileRouter timeout; defaults to eventHookTimeoutMs
+  policyGateTimeoutMs: 5000 # Optional policy gate timeout; defaults to eventHookTimeoutMs
+  policyGateFailurePolicy: fail-closed # fail-closed blocks on failures; fail-open allows after diagnostics
   trustProjectExtensions: false # Trust checked-in eforge/extensions/ modules (user/local config only)
   # include:                  # Allowlist by native extension name
   # exclude:                  # Denylist by native extension name
@@ -117,6 +119,8 @@ extensions:
   eventHookTimeoutMs: 5000
   agentContextHookTimeoutMs: 5000
   profileRouterTimeoutMs: 5000
+  policyGateTimeoutMs: 5000
+  policyGateFailurePolicy: fail-closed
   include:
     - build-notifier
   exclude:
@@ -133,6 +137,8 @@ extensions:
 | `extensions.eventHookTimeoutMs` | `5000` | Timeout in milliseconds for each native `onEvent` handler invocation. Must be a positive integer. |
 | `extensions.agentContextHookTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `onAgentRun` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
 | `extensions.profileRouterTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each `registerProfileRouter` handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
+| `extensions.policyGateTimeoutMs` | inherits `eventHookTimeoutMs` | Timeout in milliseconds for each policy-gate handler invocation. Must be a positive integer when set. Defaults to `extensions.eventHookTimeoutMs` when omitted. |
+| `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for thrown, timed-out, or invalid policy gates. Valid values: `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Explicit extension files or directories to validate/load in addition to auto-discovery. Relative paths resolve from the project root. |
 | `extensions.trustProjectExtensions` | `false` | Allows checked-in project/team extensions from `eforge/extensions/` to load. User and project-local extensions load when enabled. |
@@ -141,7 +147,7 @@ Auto-discovery scans `~/.config/eforge/extensions/`, `eforge/extensions/`, and `
 
 Project/team extensions are committed code and are skipped unless `extensions.trustProjectExtensions: true` is set from a trusted layer (user config or project-local config). Extensions execute in the eforge daemon/worker Node process without a sandbox.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, and management commands (`eforge extension list/show/validate/test/new/reload`). `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are deferred runtime phases.
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, and management commands (`eforge extension list/show/validate/test/new/reload`). `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are deferred runtime phases.
 
 ## Tiers
 

@@ -933,91 +933,86 @@ const EforgeEventVariantsSchema = Type.Union([
   // --- eforge:endregion plan-01-profile-router-events ---
 
   // --- eforge:region plan-01-policy-gate-foundation ---
-  // Blocking policy-gate decisions and diagnostics
-  Type.Union([
-    Type.Object({
-      type: Type.Literal('extension:policy:decision'),
-      ...QueueDispatchPolicyGateProvenanceFields,
-      ...PolicyGateAllowDecisionFields,
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:decision'),
-      ...QueueDispatchPolicyGateProvenanceFields,
-      ...PolicyGateBlockDecisionFields,
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:decision'),
-      ...QueueDispatchPolicyGateProvenanceFields,
-      ...PolicyGateRequireApprovalDecisionFields,
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:decision'),
-      ...PlanMergePolicyGateProvenanceFields,
-      ...PolicyGateAllowDecisionFields,
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:decision'),
-      ...PlanMergePolicyGateProvenanceFields,
-      ...PolicyGateBlockDecisionFields,
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:decision'),
-      ...PlanMergePolicyGateProvenanceFields,
-      ...PolicyGateRequireApprovalDecisionFields,
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:decision'),
-      ...FinalMergePolicyGateProvenanceFields,
-      ...PolicyGateAllowDecisionFields,
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:decision'),
-      ...FinalMergePolicyGateProvenanceFields,
-      ...PolicyGateBlockDecisionFields,
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:decision'),
-      ...FinalMergePolicyGateProvenanceFields,
-      ...PolicyGateRequireApprovalDecisionFields,
-    }),
-  ]),
-  Type.Union([
-    Type.Object({
-      type: Type.Literal('extension:policy:failed'),
-      ...QueueDispatchPolicyGateProvenanceFields,
-      message: Type.String(),
-      stack: Type.Optional(Type.String()),
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:failed'),
-      ...PlanMergePolicyGateProvenanceFields,
-      message: Type.String(),
-      stack: Type.Optional(Type.String()),
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:failed'),
-      ...FinalMergePolicyGateProvenanceFields,
-      message: Type.String(),
-      stack: Type.Optional(Type.String()),
-    }),
-  ]),
-  Type.Union([
-    Type.Object({
-      type: Type.Literal('extension:policy:timeout'),
-      ...QueueDispatchPolicyGateProvenanceFields,
-      timeoutMs: Type.Integer({ minimum: 0 }),
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:timeout'),
-      ...PlanMergePolicyGateProvenanceFields,
-      timeoutMs: Type.Integer({ minimum: 0 }),
-    }),
-    Type.Object({
-      type: Type.Literal('extension:policy:timeout'),
-      ...FinalMergePolicyGateProvenanceFields,
-      timeoutMs: Type.Integer({ minimum: 0 }),
-    }),
-  ]),
+  // Blocking policy-gate decisions and diagnostics. Keep these as top-level
+  // variants so generated event documentation lists each public wire shape.
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    ...PolicyGateAllowDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    ...PolicyGateBlockDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    ...PolicyGateRequireApprovalDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...PlanMergePolicyGateProvenanceFields,
+    ...PolicyGateAllowDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...PlanMergePolicyGateProvenanceFields,
+    ...PolicyGateBlockDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...PlanMergePolicyGateProvenanceFields,
+    ...PolicyGateRequireApprovalDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...FinalMergePolicyGateProvenanceFields,
+    ...PolicyGateAllowDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...FinalMergePolicyGateProvenanceFields,
+    ...PolicyGateBlockDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:decision'),
+    ...FinalMergePolicyGateProvenanceFields,
+    ...PolicyGateRequireApprovalDecisionFields,
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:failed'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:failed'),
+    ...PlanMergePolicyGateProvenanceFields,
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:failed'),
+    ...FinalMergePolicyGateProvenanceFields,
+    message: Type.String(),
+    stack: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:timeout'),
+    ...QueueDispatchPolicyGateProvenanceFields,
+    timeoutMs: Type.Integer({ minimum: 0 }),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:timeout'),
+    ...PlanMergePolicyGateProvenanceFields,
+    timeoutMs: Type.Integer({ minimum: 0 }),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:policy:timeout'),
+    ...FinalMergePolicyGateProvenanceFields,
+    timeoutMs: Type.Integer({ minimum: 0 }),
+  }),
   // --- eforge:endregion plan-01-policy-gate-foundation ---
 
   // Planning

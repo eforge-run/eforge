@@ -140,6 +140,8 @@ extensions:
   eventHookTimeoutMs: 5000       # native onEvent timeout in ms
   agentContextHookTimeoutMs: 5000 # optional onAgentRun timeout; defaults to eventHookTimeoutMs
   profileRouterTimeoutMs: 5000   # optional registerProfileRouter timeout; defaults to eventHookTimeoutMs
+  policyGateTimeoutMs: 5000      # optional policy gate timeout; defaults to eventHookTimeoutMs
+  policyGateFailurePolicy: fail-closed # fail-closed blocks on failures; fail-open allows after diagnostics
   include:
     - build-notifier             # optional allowlist by name
   exclude:
@@ -151,7 +153,7 @@ extensions:
 
 Supported extension entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. The loader executes the default-export factory in the eforge daemon/worker Node process without a sandbox, records registrations, and surfaces status, diagnostics, shadows, trust, source, strategy, registration counts, and event replay results through `eforge extension list/show/validate/test` and extension API routes.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, and management commands (`eforge extension list/show/validate/test/new/reload`). `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, and management commands (`eforge extension list/show/validate/test/new/reload`). `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
 
 ## Profile Toolbelts for UI Work
 

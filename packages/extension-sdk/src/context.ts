@@ -2,10 +2,10 @@
  * Context types passed to extension hook handlers.
  *
  * Each hook receives a context object scoped to its execution environment.
- * Event-hook contexts are runtime-supported. Some other fields (e.g. `exec`,
- * `state`) are typed contracts whose runtime implementations are not yet wired
- * — they are included so authors can write type-safe code against the future
- * runtime surface.
+ * Event-hook, agent-run, profile-router, and policy-gate contexts are
+ * runtime-supported for the currently wired extension capabilities. Deferred
+ * extension families may still expose typed contracts before their runtime
+ * execution is added.
  */
 
 import type { EforgeEvent } from './events.js';
@@ -36,7 +36,7 @@ export interface ExtensionLogger {
 /**
  * Minimal shell-exec capability made available to extension hooks.
  *
- * @remarks Runtime not yet wired. Typed contract only in this slice.
+ * @remarks Runtime-supported for currently wired hook families.
  */
 export interface ExtensionExecApi {
   /**
@@ -86,7 +86,7 @@ export interface EforgeExtensionContext {
   /**
    * Shell-exec API for running subprocesses from an extension.
    *
-   * @remarks Runtime not yet wired. Typed contract only in this slice.
+   * @remarks Runtime-supported for currently wired hook families.
    */
   exec: ExtensionExecApi;
 }

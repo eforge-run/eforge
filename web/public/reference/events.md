@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: e6fcf7be -->
+<!-- Commit: 3b8c1fc3 -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -13,7 +13,7 @@ with one of the variant objects below. The `type` field discriminates the varian
 
 ## Event Variants
 
-Total variants: 168
+Total variants: 180
 
 | Event type | Additional fields |
 |------------|-------------------|
@@ -36,9 +36,21 @@ Total variants: 168
 | `queue:profile:router-failed` | `extensionName`, `extensionPath`, `message`, `prdId`, `routerName`, `stack` |
 | `queue:profile:router-timeout` | `extensionName`, `extensionPath`, `prdId`, `routerName`, `timeoutMs` |
 | `queue:profile:invalid-selection` | `extensionName`, `extensionPath`, `message`, `prdId`, `reason`, `requestedProfile`, `routerName` |
-| `extension:policy:decision` | `baseBranch`, `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `method`, `planId`, `planIds`, `prdId`, `prdTitle`, `reason`, `registrationIndex` |
-| `extension:policy:failed` | `baseBranch`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `message`, `method`, `planId`, `planIds`, `prdId`, `prdTitle`, `registrationIndex`, `stack` |
-| `extension:policy:timeout` | `baseBranch`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `method`, `planId`, `planIds`, `prdId`, `prdTitle`, `registrationIndex`, `timeoutMs` |
+| `extension:policy:decision` | `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `prdId`, `prdTitle`, `reason`, `registrationIndex` |
+| `extension:policy:decision` | `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `prdId`, `prdTitle`, `reason`, `registrationIndex` |
+| `extension:policy:decision` | `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `prdId`, `prdTitle`, `reason`, `registrationIndex` |
+| `extension:policy:decision` | `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `planId`, `reason`, `registrationIndex` |
+| `extension:policy:decision` | `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `planId`, `reason`, `registrationIndex` |
+| `extension:policy:decision` | `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `planId`, `reason`, `registrationIndex` |
+| `extension:policy:decision` | `baseBranch`, `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `method`, `planIds`, `reason`, `registrationIndex` |
+| `extension:policy:decision` | `baseBranch`, `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `method`, `planIds`, `reason`, `registrationIndex` |
+| `extension:policy:decision` | `baseBranch`, `decision`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `method`, `planIds`, `reason`, `registrationIndex` |
+| `extension:policy:failed` | `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `message`, `method`, `prdId`, `prdTitle`, `registrationIndex`, `stack` |
+| `extension:policy:failed` | `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `message`, `method`, `planId`, `registrationIndex`, `stack` |
+| `extension:policy:failed` | `baseBranch`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `message`, `method`, `planIds`, `registrationIndex`, `stack` |
+| `extension:policy:timeout` | `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `prdId`, `prdTitle`, `registrationIndex`, `timeoutMs` |
+| `extension:policy:timeout` | `extensionName`, `extensionPath`, `failurePolicy`, `gateKind`, `method`, `planId`, `registrationIndex`, `timeoutMs` |
+| `extension:policy:timeout` | `baseBranch`, `extensionName`, `extensionPath`, `failurePolicy`, `featureBranch`, `gateKind`, `method`, `planIds`, `registrationIndex`, `timeoutMs` |
 | `planning:start` | `label`, `source` |
 | `planning:skip` | `reason` |
 | `planning:submission` | `hasMigrations`, `planCount`, `totalBodySize` |

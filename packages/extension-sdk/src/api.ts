@@ -123,17 +123,19 @@ export interface EforgeExtensionAPI {
    *
    * Return `{ decision: 'allow' }` to permit dispatch, `{ decision: 'block', reason }`
    * to halt it, or `{ decision: 'require-approval', reason }` to halt it with an
-   * approval-required reason until approval workflow support is added.
+   * approval-required reason. The current runtime treats `require-approval` as blocking
+   * until approval workflow support is added.
    */
   beforeQueueDispatch(handler: QueueDispatchPolicyGateHandler): void;
 
   /**
    * Register a policy gate evaluated before a plan's changes are merged into
-   * the main branch.
+   * the integration branch.
    *
    * Return `{ decision: 'allow' }` to permit the merge, `{ decision: 'block', reason }` to
    * halt it, or `{ decision: 'require-approval', reason }` to halt it with an
-   * approval-required reason until approval workflow support is added.
+   * approval-required reason. The current runtime treats `require-approval` as blocking
+   * until approval workflow support is added.
    *
    * @example
    * ```ts
@@ -153,7 +155,8 @@ export interface EforgeExtensionAPI {
    *
    * Return `{ decision: 'allow' }` to permit the merge, `{ decision: 'block', reason }`
    * to halt it, or `{ decision: 'require-approval', reason }` to halt it with an
-   * approval-required reason until approval workflow support is added.
+   * approval-required reason. The current runtime treats `require-approval` as blocking
+   * until approval workflow support is added.
    */
   beforeFinalMerge(handler: FinalMergePolicyGateHandler): void;
 
