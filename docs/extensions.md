@@ -188,7 +188,7 @@ Add `--json` to CLI commands for machine-readable provenance. The same data is e
 
 ## Runtime support today
 
-The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection and management tooling, native `onEvent` dispatch, and `onAgentRun` prompt-context augmentation are available.
+The runtime foundation is shipped: discovery, trust gating, loader strategy selection, factory execution, registration capture, diagnostics, status reporting, CLI/API/MCP/Pi inspection and management tooling, native `onEvent` dispatch, `onAgentRun` prompt-context augmentation, and pre-build `registerProfileRouter` dispatch are available.
 
 Event hooks run for real CLI, queue worker, and daemon watcher event streams. Dispatch is non-blocking with respect to the engine pipeline: handlers receive matching events but cannot alter or stop the triggering work. Handler failures and timeouts emit `extension:event-handler:*` diagnostics with the extension name, matched pattern, triggering event type, and available `sessionId`/`runId` correlation fields. Those diagnostics are recorded by the monitor before shell hooks run, so shell-hook matching has parity with normal engine and extension diagnostic events.
 
@@ -196,7 +196,7 @@ Event replay testing is also available through `eforge extension test`. Replay e
 
 Agent-run hooks fire before each agent invocation. Handlers can inspect `ctx.role`, `ctx.tier`, `ctx.phase`, and `ctx.stage` to scope their contribution, then return `{ promptAppend: '...' }` to inject additional context. Fragments are appended after any config-level `promptAppend` already resolved by the engine, wrapped in a named provenance section identifying the contributing extension. Multiple extensions contribute in registration order. The runtime is fail-open: a handler that throws or exceeds `extensions.agentContextHookTimeoutMs` emits a typed diagnostic event but does not abort the agent run. Tool fields (`tools`, `allowedTools`, `disallowedTools`) in the return value emit an `extension:agent-context:unsupported` diagnostic and are otherwise ignored - tool injection is tracked for EXTEND_08B.
 
-All other non-event extension capability execution is intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete.
+Other non-event extension capability execution is intentionally deferred for later phases. Loading an extension still records every registration family so provenance and validation output remain complete.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -209,7 +209,7 @@ All other non-event extension capability execution is intentionally deferred for
 | `registerReviewerPerspective` | Yes | Yes | Deferred |
 | `registerValidationProvider` | Yes | Yes | Deferred |
 
-Event-hook, agent-context-hook, and profile-router examples can be loaded, validated, and run at runtime. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. Blocking policy enforcement, custom tool execution, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
+Event-hook, agent-context-hook, and profile-router examples can be loaded, validated, and run at runtime. Event-oriented examples include [`examples/extensions/minimal-event-logger.ts`](../examples/extensions/minimal-event-logger.ts) and the safe [`examples/extensions/slack-webhook-notifier.ts`](../examples/extensions/slack-webhook-notifier.ts), which only sends a Slack-compatible webhook when `EFORGE_SLACK_WEBHOOK_URL` is set. Profile routers run before each PRD build is dispatched from the queue: routers are invoked in registration order with timeout/fail-open semantics, and the first valid profile selection persists to the PRD's frontmatter before `session:start` is emitted. When a router selects a profile, a `queue:profile:selected` event is emitted with the PRD id, selected profile, router name, and optional reason/confidence fields. An explicit `profile:` field in the PRD's frontmatter takes absolute precedence — no routers are consulted. See [`examples/extensions/profile-router.ts`](../examples/extensions/profile-router.ts) for a Claude → Codex → local fallback example. Blocking policy enforcement, custom tool execution, custom input fetching, reviewer perspective execution, and validation provider execution are future runtime phases.
 
 ## Schema language
 

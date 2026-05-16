@@ -528,7 +528,7 @@ const lookupTool = defineExtensionTool({
 
 ## Runtime support status
 
-The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; replay invokes only matching event hooks and summarizes non-event registrations as deferred. Blocking and non-event capability execution are intentionally deferred for later phases.
+The daemon can discover, trust-check, import, and execute extension factories. During factory execution it records registrations for all SDK methods below and exposes counts through `eforge extension` CLI commands and extension daemon APIs. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation and `registerProfileRouter` pre-build dispatch are also wired. Replay invokes only matching event hooks and summarizes non-event registrations as deferred. Blocking policy enforcement, custom tool injection/execution, input-source execution, reviewer perspective execution, and validation-provider execution are intentionally deferred for later phases.
 
 | Capability | Type contract | Loader-time registration capture | Runtime execution today |
 |-----------|---------------|----------------------------------|-------------------------|
@@ -543,7 +543,7 @@ The daemon can discover, trust-check, import, and execute extension factories. D
 
 [^1]: `onAgentRun` handlers that return `tools`, `allowedTools`, or `disallowedTools` emit an `extension:agent-context:unsupported` diagnostic. Those fields are not applied. Handlers are fail-open: errors and timeouts emit `extension:agent-context:failed` / `extension:agent-context:timeout` diagnostics and do not abort the agent run.
 
-Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook and agent-context-hook examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Custom tool injection/execution, blocking policy enforcement, profile routing, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
+Loaded extensions appear in provenance and validation output, including registration summaries and diagnostics. Event-hook, agent-context-hook, and profile-router examples run at runtime. Event-hook examples can also be dry-run with `eforge extension test --fixture <path>` or `eforge extension test --run latest`. Custom tool injection/execution, blocking policy enforcement, input-source execution, reviewer perspective execution, and validation-provider execution are future runtime work.
 
 ---
 
@@ -561,4 +561,4 @@ Profile toolbelts and extensions are complementary but intentionally separate:
 
 Toolbelt filtering applies only to project MCP servers declared in `.mcp.json`. It does not filter engine-internal tools, harness built-ins, or extension-contributed custom tools. Extensions that use `onAgentRun` to add tools bypass toolbelt filtering by design - these are trusted extension-contributed capabilities, not MCP-discovered ones.
 
-Extensions may read profile and toolbelt metadata (via context fields added in future epics) to make decisions such as profile routing. Extensions must not write profile marker files or redefine toolbelt declarations.
+Profile routers receive available profile names and best-effort usage summaries through `ProfileRouterContext`; agent-run hooks also receive read-only runtime metadata such as `profile`, `harness`, and toolbelt selection. Extensions must not write profile marker files or redefine toolbelt declarations.

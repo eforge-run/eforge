@@ -19,12 +19,22 @@ import protectedPaths from '../examples/extensions/protected-paths.js';
 // --- eforge:region plan-02-runtime-and-integration ---
 import profileRouter from '../examples/extensions/profile-router.js';
 // --- eforge:endregion plan-02-runtime-and-integration ---
+// --- eforge:region plan-01-extension-docs-examples-sync ---
+import agentContext from '../examples/extensions/agent-context.js';
+import slackWebhookNotifier from '../examples/extensions/slack-webhook-notifier.js';
+// --- eforge:endregion plan-01-extension-docs-examples-sync ---
 const _factoryCheck1: sdk.EforgeExtensionFactory = minimalEventLogger;
 const _factoryCheck2: sdk.EforgeExtensionFactory = protectedPaths;
 // --- eforge:region plan-02-runtime-and-integration ---
 const _factoryCheck4: sdk.EforgeExtensionFactory = profileRouter;
 void _factoryCheck4;
 // --- eforge:endregion plan-02-runtime-and-integration ---
+// --- eforge:region plan-01-extension-docs-examples-sync ---
+const _factoryCheck5: sdk.EforgeExtensionFactory = agentContext;
+const _factoryCheck6: sdk.EforgeExtensionFactory = slackWebhookNotifier;
+void _factoryCheck5;
+void _factoryCheck6;
+// --- eforge:endregion plan-01-extension-docs-examples-sync ---
 const _factoryCheck3: sdk.EforgeExtensionFactory = (api) => {
   api.registerTool({
     name: 'test:noop',

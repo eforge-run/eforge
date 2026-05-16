@@ -1,5 +1,5 @@
 /**
- * Example: Agent prompt-context extension (EXTEND_08A)
+ * Example: Agent prompt-context extension (runtime-supported promptAppend)
  *
  * This extension demonstrates how to use the `onAgentRun` hook to append
  * role- and tier-scoped context to agent prompts at runtime. The context
@@ -9,7 +9,7 @@
  * Supported fields in this slice:
  *   - `promptAppend` — appended to the agent's final prompt with provenance
  *
- * Deferred to EXTEND_08B (returning them emits an unsupported diagnostic):
+ * Unsupported tool fields (returning them emits an unsupported diagnostic; tracked for EXTEND_08B):
  *   - `tools`, `allowedTools`, `disallowedTools`
  */
 

@@ -1,70 +1,68 @@
 # Extension examples
 
-These examples demonstrate the `@eforge-build/extension-sdk` API. Each example is type-checked as part of the root validation pipeline.
+These examples demonstrate the `@eforge-build/extension-sdk` API. Each example is imported by `test/extension-sdk-example.test.ts` so TypeScript verifies its default export conforms to `EforgeExtensionFactory`.
 
 ## Examples
 
+| Example | Primary API | Runtime status |
+|---------|-------------|----------------|
+| `minimal-event-logger.ts` | `onEvent('plan:build:failed', ...)` | Runtime-supported event dispatch and replay |
+| `slack-webhook-notifier.ts` | `onEvent('plan:error:set', ...)` | Runtime-supported event dispatch and replay; webhook send is skipped unless `EFORGE_SLACK_WEBHOOK_URL` is set |
+| `agent-context.ts` | `onAgentRun(...)` | Runtime-supported for `promptAppend`; `tools`/`allowedTools`/`disallowedTools` return fields are unsupported and emit diagnostics |
+| `profile-router.ts` | `registerProfileRouter(...)` | Runtime-supported pre-build dispatch; explicit `profile:` frontmatter wins; routers fail open |
+| `protected-paths.ts` | `beforePlanMerge(...)` | Loader-captured for provenance/validation; policy-gate enforcement is deferred |
+
 ### `minimal-event-logger.ts`
 
-Subscribes to `plan:build:failed` events and logs through the extension context logger. `onEvent` registrations are runtime-supported; handler errors and timeouts emit extension diagnostics. Demonstrates:
+Subscribes to `plan:build:failed` events and logs through the extension context logger. Demonstrates default-export factory style, typed `onEvent` subscription, and `EventOfType<T>` narrowing.
 
-- Default-export factory style
-- Typed event subscription with `onEvent`
-- `EventOfType<T>` narrowing to access event-specific fields
+### `slack-webhook-notifier.ts`
+
+Subscribes to `plan:error:set` lifecycle events and formats a Slack-compatible webhook payload. The example is safe by default:
+
+- It reads the destination from `EFORGE_SLACK_WEBHOOK_URL`.
+- It contains no real webhook URL or token.
+- It logs and skips when the env var is unset, so import tests and replay tests do not require network credentials.
+
+> **Replay note:** `eforge extension test` executes matching event hooks. If `EFORGE_SLACK_WEBHOOK_URL` is set, replaying matching `plan:error:set` events will send webhook requests.
 
 ### `agent-context.ts`
 
-Appends role- and tier-scoped context to agent prompts at runtime using the `onAgentRun` hook. Demonstrates:
+Appends role- and tier-scoped context to agent prompts at runtime using the `onAgentRun` hook. Demonstrates filtering by `ctx.role` and `ctx.tier`, returning `{ promptAppend: '...' }`, and including lifecycle metadata such as `ctx.phase`.
 
-- Filtering by `ctx.role` and `ctx.tier` to scope contributions
-- Returning `{ promptAppend: '...' }` to inject context before a specific agent run
-- Surfacing `ctx.phase` in the appended fragment for lifecycle-aware augmentation (handlers can also filter on `ctx.stage`)
-
-The returned fragment is appended after any config-level `promptAppend` already resolved by the engine, wrapped in a named provenance section (`## Native extension context / ### <extension-name>`). Handlers are fail-open: a throw or timeout emits a typed `extension:agent-context:*` diagnostic but does not abort the agent run.
+The returned fragment is appended after any config-level `promptAppend`, wrapped in a named provenance section (`## Native extension context / ### <extension-name>`). Handlers are fail-open: a throw or timeout emits a typed `extension:agent-context:*` diagnostic but does not abort the agent run.
 
 > **Runtime note:** `promptAppend` is runtime-supported. Returning `tools`, `allowedTools`, or `disallowedTools` emits an `extension:agent-context:unsupported` diagnostic; tool injection is tracked for EXTEND_08B.
 
 ### `profile-router.ts`
 
-Implements a Claude → Codex → local fallback profile selection strategy using `registerProfileRouter`. Demonstrates:
-
-- `selectBuildProfile` as the canonical router method (preferred over the deprecated `resolve`)
-- Consulting `ctx.usage.profile(name)` to check `cooldownActive` and `nearLimit` before selecting
-- Returning `{ profile, reason, confidence }` with human-readable rationale
-- Returning `null` to defer when no candidate is suitable (fail-open)
-- Env-var-driven configuration (`EFORGE_PROFILE_PRIMARY`, `EFORGE_PROFILE_SECONDARY`, `EFORGE_PROFILE_LOCAL`) so users can experiment without editing code
+Implements a Claude → Codex → local fallback profile selection strategy using `registerProfileRouter`. Demonstrates `selectBuildProfile`, `ctx.usage.profile(name)`, returning `{ profile, reason, confidence }`, returning `null` to defer, and env-var-driven configuration (`EFORGE_PROFILE_PRIMARY`, `EFORGE_PROFILE_SECONDARY`, `EFORGE_PROFILE_LOCAL`).
 
 Default profile names are `claude-sdk-4-7` (primary), `pi-codex-5-5` (secondary), and `pi-deepseek-qwen` (local fallback). All three can be overridden via environment variables.
 
-**Selection logic:**
-1. If the primary profile is available (exists in scope, no cooldown, not near-limit), select it with `confidence: 'high'`.
-2. Else if the secondary profile is available, select it with `confidence: 'medium'`.
-3. Else if the local fallback profile exists in any scope (no quota check), select it with `confidence: 'low'`.
-4. If none of the three are available, return `null` — other routers or the default profile take over.
-
-**Usage data:** `ctx.usage.profile(name)` returns `{ dataSource: 'none' }` when the daemon has no event history for the profile (e.g. first run or CLI mode). In that case `cooldownActive` and `nearLimit` are undefined, so the profile is treated as available.
-
-**No active-profile mutation:** this router never calls `setActiveProfile` or writes any marker file. Routing is dispatch-time only and does not persist outside the enqueued PRD's frontmatter.
-
-> **Runtime note:** `registerProfileRouter` is fully wired — routers run before each PRD build in the queue. The runtime dispatches routers in registration order, fail-open.
+> **Runtime note:** `registerProfileRouter` is wired for pre-build dispatch. Routers run in registration order before a queued PRD build; explicit `profile:` frontmatter takes precedence and skips routers; failures/timeouts are fail-open.
 
 ### `protected-paths.ts`
 
-Uses `eforge.beforePlanMerge` to block merges that touch a protected path. Demonstrates:
+Uses `eforge.beforePlanMerge` to block merges that touch a protected path. Demonstrates policy gate registration and the `PolicyDecision` discriminated union (`allow` / `block` / `require-approval`).
 
-- Policy gate registration
-- `PolicyDecision` discriminated union (`allow` / `block`)
-
-> **Runtime note:** `beforePlanMerge` is loaded and captured for provenance, but policy-gate enforcement remains deferred to a later runtime phase. The example is labelled accordingly.
+> **Runtime note:** `beforePlanMerge` is loaded and captured for provenance, but policy-gate enforcement remains deferred to a later runtime phase.
 
 ## Validation
 
-Examples are type-checked through the vitest pipeline. From the repo root:
+From the repo root, targeted validation for these examples is:
 
 ```sh
-pnpm -r build        # build all workspace packages (including extension-sdk)
-pnpm -r type-check   # type-check all packages; examples are covered via test/extension-sdk-example.test.ts
-pnpm test            # run all tests, including the SDK surface and pattern parity tests
+pnpm test -- test/extension-sdk-example.test.ts
+pnpm test -- test/extension-tooling-wiring.test.ts
+pnpm docs:check
 ```
 
-There is no separate build step for the examples directory. The vitest test at `test/extension-sdk-example.test.ts` imports the example files, which forces TypeScript to type-check them as part of the test run.
+To replay event-oriented examples manually, create a fixture containing a canonical eforge event and run:
+
+```sh
+eforge extension test ./examples/extensions/minimal-event-logger.ts --fixture events.json
+eforge extension test ./examples/extensions/slack-webhook-notifier.ts --fixture events.json
+```
+
+There is no separate build step for the examples directory. The vitest test at `test/extension-sdk-example.test.ts` imports every `examples/extensions/*.ts` default export, which forces TypeScript to type-check them as part of the test run.

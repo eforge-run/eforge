@@ -119,9 +119,14 @@ describe('native extension event runtime wiring', () => {
 describe('extension runtime documentation', () => {
   const docsExtensions = readRepoFile('docs/extensions.md');
   const docsExtensionsApi = readRepoFile('docs/extensions-api.md');
+  const webExtensions = readRepoFile('web/content/docs/extensions.md');
+  const webExtensionsApi = readRepoFile('web/content/docs/extensions-api.md');
   const sdkReadme = readRepoFile('packages/extension-sdk/README.md');
   const configDocs = readRepoFile('docs/config.md');
+  const webConfigDocs = readRepoFile('web/content/docs/configuration.md');
+  const examplesReadme = readRepoFile('examples/extensions/README.md');
   const minimalEventLogger = readRepoFile('examples/extensions/minimal-event-logger.ts');
+  const slackWebhookNotifier = readRepoFile('examples/extensions/slack-webhook-notifier.ts');
   const protectedPaths = readRepoFile('examples/extensions/protected-paths.ts');
 
   it('marks onEvent and onAgentRun runtime execution as supported while other families remain deferred', () => {
@@ -130,14 +135,14 @@ describe('extension runtime documentation', () => {
     expect(sdkReadme).toContain('| `onEvent(pattern, handler)` | Subscribe to typed events (glob patterns) | Yes | Yes |');
 
     // onAgentRun is now partially supported (promptAppend only)
-    for (const source of [docsExtensions, docsExtensionsApi, sdkReadme]) {
+    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
       const onAgentRunRow = source.split('\n').find((line) => line.startsWith('| `onAgentRun'));
       expect(onAgentRunRow, 'onAgentRun row').toBeDefined();
       expect(onAgentRunRow).not.toContain('Deferred');
       expect(onAgentRunRow).toContain('Yes');
     }
 
-    for (const source of [docsExtensions, docsExtensionsApi, sdkReadme]) {
+    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
       for (const capability of [
         'registerTool',
         'beforePlanMerge',
@@ -152,7 +157,7 @@ describe('extension runtime documentation', () => {
     }
 
     // registerProfileRouter: plan-02 shipped the runtime — all three sources now reflect pre-build dispatch.
-    for (const source of [docsExtensions, docsExtensionsApi, sdkReadme]) {
+    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
       const row = source.split('\n').find((line) => line.startsWith('|') && line.includes('registerProfileRouter'));
       expect(row, 'registerProfileRouter row').toBeDefined();
       expect(row).toContain('Yes (pre-build dispatch)');
@@ -172,13 +177,49 @@ describe('extension runtime documentation', () => {
   });
 
   it('documents event hook timeout semantics and example runtime notes', () => {
+    for (const source of [configDocs, webConfigDocs, docsExtensions, webExtensions]) {
+      expect(source).toContain('agentContextHookTimeoutMs');
+    }
     expect(configDocs).toContain('eventHookTimeoutMs: 5000');
     expect(configDocs).toContain('Must be a positive integer');
     expect(minimalEventLogger).not.toContain('Event dispatch remains deferred');
     expect(minimalEventLogger).toContain('onEvent');
     expect(minimalEventLogger).toContain('dispatched at runtime');
+    expect(slackWebhookNotifier).toContain("onEvent('plan:error:set'");
+    expect(slackWebhookNotifier).toContain('EFORGE_SLACK_WEBHOOK_URL');
+    expect(slackWebhookNotifier).not.toMatch(/hooks\.slack\.com\/services/i);
     expect(protectedPaths).toContain('Policy enforcement before merge remains');
     expect(protectedPaths).toContain('deferred until the policy-gate runtime is implemented');
+  });
+
+  it('documents examples, scaffold templates, and unavailable extension workflows accurately', () => {
+    for (const example of [
+      'minimal-event-logger.ts',
+      'slack-webhook-notifier.ts',
+      'agent-context.ts',
+      'profile-router.ts',
+      'protected-paths.ts',
+    ]) {
+      expect(examplesReadme).toContain(example);
+    }
+
+    for (const source of [docsExtensions, webExtensions, sdkReadme]) {
+      expect(source).toContain('event-logger');
+      expect(source).toContain('blank');
+    }
+
+    for (const source of [docsExtensions, webExtensions]) {
+      expect(source).toContain('slack-webhook-notifier.ts');
+      expect(source).toContain('EFORGE_SLACK_WEBHOOK_URL');
+      expect(source).toContain('extension enable`, `extension disable`, `extension promote`, and `extension demote` workflows are deferred');
+    }
+
+    for (const source of [docsExtensions, docsExtensionsApi, webExtensions, webExtensionsApi, sdkReadme]) {
+      expect(source).not.toContain('/eforge:extend');
+      expect(source).not.toMatch(/eforge extension (enable|disable|promote|demote) <name>/);
+      expect(source).not.toContain('profile routing, input-source execution');
+      expect(source).not.toContain('profile routing, custom input fetching');
+    }
   });
 });
 
