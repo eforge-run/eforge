@@ -1,0 +1,56 @@
+name: emit-auto-build-disabled-events-for-connected-monitor-ui-tabs
+description: Emit daemon:auto-build:disabled for manual auto-build disable
+  requests and project it into connected monitor UI daemon state.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm type-check
+  - pnpm test
+  - pnpm docs:check
+plans:
+  - id: plan-01-auto-build-disabled-event
+    name: Emit and Project Auto-build Disabled Events
+    depends_on: []
+    branch: emit-auto-build-disabled-events-for-connected-monitor-ui-tabs/plan-01-auto-build-disabled-event
+    build:
+      - implement
+      - - test-cycle
+        - doc-sync
+      - review-cycle
+    review:
+      strategy: parallel
+      perspectives:
+        - code
+        - api
+        - test
+        - docs
+      maxRounds: 1
+      evaluatorStrictness: standard
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - implement
+    - - test-write
+      - doc-sync
+    - review-cycle
+    - test-cycle
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - code
+      - api
+      - test
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive cross-package bug fix touching the shared event
+    schema/registry, daemon emission, monitor UI projection, and tests, so
+    excursion fits better than expedition. A plan review is useful because event
+    wire contracts and persistence allowlists must stay synchronized. The build
+    includes implementation, explicit test writing, doc sync for
+    public/generated event references, iterative review, and a final test cycle
+    to validate behavior across packages. Parallel review perspectives emphasize
+    code quality, API/wire compatibility, tests, and end-to-end verification.
