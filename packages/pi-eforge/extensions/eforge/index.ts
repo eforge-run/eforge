@@ -2268,6 +2268,13 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       description: "Start or resume a structured planning conversation",
       skill: "eforge-plan",
     },
+    // --- eforge:region plan-01-extend-authoring-ux ---
+    {
+      name: "eforge:extend",
+      description: "Author eforge TypeScript extensions",
+      skill: "eforge-extend",
+    },
+    // --- eforge:endregion plan-01-extend-authoring-ux ---
     {
       name: "eforge:restart",
       description: "Safely restart the eforge daemon",

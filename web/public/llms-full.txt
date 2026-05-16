@@ -2,7 +2,7 @@
 <!-- section: cli -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: aefeaa45 -->
+<!-- Commit: f64aec79 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -357,7 +357,7 @@ Run the MCP stdio proxy server (used by Claude Code plugin)
 <!-- section: api -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: aefeaa45 -->
+<!-- Commit: f64aec79 -->
 <!-- Source: packages/client/src/routes.ts -->
 
 # eforge Daemon HTTP API Reference
@@ -439,7 +439,7 @@ Use `buildPath(pattern, params)` from `@eforge-build/client` to resolve `:param`
 <!-- section: events -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: aefeaa45 -->
+<!-- Commit: f64aec79 -->
 <!-- Source: packages/client/src/events.schemas.ts -->
 
 # eforge Event Protocol Reference
@@ -632,7 +632,7 @@ Use `safeParseEforgeEvent(value)` from `@eforge-build/client` to validate at run
 <!-- section: config -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: aefeaa45 -->
+<!-- Commit: f64aec79 -->
 <!-- Source: packages/engine/src/config.ts -->
 
 # eforge Configuration Reference
@@ -727,7 +727,7 @@ The complete machine-readable schema is at [`/schemas/config.schema.json`](/sche
 <!-- section: tools -->
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: aefeaa45 -->
+<!-- Commit: f64aec79 -->
 <!-- Source: packages/eforge/src/cli/mcp-proxy.ts, packages/pi-eforge/extensions/eforge/index.ts, eforge-plugin/skills/, packages/pi-eforge/skills/ -->
 
 # eforge MCP Tools and Skills Reference
@@ -798,6 +798,7 @@ Source of truth: `scripts/check-skill-parity.mjs`.
 | `config` | `eforge-config` | Initialize or edit eforge/config.yaml team-wide settings, with validation via MCP tool |
 | `init` | `eforge-init` | Initialize eforge in the current project with an interactive setup form |
 | `plan` | `eforge-plan` | Start or resume a structured planning conversation for changes to be built by eforge. Classifies work type and depth, selects relevant dimensions from a per-type playbook, captures acceptance criteria, and produces a session plan that /eforge:build enqueues. |
+| `extend` | `eforge-extend` | Author eforge TypeScript extensions from a natural-language request using the existing extension tooling and docs/examples |
 | `restart` | `eforge-restart` | Safely restart the eforge daemon, checking for active builds first |
 | `status` | `eforge-status` | Check eforge run status and queue state via MCP tools |
 | `update` | `eforge-update` | Check for eforge updates and guide through updating the CLI package, daemon, and plugin |

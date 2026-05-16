@@ -42,6 +42,9 @@ const SKILL_PAIRS_CONFIG = [
   { plugin: 'config', pi: 'eforge-config' },
   { plugin: 'init', pi: 'eforge-init' },
   { plugin: 'plan', pi: 'eforge-plan' },
+  // --- eforge:region plan-01-extend-authoring-ux ---
+  { plugin: 'extend', pi: 'eforge-extend' },
+  // --- eforge:endregion plan-01-extend-authoring-ux ---
   { plugin: 'restart', pi: 'eforge-restart' },
   { plugin: 'status', pi: 'eforge-status' },
   { plugin: 'update', pi: 'eforge-update' },
