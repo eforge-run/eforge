@@ -68,8 +68,11 @@ export function decisionSummary(decision: Decision): string {
       return decision.perspectives.length > 0
         ? `inferred: ${decision.perspectives.join(', ')}`
         : 'inferred: none (fallback to single)';
-    case 'perspectives-respawned':
-      return `round ${decision.round + 1} — ${decision.perspectives.length > 0 ? decision.perspectives.join(', ') : 'auto'}`;
+    case 'perspectives-respawned': {
+      const active = decision.perspectives.length > 0 ? decision.perspectives.join(', ') : 'auto';
+      const dropped = decision.dropped.length > 0 ? `; dropped: ${decision.dropped.join(', ')}` : '';
+      return `round ${decision.round + 1} — ${active}${dropped}`;
+    }
     case 'cycle-terminated': {
       const enriched = enrichedCycleTerminated(decision);
       if (enriched.lastReviewIssueCount !== undefined) {
@@ -133,6 +136,7 @@ export function decisionDetail(decision: Decision): string {
     case 'perspectives-respawned':
       lines.push(`Round: ${decision.round + 1}`);
       lines.push(`Perspectives: ${decision.perspectives.length > 0 ? decision.perspectives.join(', ') : '(auto)'}`);
+      lines.push(`Dropped: ${decision.dropped.length > 0 ? decision.dropped.join(', ') : '(none)'}`);
       break;
     case 'cycle-terminated': {
       const enriched = enrichedCycleTerminated(decision);
