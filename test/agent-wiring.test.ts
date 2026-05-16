@@ -3,7 +3,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EforgeEvent } from '@eforge-build/engine/events';
 import { PlannerSubmissionError } from '@eforge-build/engine/harness';
-import type { AgentHarness } from '@eforge-build/engine/harness';
+import type { AgentHarness, CustomTool } from '@eforge-build/engine/harness';
 import { StubHarness } from './stub-harness.js';
 import { collectEvents, findEvent, filterEvents } from './test-events.js';
 import { useTempDir } from './test-tmpdir.js';
@@ -25,6 +25,7 @@ import { singletonRegistry, buildAgentRuntimeRegistry, type AgentRuntimeRegistry
 // --- eforge:region plan-01-agent-context-runtime ---
 import { withAgentContextHooks } from '@eforge-build/engine/extensions';
 import type { AgentRunRegistration, NativeExtensionRegistry } from '@eforge-build/engine/extensions';
+import { Type } from '@eforge-build/extension-sdk';
 // --- eforge:endregion plan-01-agent-context-runtime ---
 
 // --- Planner ---
@@ -2075,12 +2076,13 @@ describe('withAgentContextHooks — registry decorator wiring (agent-wiring)', (
     const stub = new StubHarness([{ text: 'Implementation done.' }]);
     const innerRegistry = singletonRegistry(stub);
 
-    const extRegistry: Pick<NativeExtensionRegistry, 'agentRunHooks'> = {
+    const extRegistry: Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'> = {
       agentRunHooks: [
         makeAgentRunHook('wiring-test-ext', () => ({
           promptAppend: 'WIRING_TEST_CONTEXT_SENTINEL',
         })),
       ],
+      tools: [],
     };
 
     const decorated = withAgentContextHooks(innerRegistry, {
@@ -2113,14 +2115,79 @@ describe('withAgentContextHooks — registry decorator wiring (agent-wiring)', (
     expect(findEvent(events, 'plan:build:implement:complete')).toBeDefined();
   });
 
+  it('extension custom tools reach AgentRunOptions and handler output appears in tool_result', async () => {
+    const existingTool: CustomTool = {
+      name: 'engine_tool',
+      description: 'Existing engine tool',
+      inputSchema: Type.Object({}),
+      handler: async () => 'engine-output',
+    };
+    const stub = new StubHarness([
+      {
+        toolCalls: [
+          { tool: 'extension_tool', toolUseId: 'call-1', input: { value: 42 }, output: 'fallback' },
+        ],
+        text: 'Done.',
+      },
+    ]);
+    const innerRegistry = singletonRegistry(stub);
+
+    const extRegistry: Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'> = {
+      agentRunHooks: [
+        makeAgentRunHook('tools-ext', () => ({
+          promptAppend: 'Use extension_tool when useful.',
+          tools: [{
+            name: 'extension_tool',
+            description: 'Extension tool',
+            inputSchema: Type.Object({}),
+            handler: async (input: unknown) => `extension-output:${JSON.stringify(input)}`,
+          }],
+        })),
+      ],
+      tools: [],
+    };
+
+    const decorated = withAgentContextHooks(innerRegistry, {
+      extensionRegistry: extRegistry,
+      profileName: 'default',
+      cwd: '/tmp',
+      timeoutMs: 1000,
+    });
+
+    const events = await collectEvents(decorated.forRole('builder').run(
+      {
+        prompt: 'Test.',
+        cwd: '/tmp',
+        maxTurns: 1,
+        tools: 'none',
+        customTools: [existingTool],
+      },
+      'builder',
+    ));
+
+    expect(stub.customToolSets[0]?.map(t => t.name)).toEqual(['engine_tool', 'extension_tool']);
+    const firstDiagnosticIndex = events.findIndex(e => e.type === 'extension:agent-context:applied');
+    const agentStartIndex = events.findIndex(e => e.type === 'agent:start');
+    expect(firstDiagnosticIndex).toBeGreaterThanOrEqual(0);
+    expect(firstDiagnosticIndex).toBeLessThan(agentStartIndex);
+    const toolEvents = filterEvents(events, 'extension:agent-tools:applied');
+    expect(toolEvents).toHaveLength(1);
+    const toolDiagnosticIndex = events.findIndex(e => e.type === 'extension:agent-tools:applied');
+    expect(toolDiagnosticIndex).toBeGreaterThanOrEqual(0);
+    expect(toolDiagnosticIndex).toBeLessThan(agentStartIndex);
+    const toolResult = filterEvents(events, 'agent:tool_result')[0];
+    expect(toolResult?.output).toBe('extension-output:{"value":42}');
+  });
+
   it('options toolbelt fields are byte-identical before and after decoration', async () => {
     const stub = new StubHarness([{ text: 'Done.' }]);
     const innerRegistry = singletonRegistry(stub);
 
-    const extRegistry: Pick<NativeExtensionRegistry, 'agentRunHooks'> = {
+    const extRegistry: Pick<NativeExtensionRegistry, 'agentRunHooks' | 'tools'> = {
       agentRunHooks: [
         makeAgentRunHook('no-mutate-ext', () => ({ promptAppend: 'X' })),
       ],
+      tools: [],
     };
 
     const decorated = withAgentContextHooks(innerRegistry, {

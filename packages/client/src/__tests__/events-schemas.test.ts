@@ -14,7 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { safeParseEforgeEvent } from '../events.schemas.js';
+import { isAlwaysYieldedAgentEvent, safeParseEforgeEvent } from '../events.schemas.js';
 import { eventRegistry, getEventSummary } from '../event-registry.js';
 import type { EforgeEvent } from '../events.schemas.js';
 
@@ -679,7 +679,7 @@ describe('safeParseEforgeEvent — agent:activity variant', () => {
 // --- eforge:region plan-01-agent-context-runtime ---
 
 // ---------------------------------------------------------------------------
-// extension:agent-context:* variants (EXTEND_08A)
+// extension:agent-context:* and extension:agent-tools:* variants
 // ---------------------------------------------------------------------------
 
 describe('safeParseEforgeEvent — extension:agent-context:* variants', () => {
@@ -850,7 +850,60 @@ describe('safeParseEforgeEvent — extension:agent-context:* variants', () => {
     expect(result.success).toBe(false);
   });
 
-  it('round-trips all four agent-context variants through JSON', () => {
+  it('accepts extension:agent-tools:applied with toolbelt metadata', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-tools:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'tool-ext',
+      extensionPath: '/project/.eforge/extensions/tool-ext.ts',
+      role: 'builder',
+      tier: 'implementation',
+      phase: 'build',
+      stage: 'implement',
+      profile: 'default',
+      planId: 'plan-01',
+      harness: 'claude-sdk',
+      toolbelt: 'browser-ui',
+      projectMcpSelection: 'toolbelt',
+      projectMcpServerNames: ['filesystem'],
+      toolNames: ['inspect_context'],
+      effectiveToolNames: ['mcp__eforge_engine__inspect_context'],
+      registeredToolNames: [],
+      inlineToolNames: ['inspect_context'],
+      allowedToolsAdded: ['Read'],
+      disallowedToolsAdded: ['Write'],
+      excludedToolNames: ['duplicate_tool'],
+      toolCount: 1,
+      allowedToolCount: 1,
+      disallowedToolCount: 1,
+      excludedToolCount: 1,
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects extension:agent-tools:applied missing toolNames', () => {
+    const result = safeParseEforgeEvent({
+      type: 'extension:agent-tools:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'tool-ext',
+      extensionPath: '/project/.eforge/extensions/tool-ext.ts',
+      role: 'builder',
+      profile: 'default',
+      effectiveToolNames: [],
+      registeredToolNames: [],
+      inlineToolNames: [],
+      allowedToolsAdded: [],
+      disallowedToolsAdded: [],
+      excludedToolNames: [],
+      toolCount: 0,
+      allowedToolCount: 0,
+      disallowedToolCount: 0,
+      excludedToolCount: 0,
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('round-trips all five agent-context/tool variants through JSON', () => {
     const variants: import('../events.schemas.js').EforgeEvent[] = [
       {
         type: 'extension:agent-context:applied',
@@ -893,6 +946,25 @@ describe('safeParseEforgeEvent — extension:agent-context:* variants', () => {
         profile: 'default',
         fields: ['tools'],
       },
+      {
+        type: 'extension:agent-tools:applied',
+        timestamp: '2025-01-01T00:00:00.000Z',
+        extensionName: 'tool-ext',
+        extensionPath: '/tool.ts',
+        role: 'builder',
+        profile: 'default',
+        toolNames: ['inspect_context'],
+        effectiveToolNames: ['inspect_context'],
+        registeredToolNames: [],
+        inlineToolNames: ['inspect_context'],
+        allowedToolsAdded: [],
+        disallowedToolsAdded: [],
+        excludedToolNames: [],
+        toolCount: 1,
+        allowedToolCount: 0,
+        disallowedToolCount: 0,
+        excludedToolCount: 0,
+      },
     ];
 
     for (const event of variants) {
@@ -905,11 +977,12 @@ describe('safeParseEforgeEvent — extension:agent-context:* variants', () => {
 });
 
 describe('eventRegistry — extension:agent-context:* diagnostics', () => {
-  it('registers all four agent-context variants as session-scoped, non-persistent events', () => {
+  it('registers agent-context and agent-tools variants as session-scoped, non-persistent events', () => {
     expect(eventRegistry['extension:agent-context:applied']).toMatchObject({ scope: 'session', persist: false });
     expect(eventRegistry['extension:agent-context:failed']).toMatchObject({ scope: 'session', persist: false });
     expect(eventRegistry['extension:agent-context:timeout']).toMatchObject({ scope: 'session', persist: false });
     expect(eventRegistry['extension:agent-context:unsupported']).toMatchObject({ scope: 'session', persist: false });
+    expect(eventRegistry['extension:agent-tools:applied']).toMatchObject({ scope: 'session', persist: false });
   });
 
   it('summary function for applied event includes extension name, char count, and role', () => {
@@ -960,6 +1033,34 @@ describe('eventRegistry — extension:agent-context:* diagnostics', () => {
     expect(summary).toContain('slow-ext');
     expect(summary).toContain('3000');
     expect(summary).toContain('planner');
+  });
+
+  it('summary function for tools-applied event includes extension name, role, accepted count, and excluded count', () => {
+    const event: import('../events.schemas.js').EforgeEvent = {
+      type: 'extension:agent-tools:applied',
+      timestamp: '2025-01-01T00:00:00.000Z',
+      extensionName: 'tool-ext',
+      extensionPath: '/tool.ts',
+      role: 'builder',
+      profile: 'default',
+      toolNames: ['inspect_context'],
+      effectiveToolNames: ['inspect_context'],
+      registeredToolNames: [],
+      inlineToolNames: ['inspect_context'],
+      allowedToolsAdded: [],
+      disallowedToolsAdded: [],
+      excludedToolNames: ['duplicate_tool'],
+      toolCount: 1,
+      allowedToolCount: 0,
+      disallowedToolCount: 0,
+      excludedToolCount: 1,
+    };
+    expect(isAlwaysYieldedAgentEvent(event)).toBe(true);
+    const summary = getEventSummary(event);
+    expect(summary).toContain('tool-ext');
+    expect(summary).toContain('builder');
+    expect(summary).toContain('1 accepted');
+    expect(summary).toContain('1 excluded');
   });
 
   it('summary function for unsupported event includes extension name, role, and fields', () => {

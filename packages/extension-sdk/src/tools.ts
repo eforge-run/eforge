@@ -2,9 +2,9 @@
  * Extension-contributed tool types.
  *
  * `ExtensionTool` defines the public, narrower shape that extension authors use
- * to register custom tools. The engine's internal `CustomTool` is a superset;
- * when runtime loading lands the engine will adapt extension tools, but this
- * public type stays narrow so the engine can evolve internal fields freely.
+ * to register or return custom tools. The engine adapts accepted per-run
+ * extension tools to its internal `CustomTool` shape; this public type stays
+ * narrow so the engine can evolve internal fields freely.
  */
 
 import type { TObject, Static } from '@sinclair/typebox';

@@ -705,7 +705,7 @@ const EforgeEventVariantsSchema = Type.Union([
   // --- eforge:endregion plan-01-native-event-runtime-foundation ---
 
   // --- eforge:region plan-01-agent-context-runtime ---
-  // Native extension agent-context-hook diagnostics (EXTEND_08A)
+  // Native extension agent-context hook diagnostics and tool decisions
   Type.Object({
     type: Type.Literal('extension:agent-context:applied'),
     extensionName: Type.String(),
@@ -787,6 +787,36 @@ const EforgeEventVariantsSchema = Type.Union([
       Type.Literal('allowedTools'),
       Type.Literal('disallowedTools'),
     ]), { minItems: 1 }),
+  }),
+  Type.Object({
+    type: Type.Literal('extension:agent-tools:applied'),
+    extensionName: Type.String(),
+    extensionPath: Type.String(),
+    role: AgentRoleSchema,
+    tier: Type.Optional(Type.String()),
+    phase: Type.Optional(Type.String()),
+    stage: Type.Optional(Type.String()),
+    profile: Type.String(),
+    planId: Type.Optional(Type.String()),
+    harness: Type.Optional(Type.Union([Type.Literal('claude-sdk'), Type.Literal('pi')])),
+    toolbelt: Type.Optional(Type.Union([Type.String(), Type.Null()])),
+    projectMcpSelection: Type.Optional(Type.Union([
+      Type.Literal('all'),
+      Type.Literal('none'),
+      Type.Literal('toolbelt'),
+    ])),
+    projectMcpServerNames: Type.Optional(Type.Array(Type.String())),
+    toolNames: Type.Array(Type.String()),
+    effectiveToolNames: Type.Array(Type.String()),
+    registeredToolNames: Type.Array(Type.String()),
+    inlineToolNames: Type.Array(Type.String()),
+    allowedToolsAdded: Type.Array(Type.String()),
+    disallowedToolsAdded: Type.Array(Type.String()),
+    excludedToolNames: Type.Array(Type.String()),
+    toolCount: Type.Integer({ minimum: 0 }),
+    allowedToolCount: Type.Integer({ minimum: 0 }),
+    disallowedToolCount: Type.Integer({ minimum: 0 }),
+    excludedToolCount: Type.Integer({ minimum: 0 }),
   }),
   // --- eforge:endregion plan-01-agent-context-runtime ---
 
@@ -1632,7 +1662,8 @@ export function isAlwaysYieldedAgentEvent(event: EforgeEvent): boolean {
     event.type === 'extension:agent-context:applied' ||
     event.type === 'extension:agent-context:failed' ||
     event.type === 'extension:agent-context:timeout' ||
-    event.type === 'extension:agent-context:unsupported'
+    event.type === 'extension:agent-context:unsupported' ||
+    event.type === 'extension:agent-tools:applied'
   );
 }
 

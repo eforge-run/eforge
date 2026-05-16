@@ -188,6 +188,15 @@ export interface AgentRunContext extends EforgeExtensionContext {
    * - `'toolbelt'` - only toolbelt-selected project MCP servers are available
    */
   projectMcpSelection?: 'all' | 'none' | 'toolbelt';
+  /**
+   * Translate a bare extension custom tool name into the harness-visible name
+   * the agent model should call at runtime.
+   *
+   * Claude SDK prefixes custom tools when they are exposed through its
+   * in-process MCP server; Pi exposes custom tools by their bare names. Use
+   * this helper when prompt text needs to mention a contributed tool.
+   */
+  effectiveToolName(name: string): string;
 }
 
 /**

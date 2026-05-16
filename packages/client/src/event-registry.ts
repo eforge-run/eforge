@@ -208,6 +208,13 @@ const eventRegistry = {
     summary: (e) =>
       `Extension ${e.extensionName} returned unsupported fields for ${e.role}: ${e.fields.join(', ')} (deferred to EXTEND_08B)`,
   },
+
+  'extension:agent-tools:applied': {
+    scope: 'session',
+    persist: false,
+    summary: (e) =>
+      `Extension ${e.extensionName} applied tools for ${e.role}: ${e.toolCount} accepted, ${e.excludedToolCount} excluded`,
+  },
   // --- eforge:endregion plan-01-agent-context-runtime ---
 
   // --- eforge:region plan-01-profile-router-events ---
