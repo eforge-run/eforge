@@ -6598,6 +6598,18 @@
           ],
           "properties": {
             "type": {
+              "const": "daemon:auto-build:disabled",
+              "type": "string"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
               "const": "daemon:auto-build:resumed",
               "type": "string"
             }

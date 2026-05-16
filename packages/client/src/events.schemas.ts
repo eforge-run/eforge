@@ -1504,6 +1504,7 @@ const EforgeEventVariantsSchema = Type.Union([
 
   // Daemon auto-build extensions
   Type.Object({ type: Type.Literal('daemon:auto-build:enabled') }),
+  Type.Object({ type: Type.Literal('daemon:auto-build:disabled') }),
   Type.Object({ type: Type.Literal('daemon:auto-build:resumed') }),
   Type.Object({
     type: Type.Literal('daemon:auto-build:triggered'),

@@ -1210,6 +1210,17 @@ const eventRegistry = {
     },
   },
 
+  'daemon:auto-build:disabled': {
+    scope: 'daemon',
+    persist: true,
+    summary: 'Auto-build disabled',
+    project(_event, state) {
+      if (!state.autoBuild) return undefined;
+      if (!state.autoBuild.enabled) return undefined;
+      return { autoBuild: { ...state.autoBuild, enabled: false } };
+    },
+  },
+
   'daemon:auto-build:resumed': {
     scope: 'daemon',
     persist: true,

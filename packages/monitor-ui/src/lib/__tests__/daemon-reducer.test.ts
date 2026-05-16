@@ -730,6 +730,27 @@ describe('ADD_EVENT: daemon:auto-build extensions', () => {
     expect(next.daemonActivity).toHaveLength(1); // activity still appended
   });
 
+  it('daemon:auto-build:disabled sets autoBuild.enabled = false and appends to activity', () => {
+    const state: DaemonState = {
+      ...initialDaemonState,
+      autoBuild: makeAutoBuildState(true),
+    };
+    const event = makeEvent('daemon:auto-build:disabled', {});
+
+    const next = daemonReducer(state, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.autoBuild?.enabled).toBe(false);
+    expect(next.daemonActivity).toHaveLength(1);
+  });
+
+  it('daemon:auto-build:disabled is a no-op when autoBuild is null', () => {
+    const event = makeEvent('daemon:auto-build:disabled', {});
+    const next = daemonReducer(initialDaemonState, { type: 'ADD_EVENT', event, eventId: 'e1' });
+
+    expect(next.autoBuild).toBeNull();
+    expect(next.daemonActivity).toHaveLength(1); // activity still appended
+  });
+
   it('daemon:auto-build:resumed sets autoBuild.enabled = true and appends to activity', () => {
     const state: DaemonState = {
       ...initialDaemonState,

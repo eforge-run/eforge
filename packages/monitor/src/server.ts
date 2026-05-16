@@ -2079,6 +2079,10 @@ export async function startServer(
           // so in-flight builds drain and the watcher exits without pulling
           // the next PRD.
           options.daemonState.onKillWatcher?.();
+          options.daemonState.onDaemonEvent?.({
+            type: 'daemon:auto-build:disabled',
+            timestamp: new Date().toISOString(),
+          } as EforgeEvent);
         }
         sendJson(res, autoBuildStateToWire(options.daemonState));
       } catch {

@@ -1183,6 +1183,10 @@ const validPayloads: Array<{ label: string; payload: unknown }> = [
     payload: { type: 'daemon:auto-build:enabled', timestamp: '2025-01-01T00:00:00.000Z' },
   },
   {
+    label: 'daemon:auto-build:disabled',
+    payload: { type: 'daemon:auto-build:disabled', timestamp: '2025-01-01T00:00:00.000Z' },
+  },
+  {
     label: 'daemon:auto-build:resumed',
     payload: { type: 'daemon:auto-build:resumed', timestamp: '2025-01-01T00:00:00.000Z' },
   },
