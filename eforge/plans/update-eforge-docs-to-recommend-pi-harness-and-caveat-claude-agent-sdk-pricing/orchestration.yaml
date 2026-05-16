@@ -1,0 +1,68 @@
+name: update-eforge-docs-to-recommend-pi-harness-and-caveat-claude-agent-sdk-pricing
+description: Update eforge documentation and user-facing setup guidance so Pi is
+  the recommended execution harness and Claude Agent SDK usage is caveated as
+  credit-limited/API-priced while remaining supported.
+base_branch: main
+mode: excursion
+validate:
+  - pnpm docs:check-parity
+  - pnpm type-check
+  - pnpm docs:check
+plans:
+  - id: plan-01-pi-first-docs-and-setup-guidance
+    name: Pi-first Docs and Setup Guidance
+    depends_on: []
+    branch: update-eforge-docs-to-recommend-pi-harness-and-caveat-claude-agent-sdk-pricing/plan-01-pi-first-docs-and-setup-guidance
+    build:
+      - implement
+      - review-cycle
+      - validate
+    review:
+      strategy: parallel
+      perspectives:
+        - docs
+        - code
+        - verify
+      maxRounds: 2
+      evaluatorStrictness: strict
+    agents:
+      builder:
+        effort: high
+        rationale: Policy-sensitive copy must stay consistent across public docs,
+          generated reference sources, plugin skills, Pi skill docs, and a small
+          Pi setup UI copy change.
+      reviewer:
+        effort: high
+        rationale: Review needs to check cross-document consistency, generated artifact
+          discipline, and conservative Anthropic pricing language.
+pipeline:
+  scope: excursion
+  compile:
+    - planner
+    - plan-review-cycle
+  defaultBuild:
+    - - implement
+      - doc-author
+    - doc-sync
+    - review-cycle
+    - validate
+  defaultReview:
+    strategy: parallel
+    perspectives:
+      - docs
+      - api
+      - code
+      - verify
+    maxRounds: 2
+    evaluatorStrictness: standard
+  rationale: This is a cohesive documentation and user-facing guidance update
+    across multiple docs, generated reference sources, plugin skills, Pi skills,
+    and possibly UI copy, so excursion is appropriate. A single planner can
+    enumerate the affected files and dependencies, but plan review is useful to
+    catch contradictory positioning or scope creep. The build runs
+    implementation and documentation authoring in parallel, then syncs docs
+    against the final diff, performs an iterative review cycle focused on
+    docs/API-facing accuracy/code-copy changes/verification, and finishes with
+    validation for docs generation and drift checks. Expedition is unnecessary
+    because there are not multiple independently planned subsystems, and errand
+    is too small for the breadth and policy-sensitive caveats.
