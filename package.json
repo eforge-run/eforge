@@ -34,9 +34,9 @@
     ]
   },
   "devDependencies": {
-    "@earendil-works/pi-agent-core": "^0.74.0",
-    "@earendil-works/pi-ai": "^0.74.0",
-    "@earendil-works/pi-coding-agent": "^0.74.0",
+    "@earendil-works/pi-agent-core": "^0.74.1",
+    "@earendil-works/pi-ai": "^0.74.1",
+    "@earendil-works/pi-coding-agent": "^0.74.1",
     "@eforge-build/client": "workspace:*",
     "@eforge-build/docs-gen": "workspace:*",
     "@eforge-build/engine": "workspace:*",
