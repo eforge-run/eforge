@@ -75,6 +75,7 @@ export type ExtensionDiagnosticSeverity = 'warning' | 'error';
 export type ExtensionFormat = 'js' | 'mjs' | 'ts' | 'mts';
 export type ExtensionLayout = 'file' | 'directory';
 export type ExtensionTrust = 'trusted' | 'untrusted';
+export type ExtensionTrustState = 'not-required' | 'untrusted' | 'trusted' | 'changed';
 // --- eforge:region plan-01-extension-management-api ---
 export type ExtensionScaffoldScope = 'local' | 'project' | 'user';
 export type ExtensionScaffoldTemplate = 'event-logger' | 'blank';
@@ -88,6 +89,8 @@ export interface ExtensionDiagnostic {
   path?: string;
   scope?: ExtensionScope;
   source?: ExtensionSource;
+  currentHash?: string;
+  trustedHash?: string;
 }
 
 export interface ExtensionShadow {
@@ -121,6 +124,20 @@ export interface ExtensionEntry {
   enabled?: boolean;
   // --- eforge:endregion plan-01-extension-management-api ---
   trust?: ExtensionTrust;
+  // --- eforge:region plan-01-engine-trust-foundation ---
+  /** Richer trust classification for project/team trust enforcement. */
+  trustState?: ExtensionTrustState;
+  /** SHA-256 hash of the extension content computed at discovery time (project-team candidates only). */
+  currentHash?: string;
+  /** SHA-256 hash stored in the trust record at the time the extension was trusted. */
+  trustedHash?: string;
+  /** ISO-8601 timestamp from the local trust record, when present. */
+  trustedAt?: string;
+  /** Optional annotation from the local trust record identifying who trusted the extension. */
+  trustedBy?: string;
+  /** Absolute local path to the trust store consulted by the engine, when exposed by engine projections. */
+  trustStorePath?: string;
+  // --- eforge:endregion plan-01-engine-trust-foundation ---
   format?: ExtensionFormat;
   layout?: ExtensionLayout;
   strategy?: string;
@@ -208,6 +225,37 @@ export interface ExtensionTestResponse {
   deferredRegistrations: ExtensionTestDeferredRegistrationSummary[];
 }
 // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
+
+// --- eforge:region plan-02-management-surfaces ---
+/** POST /api/extensions/trust — trust a project-team extension by name or path. */
+export interface ExtensionTrustRequest {
+  /** Extension name (targets a project-team candidate by name). Mutually exclusive with path. */
+  name?: string;
+  /** Extension file/directory path (must resolve to a project-team candidate). Mutually exclusive with name. */
+  path?: string;
+  /** Optional annotation identifying who is trusting the extension. */
+  trustedBy?: string;
+}
+
+/** POST /api/extensions/untrust — remove trust for a project-team extension by name or path. */
+export interface ExtensionUntrustRequest {
+  /** Extension name (targets a project-team candidate by name). Mutually exclusive with path. */
+  name?: string;
+  /** Extension file/directory path (must resolve to a project-team candidate). Mutually exclusive with name. */
+  path?: string;
+}
+
+/** Response for POST /api/extensions/trust and POST /api/extensions/untrust. */
+export interface ExtensionTrustResponse {
+  /** The updated extension candidate entry reflecting the new trust state. */
+  extension: ExtensionEntry;
+  /** Human-readable message with next steps. */
+  message: string;
+}
+
+/** Alias for trust/untrust response — same shape. */
+export type ExtensionUntrustResponse = ExtensionTrustResponse;
+// --- eforge:endregion plan-02-management-surfaces ---
 
 // --- eforge:region plan-01-extension-management-api ---
 export interface ExtensionNewRequest {

@@ -26,6 +26,15 @@ export type EforgeExtensionFactoryShape = (api: EforgeExtensionAPIShape) => void
 export type NativeExtensionSource = 'auto' | 'explicit';
 export type NativeExtensionScope = Scope | 'external';
 export type NativeExtensionTrust = 'trusted' | 'untrusted';
+/**
+ * Richer trust state for native extensions.
+ *
+ * - `not-required` — user, project-local, or external path; no project/team trust gate applies.
+ * - `untrusted`    — project-team candidate with no matching trust record.
+ * - `trusted`      — project-team candidate whose current hash matches the stored trust record.
+ * - `changed`      — project-team candidate that was previously trusted but whose content has changed.
+ */
+export type NativeExtensionTrustState = 'not-required' | 'untrusted' | 'trusted' | 'changed';
 export type NativeExtensionStatus = 'pending' | 'shadowed' | 'loaded' | 'skipped' | 'error';
 export type NativeExtensionFormat = 'js' | 'mjs' | 'ts' | 'mts';
 export type NativeExtensionLayout = 'file' | 'directory';
@@ -40,6 +49,10 @@ export interface NativeExtensionDiagnostic {
   path?: string;
   scope?: NativeExtensionScope;
   source?: NativeExtensionSource;
+  /** Current content hash (included in trust-related diagnostics for project-team extensions). */
+  currentHash?: string;
+  /** Trusted hash from the trust record (included in `extension:trust-changed` diagnostics). */
+  trustedHash?: string;
 }
 
 export interface NativeExtensionShadow {
@@ -59,7 +72,24 @@ export interface NativeExtensionCandidate {
   source: NativeExtensionSource;
   format?: NativeExtensionFormat;
   layout?: NativeExtensionLayout;
+  /** Backward-compatible coarse trust: `'trusted'` or `'untrusted'`. See `trustState` for richer classification. */
   trust: NativeExtensionTrust;
+  /**
+   * Richer trust classification set during discovery.
+   * - `not-required` for user, project-local, and external candidates.
+   * - `untrusted`, `trusted`, or `changed` for project-team candidates.
+   */
+  trustState?: NativeExtensionTrustState;
+  /** SHA-256 hash of the extension content computed at discovery time (project-team candidates only). */
+  currentHash?: string;
+  /** SHA-256 hash stored in the trust record at the time the extension was trusted (if a record exists). */
+  trustedHash?: string;
+  /** ISO-8601 timestamp from the trust record (if a record exists). */
+  trustedAt?: string;
+  /** Optional annotation from the trust record identifying who trusted the extension. */
+  trustedBy?: string;
+  /** Absolute path to the trust store file that was consulted during discovery. */
+  trustStorePath?: string;
   status: NativeExtensionStatus;
   shadows: NativeExtensionShadow[];
   diagnostics: NativeExtensionDiagnostic[];

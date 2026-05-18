@@ -17,6 +17,12 @@ export interface NativeExtensionRegistryProjection {
     scope: string;
     source: string;
     trust: string;
+    trustState?: string;
+    currentHash?: string;
+    trustedHash?: string;
+    trustedAt?: string;
+    trustedBy?: string;
+    trustStorePath?: string;
     status: string;
     shadows: Array<{ name: string; path: string; scope: string; entrypoint?: string }>;
   }>;
@@ -67,6 +73,12 @@ function projectExtensionCandidate(candidate: NativeExtensionCandidate): NativeE
     scope: candidate.scope,
     source: candidate.source,
     trust: candidate.trust,
+    ...(candidate.trustState !== undefined && { trustState: candidate.trustState }),
+    ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
+    ...(candidate.trustedHash !== undefined && { trustedHash: candidate.trustedHash }),
+    ...(candidate.trustedAt !== undefined && { trustedAt: candidate.trustedAt }),
+    ...(candidate.trustedBy !== undefined && { trustedBy: candidate.trustedBy }),
+    ...(candidate.trustStorePath !== undefined && { trustStorePath: candidate.trustStorePath }),
     status: candidate.status,
     shadows: candidate.shadows.map((shadow) => ({
       name: shadow.name,

@@ -1,3 +1,16 @@
+// --- eforge:region plan-01-engine-trust-foundation ---
+export { hashExtensionDirectory, hashExtensionFile } from './hash.js';
+export {
+  getTrustRecord,
+  getTrustStorePath,
+  readTrustStore,
+  removeTrustRecord,
+  upsertTrustRecord,
+  writeTrustStore,
+  TRUST_STORE_FILENAME,
+} from './trust-store.js';
+export type { ExtensionTrustRecord, ExtensionTrustStore } from './trust-store.js';
+// --- eforge:endregion plan-01-engine-trust-foundation ---
 export type {
   NativeExtensionCandidate,
   NativeExtensionDiagnostic,
@@ -13,6 +26,7 @@ export type {
   NativeExtensionSource,
   NativeExtensionStatus,
   NativeExtensionTrust,
+  NativeExtensionTrustState,
   LoadedNativeExtension,
   EventHookRegistration,
   AgentRunRegistration,

@@ -1,8 +1,10 @@
-import { access, readFile, readdir, stat } from 'node:fs/promises';
-import { basename, dirname, extname, isAbsolute, resolve } from 'node:path';
+import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
+import { basename, extname, isAbsolute, relative, resolve } from 'node:path';
 
 import { SCOPES, getScopeDirectory, type Scope, type ScopeResolverOpts } from '@eforge-build/scopes';
 
+import { hashExtensionDirectory, hashExtensionFile } from './hash.js';
+import { getTrustRecord, getTrustStorePath, readTrustStore, type ExtensionTrustStore } from './trust-store.js';
 import type {
   NativeExtensionCandidate,
   NativeExtensionDiagnostic,
@@ -12,6 +14,7 @@ import type {
   NativeExtensionScope,
   NativeExtensionShadow,
   NativeExtensionTrust,
+  NativeExtensionTrustState,
 } from './types.js';
 
 const EXTENSION_DIR = 'extensions';
@@ -29,7 +32,6 @@ interface ResolvedLayout {
 
 interface RawAutoCandidate extends ResolvedLayout {
   scope: Scope;
-  trust: NativeExtensionTrust;
 }
 
 export async function discoverNativeExtensions(options: {
@@ -47,6 +49,12 @@ export async function discoverNativeExtensions(options: {
   if (!options.config.enabled) return { candidates: [], diagnostics };
 
   const scopeOpts: ScopeResolverOpts = { cwd: options.cwd, configDir: options.configDir };
+
+  // Read the trust store once for the entire discovery call.
+  const eforgeDir = resolve(options.cwd, '.eforge');
+  const trustStorePath = getTrustStorePath(eforgeDir);
+  const trustStore = await readTrustStore(eforgeDir);
+
   const autoCandidates: RawAutoCandidate[] = [];
   const shadowedCandidates: NativeExtensionCandidate[] = [];
 
@@ -68,7 +76,7 @@ export async function discoverNativeExtensions(options: {
         continue;
       }
       if (!passesAutoFilters(layout.name, options.config.include, options.config.exclude)) continue;
-      autoCandidates.push({ ...layout, scope, trust: trustForScope(scope, options.config.trustProjectExtensions) });
+      autoCandidates.push({ ...layout, scope });
     }
   }
 
@@ -91,6 +99,7 @@ export async function discoverNativeExtensions(options: {
       format: shadow.format,
       layout: shadow.layout,
     }));
+    const winnerTrust = initialTrustForScope(winner.scope);
     winners.push({
       name,
       path: winner.path,
@@ -99,12 +108,13 @@ export async function discoverNativeExtensions(options: {
       source: 'auto',
       format: winner.format,
       layout: winner.layout,
-      trust: winner.trust,
+      trust: winnerTrust,
       status: 'pending',
       shadows: shadowEntries,
       diagnostics: [],
     });
     for (const shadow of shadows) {
+      const shadowTrust = initialTrustForScope(shadow.scope);
       shadowedCandidates.push({
         name: shadow.name,
         path: shadow.path,
@@ -113,7 +123,7 @@ export async function discoverNativeExtensions(options: {
         source: 'auto',
         format: shadow.format,
         layout: shadow.layout,
-        trust: shadow.trust,
+        trust: shadowTrust,
         status: 'shadowed',
         shadows: [],
         diagnostics: [],
@@ -136,12 +146,13 @@ export async function discoverNativeExtensions(options: {
         source: 'explicit',
       };
       diagnostics.push(diagnostic);
+      const explicitScope = scopeForPath(absolutePath, scopeOpts);
       explicitCandidates.push({
         name: basenameWithoutKnownExtension(absolutePath),
         path: absolutePath,
-        scope: scopeForPath(absolutePath, scopeOpts),
+        scope: explicitScope,
         source: 'explicit',
-        trust: trustForScope(scopeForPath(absolutePath, scopeOpts), options.config.trustProjectExtensions),
+        trust: initialTrustForScope(explicitScope),
         status: 'error',
         shadows: [],
         diagnostics: [diagnostic],
@@ -157,7 +168,7 @@ export async function discoverNativeExtensions(options: {
       source: 'explicit',
       format: layout.format,
       layout: layout.layout,
-      trust: trustForScope(scope, options.config.trustProjectExtensions),
+      trust: initialTrustForScope(scope),
       status: 'pending',
       shadows: [],
       diagnostics: [],
@@ -190,16 +201,122 @@ export async function discoverNativeExtensions(options: {
     }
   }
 
+  // Enrich all candidates with trust state and hash metadata.
+  const allCandidates = [...winners, ...shadowedCandidates, ...explicitCandidates];
+  await rejectEscapingProjectTeamCandidates(allCandidates, scopeOpts, diagnostics);
+  await enrichCandidatesWithTrust(allCandidates, trustStore, trustStorePath);
+
   return {
-    candidates: [...winners, ...shadowedCandidates, ...explicitCandidates],
+    candidates: allCandidates,
     diagnostics,
   };
 }
 
-async function resolveExtensionLayout(path: string): Promise<ResolvedLayout | null> {
-  let info: Awaited<ReturnType<typeof stat>>;
+async function rejectEscapingProjectTeamCandidates(
+  candidates: NativeExtensionCandidate[],
+  opts: ScopeResolverOpts,
+  diagnostics: NativeExtensionDiagnostic[],
+): Promise<void> {
+  for (const candidate of candidates) {
+    if (candidate.scope !== 'project-team') continue;
+    if (await isProjectTeamPathInsideRealScope(candidate.path, opts)) continue;
+    const diagnostic: NativeExtensionDiagnostic = {
+      severity: 'error',
+      code: 'extension:project-team-path-escape',
+      message: 'Project-team extension path must resolve within eforge/extensions/ without symlink escape',
+      name: candidate.name,
+      path: candidate.path,
+      scope: candidate.scope,
+      source: candidate.source,
+    };
+    candidate.status = 'error';
+    candidate.diagnostics.push(diagnostic);
+    diagnostics.push(diagnostic);
+  }
+}
+
+async function isProjectTeamPathInsideRealScope(path: string, opts: ScopeResolverOpts): Promise<boolean> {
+  const extensionsDir = resolve(getScopeDirectory('project-team', opts), EXTENSION_DIR);
+  if (!isPathInside(path, extensionsDir)) return false;
   try {
-    info = await stat(path);
+    const dirInfo = await lstat(extensionsDir);
+    if (!dirInfo.isDirectory() || dirInfo.isSymbolicLink()) return false;
+    const [realExtensionsDir, realCandidatePath] = await Promise.all([
+      realpath(extensionsDir),
+      realpath(path),
+    ]);
+    return isPathInside(realCandidatePath, realExtensionsDir);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Post-process candidates to assign trustState, trust, and hash metadata.
+ *
+ * - Project-team candidates: compute content hash, look up trust record, classify state.
+ * - All other candidates (user, project-local, external): trustState = 'not-required', trust = 'trusted'.
+ */
+async function enrichCandidatesWithTrust(
+  candidates: NativeExtensionCandidate[],
+  trustStore: ExtensionTrustStore,
+  trustStorePath: string,
+): Promise<void> {
+  for (const candidate of candidates) {
+    if (candidate.scope !== 'project-team') {
+      candidate.trustState = 'not-required';
+      candidate.trust = 'trusted';
+      continue;
+    }
+
+    // Compute content hash for the extension.
+    let hash: string | undefined;
+    try {
+      if (candidate.layout === 'directory') {
+        hash = await hashExtensionDirectory(candidate.path, candidate.entrypoint);
+      } else if (candidate.entrypoint) {
+        hash = await hashExtensionFile(candidate.entrypoint);
+      }
+    } catch {
+      // If hashing fails, treat as untrusted.
+    }
+
+    const record = hash !== undefined ? getTrustRecord(trustStore, candidate.name) : undefined;
+    let trustState: NativeExtensionTrustState;
+    let trust: NativeExtensionTrust;
+
+    if (hash === undefined || !record) {
+      trustState = 'untrusted';
+      trust = 'untrusted';
+    } else if (record.hash === hash) {
+      trustState = 'trusted';
+      trust = 'trusted';
+    } else {
+      trustState = 'changed';
+      trust = 'untrusted';
+    }
+
+    candidate.trustState = trustState;
+    candidate.trust = trust;
+    candidate.trustStorePath = trustStorePath;
+
+    if (hash !== undefined) {
+      candidate.currentHash = hash;
+    }
+    if (record) {
+      candidate.trustedHash = record.hash;
+      candidate.trustedAt = record.trustedAt;
+      if (record.trustedBy !== undefined) {
+        candidate.trustedBy = record.trustedBy;
+      }
+    }
+  }
+}
+
+async function resolveExtensionLayout(path: string): Promise<ResolvedLayout | null> {
+  let info: Awaited<ReturnType<typeof lstat>>;
+  try {
+    info = await lstat(path);
   } catch {
     return null;
   }
@@ -230,7 +347,7 @@ async function resolveExtensionLayout(path: string): Promise<ResolvedLayout | nu
 
   for (const entry of ENTRYPOINT_NAMES) {
     const candidate = resolve(path, entry);
-    if (await exists(candidate)) {
+    if (await isRegularFile(candidate)) {
       return {
         name: basename(path),
         path,
@@ -258,8 +375,9 @@ async function resolvePackageEntrypoint(dir: string): Promise<string | null> {
   for (const candidate of [exportPath, mainPath]) {
     if (!candidate) continue;
     const resolved = resolve(dir, candidate);
+    if (!isPathInside(resolved, dir)) continue;
     if (!SUPPORTED_EXTENSIONS.has(extname(resolved))) continue;
-    if (await exists(resolved)) return resolved;
+    if (await isRegularFile(resolved)) return resolved;
   }
   return null;
 }
@@ -280,16 +398,18 @@ function entrypointFromExports(exportsField: unknown): string | undefined {
 
 async function readDirectoryEntries(dir: string): Promise<string[]> {
   try {
+    const info = await lstat(dir);
+    if (!info.isDirectory() || info.isSymbolicLink()) return [];
     return await readdir(dir);
   } catch {
     return [];
   }
 }
 
-async function exists(path: string): Promise<boolean> {
+async function isRegularFile(path: string): Promise<boolean> {
   try {
-    await access(path);
-    return true;
+    const info = await lstat(path);
+    return info.isFile();
   } catch {
     return false;
   }
@@ -316,9 +436,13 @@ function passesAutoFilters(name: string, include: string[] | undefined, exclude:
   return true;
 }
 
-function trustForScope(scope: NativeExtensionScope, trustProjectExtensions: boolean): NativeExtensionTrust {
-  if (scope === 'project-team') return trustProjectExtensions ? 'trusted' : 'untrusted';
-  return 'trusted';
+/**
+ * Returns the initial (pre-trust-store-lookup) trust value for a scope.
+ * For project-team candidates, this is a placeholder; it will be overwritten
+ * during `enrichCandidatesWithTrust`. For all other scopes, trust is always granted.
+ */
+function initialTrustForScope(scope: NativeExtensionScope): NativeExtensionTrust {
+  return scope === 'project-team' ? 'untrusted' : 'trusted';
 }
 
 function scopeForPath(path: string, opts: ScopeResolverOpts): NativeExtensionScope {
@@ -331,6 +455,6 @@ function scopeForPath(path: string, opts: ScopeResolverOpts): NativeExtensionSco
 }
 
 function isPathInside(path: string, parent: string): boolean {
-  const resolvedParent = resolve(parent);
-  return path === resolvedParent || path.startsWith(resolvedParent.endsWith('/') ? resolvedParent : `${resolvedParent}/`);
+  const rel = relative(resolve(parent), resolve(path));
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
 }

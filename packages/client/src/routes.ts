@@ -134,6 +134,10 @@ export const API_ROUTES = {
   // --- eforge:region plan-01-engine-daemon-extension-replay ---
   extensionTest: '/api/extensions/test',
   // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
+  // --- eforge:region plan-02-management-surfaces ---
+  extensionTrust: '/api/extensions/trust',
+  extensionUntrust: '/api/extensions/untrust',
+  // --- eforge:endregion plan-02-management-surfaces ---
   // --- eforge:endregion plan-02-extension-tooling-surfaces ---
   // --- eforge:region plan-01-extension-management-api ---
   extensionNew: '/api/extensions/new',

@@ -58,10 +58,10 @@ The eforge daemon discovers and loads native extensions from three scopes:
 | Scope | Directory | Trust default | Purpose |
 |-------|-----------|---------------|---------|
 | User | `~/.config/eforge/extensions/` | trusted | Personal, cross-project |
-| Project/team | `eforge/extensions/` | skipped unless `extensions.trustProjectExtensions: true` | Shared, committed |
+| Project/team | `eforge/extensions/` | untrusted unless a matching local trust record exists | Shared, committed |
 | Project-local | `.eforge/extensions/` | trusted | Local experiments |
 
-Precedence is `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. Extensions run in the eforge daemon/worker Node process without a sandbox.
+Precedence is `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. Extensions run in the eforge daemon/worker Node process without a sandbox. Project/team extensions require an explicit per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` — before loading; any content change invalidates the stored hash and blocks the extension until re-trusted. Trust/untrust commands only discover and hash project/team candidates and update `.eforge/extension-trust.json`; they do not import the module or execute its factory. Later validate, test, reload, or build operations may load and execute trusted extension code.
 
 Loader-time registration capture is available today: the daemon calls each default-export factory and records registrations for provenance, validation, CLI/API/MCP/Pi tooling, and diagnostics. Runtime dispatch and replay testing are available for `onEvent`; `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, `registerProfileRouter` pre-build dispatch, and the shipped policy-gate subset (`beforeQueueDispatch`, `beforePlanMerge`, `beforeFinalMerge`) are wired. Input sources, reviewer perspectives, validation providers, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions remain deferred.
 

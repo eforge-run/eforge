@@ -58,7 +58,7 @@ If user intent maps to the supported policy-gate subset, explain that the gate e
 
 - Default to `scope: "local"` for experiments and project-local personal behavior; this targets `.eforge/extensions/`.
 - Use `scope: "user"` only for explicit cross-project personal extensions.
-- Use `scope: "project"` only for explicit team-shared extensions, and warn that `eforge/extensions/` is skipped unless trusted via user or project-local config.
+- Use `scope: "project"` only for explicit team-shared extensions. Project/team extensions (`eforge/extensions/`) are unsandboxed arbitrary code committed to the repository; they require an explicit per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` — before loading. Any subsequent code change invalidates the stored hash and blocks the extension until re-trusted. Warn the user of these implications before proceeding.
 
 ### Step 5: Scaffold
 
@@ -77,6 +77,14 @@ If user intent maps to the supported policy-gate subset, explain that the gate e
 - For policy gates, prefer `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`; document that `require-approval` blocks in the current MVP and that extensions remain unsandboxed trusted code.
 
 ### Step 7: Validate
+
+**Project/team scope: inspect and trust first.** If the extension is in project/team scope (`eforge/extensions/`):
+
+- Read the extension file(s) in full before trust, validate, test, or reload.
+- Summarize all side effects (filesystem, network, environment, subprocess). Show the summary and ask for explicit user confirmation before proceeding. Do not proceed if they decline.
+- After confirmation, record the current content hash by calling `eforge_extension` with `action: "trust"` and the extension `name` or `path`. This writes a trust record to `.eforge/extension-trust.json`. If the code changed since the last trust, the extension is blocked (status `changed`) until re-trusted — confirm with the user before overwriting an existing trust record.
+- The hash covers the entrypoint for file-layout extensions and, for directory-layout extensions, `package.json` plus `.ts`, `.mts`, `.js`, and `.mjs` files under the extension directory. Files imported from outside the extension directory and non-source/data files inside it are not hashed; keep implementation code inside the extension directory and in hashed source files to ensure relevant code changes are captured.
+- Proceed to validate only after trust succeeds and the user has confirmed.
 
 - Before validation, warn that extension loading is unsandboxed in the daemon process; review the code first and do not validate code with unexpected top-level filesystem, network, or environment side effects.
 - Show the user a brief side-effect review and ask for explicit confirmation before calling validate; do not proceed if they decline.

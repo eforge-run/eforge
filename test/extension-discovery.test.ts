@@ -1,8 +1,8 @@
 import { afterEach, describe, it, expect } from 'vitest';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { getScopeDirectory, type ScopeResolverOpts } from '@eforge-build/scopes';
-import { discoverNativeExtensions } from '@eforge-build/engine/extensions';
+import { discoverNativeExtensions, upsertTrustRecord } from '@eforge-build/engine/extensions';
 import { useTempDir } from './test-tmpdir.js';
 
 async function makeTree(root: string): Promise<ScopeResolverOpts> {
@@ -109,20 +109,108 @@ describe('native extension discovery', () => {
     expect(result.candidates.find((candidate) => candidate.name === 'dup' && candidate.source === 'auto')).toMatchObject({ status: 'pending' });
   });
 
-  it('marks only project-team extensions untrusted unless project trust is enabled', async () => {
+  it('marks only project-team extensions untrusted when no trust record exists', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
     await writeExtension(getScopeDirectory('user', opts), 'user-ext');
     await writeExtension(getScopeDirectory('project-team', opts), 'team');
     await writeExtension(getScopeDirectory('project-local', opts), 'local-ext');
 
-    const untrusted = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
-    expect(untrusted.candidates.find((candidate) => candidate.name === 'user-ext')?.trust).toBe('trusted');
-    expect(untrusted.candidates.find((candidate) => candidate.name === 'team')?.trust).toBe('untrusted');
-    expect(untrusted.candidates.find((candidate) => candidate.name === 'local-ext')?.trust).toBe('trusted');
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
 
-    const trusted = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: true } });
-    expect(trusted.candidates.find((candidate) => candidate.name === 'team')?.trust).toBe('trusted');
+    const userExt = result.candidates.find((c) => c.name === 'user-ext');
+    const teamExt = result.candidates.find((c) => c.name === 'team');
+    const localExt = result.candidates.find((c) => c.name === 'local-ext');
+
+    expect(userExt?.trust).toBe('trusted');
+    expect(userExt?.trustState).toBe('not-required');
+    expect(teamExt?.trust).toBe('untrusted');
+    expect(teamExt?.trustState).toBe('untrusted');
+    expect(localExt?.trust).toBe('trusted');
+    expect(localExt?.trustState).toBe('not-required');
+  });
+
+  it('project-team extension is untrusted and exposes current hash when no trust record exists', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeExtension(getScopeDirectory('project-team', opts), 'team-ext');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const candidate = result.candidates.find((c) => c.name === 'team-ext');
+
+    expect(candidate).toBeDefined();
+    expect(candidate?.trustState).toBe('untrusted');
+    expect(candidate?.trust).toBe('untrusted');
+    expect(candidate?.currentHash).toMatch(/^[0-9a-f]{64}$/);
+    expect(candidate?.trustedHash).toBeUndefined();
+  });
+
+  it('does not treat trustProjectExtensions: true as a project-team trust-all override', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeExtension(getScopeDirectory('project-team', opts), 'team-ext');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: true } });
+    const candidate = result.candidates.find((c) => c.name === 'team-ext');
+
+    expect(candidate).toMatchObject({
+      trust: 'untrusted',
+      trustState: 'untrusted',
+      currentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(candidate?.trustedHash).toBeUndefined();
+  });
+
+  it('project-team extension is trusted after inserting a matching trust record', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeExtension(getScopeDirectory('project-team', opts), 'team-ext');
+
+    // First discovery without trust record - get the current hash
+    const untrustedResult = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const untrustedCandidate = untrustedResult.candidates.find((c) => c.name === 'team-ext');
+    expect(untrustedCandidate?.trustState).toBe('untrusted');
+    const currentHash = untrustedCandidate?.currentHash;
+    expect(currentHash).toBeDefined();
+
+    // Insert a matching trust record
+    const eforgeDir = resolve(root, '.eforge');
+    await upsertTrustRecord(eforgeDir, 'team-ext', currentHash!);
+
+    // Second discovery should return trusted
+    const trustedResult = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const trustedCandidate = trustedResult.candidates.find((c) => c.name === 'team-ext');
+    expect(trustedCandidate?.trustState).toBe('trusted');
+    expect(trustedCandidate?.trust).toBe('trusted');
+    expect(trustedCandidate?.currentHash).toBe(currentHash);
+    expect(trustedCandidate?.trustedHash).toBe(currentHash);
+  });
+
+  it('project-team extension is changed after content modification following trust', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extPath = await writeExtension(getScopeDirectory('project-team', opts), 'team-ext');
+
+    // Discover and get initial hash
+    const initial = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const initialHash = initial.candidates.find((c) => c.name === 'team-ext')?.currentHash;
+    expect(initialHash).toBeDefined();
+
+    // Trust with the initial hash
+    const eforgeDir = resolve(root, '.eforge');
+    await upsertTrustRecord(eforgeDir, 'team-ext', initialHash!);
+
+    // Modify the extension file
+    await writeFile(extPath, 'export default function extension() { /* changed */ }', 'utf-8');
+
+    // Discovery should now return changed
+    const changed = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const changedCandidate = changed.candidates.find((c) => c.name === 'team-ext');
+    expect(changedCandidate?.trustState).toBe('changed');
+    expect(changedCandidate?.trust).toBe('untrusted');
+    expect(changedCandidate?.currentHash).toBeDefined();
+    expect(changedCandidate?.currentHash).not.toBe(initialHash);
+    expect(changedCandidate?.trustedHash).toBe(initialHash);
   });
 
   it('resolves directory modules from package exports, package main, and index files', async () => {
@@ -151,6 +239,45 @@ describe('native extension discovery', () => {
     expect(result.candidates.find((candidate) => candidate.name === 'exported')?.entrypoint).toBe(resolve(extensions, 'exported', 'src', 'entry.mjs'));
     expect(result.candidates.find((candidate) => candidate.name === 'mained')?.entrypoint).toBe(resolve(extensions, 'mained', 'lib', 'main.js'));
     expect(result.candidates.find((candidate) => candidate.name === 'indexed')?.entrypoint).toBe(resolve(extensions, 'indexed', 'index.ts'));
+  });
+
+  it('rejects symlinked directory entrypoints so trust hashes cannot omit the imported target', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    const outside = resolve(root, 'outside.js');
+    await writeFile(outside, 'export default function extension() {}', 'utf-8');
+    await mkdir(resolve(extensions, 'symlinked'), { recursive: true });
+    await symlink(outside, resolve(extensions, 'symlinked', 'index.js'));
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.candidates.map((candidate) => candidate.name)).not.toContain('symlinked');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'warning',
+      code: 'extension:unsupported-layout',
+      path: resolve(extensions, 'symlinked'),
+      source: 'auto',
+    }));
+  });
+
+  it('rejects directory package entrypoints that resolve outside the extension directory', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensions = resolve(getScopeDirectory('project-local', opts), 'extensions');
+    await writeExtension(root, 'outside');
+    await mkdir(resolve(extensions, 'escaping'), { recursive: true });
+    await writeFile(resolve(extensions, 'escaping', 'package.json'), JSON.stringify({ main: '../../../extensions/outside.js' }), 'utf-8');
+
+    const result = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+
+    expect(result.candidates.map((candidate) => candidate.name)).not.toContain('escaping');
+    expect(result.diagnostics).toContainEqual(expect.objectContaining({
+      severity: 'warning',
+      code: 'extension:unsupported-layout',
+      path: resolve(extensions, 'escaping'),
+      source: 'auto',
+    }));
   });
 
   it('diagnoses unsupported auto-discovered layouts', async () => {

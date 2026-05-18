@@ -26,7 +26,7 @@ extensions:
   profileRouterTimeoutMs: 5000 # Optional registerProfileRouter timeout; defaults to eventHookTimeoutMs
   policyGateTimeoutMs: 5000 # Optional policy gate timeout; defaults to eventHookTimeoutMs
   policyGateFailurePolicy: fail-closed # fail-closed blocks on failures; fail-open allows after diagnostics
-  trustProjectExtensions: false # Trust checked-in eforge/extensions/ modules (user/local config only)
+  trustProjectExtensions: false # Deprecated compatibility field; local trust records control project/team modules
   # include:                  # Allowlist by native extension name
   # exclude:                  # Denylist by native extension name
   # paths:                    # Additional explicit extension files/directories
@@ -141,13 +141,13 @@ extensions:
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for thrown, timed-out, or invalid policy gates. Valid values: `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Explicit extension files or directories to validate/load in addition to auto-discovery. Relative paths resolve from the project root. |
-| `extensions.trustProjectExtensions` | `false` | Allows checked-in project/team extensions from `eforge/extensions/` to load. User and project-local extensions load when enabled. |
+| `extensions.trustProjectExtensions` | `false` | Deprecated compatibility field. It does not trust checked-in project/team extensions or bypass changed-hash blocking; explicit local trust records in `.eforge/extension-trust.json` control loading. User and project-local extensions load when enabled. |
 
 Auto-discovery scans `~/.config/eforge/extensions/`, `eforge/extensions/`, and `.eforge/extensions/` with precedence `project-local > project-team > user`. Supported entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript entrypoints load through `jiti`; JavaScript entrypoints use dynamic import.
 
-Project/team extensions are committed code and are skipped unless `extensions.trustProjectExtensions: true` is set from a trusted layer (user config or project-local config). Extensions execute in the eforge daemon/worker Node process without a sandbox.
+Project/team extensions are committed code and require a per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` — before loading. `extensions.trustProjectExtensions` is retained only as a deprecated compatibility field: it does not trust project/team code, and committed project config/profile layers that set it are stripped with a warning. Any code change to the extension invalidates the stored hash and blocks the extension until re-trusted. The content hash covers the entrypoint for file-layout extensions and, for directory-layout extensions, `package.json` plus `.ts`, `.mts`, `.js`, and `.mjs` files under the extension directory; files imported from outside the extension directory and non-source/data files inside it are not covered. Extensions execute in the eforge daemon/worker Node process without a sandbox.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, and management commands (`eforge extension list/show/validate/test/new/reload`). `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are deferred runtime phases.
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, and management commands (`eforge extension list/show/validate/test/new/reload/trust/untrust`). `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are deferred runtime phases.
 
 ## Tiers
 

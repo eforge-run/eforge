@@ -8,7 +8,7 @@ import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
-import { writeLockfile, type EforgeEvent, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse } from '@eforge-build/client';
+import { writeLockfile, type EforgeEvent, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse, type ExtensionTrustResponse } from '@eforge-build/client';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
 import { useTempDir } from './test-tmpdir.js';
 
@@ -89,10 +89,10 @@ async function runCli(tmpDir: string, args: string[]): Promise<{ stdout: string;
 }
 
 describe('extension CLI commands', () => {
-  it('registers extension list/show/validate/test/new/reload subcommands', () => {
+  it('registers extension list/show/validate/test/new/reload/trust/untrust subcommands', () => {
     const program = createProgram(undefined, 'test');
     const extension = program.commands.find((command) => command.name() === 'extension');
-    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['list', 'new', 'reload', 'show', 'test', 'validate']);
+    expect(extension?.commands.map((command) => command.name()).sort()).toEqual(['list', 'new', 'reload', 'show', 'test', 'trust', 'untrust', 'validate']);
   });
 
   it('extension test --fixture --json prints the raw ExtensionTestResponse', async () => {
@@ -348,7 +348,7 @@ describe('extension CLI commands', () => {
     await start(tmpDir);
 
     const list = await runCli(tmpDir, ['extension', 'list']);
-    expect(list.stdout).toMatch(/name\s+status\s+enabled\s+scope\s+source\s+registrations\s+path/);
+    expect(list.stdout).toMatch(/name\s+status\s+enabled\s+scope\s+source\s+trust\s+registrations\s+path/);
     expect(list.stdout).toMatch(/loaded\s+loaded\s+true\s+project-local\s+auto/);
 
     const show = await runCli(tmpDir, ['extension', 'show', 'loaded']);
@@ -378,5 +378,121 @@ describe('extension CLI commands', () => {
     expect(list.extensions.every((entry) => typeof entry.enabled === 'boolean')).toBe(true);
     const show = JSON.parse((await runCli(tmpDir, ['extension', 'show', 'loaded', '--json'])).stdout) as ExtensionShowResponse;
     expect(show.extension.enabled).toBe(true);
+  });
+
+  it('extension trust --json returns typed trust response for a project-team extension', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await mkdir(resolve(tmpDir, 'eforge', 'extensions'), { recursive: true });
+    await writeFile(
+      resolve(tmpDir, 'eforge', 'extensions', 'team.js'),
+      'export default function extension(eforge) { eforge.registerInputSource({ name: "team-input", description: "team", fetch: async () => "ok" }); }',
+      'utf-8',
+    );
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'trust', 'team', '--json']);
+    const data = JSON.parse(stdout) as ExtensionTrustResponse;
+    expect(data.extension.name).toBe('team');
+    expect(data.extension.scope).toBe('project-team');
+    expect(data.extension.trust).toBe('trusted');
+    expect(data.extension.trustState).toBe('trusted');
+    expect(typeof data.extension.currentHash).toBe('string');
+    expect(data.extension.currentHash).toHaveLength(64);
+    expect(typeof data.message).toBe('string');
+    expect(data.message).toContain('team');
+    // Extension code must NOT have been imported: no registrations
+    expect(data.extension.registrations.inputSources).toBe(0);
+  });
+
+  it('extension untrust --json returns typed untrust response', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await mkdir(resolve(tmpDir, 'eforge', 'extensions'), { recursive: true });
+    await writeFile(
+      resolve(tmpDir, 'eforge', 'extensions', 'team.js'),
+      'export default function extension() {}',
+      'utf-8',
+    );
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await start(tmpDir);
+
+    // Trust first
+    await runCli(tmpDir, ['extension', 'trust', 'team', '--json']);
+
+    // Then untrust
+    const { stdout } = await runCli(tmpDir, ['extension', 'untrust', 'team', '--json']);
+    const data = JSON.parse(stdout) as ExtensionTrustResponse;
+    expect(data.extension.name).toBe('team');
+    expect(data.extension.scope).toBe('project-team');
+    expect(data.extension.trust).toBe('untrusted');
+    expect(data.extension.trustState).toBe('untrusted');
+    expect(typeof data.message).toBe('string');
+  });
+
+  it('extension trust non-JSON output includes hash and next steps', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await mkdir(resolve(tmpDir, 'eforge', 'extensions'), { recursive: true });
+    await writeFile(
+      resolve(tmpDir, 'eforge', 'extensions', 'team.js'),
+      'export default function extension() {}',
+      'utf-8',
+    );
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'trust', 'team']);
+    expect(stdout).toContain('team');
+    expect(stdout).toMatch(/Hash:\s+[0-9a-f]{64}/);
+    expect(stdout).toContain('eforge extension reload');
+  });
+
+  it('extension list non-JSON output includes trust column with short hash and changed-state indicators', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await mkdir(resolve(tmpDir, 'eforge', 'extensions'), { recursive: true });
+    const teamPath = resolve(tmpDir, 'eforge', 'extensions', 'team.js');
+    await writeFile(
+      teamPath,
+      'export default function extension() {}',
+      'utf-8',
+    );
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await start(tmpDir);
+
+    const { stdout } = await runCli(tmpDir, ['extension', 'list']);
+    expect(stdout).toMatch(/name\s+status\s+enabled\s+scope\s+source\s+trust\s+registrations\s+path/);
+    expect(stdout).toMatch(/team\s+\S+\s+\S+\s+project-team\s+auto\s+untrusted \([0-9a-f]{8}\)/);
+
+    await runCli(tmpDir, ['extension', 'trust', 'team']);
+    await writeFile(teamPath, 'export default function extension() { /* changed */ }', 'utf-8');
+    const changed = await runCli(tmpDir, ['extension', 'list']);
+    expect(changed.stdout).toMatch(/team\s+\S+\s+\S+\s+project-team\s+auto\s+changed \([0-9a-f]{8}\)/);
+  });
+
+  it('extension show non-JSON output includes trust state, hashes when available', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    await mkdir(resolve(tmpDir, 'eforge', 'extensions'), { recursive: true });
+    await writeFile(
+      resolve(tmpDir, 'eforge', 'extensions', 'team.js'),
+      'export default function extension() {}',
+      'utf-8',
+    );
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), 'extensions:\n  trustProjectExtensions: false\n', 'utf-8');
+    await start(tmpDir);
+
+    // Trust the extension first so show includes trusted hash and provenance.
+    await runCli(tmpDir, ['extension', 'trust', 'team', '--trusted-by', 'reviewer']);
+
+    // Show in non-JSON should include trust state, hashes, timestamp, and source.
+    const { stdout } = await runCli(tmpDir, ['extension', 'show', 'team']);
+    expect(stdout).toContain('Trust:');
+    expect(stdout).toContain('Current hash:');
+    expect(stdout).toContain('Trusted hash:');
+    expect(stdout).toContain('Trusted at:');
+    expect(stdout).toContain('Trusted by:    reviewer');
   });
 });

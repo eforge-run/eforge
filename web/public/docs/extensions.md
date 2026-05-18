@@ -40,7 +40,7 @@ extensions:
   # exclude: [experimental]      # optional denylist by extension name
   # paths:                       # optional explicit extension modules/directories
   #   - ./tools/eforge-audit.ts
-  trustProjectExtensions: false  # default: false
+  trustProjectExtensions: false  # deprecated compatibility field; local trust records control project/team loading
 ```
 
 Fields:
@@ -56,9 +56,9 @@ Fields:
 | `extensions.policyGateFailurePolicy` | `fail-closed` | Failure policy for policy-gate throws, timeouts, or invalid decisions. `fail-closed` blocks the gated operation; `fail-open` records diagnostics and allows it to continue. |
 | `extensions.exclude` | unset | Optional denylist for auto-discovered extension names. Applied after `include`. |
 | `extensions.paths` | unset | Additional explicit extension file or directory paths. Relative paths resolve from the current project root. Explicit paths are validated even when outside standard extension directories. |
-| `extensions.trustProjectExtensions` | `false` | Trust gate for checked-in project/team extensions under `eforge/extensions/`. User and project-local extensions are trusted when loading is enabled. |
+| `extensions.trustProjectExtensions` | `false` | Deprecated compatibility field. It does not trust project/team extensions or bypass changed-hash blocking; explicit local trust records in `.eforge/extension-trust.json` control loading. User and project-local extensions are trusted when loading is enabled. |
 
-The trust flag is intentionally restricted: checked-in `eforge/config.yaml` cannot silently turn on trust for checked-in extensions. Set `extensions.trustProjectExtensions: true` in user config (`~/.config/eforge/config.yaml`) or project-local config (`.eforge/config.yaml`) when you intentionally trust this project's committed extensions.
+The compatibility trust flag is intentionally restricted: checked-in `eforge/config.yaml` cannot silently trust checked-in extensions, and `extensions.trustProjectExtensions` is stripped from committed project config/profile layers with a warning. Loading project/team extensions is controlled by explicit per-extension local trust records created with `eforge extension trust <name>`.
 
 ## Discovery scopes and precedence
 
@@ -67,7 +67,7 @@ Auto-discovery scans three directories:
 | Scope | Directory | Trust default | Purpose |
 |-------|-----------|---------------|---------|
 | User | `~/.config/eforge/extensions/` | trusted | Personal extensions reusable across projects |
-| Project/team | `eforge/extensions/` | untrusted unless `extensions.trustProjectExtensions: true` | Shared, committed team extensions |
+| Project/team | `eforge/extensions/` | untrusted unless a matching local trust record exists | Shared, committed team extensions |
 | Project-local | `.eforge/extensions/` | trusted | Local experiments and personal project overrides |
 
 Precedence for same-name auto-discovered extensions is:
@@ -76,7 +76,7 @@ Precedence for same-name auto-discovered extensions is:
 project-local > project-team > user
 ```
 
-The highest-precedence candidate wins; lower-precedence candidates with the same name are reported as `shadowed`. Project-local is the recommended starting point for new extensions. Promote an extension to `eforge/extensions/` only once it is intended for the team and document that users must opt in to trusting project extensions.
+The highest-precedence candidate wins; lower-precedence candidates with the same name are reported as `shadowed`. Project-local is the recommended starting point for new extensions. Promote an extension to `eforge/extensions/` only once it is intended for the team and document that users must inspect and trust the project/team extension locally.
 
 CLI scaffold scopes map to discovery directories as follows: local -> `.eforge/extensions/`, project -> `eforge/extensions/`, and user -> `~/.config/eforge/extensions/` by default (`$XDG_CONFIG_HOME/eforge/extensions/` when configured).
 
@@ -142,11 +142,11 @@ Statuses:
 | `pending` | Candidate discovered and awaiting load. Usually transient in internal results. |
 | `loaded` | Factory loaded successfully and registration capture completed. |
 | `shadowed` | Auto-discovered candidate lost to a higher-precedence extension with the same name. |
-| `skipped` | Candidate was intentionally skipped, most commonly because it is an untrusted project/team extension. |
+| `skipped` | Candidate was intentionally skipped - most commonly because it is an untrusted project/team extension (`extension:untrusted`) or because its content changed since the last trust operation (`extension:trust-changed`). |
 | `excluded` | Candidate was filtered out by extension include/exclude configuration. |
 | `error` | Discovery, validation, import, export, or factory execution failed. |
 
-Diagnostics include severity (`warning` or `error`), stable code, message, and when available name/path/scope/source. Common diagnostics include unsupported layouts, duplicate explicit names, untrusted project extensions, invalid default exports, and factory errors.
+Diagnostics include severity (`warning` or `error`), stable code, message, and when available name/path/scope/source. Common diagnostics include unsupported layouts, duplicate explicit names, untrusted project extensions (`extension:untrusted`), changed content since last trust (`extension:trust-changed`), invalid default exports, and factory errors. Trust-related diagnostics also include `currentHash` and, for changed extensions, `trustedHash`.
 
 Provenance fields identify where an extension came from:
 
@@ -155,6 +155,11 @@ Provenance fields identify where an extension came from:
 - `path` and `entrypoint`
 - `format`, `layout`, and `strategy`
 - `trust`: `trusted` or `untrusted`
+- `trustState`: `trusted`, `untrusted`, `changed`, or `not-required` (project-team candidates only; `not-required` for all other scopes)
+- `currentHash`: SHA-256 content hash at discovery time (project-team candidates)
+- `trustedHash`: SHA-256 hash recorded at trust time (project-team candidates with a trust record)
+- `trustedAt`: ISO-8601 timestamp of the most recent trust operation (project-team candidates with a trust record)
+- `trustedBy`: optional annotation set at trust time
 - `shadows`: lower-precedence candidates hidden by this candidate
 - `registrations`: counts captured by registration family
 
@@ -170,6 +175,8 @@ eforge extension test build-notifier --fixture events.json
 eforge extension test ./tools/eforge-audit.ts --run latest --event plan:build:failed
 eforge extension new <name>
 eforge extension reload
+eforge extension trust <nameOrPath>
+eforge extension untrust <nameOrPath>
 ```
 
 `eforge extension test [nameOrPath]` validates the selected extension set and dry-runs matching `onEvent` hooks against replayed events. Omit `nameOrPath` to test configured extensions, pass a configured extension name to test one loaded extension, or pass an extension file/directory path for an ad-hoc test. Path detection matches `extension validate`: `./tools/eforge-audit.ts` is a path, while `build-notifier` is a configured extension name.
@@ -193,7 +200,9 @@ Non-JSON output is summary-first. It reports whether the test passed, the source
 
 List/show output includes `enabled`, a derived boolean for whether the entry is selected by the current extension config and is not shadowed or excluded. It is `false` when extensions are globally disabled, when include/exclude filters leave the entry out, or when a higher-precedence extension shadows it. A selected entry can still have `enabled: true` with status `skipped` or `error`; use status, trust, and diagnostics to see why it did not load.
 
-Add `--json` to CLI commands for machine-readable provenance. The same data is exposed via `/api/extensions/list`, `/api/extensions/show`, `/api/extensions/validate`, `/api/extensions/new`, `/api/extensions/reload`, and `/api/extensions/test`.
+Add `--json` to CLI commands for machine-readable provenance. The same data is exposed via `/api/extensions/list`, `/api/extensions/show`, `/api/extensions/validate`, `/api/extensions/new`, `/api/extensions/reload`, `/api/extensions/test`, `/api/extensions/trust`, and `/api/extensions/untrust`.
+
+`eforge extension trust` and `eforge extension untrust` discover and hash project/team candidates, then update `.eforge/extension-trust.json`; they do not import the extension module or execute its factory. The trust decision takes effect when a later validate, test, reload, or build operation loads the extension.
 
 `extension enable`, `extension disable`, `extension promote`, and `extension demote` workflows are deferred.
 
@@ -272,12 +281,11 @@ Pattern semantics match shell hooks. See [`docs/hooks.md`](https://github.com/ef
 
 - Extensions run in the eforge daemon/worker Node process without a sandbox.
 - User (`~/.config/eforge/extensions/`) and project-local (`.eforge/extensions/`) extensions load when `extensions.enabled` is true.
-- Project/team extensions (`eforge/extensions/`) are skipped unless `extensions.trustProjectExtensions: true` is set from user or project-local config.
+- Project/team extensions (`eforge/extensions/`) are unsandboxed arbitrary code committed to the repository. They require an explicit per-extension local trust record in `.eforge/extension-trust.json` — created by `eforge extension trust <name>` — before loading. Any code change invalidates the stored hash and blocks the extension until re-trusted.
+- The content hash covers the entrypoint for file-layout extensions and, for directory-layout extensions, `package.json` plus `.ts`, `.mts`, `.js`, and `.mjs` files under the extension directory (excluding `node_modules/`, `dist/`, and `.git/`). Files imported from outside the extension directory — and non-source/data files inside it — are not covered; keep implementation code inside the extension directory and in hashed source files to ensure relevant code changes are captured.
 - Explicit paths outside standard scopes are treated as `external` and trusted when enabled, so use them only for code you control.
 - Do not load extensions from unreviewed repositories or package artifacts.
 - Treat `eforge extension test` as code execution, not static analysis. The replay path is a dry run with respect to eforge engine state, but matching `onEvent` handlers still execute in the daemon process and can perform filesystem, environment, and network operations.
-
-Hash-based trust prompts/stores are not shipped behavior in this slice.
 
 ## API reference
 

@@ -12,6 +12,10 @@ import type {
   ExtensionShowResponse,
   ExtensionTestRequest,
   ExtensionTestResponse,
+  ExtensionTrustRequest,
+  ExtensionTrustResponse,
+  ExtensionUntrustRequest,
+  ExtensionUntrustResponse,
   ExtensionValidateResponse,
 } from '../types.js';
 
@@ -57,3 +61,13 @@ export function apiTestExtension(opts: { cwd: string; body: ExtensionTestRequest
   return daemonRequest<ExtensionTestResponse>(opts.cwd, 'POST', API_ROUTES.extensionTest, opts.body);
 }
 // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
+
+// --- eforge:region plan-02-management-surfaces ---
+export function apiTrustExtension(opts: { cwd: string; body: ExtensionTrustRequest }) {
+  return daemonRequest<ExtensionTrustResponse>(opts.cwd, 'POST', API_ROUTES.extensionTrust, opts.body);
+}
+
+export function apiUntrustExtension(opts: { cwd: string; body: ExtensionUntrustRequest }) {
+  return daemonRequest<ExtensionUntrustResponse>(opts.cwd, 'POST', API_ROUTES.extensionUntrust, opts.body);
+}
+// --- eforge:endregion plan-02-management-surfaces ---

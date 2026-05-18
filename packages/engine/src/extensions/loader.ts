@@ -23,15 +23,34 @@ export async function loadNativeExtensions(options: NativeExtensionLoaderOptions
 
   for (const candidate of discovery.candidates) {
     if (candidate.status !== 'pending') continue;
-    if (candidate.trust === 'untrusted') {
+    if (candidate.trustState === 'changed') {
       const diagnostic: NativeExtensionDiagnostic = {
         severity: 'warning',
-        code: 'extension:untrusted',
-        message: `Skipping untrusted project extension "${candidate.name}". Set extensions.trustProjectExtensions: true to load project-team extensions.`,
+        code: 'extension:trust-changed',
+        message: `Skipping project-team extension "${candidate.name}" because its content has changed since it was trusted. Re-trust the extension to load it.`,
         name: candidate.name,
         path: candidate.path,
         scope: candidate.scope,
         source: candidate.source,
+        ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
+        ...(candidate.trustedHash !== undefined && { trustedHash: candidate.trustedHash }),
+      };
+      candidate.status = 'skipped';
+      candidate.diagnostics.push(diagnostic);
+      diagnostics.push(diagnostic);
+      registry.diagnostics.push(diagnostic);
+      continue;
+    }
+    if (candidate.trustState === 'untrusted' || (candidate.trustState === undefined && candidate.trust === 'untrusted')) {
+      const diagnostic: NativeExtensionDiagnostic = {
+        severity: 'warning',
+        code: 'extension:untrusted',
+        message: `Skipping untrusted project-team extension "${candidate.name}". Trust the extension via \`eforge extension trust\` to load it.`,
+        name: candidate.name,
+        path: candidate.path,
+        scope: candidate.scope,
+        source: candidate.source,
+        ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
       };
       candidate.status = 'skipped';
       candidate.diagnostics.push(diagnostic);
