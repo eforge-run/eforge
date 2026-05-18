@@ -1,7 +1,6 @@
 ---
 title: EXTEND_11: Runtime Input Transformers and PRD Enrichers
 created: 2026-05-18
-depends_on: ["harden-extension-trust-model"]
 profile: gpt-claude-combo
 ---
 
@@ -22,18 +21,19 @@ Why it matters now:
 - Existing input-boundary behavior is already split: `@eforge-build/input.normalizeBuildSource()` handles session plans, daemon `/api/enqueue` calls it, but direct CLI `eforge enqueue` currently calls the engine directly. EXTEND_11 should use this as the normalization seam rather than adding input semantics inside the engine.
 - Users need observable provenance so an enriched PRD can be traced back to the extension/source adapter that produced or modified it.
 
-Relevant current implementation evidence:
+Relevant current implementation evidence (as of post-trust-model-hardening state):
 
-- `packages/extension-sdk/src/api.ts` already exposes `registerInputSource(adapter)`, but docs mark runtime as deferred.
-- `packages/extension-sdk/src/hooks.ts` defines `InputSourceAdapter` as `{ name, description, fetch(id): Promise<string | null> }`; there is no PRD enricher contract yet.
-- `packages/engine/src/extensions/types.ts` and `packages/engine/src/extensions/recorder.ts` already capture input-source registrations with duplicate-name diagnostics.
+- `packages/extension-sdk/src/api.ts` exposes `registerInputSource(adapter)`, marked "Runtime not yet wired". No `registerPrdEnricher` exists yet.
+- `packages/extension-sdk/src/hooks.ts` defines `InputSourceAdapter` as `{ name, description, fetch(id): Promise<string | null> }` with no context parameter, no `canHandle`, and no enricher contract.
+- `packages/engine/src/extensions/types.ts` includes `InputSourceRegistration` and new trust model types (from the completed harden-extension-trust-model work). No `PrdEnricherSpec` or `PrdEnricherRegistration` types exist.
+- `packages/engine/src/extensions/recorder.ts` validates and captures input-source registrations with duplicate-name diagnostics. The trust model hardening added trust verification to the discovery/loader path.
+- `packages/engine/src/extensions/loader.ts`, `projector.ts`, `replay.ts` were updated as part of trust model hardening. The new registration family will layer on top of these changes.
 - `docs/extensions.md`, `docs/extensions-api.md`, and `packages/extension-sdk/README.md` all document `registerInputSource` as deferred runtime execution.
-- `packages/input/src/session-plan.ts` owns `normalizeBuildSource`, currently only converting `.eforge/session-plans/*.md` into ordinary build source.
-- `packages/monitor/src/server.ts` normalizes session-plan file sources in the daemon `/api/enqueue` route before spawning the enqueue worker.
-- `packages/engine/src/eforge.ts` `EforgeEngine.enqueue()` reads source content and runs the formatter agent; it does not import `@eforge-build/input`, preserving the existing input boundary.
-- `packages/eforge/src/cli/index.ts` direct `eforge enqueue` creates the engine and calls `engine.enqueue(source)` directly; daemon `/api/enqueue` currently has the richer input-boundary normalization path.
-- `packages/client/src/events.schemas.ts` / `event-registry.ts` contain typed diagnostic event families for extensions/profile routing, but no input transformation provenance events yet.
-- `examples/extensions/` has event, agent-context/tool, profile-router, Slack, and protected-path examples; no input-source or issue-tracker example exists.
+- `packages/input/src/index.ts` exports only synchronous `normalizeBuildSource()` plus session-plan helpers. No async extension-aware helper exists.
+- `packages/monitor/src/server.ts` received ~345 lines of additions as part of trust model hardening (extension tooling routes, trust verification, etc.). It still normalizes session-plan file sources in the `/api/enqueue` route before spawning the enqueue worker.
+- `packages/eforge/src/cli/index.ts` received ~83 lines of additions for trust model work. The direct `eforge enqueue` command still passes source directly to `engine.enqueue(source)` with no preprocessing — no call to `normalizeBuildSource()` or extension-aware transformation.
+- `packages/client/src/events.schemas.ts` has event families for `extension:event-handler`, `extension:agent-context`, `extension:agent-tools`, and `extension:policy`, but no `extension:input-source:*` or `extension:prd-enricher:*` events.
+- `examples/extensions/` contains: `agent-context.ts`, `agent-tools.ts`, `minimal-event-logger.ts`, `profile-router.ts`, `protected-paths.ts`, `slack-webhook-notifier.ts`. No input-source or issue-tracker example exists.
 
 Classification: this is a **feature / focused** change with medium-high confidence. It adds a new runtime capability to an existing extension API and spans SDK, input boundary, daemon/CLI wiring, client event schemas, docs, and tests. It should stay cohesive enough for Excursion rather than Expedition: one plan can cover the contracts, runtime helper, integration points, and docs/tests without delegated module planning.
 
@@ -49,7 +49,7 @@ The outcome should include normalized build source, visible provenance/diagnosti
 
 - Keep `registerInputSource` and wire it at runtime for enqueue preprocessing.
 - Add a PRD/build-source enricher registration method, tentatively `registerPrdEnricher(enricher)`, because input adapters fetch a source while enrichers modify already-normalized content.
-- Preserve existing loader/list/show/validate behavior and add the new registration family to counts, duplicate detection, projection, and docs.
+- Preserve existing loader/list/show/validate behavior and add the new registration family to counts, duplicate detection, projection, and docs. Note: the trust model hardening already updated these surfaces; the new enricher family layers on top.
 - Preserve existing synchronous `normalizeBuildSource()` for session-plan conversion and tests.
 - Add an async extension-aware helper in `@eforge-build/input` that accepts structurally typed source-adapter/enricher registrations and returns normalized content plus provenance/diagnostics.
 - Support explicit extension input references such as `eforge://input/<adapter>/<id...>` so issue-tracker input can be requested without ambiguous filesystem/path parsing.
@@ -146,7 +146,7 @@ The outcome should include normalized build source, visible provenance/diagnosti
    - `extension:prd-enricher:applied`
    - `extension:prd-enricher:failed`
 
-   Exact names may be refined for consistency.
+   Exact names may be refined for consistency with existing `extension:*` event naming conventions.
 
    The input helper should also return structured provenance so callers can test without an event recorder.
 
@@ -154,13 +154,15 @@ The outcome should include normalized build source, visible provenance/diagnosti
 
 8. **Daemon route should not hide extension provenance.**
 
-   Avoid executing extension adapters/enrichers entirely inside `/api/enqueue` before spawning a worker, because those events would not naturally appear in the worker’s recorded session stream.
+   Avoid executing extension adapters/enrichers entirely inside `/api/enqueue` before spawning a worker, because those events would not naturally appear in the worker's recorded session stream.
 
    Prefer moving runtime preprocessing into the worker/CLI enqueue path.
 
    The daemon route can still prevalidate session-plan files to preserve existing 400 behavior, then spawn the worker with the original source argument.
 
-   Rationale: the recorded enqueue session should show what transformed the input. This may require careful route tests because current daemon route replaces session-plan source with normalized content before spawn.
+   Note: the trust model hardening added significant new surface to `server.ts` (~345 lines). Take care to layer daemon route changes cleanly on top of the existing trust verification logic rather than modifying it.
+
+   Rationale: the recorded enqueue session should show what transformed the input.
 
 9. **Example strategy.**
 
@@ -179,18 +181,18 @@ The outcome should include normalized build source, visible provenance/diagnosti
 SDK and extension contracts:
 
 - `packages/extension-sdk/src/api.ts` — add `registerPrdEnricher(...)` to `EforgeExtensionAPI`; update `registerInputSource` docs from deferred to runtime-supported.
-- `packages/extension-sdk/src/hooks.ts` — extend input-source types and add `PrdEnricher`/result/context types. Evidence: this is where `InputSourceAdapter` is currently defined.
+- `packages/extension-sdk/src/hooks.ts` — extend input-source types (add optional `canHandle`, context param, result type) and add `PrdEnricher`/result/context types.
 - `packages/extension-sdk/src/context.ts` — add `InputTransformContext` if source/enricher handlers receive logger/exec/cwd/source metadata.
 - `packages/extension-sdk/src/index.ts` and `packages/extension-sdk/README.md` — export and document new types.
 - `test/extension-sdk-example.test.ts` — update barrel/type export assertions and add compile-time examples.
 
 Engine extension loader/registry/projection:
 
-- `packages/engine/src/extensions/types.ts` — add `PrdEnricherSpec`, `PrdEnricherRegistration`, registry state/counts.
+- `packages/engine/src/extensions/types.ts` — add `PrdEnricherSpec`, `PrdEnricherRegistration`, registry state/counts. Note: trust model hardening already added new types here; add enricher types alongside existing additions.
 - `packages/engine/src/extensions/recorder.ts` — validate `registerPrdEnricher`, merge duplicate names, and preserve existing input-source validation.
-- `packages/engine/src/extensions/loader.ts`, `projector.ts`, `replay.ts`, `index.ts` — include new registration family in totals/projection/deferred replay summaries.
-- `packages/engine/src/extensions/scaffold.ts` — optional: add an input/enricher scaffold template only if small; otherwise leave templates unchanged and rely on the example. Existing templates are only `event-logger` and `blank`.
-- Tests: `test/extension-loader.test.ts`, `test/extension-tooling-routes.test.ts`, `test/extension-cli-commands.test.ts`, `test/extension-tooling-wiring.test.ts`, and replay tests likely need count/projection updates.
+- `packages/engine/src/extensions/loader.ts`, `projector.ts`, `replay.ts`, `index.ts` — include new registration family in totals/projection/deferred replay summaries. These files were updated by trust model hardening; additions should layer cleanly.
+- `packages/engine/src/extensions/scaffold.ts` — optional: add an input/enricher scaffold template only if small; otherwise leave templates unchanged and rely on the example.
+- Tests: `test/extension-loader.test.ts`, `test/extension-tooling-routes.test.ts`, `test/extension-cli-commands.test.ts`, `test/extension-tooling-wiring.test.ts`, and replay tests likely need count/projection updates. These tests were expanded by trust model hardening; add enricher coverage alongside existing additions.
 
 Input layer:
 
@@ -202,9 +204,9 @@ Input layer:
 CLI/daemon/client surfaces:
 
 - `packages/eforge/package.json` — add `@eforge-build/input` if CLI enqueue imports the new preprocessing helper directly.
-- `packages/eforge/src/cli/index.ts` — run preprocessing before `engine.enqueue(...)`, yield provenance/diagnostic events before enqueue events, and pass normalized content to the engine. Ensure `wrapEvents(... native hooks ...)` still sees those events.
-- `packages/monitor/src/server.ts` — adjust `/api/enqueue` route. Keep profile validation and optional session-plan prevalidation, but avoid route-side extension execution that would bypass worker event/provenance. Maintain session-plan submitted marking after worker spawn.
-- `packages/client/src/events.schemas.ts`, `event-registry.ts`, `events-wire-parity` tests, and `events-schemas` tests — add typed provenance/diagnostic event variants.
+- `packages/eforge/src/cli/index.ts` — run preprocessing before `engine.enqueue(...)`, yield provenance/diagnostic events before enqueue events, and pass normalized content to the engine. This file was modified by trust model hardening; add preprocessing to the enqueue command path without disturbing trust verification additions.
+- `packages/monitor/src/server.ts` — adjust `/api/enqueue` route. Keep profile validation and optional session-plan prevalidation, but avoid route-side extension execution that would bypass worker event/provenance. This file received ~345 lines of trust model additions; changes to the enqueue route must be made carefully alongside the existing trust verification logic.
+- `packages/client/src/events.schemas.ts`, `event-registry.ts`, `events-wire-parity` tests, and `events-schemas` tests — add typed provenance/diagnostic event variants for input-source and prd-enricher families.
 - `packages/client/src/api-version.ts` — bump daemon API version if wire events/API response shapes change.
 
 Docs/examples/integration UX:
@@ -218,16 +220,16 @@ Docs/examples/integration UX:
 
 | Assumption | Evidence / validation performed | Confidence | Cost to validate further | Validation path | Impact if wrong |
 |------------|----------------------------------|------------|--------------------------|-----------------|-----------------|
-| Enqueue preprocessing can run in the CLI/worker path before `EforgeEngine.enqueue()` and still be recorded through existing event wrapping. | Inspected `packages/eforge/src/cli/index.ts`: enqueue creates `EforgeEngine`, calls `engine.enqueue(source)`, then wraps events with monitor/native hooks. | High | Low | Implement a small generator/helper that yields preprocessing provenance events before yielding `engine.enqueue(...)` events; add CLI test. | If wrong, provenance may be invisible or the route may need a daemon-side event-recording path. |
-| Daemon `/api/enqueue` can stop replacing session-plan source with normalized content and instead let the spawned worker preprocess it, while retaining cheap prevalidation for 400 behavior. | Inspected `packages/monitor/src/server.ts`: route currently reads file, calls `normalizeBuildSource`, replaces `enqueueSource`, then spawns `enqueue`. It separately marks session plans submitted after spawn. | Medium | Medium | Update route tests around enqueue/session plans. Keep validation-only read/parse before spawn if backward-compatible 400s are important. | If wrong, implementation may need to pass provenance metadata into the worker or accept different daemon route behavior. |
+| Enqueue preprocessing can run in the CLI/worker path before `EforgeEngine.enqueue()` and still be recorded through existing event wrapping. | Inspected `packages/eforge/src/cli/index.ts`: enqueue creates `EforgeEngine`, calls `engine.enqueue(source)`, then wraps events with monitor/native hooks. Trust model hardening added ~83 lines but did not change the enqueue flow. | High | Low | Implement a small generator/helper that yields preprocessing provenance events before yielding `engine.enqueue(...)` events; add CLI test. | If wrong, provenance may be invisible or the route may need a daemon-side event-recording path. |
+| Daemon `/api/enqueue` can stop replacing session-plan source with normalized content and instead let the spawned worker preprocess it, while retaining cheap prevalidation for 400 behavior. | `packages/monitor/src/server.ts` received ~345 lines of trust model additions. The basic enqueue route structure (validate, spawn worker) is still present but verify route details carefully before modifying. | Medium | Medium | Read current server.ts enqueue route carefully before making changes; update route tests around enqueue/session plans. | If wrong, implementation may need to pass provenance metadata into the worker or accept different daemon route behavior. |
 | Adding `@eforge-build/input` to the CLI package is acceptable. | `packages/eforge/package.json` currently lacks it; monitor already depends on input. CLI is the boundary package that owns `eforge enqueue` UX. | High | Low | Add dependency and run `pnpm type-check`; verify workspace graph has no cycle. | If wrong, preprocessing helper must live in monitor/engine-adjacent code or be invoked through another package. |
 | `@eforge-build/input` can depend on `@eforge-build/extension-sdk` or use structural types without creating a problematic cycle. | Current dependencies: engine -> extension-sdk; monitor -> engine + input; input -> scopes only. No current input -> engine dependency. | Medium | Low | Prefer structural input-layer types if dependency risk is unclear; otherwise add extension-sdk dependency and run type-check. | If wrong, contracts may duplicate or cause package cycles. |
-| Existing `InputSourceAdapter.fetch(id)` examples remain TypeScript-compatible if runtime adds a second context parameter and allows object results. | Current `packages/extension-sdk/src/hooks.ts` defines `fetch: (id: string) => Promise<string | null>`. TS generally allows fewer parameters for function assignment, but return type widening needs care. | Medium | Low | Add SDK compile tests with old one-arg string-return adapter and new ctx/object-return adapter. | If wrong, this becomes a breaking SDK change; implementation may need overloads or a separate v2 method. |
-| Explicit URI syntax is acceptable for users/agents despite being more verbose than `linear:ENG-123`. | No current source-reference syntax exists; current enqueue already treats strings as paths or inline text. Explicit syntax avoids ambiguity. | Medium | Low | Document syntax and add tests for paths, inline text, URLs, and source refs. Consider convenience shorthand only after tests. | If wrong, UX may feel clunky and require a follow-up shorthand. |
+| Existing `InputSourceAdapter.fetch(id)` examples remain TypeScript-compatible if runtime adds a second context parameter and allows object results. | Current `packages/extension-sdk/src/hooks.ts` defines `fetch: (id: string) => Promise<string \| null>`. TS generally allows fewer parameters for function assignment, but return type widening needs care. | Medium | Low | Add SDK compile tests with old one-arg string-return adapter and new ctx/object-return adapter. | If wrong, this becomes a breaking SDK change; implementation may need overloads or a separate v2 method. |
+| The trust model hardening changes to extension loader/projector/replay/server.ts do not conflict with EXTEND_11 additions. | The trust model work added trust verification, hash/fingerprint tracking, and discovery hardening - orthogonal to input transformation concerns. | High | Low | Read the updated files before adding enricher registration; additions should layer on top cleanly. | If wrong, there may be structural conflicts requiring coordinated changes. |
 | Optional PRD enrichers should fail open by default. | Existing event hooks/profile routers are fail-open; policy gates are the explicit blocking extension API. No current config exists for input enrichment failure policy. | Medium | Low | Record in docs/tests; revisit if user wants mandatory DoD injection to block. | If wrong, teams may expect failed enrichers to block enqueue; follow-up may add per-enricher `failurePolicy`. |
 | The issue-tracker example can satisfy Linear/Jira/GitHub acceptance without implementing a full robust client for each service. | PRD asks for an example covering those sources, not production-ready official integrations. | Medium | Low | Build a token-gated example with clear comments and static validation; avoid network-dependent tests. | If wrong, scope expands significantly into provider-specific API/test fixtures. |
 
-No low-confidence/high-impact assumption is unresolved. The biggest implementation risk is daemon route provenance/compatibility; it has a clear validation path through route tests and can be handled with validation-only parsing plus worker-side preprocessing.
+No low-confidence/high-impact assumption is unresolved. The biggest implementation risk is the daemon route changes layering cleanly on top of the trust model hardening additions; read `server.ts` carefully before modifying the enqueue route.
 
 ### Profile signal
 
