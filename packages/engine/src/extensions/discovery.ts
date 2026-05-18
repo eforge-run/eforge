@@ -1,4 +1,4 @@
-import { lstat, readFile, readdir } from 'node:fs/promises';
+import { lstat, readFile, readdir, realpath } from 'node:fs/promises';
 import { basename, extname, isAbsolute, relative, resolve } from 'node:path';
 
 import { SCOPES, getScopeDirectory, type Scope, type ScopeResolverOpts } from '@eforge-build/scopes';
@@ -203,12 +203,52 @@ export async function discoverNativeExtensions(options: {
 
   // Enrich all candidates with trust state and hash metadata.
   const allCandidates = [...winners, ...shadowedCandidates, ...explicitCandidates];
+  await rejectEscapingProjectTeamCandidates(allCandidates, scopeOpts, diagnostics);
   await enrichCandidatesWithTrust(allCandidates, trustStore, trustStorePath);
 
   return {
     candidates: allCandidates,
     diagnostics,
   };
+}
+
+async function rejectEscapingProjectTeamCandidates(
+  candidates: NativeExtensionCandidate[],
+  opts: ScopeResolverOpts,
+  diagnostics: NativeExtensionDiagnostic[],
+): Promise<void> {
+  for (const candidate of candidates) {
+    if (candidate.scope !== 'project-team') continue;
+    if (await isProjectTeamPathInsideRealScope(candidate.path, opts)) continue;
+    const diagnostic: NativeExtensionDiagnostic = {
+      severity: 'error',
+      code: 'extension:project-team-path-escape',
+      message: 'Project-team extension path must resolve within eforge/extensions/ without symlink escape',
+      name: candidate.name,
+      path: candidate.path,
+      scope: candidate.scope,
+      source: candidate.source,
+    };
+    candidate.status = 'error';
+    candidate.diagnostics.push(diagnostic);
+    diagnostics.push(diagnostic);
+  }
+}
+
+async function isProjectTeamPathInsideRealScope(path: string, opts: ScopeResolverOpts): Promise<boolean> {
+  const extensionsDir = resolve(getScopeDirectory('project-team', opts), EXTENSION_DIR);
+  if (!isPathInside(path, extensionsDir)) return false;
+  try {
+    const dirInfo = await lstat(extensionsDir);
+    if (!dirInfo.isDirectory() || dirInfo.isSymbolicLink()) return false;
+    const [realExtensionsDir, realCandidatePath] = await Promise.all([
+      realpath(extensionsDir),
+      realpath(path),
+    ]);
+    return isPathInside(realCandidatePath, realExtensionsDir);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -358,6 +398,8 @@ function entrypointFromExports(exportsField: unknown): string | undefined {
 
 async function readDirectoryEntries(dir: string): Promise<string[]> {
   try {
+    const info = await lstat(dir);
+    if (!info.isDirectory() || info.isSymbolicLink()) return [];
     return await readdir(dir);
   } catch {
     return [];

@@ -226,6 +226,37 @@ export interface ExtensionTestResponse {
 }
 // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
 
+// --- eforge:region plan-02-management-surfaces ---
+/** POST /api/extensions/trust — trust a project-team extension by name or path. */
+export interface ExtensionTrustRequest {
+  /** Extension name (targets a project-team candidate by name). Mutually exclusive with path. */
+  name?: string;
+  /** Extension file/directory path (must resolve to a project-team candidate). Mutually exclusive with name. */
+  path?: string;
+  /** Optional annotation identifying who is trusting the extension. */
+  trustedBy?: string;
+}
+
+/** POST /api/extensions/untrust — remove trust for a project-team extension by name or path. */
+export interface ExtensionUntrustRequest {
+  /** Extension name (targets a project-team candidate by name). Mutually exclusive with path. */
+  name?: string;
+  /** Extension file/directory path (must resolve to a project-team candidate). Mutually exclusive with name. */
+  path?: string;
+}
+
+/** Response for POST /api/extensions/trust and POST /api/extensions/untrust. */
+export interface ExtensionTrustResponse {
+  /** The updated extension candidate entry reflecting the new trust state. */
+  extension: ExtensionEntry;
+  /** Human-readable message with next steps. */
+  message: string;
+}
+
+/** Alias for trust/untrust response — same shape. */
+export type ExtensionUntrustResponse = ExtensionTrustResponse;
+// --- eforge:endregion plan-02-management-surfaces ---
+
 // --- eforge:region plan-01-extension-management-api ---
 export interface ExtensionNewRequest {
   name: string;

@@ -51,6 +51,8 @@ import {
   apiTestExtension,
   apiNewExtension,
   apiReloadExtensions,
+  apiTrustExtension,
+  apiUntrustExtension,
   LOCKFILE_POLL_INTERVAL_MS,
   LOCKFILE_POLL_TIMEOUT_MS,
   API_ROUTES,
@@ -966,21 +968,21 @@ export default function eforgeExtension(pi: ExtensionAPI) {
     name: "eforge_extension",
     label: "eforge extension",
     description:
-      'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running.',
+      'Manage native eforge extensions. Actions: "list" returns all extension entries with status/provenance/diagnostics; "show" returns one extension by name; "validate" returns valid:false when extension load errors exist, optionally scoped to a name or ad-hoc path; "test" dry-runs onEvent hooks against fixture or monitor events; "new" scaffolds an extension; "reload" refreshes discovery and restarts the runtime watcher when running; "trust" writes a local trust record for a project-team extension without executing it; "untrust" removes the trust record for a project-team extension.',
     parameters: Type.Object({
-      action: StringEnum(["list", "show", "validate", "test", "new", "reload"] as const, {
+      action: StringEnum(["list", "show", "validate", "test", "new", "reload", "trust", "untrust"] as const, {
         description: "Extension operation to perform",
       }),
       name: Type.Optional(
         Type.String({
           minLength: 1,
-          description: 'Extension name (required for "show" and "new", optional for "validate" and "test")',
+          description: 'Extension name (required for "show" and "new", optional for "validate", "test", "trust", and "untrust")',
         }),
       ),
       path: Type.Optional(
         Type.String({
           minLength: 1,
-          description: 'Ad-hoc extension file/directory path to validate or test ("validate" and "test" only)',
+          description: 'Ad-hoc extension file/directory path to validate, test, trust, or untrust ("validate", "test", "trust", and "untrust" only)',
         }),
       ),
       fixture: Type.Optional(Type.String({
@@ -1004,6 +1006,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       force: Type.Optional(Type.Boolean({
         description: 'Overwrite an existing extension file when action is "new". Default: false.',
       })),
+      trustedBy: Type.Optional(Type.String({
+        minLength: 1,
+        description: 'Optional annotation identifying who is trusting the extension ("trust" only).',
+      })),
     }),
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const hasTestOnlyParams = params.fixture !== undefined || params.run !== undefined || params.event !== undefined;
@@ -1013,6 +1019,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }
         if (hasTestOnlyParams) {
           throw new Error('"list" does not accept fixture, run, or event');
+        }
+        if (params.trustedBy !== undefined) {
+          throw new Error('"list" does not accept trustedBy');
         }
         const { data } = await apiListExtensions({ cwd: ctx.cwd });
         return jsonResult(data);
@@ -1027,6 +1036,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (hasTestOnlyParams) {
           throw new Error('"show" does not accept fixture, run, or event');
         }
+        if (params.trustedBy !== undefined) {
+          throw new Error('"show" does not accept trustedBy');
+        }
         const { data } = await apiShowExtension({ cwd: ctx.cwd, name: params.name });
         return jsonResult(data);
       }
@@ -1036,6 +1048,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         }
         if (hasTestOnlyParams) {
           throw new Error('"validate" does not accept fixture, run, or event');
+        }
+        if (params.trustedBy !== undefined) {
+          throw new Error('"validate" does not accept trustedBy');
         }
         if (params.name !== undefined && params.path !== undefined) {
           throw new Error('Specify only one of "name" or "path" for validate');
@@ -1049,6 +1064,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
       if (params.action === "test") {
         if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
           throw new Error('"test" does not accept scope, template, or force');
+        }
+        if (params.trustedBy !== undefined) {
+          throw new Error('"test" does not accept trustedBy');
         }
         if (params.name !== undefined && params.path !== undefined) {
           throw new Error('Specify only one of "name" or "path" for test');
@@ -1072,6 +1090,9 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         if (hasTestOnlyParams) {
           throw new Error('"new" does not accept fixture, run, or event');
         }
+        if (params.trustedBy !== undefined) {
+          throw new Error('"new" does not accept trustedBy');
+        }
         const body: ExtensionNewRequest = { name: params.name };
         if (params.scope !== undefined) body.scope = params.scope;
         if (params.template !== undefined) body.template = params.template as ExtensionNewRequest['template'];
@@ -1079,11 +1100,58 @@ export default function eforgeExtension(pi: ExtensionAPI) {
         const { data } = await apiNewExtension({ cwd: ctx.cwd, body });
         return jsonResult(data);
       }
+      // --- eforge:region plan-02-management-surfaces ---
+      if (params.action === "trust") {
+        if (!params.name && !params.path) {
+          throw new Error('"name" or "path" is required when action is "trust"');
+        }
+        if (params.name !== undefined && params.path !== undefined) {
+          throw new Error('Specify only one of "name" or "path" for trust');
+        }
+        if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
+          throw new Error('"trust" does not accept scope, template, or force');
+        }
+        if (hasTestOnlyParams) {
+          throw new Error('"trust" does not accept fixture, run, or event');
+        }
+        const body: { name?: string; path?: string; trustedBy?: string } = {};
+        if (params.name !== undefined) body.name = params.name;
+        if (params.path !== undefined) body.path = params.path;
+        if (params.trustedBy !== undefined) body.trustedBy = params.trustedBy;
+        const { data } = await apiTrustExtension({ cwd: ctx.cwd, body });
+        return jsonResult(data);
+      }
+      if (params.action === "untrust") {
+        if (!params.name && !params.path) {
+          throw new Error('"name" or "path" is required when action is "untrust"');
+        }
+        if (params.name !== undefined && params.path !== undefined) {
+          throw new Error('Specify only one of "name" or "path" for untrust');
+        }
+        if (params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
+          throw new Error('"untrust" does not accept scope, template, or force');
+        }
+        if (hasTestOnlyParams) {
+          throw new Error('"untrust" does not accept fixture, run, or event');
+        }
+        if (params.trustedBy !== undefined) {
+          throw new Error('"untrust" does not accept trustedBy');
+        }
+        const body: { name?: string; path?: string } = {};
+        if (params.name !== undefined) body.name = params.name;
+        if (params.path !== undefined) body.path = params.path;
+        const { data } = await apiUntrustExtension({ cwd: ctx.cwd, body });
+        return jsonResult(data);
+      }
+      // --- eforge:endregion plan-02-management-surfaces ---
       if (params.name !== undefined || params.path !== undefined || params.scope !== undefined || params.template !== undefined || params.force !== undefined) {
         throw new Error('"reload" does not accept name, path, scope, template, or force');
       }
       if (hasTestOnlyParams) {
         throw new Error('"reload" does not accept fixture, run, or event');
+      }
+      if (params.trustedBy !== undefined) {
+        throw new Error('"reload" does not accept trustedBy');
       }
       const { data } = await apiReloadExtensions({ cwd: ctx.cwd });
       return jsonResult(data);

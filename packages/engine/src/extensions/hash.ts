@@ -53,6 +53,9 @@ async function collectManifest(root: string, dir: string): Promise<Array<[string
     } catch {
       continue;
     }
+    if (info.isSymbolicLink()) {
+      throw new Error(`Extension directory contains unsupported symbolic link: ${normalizeManifestPath(root, fullPath)}`);
+    }
     if (info.isDirectory()) {
       if (EXCLUDED_DIRS.has(item)) continue;
       const subEntries = await collectManifest(root, fullPath);

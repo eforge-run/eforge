@@ -6,7 +6,7 @@ import {
 } from 'node:http';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, readdir, stat, realpath } from 'node:fs/promises';
+import { readFile, readdir, stat, realpath, lstat } from 'node:fs/promises';
 import { readdirSync, readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname, extname, join, basename, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -1445,6 +1445,8 @@ export async function startServer(
     if (d.path !== undefined) result.path = d.path;
     if (d.scope !== undefined) result.scope = d.scope;
     if (d.source !== undefined) result.source = d.source;
+    if (d.currentHash !== undefined) result.currentHash = d.currentHash;
+    if (d.trustedHash !== undefined) result.trustedHash = d.trustedHash;
     return result;
   }
 
@@ -1457,6 +1459,24 @@ export async function startServer(
       return isWithinDir(realResolvedPath, realCwd) ? realResolvedPath : null;
     } catch {
       return null;
+    }
+  }
+
+  async function isProjectTeamExtensionPath(rawPath: string, configDir: string): Promise<boolean> {
+    if (!cwd || rawPath.length === 0 || rawPath.includes('\0')) return false;
+    const teamExtensionsDir = resolve(configDir, 'extensions');
+    const resolvedPath = resolve(cwd, rawPath);
+    if (!isWithinDir(resolvedPath, teamExtensionsDir)) return false;
+    try {
+      const teamDirInfo = await lstat(teamExtensionsDir);
+      if (!teamDirInfo.isDirectory() || teamDirInfo.isSymbolicLink()) return false;
+      const [realTeamDir, realResolvedPath] = await Promise.all([
+        realpath(teamExtensionsDir),
+        realpath(resolvedPath),
+      ]);
+      return isWithinDir(realResolvedPath, realTeamDir);
+    } catch {
+      return false;
     }
   }
 
@@ -1549,6 +1569,14 @@ export async function startServer(
         status: candidate.status,
         enabled: false,
         trust: candidate.trust,
+        // --- eforge:region plan-02-management-surfaces ---
+        ...(candidate.trustState !== undefined && { trustState: candidate.trustState as ExtensionEntry['trustState'] }),
+        ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
+        ...(candidate.trustedHash !== undefined && { trustedHash: candidate.trustedHash }),
+        ...(candidate.trustedAt !== undefined && { trustedAt: candidate.trustedAt }),
+        ...(candidate.trustedBy !== undefined && { trustedBy: candidate.trustedBy }),
+        ...(candidate.trustStorePath !== undefined && { trustStorePath: candidate.trustStorePath }),
+        // --- eforge:endregion plan-02-management-surfaces ---
         ...(candidate.format !== undefined && { format: candidate.format }),
         ...(candidate.layout !== undefined && { layout: candidate.layout }),
         shadows: candidate.shadows.map((shadow) => ({
@@ -1588,6 +1616,14 @@ export async function startServer(
         enabled: extensionEntryEnabled(candidate.status, extensionConfig.enabled),
         // --- eforge:endregion plan-01-extension-management-api ---
         trust: candidate.trust,
+        // --- eforge:region plan-02-management-surfaces ---
+        ...(candidate.trustState !== undefined && { trustState: candidate.trustState as ExtensionEntry['trustState'] }),
+        ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
+        ...(candidate.trustedHash !== undefined && { trustedHash: candidate.trustedHash }),
+        ...(candidate.trustedAt !== undefined && { trustedAt: candidate.trustedAt }),
+        ...(candidate.trustedBy !== undefined && { trustedBy: candidate.trustedBy }),
+        ...(candidate.trustStorePath !== undefined && { trustStorePath: candidate.trustStorePath }),
+        // --- eforge:endregion plan-02-management-surfaces ---
         ...(candidate.format !== undefined && { format: candidate.format }),
         ...(candidate.layout !== undefined && { layout: candidate.layout }),
         ...(loaded?.strategy !== undefined && { strategy: loaded.strategy }),
@@ -1628,6 +1664,14 @@ export async function startServer(
           enabled: false,
           // --- eforge:endregion plan-01-extension-management-api ---
           trust: candidate.trust,
+          // --- eforge:region plan-02-management-surfaces ---
+          ...(candidate.trustState !== undefined && { trustState: candidate.trustState as ExtensionEntry['trustState'] }),
+          ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
+          ...(candidate.trustedHash !== undefined && { trustedHash: candidate.trustedHash }),
+          ...(candidate.trustedAt !== undefined && { trustedAt: candidate.trustedAt }),
+          ...(candidate.trustedBy !== undefined && { trustedBy: candidate.trustedBy }),
+          ...(candidate.trustStorePath !== undefined && { trustStorePath: candidate.trustStorePath }),
+          // --- eforge:endregion plan-02-management-surfaces ---
           ...(candidate.format !== undefined && { format: candidate.format }),
           ...(candidate.layout !== undefined && { layout: candidate.layout }),
           shadows: candidate.shadows.map((shadow) => ({
@@ -2517,6 +2561,305 @@ export async function startServer(
       }
       return;
     }
+
+    // --- eforge:region plan-02-management-surfaces ---
+    if (req.method === 'POST' && url === API_ROUTES.extensionTrust) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let trustBody: { name?: unknown; path?: unknown; trustedBy?: unknown };
+      try {
+        const rawBody = await parseJsonBody(req);
+        if (typeof rawBody !== 'object' || rawBody === null || Array.isArray(rawBody)) {
+          sendJsonError(res, 400, 'Invalid JSON body');
+          return;
+        }
+        trustBody = rawBody as { name?: unknown; path?: unknown; trustedBy?: unknown };
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      const trustHasName = trustBody.name !== undefined;
+      const trustHasPath = trustBody.path !== undefined;
+      if (!trustHasName && !trustHasPath) {
+        sendJsonError(res, 400, 'Missing required field: name or path');
+        return;
+      }
+      if (trustHasName && trustHasPath) {
+        sendJsonError(res, 400, 'Specify only one of name or path');
+        return;
+      }
+      if (trustHasName && (typeof trustBody.name !== 'string' || !EXTENSION_NAME_RE.test(trustBody.name))) {
+        sendJsonError(res, 400, 'Invalid extension name');
+        return;
+      }
+      if (trustHasPath && typeof trustBody.path !== 'string') {
+        sendJsonError(res, 400, 'Invalid extension path');
+        return;
+      }
+      if (trustBody.trustedBy !== undefined && typeof trustBody.trustedBy !== 'string') {
+        sendJsonError(res, 400, 'Invalid trustedBy: must be a string');
+        return;
+      }
+      const trustName = trustHasName ? (trustBody.name as string) : undefined;
+      const trustRawPath = trustHasPath ? (trustBody.path as string) : undefined;
+      const trustedBy = typeof trustBody.trustedBy === 'string' ? trustBody.trustedBy : undefined;
+
+      try {
+        const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
+        const { discoverNativeExtensions, upsertTrustRecord, readTrustStore, getTrustStorePath, hashExtensionDirectory, hashExtensionFile } = await import('@eforge-build/engine/extensions/index');
+
+        const { config, warnings } = await loadConfig(cwd);
+        for (const warning of warnings) process.stderr.write(`${warning}\n`);
+        const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+        const eforgeDir = resolve(cwd, '.eforge');
+
+        const discovery = await discoverNativeExtensions({
+          cwd,
+          configDir,
+          config: { ...config.extensions, enabled: true, include: undefined, exclude: undefined },
+        });
+
+        let trustCandidate: typeof discovery.candidates[number] | undefined;
+        if (trustName !== undefined) {
+          const teamCandidates = (await Promise.all(discovery.candidates
+            .filter((c) => c.name === trustName && c.scope === 'project-team')
+            .map(async (c) => (await isProjectTeamExtensionPath(c.path, configDir)) ? c : undefined)))
+            .filter((c): c is typeof discovery.candidates[number] => c !== undefined);
+          if (teamCandidates.length === 0) {
+            sendJsonError(res, 404, `No project-team extension found with name: ${trustName}`);
+            return;
+          }
+          if (teamCandidates.length > 1) {
+            sendJsonError(res, 409, `Ambiguous: multiple project-team extensions found with name: ${trustName}`);
+            return;
+          }
+          trustCandidate = teamCandidates[0];
+        } else if (trustRawPath !== undefined) {
+          const resolvedTrustPath = resolve(cwd, trustRawPath);
+          if (!await isProjectTeamExtensionPath(trustRawPath, configDir)) {
+            sendJsonError(res, 400, 'Path must resolve to a project-team extension within eforge/extensions/');
+            return;
+          }
+          trustCandidate = discovery.candidates.find(
+            (c) => c.scope === 'project-team' && c.path === resolvedTrustPath,
+          );
+          if (!trustCandidate) {
+            sendJsonError(res, 404, `No project-team extension found at path: ${trustRawPath}`);
+            return;
+          }
+        }
+
+        if (!trustCandidate) {
+          sendJsonError(res, 404, 'Extension not found');
+          return;
+        }
+
+        let trustHash: string;
+        try {
+          if (trustCandidate.layout === 'directory' && trustCandidate.entrypoint) {
+            trustHash = await hashExtensionDirectory(trustCandidate.path, trustCandidate.entrypoint);
+          } else if (trustCandidate.entrypoint) {
+            trustHash = await hashExtensionFile(trustCandidate.entrypoint);
+          } else {
+            sendJsonError(res, 400, 'Cannot hash extension: no entrypoint resolved');
+            return;
+          }
+        } catch (err) {
+          sendJsonError(res, 500, `Failed to hash extension: ${err instanceof Error ? err.message : String(err)}`);
+          return;
+        }
+
+        await upsertTrustRecord(eforgeDir, trustCandidate.name, trustHash, trustedBy);
+
+        const trustStore = await readTrustStore(eforgeDir);
+        const trustRecord = trustStore.records.find((r) => r.name === trustCandidate!.name);
+        const trustStorePath = getTrustStorePath(eforgeDir);
+
+        const trustEntry: ExtensionEntry = {
+          name: trustCandidate.name,
+          path: trustCandidate.path,
+          ...(trustCandidate.entrypoint !== undefined && { entrypoint: trustCandidate.entrypoint }),
+          scope: trustCandidate.scope as ExtensionEntry['scope'],
+          source: trustCandidate.source,
+          status: trustCandidate.status,
+          enabled: extensionEntryEnabled(trustCandidate.status, config.extensions.enabled),
+          trust: 'trusted',
+          trustState: 'trusted',
+          currentHash: trustHash,
+          trustedHash: trustHash,
+          ...(trustRecord && { trustedAt: trustRecord.trustedAt }),
+          ...(trustRecord?.trustedBy !== undefined && { trustedBy: trustRecord.trustedBy }),
+          trustStorePath,
+          ...(trustCandidate.format !== undefined && { format: trustCandidate.format }),
+          ...(trustCandidate.layout !== undefined && { layout: trustCandidate.layout }),
+          shadows: trustCandidate.shadows.map((shadow) => ({
+            name: shadow.name,
+            path: shadow.path,
+            ...(shadow.entrypoint !== undefined && { entrypoint: shadow.entrypoint }),
+            scope: shadow.scope,
+            ...(shadow.format !== undefined && { format: shadow.format }),
+            ...(shadow.layout !== undefined && { layout: shadow.layout }),
+          })),
+          registrations: { ...EMPTY_EXTENSION_REGISTRATIONS },
+          diagnostics: trustCandidate.diagnostics.map(normalizeExtensionDiagnostic),
+        };
+
+        sendJson(res, {
+          extension: trustEntry,
+          message: `Extension "${trustCandidate.name}" is now trusted. Run \`eforge extension reload\` or \`eforge extension validate ${trustCandidate.name}\` to apply.`,
+        });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to trust extension');
+      }
+      return;
+    }
+
+    if (req.method === 'POST' && url === API_ROUTES.extensionUntrust) {
+      if (rejectUnsafeExtensionMutationRequest(req, res)) return;
+      if (!cwd) {
+        sendJsonError(res, 503, 'Working directory not configured');
+        return;
+      }
+      let untrustBody: { name?: unknown; path?: unknown; trustedBy?: unknown };
+      try {
+        const rawBody = await parseJsonBody(req);
+        if (typeof rawBody !== 'object' || rawBody === null || Array.isArray(rawBody)) {
+          sendJsonError(res, 400, 'Invalid JSON body');
+          return;
+        }
+        untrustBody = rawBody as { name?: unknown; path?: unknown; trustedBy?: unknown };
+      } catch {
+        sendJsonError(res, 400, 'Invalid JSON body');
+        return;
+      }
+      if (untrustBody.trustedBy !== undefined) {
+        sendJsonError(res, 400, 'trustedBy is not accepted for untrust requests');
+        return;
+      }
+      const untrustHasName = untrustBody.name !== undefined;
+      const untrustHasPath = untrustBody.path !== undefined;
+      if (!untrustHasName && !untrustHasPath) {
+        sendJsonError(res, 400, 'Missing required field: name or path');
+        return;
+      }
+      if (untrustHasName && untrustHasPath) {
+        sendJsonError(res, 400, 'Specify only one of name or path');
+        return;
+      }
+      if (untrustHasName && (typeof untrustBody.name !== 'string' || !EXTENSION_NAME_RE.test(untrustBody.name))) {
+        sendJsonError(res, 400, 'Invalid extension name');
+        return;
+      }
+      if (untrustHasPath && typeof untrustBody.path !== 'string') {
+        sendJsonError(res, 400, 'Invalid extension path');
+        return;
+      }
+      const untrustName = untrustHasName ? (untrustBody.name as string) : undefined;
+      const untrustRawPath = untrustHasPath ? (untrustBody.path as string) : undefined;
+
+      try {
+        const { loadConfig, getConfigDir, getConventionalConfigDir } = await import('@eforge-build/engine/config');
+        const { discoverNativeExtensions, removeTrustRecord, getTrustStorePath, hashExtensionDirectory, hashExtensionFile } = await import('@eforge-build/engine/extensions/index');
+
+        const { config, warnings } = await loadConfig(cwd);
+        for (const warning of warnings) process.stderr.write(`${warning}\n`);
+        const configDir = await getConfigDir(cwd) ?? getConventionalConfigDir(cwd);
+        const eforgeDir = resolve(cwd, '.eforge');
+
+        const discovery = await discoverNativeExtensions({
+          cwd,
+          configDir,
+          config: { ...config.extensions, enabled: true, include: undefined, exclude: undefined },
+        });
+
+        let untrustCandidate: typeof discovery.candidates[number] | undefined;
+        if (untrustName !== undefined) {
+          const teamCandidates = (await Promise.all(discovery.candidates
+            .filter((c) => c.name === untrustName && c.scope === 'project-team')
+            .map(async (c) => (await isProjectTeamExtensionPath(c.path, configDir)) ? c : undefined)))
+            .filter((c): c is typeof discovery.candidates[number] => c !== undefined);
+          if (teamCandidates.length === 0) {
+            sendJsonError(res, 404, `No project-team extension found with name: ${untrustName}`);
+            return;
+          }
+          if (teamCandidates.length > 1) {
+            sendJsonError(res, 409, `Ambiguous: multiple project-team extensions found with name: ${untrustName}`);
+            return;
+          }
+          untrustCandidate = teamCandidates[0];
+        } else if (untrustRawPath !== undefined) {
+          const resolvedUntrustPath = resolve(cwd, untrustRawPath);
+          if (!await isProjectTeamExtensionPath(untrustRawPath, configDir)) {
+            sendJsonError(res, 400, 'Path must resolve to a project-team extension within eforge/extensions/');
+            return;
+          }
+          untrustCandidate = discovery.candidates.find(
+            (c) => c.scope === 'project-team' && c.path === resolvedUntrustPath,
+          );
+          if (!untrustCandidate) {
+            sendJsonError(res, 404, `No project-team extension found at path: ${untrustRawPath}`);
+            return;
+          }
+        }
+
+        if (!untrustCandidate) {
+          sendJsonError(res, 404, 'Extension not found');
+          return;
+        }
+
+        await removeTrustRecord(eforgeDir, untrustCandidate.name);
+
+        let untrustCurrentHash: string | undefined;
+        try {
+          if (untrustCandidate.layout === 'directory' && untrustCandidate.entrypoint) {
+            untrustCurrentHash = await hashExtensionDirectory(untrustCandidate.path, untrustCandidate.entrypoint);
+          } else if (untrustCandidate.entrypoint) {
+            untrustCurrentHash = await hashExtensionFile(untrustCandidate.entrypoint);
+          }
+        } catch {
+          // Best-effort hash for response only
+        }
+        const untrustTrustStorePath = getTrustStorePath(eforgeDir);
+
+        const untrustEntry: ExtensionEntry = {
+          name: untrustCandidate.name,
+          path: untrustCandidate.path,
+          ...(untrustCandidate.entrypoint !== undefined && { entrypoint: untrustCandidate.entrypoint }),
+          scope: untrustCandidate.scope as ExtensionEntry['scope'],
+          source: untrustCandidate.source,
+          status: untrustCandidate.status,
+          enabled: extensionEntryEnabled(untrustCandidate.status, config.extensions.enabled),
+          trust: 'untrusted',
+          trustState: 'untrusted',
+          ...(untrustCurrentHash !== undefined && { currentHash: untrustCurrentHash }),
+          trustStorePath: untrustTrustStorePath,
+          ...(untrustCandidate.format !== undefined && { format: untrustCandidate.format }),
+          ...(untrustCandidate.layout !== undefined && { layout: untrustCandidate.layout }),
+          shadows: untrustCandidate.shadows.map((shadow) => ({
+            name: shadow.name,
+            path: shadow.path,
+            ...(shadow.entrypoint !== undefined && { entrypoint: shadow.entrypoint }),
+            scope: shadow.scope,
+            ...(shadow.format !== undefined && { format: shadow.format }),
+            ...(shadow.layout !== undefined && { layout: shadow.layout }),
+          })),
+          registrations: { ...EMPTY_EXTENSION_REGISTRATIONS },
+          diagnostics: untrustCandidate.diagnostics.map(normalizeExtensionDiagnostic),
+        };
+
+        sendJson(res, {
+          extension: untrustEntry,
+          message: `Extension "${untrustCandidate.name}" is now untrusted. Run \`eforge extension reload\` to apply.`,
+        });
+      } catch (err) {
+        sendJsonError(res, 500, err instanceof Error ? err.message : 'Failed to untrust extension');
+      }
+      return;
+    }
+    // --- eforge:endregion plan-02-management-surfaces ---
     // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
     // --- eforge:region plan-02-daemon-http-and-mcp-tool ---

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir, symlink, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { hashExtensionFile, hashExtensionDirectory } from '@eforge-build/engine/extensions';
 import { useTempDir } from './test-tmpdir.js';
@@ -229,6 +229,18 @@ describe('extension content hashing', () => {
       const hashAfter = await hashExtensionDirectory(dir);
 
       expect(hashBefore).toBe(hashAfter);
+    });
+
+    it('rejects symbolic links so trusted hashes cannot omit mutable link targets', async () => {
+      const root = makeTempDir();
+      const dir = resolve(root, 'my-ext');
+      const outside = resolve(root, 'outside.js');
+      await mkdir(dir, { recursive: true });
+      await writeFile(resolve(dir, 'index.ts'), 'import "./helper.js"; export default function extension() {}', 'utf-8');
+      await writeFile(outside, 'export const helper = true;', 'utf-8');
+      await symlink(outside, resolve(dir, 'helper.js'));
+
+      await expect(hashExtensionDirectory(dir)).rejects.toThrow('unsupported symbolic link');
     });
 
     it('returns a stable hash for an empty directory', async () => {

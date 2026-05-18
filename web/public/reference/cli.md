@@ -1,6 +1,6 @@
 <!-- Generated file. Do not edit. -->
 <!-- eforge version: 0.7.12 -->
-<!-- Commit: 9697980c -->
+<!-- Commit: de212a90 -->
 <!-- Source: packages/eforge/src/cli/index.ts -->
 
 # eforge CLI Reference
@@ -178,6 +178,29 @@ Scaffold a native eforge extension
 #### `reload`
 
 Reload native extension discovery and restart the daemon watcher when running
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output JSON |
+
+#### `trust`
+
+Trust a project-team native extension by name or path
+
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--trusted-by <identity>` | Optional annotation identifying who is trusting the extension |
+| `--json` | Output JSON |
+
+#### `untrust`
+
+Remove trust for a project-team native extension by name or path
 
 
 **Options:**

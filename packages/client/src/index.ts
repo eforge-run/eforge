@@ -73,6 +73,10 @@ export {
   // --- eforge:region plan-01-engine-daemon-extension-replay ---
   apiTestExtension,
   // --- eforge:endregion plan-01-engine-daemon-extension-replay ---
+  // --- eforge:region plan-02-management-surfaces ---
+  apiTrustExtension,
+  apiUntrustExtension,
+  // --- eforge:endregion plan-02-management-surfaces ---
 } from './api/extensions.js';
 // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
@@ -269,6 +273,9 @@ export type {
   ExtensionFormat,
   ExtensionLayout,
   ExtensionTrust,
+  // --- eforge:region plan-01-engine-trust-foundation ---
+  ExtensionTrustState,
+  // --- eforge:endregion plan-01-engine-trust-foundation ---
   // --- eforge:region plan-01-extension-management-api ---
   ExtensionScaffoldScope,
   ExtensionScaffoldTemplate,
@@ -296,6 +303,12 @@ export type {
   ExtensionReloadWatcherMetadata,
   ExtensionReloadResponse,
   // --- eforge:endregion plan-01-extension-management-api ---
+  // --- eforge:region plan-02-management-surfaces ---
+  ExtensionTrustRequest,
+  ExtensionTrustResponse,
+  ExtensionUntrustRequest,
+  ExtensionUntrustResponse,
+  // --- eforge:endregion plan-02-management-surfaces ---
   QueueItem,
   SessionMetadata,
   RunInfo,

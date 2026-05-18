@@ -9,7 +9,7 @@ import { execFileSync } from 'node:child_process';
 import { request } from 'node:http';
 import { openDatabase } from '@eforge-build/monitor/db';
 import { startServer, type MonitorServer } from '@eforge-build/monitor/server';
-import { API_ROUTES, writeLockfile, apiListExtensions, apiNewExtension, apiReloadExtensions, apiShowExtension, apiTestExtension, apiValidateExtensions, type EforgeEvent, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse, type ExtensionValidateResponse } from '@eforge-build/client';
+import { API_ROUTES, writeLockfile, apiListExtensions, apiNewExtension, apiReloadExtensions, apiShowExtension, apiTestExtension, apiValidateExtensions, apiTrustExtension, apiUntrustExtension, type EforgeEvent, type ExtensionListResponse, type ExtensionNewResponse, type ExtensionReloadResponse, type ExtensionShowResponse, type ExtensionTestResponse, type ExtensionValidateResponse, type ExtensionTrustResponse } from '@eforge-build/client';
 import { createProgram } from '../packages/eforge/src/cli/index.js';
 import { AutoBuildSupervisor } from '@eforge-build/monitor/auto-build-supervisor';
 import { useTempDir } from './test-tmpdir.js';
@@ -106,6 +106,23 @@ function postExtensionTestRaw(port: number, headers: Record<string, string>): Pr
   });
 }
 
+function postTrustRaw(port: number, path: string, headers: Record<string, string>, body: unknown): Promise<number> {
+  return new Promise((resolveStatus, rejectStatus) => {
+    const req = request({
+      hostname: 'localhost',
+      port,
+      path,
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+    }, (res) => {
+      res.resume();
+      res.on('end', () => resolveStatus(res.statusCode ?? 0));
+    });
+    req.on('error', rejectStatus);
+    req.end(JSON.stringify(body));
+  });
+}
+
 describe('extension tooling daemon routes', () => {
   it('GET extensionList returns loaded, excluded, untrusted, error, shadows, registration summaries, and diagnostics', async () => {
     const tmpDir = makeTempDir();
@@ -121,7 +138,16 @@ describe('extension tooling daemon routes', () => {
     expect(loaded?.registrations.inputSources).toBe(1);
     expect(loaded?.shadows.some((shadow) => shadow.scope === 'project-team')).toBe(true);
     expect(data.extensions.find((entry) => entry.name === 'loaded' && entry.status === 'shadowed')).toMatchObject({ name: 'loaded', status: 'shadowed', scope: 'project-team', enabled: false });
-    expect(data.extensions.find((entry) => entry.name === 'team')).toMatchObject({ name: 'team', status: 'skipped', scope: 'project-team', enabled: true });
+    expect(data.extensions.find((entry) => entry.name === 'team')).toMatchObject({
+      name: 'team',
+      status: 'skipped',
+      scope: 'project-team',
+      enabled: true,
+      trust: 'untrusted',
+      trustState: 'untrusted',
+      currentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+      trustStorePath: resolve(tmpDir, '.eforge', 'extension-trust.json'),
+    });
     expect(data.extensions.find((entry) => entry.name === 'bad')).toMatchObject({ name: 'bad', status: 'error', scope: 'project-local', enabled: true });
     expect(data.extensions.find((entry) => entry.name === 'excluded')).toMatchObject({ name: 'excluded', status: 'excluded', scope: 'project-local', enabled: false });
     expect(data.extensions.every((entry) => typeof entry.enabled === 'boolean')).toBe(true);
@@ -180,6 +206,17 @@ describe('extension tooling daemon routes', () => {
     expect(data.extension.status).toBe('loaded');
     expect(data.extension.enabled).toBe(true);
 
+    const team = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionShow}?name=team`);
+    expect(team.status).toBe(200);
+    const teamData = await team.json() as ExtensionShowResponse;
+    expect(teamData.extension).toMatchObject({
+      name: 'team',
+      scope: 'project-team',
+      trust: 'untrusted',
+      trustState: 'untrusted',
+      currentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+
     const missing = await fetch(`http://localhost:${srv.port}${API_ROUTES.extensionShow}?name=missing`);
     expect(missing.status).toBe(404);
   });
@@ -206,6 +243,16 @@ describe('extension tooling daemon routes', () => {
     expect(validate.data.diagnostics).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'extension:invalid-export' }),
     ]));
+
+    const validateTeam = await apiValidateExtensions({ cwd: tmpDir, name: 'team' });
+    expect(validateTeam.data.extensions).toEqual([
+      expect.objectContaining({ name: 'team', trustState: 'untrusted', currentHash: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+    ]);
+
+    const testTeam = await apiTestExtension({ cwd: tmpDir, body: { name: 'team' } });
+    expect(testTeam.data.extensions).toEqual([
+      expect.objectContaining({ name: 'team', trustState: 'untrusted', currentHash: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+    ]);
 
     const created = await apiNewExtension({ cwd: tmpDir, body: { name: 'audit' } });
     expect(created.data).toMatchObject({ name: 'audit', template: 'event-logger', scope: 'project-local' });
@@ -561,6 +608,9 @@ describe('extension tooling daemon routes', () => {
     expect(res.status).toBe(200);
     const data = await res.json() as ExtensionReloadResponse;
     expect(data.extensions.some((entry) => entry.name === 'loaded')).toBe(true);
+    expect(data.extensions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: 'team', trustState: 'untrusted', currentHash: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+    ]));
     expect(Array.isArray(data.diagnostics)).toBe(true);
     expect(data.totals).toMatchObject({ inputSources: 1 });
     expect(data.watcher).toEqual({
@@ -614,6 +664,176 @@ describe('extension tooling daemon routes', () => {
       message: 'Extension discovery refreshed and runtime watcher restarted.',
     });
     expect(data).toMatchObject(data.watcher);
+  });
+
+  it('POST extensionTrust writes a trust record and returns the updated entry without executing extension code', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const importMarker = resolve(tmpDir, 'team-imported.marker');
+    await writeFile(
+      resolve(tmpDir, 'eforge', 'extensions', 'team.js'),
+      `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(importMarker)}, 'imported'); export default function extension(eforge) { eforge.registerInputSource({ name: "team-input", description: "team", fetch: async () => "ok" }); }`,
+      'utf-8',
+    );
+    const srv = await start(tmpDir);
+    writeLockfile(tmpDir, { pid: process.pid, port: srv.port, startedAt: new Date().toISOString() });
+
+    // The 'team' extension is a project-team candidate
+    const res = await apiTrustExtension({ cwd: tmpDir, body: { name: 'team' } });
+    expect(res.port).toBe(srv.port);
+    const data: ExtensionTrustResponse = res.data;
+    expect(data.extension.name).toBe('team');
+    expect(data.extension.scope).toBe('project-team');
+    expect(data.extension.trust).toBe('trusted');
+    expect(data.extension.trustState).toBe('trusted');
+    expect(typeof data.extension.currentHash).toBe('string');
+    expect(data.extension.currentHash).toHaveLength(64); // SHA-256 hex
+    expect(data.extension.trustedHash).toBe(data.extension.currentHash);
+    expect(typeof data.extension.trustedAt).toBe('string');
+    expect(typeof data.message).toBe('string');
+    expect(data.message).toContain('team');
+
+    // Verify the trust store was written
+    const { readFile: readFileNode } = await import('node:fs/promises');
+    const trustStorePath = resolve(tmpDir, '.eforge', 'extension-trust.json');
+    const trustStoreContent = JSON.parse(await readFileNode(trustStorePath, 'utf-8')) as { records: Array<{ name: string; hash: string }> };
+    expect(trustStoreContent.records.some((r) => r.name === 'team' && r.hash === data.extension.currentHash)).toBe(true);
+
+    // Extension code must NOT have been executed: a top-level import side effect would create this marker.
+    await expect(readFile(importMarker, 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(data.extension.registrations.inputSources).toBe(0);
+    expect(data.extension.registrations.eventHooks).toBe(0);
+  });
+
+  it('POST extensionUntrust removes the trust record and returns the candidate as untrusted without executing extension code', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const importMarker = resolve(tmpDir, 'team-untrust-imported.marker');
+    await writeFile(
+      resolve(tmpDir, 'eforge', 'extensions', 'team.js'),
+      `import { writeFileSync } from 'node:fs'; writeFileSync(${JSON.stringify(importMarker)}, 'imported'); export default function extension() {}`,
+      'utf-8',
+    );
+    const srv = await start(tmpDir);
+    writeLockfile(tmpDir, { pid: process.pid, port: srv.port, startedAt: new Date().toISOString() });
+
+    // Trust first
+    await apiTrustExtension({ cwd: tmpDir, body: { name: 'team' } });
+
+    // Then untrust
+    const res = await apiUntrustExtension({ cwd: tmpDir, body: { name: 'team' } });
+    const data: ExtensionTrustResponse = res.data;
+    expect(data.extension.name).toBe('team');
+    expect(data.extension.scope).toBe('project-team');
+    expect(data.extension.trust).toBe('untrusted');
+    expect(data.extension.trustState).toBe('untrusted');
+    expect(typeof data.message).toBe('string');
+    expect(data.message).toContain('team');
+
+    // Trust store should no longer have the record
+    const { readFile: readFileNode } = await import('node:fs/promises');
+    const trustStorePath = resolve(tmpDir, '.eforge', 'extension-trust.json');
+    const trustStoreContent = JSON.parse(await readFileNode(trustStorePath, 'utf-8')) as { records: Array<{ name: string }> };
+    expect(trustStoreContent.records.find((r) => r.name === 'team')).toBeUndefined();
+    await expect(readFile(importMarker, 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('POST extensionTrust rejects project-local, user, external, path-escaping, ambiguous, and unknown targets', async () => {
+    const tmpDir = makeTempDir();
+    const outsideDir = makeTempDir();
+    await setupProject(tmpDir);
+    await mkdir(resolve(process.env.XDG_CONFIG_HOME!, 'eforge', 'extensions'), { recursive: true });
+    await writeFile(resolve(process.env.XDG_CONFIG_HOME!, 'eforge', 'extensions', 'user-only.js'), 'export default function extension() {}', 'utf-8');
+    const externalExtension = resolve(outsideDir, 'external.js');
+    await writeFile(externalExtension, 'export default function extension() {}', 'utf-8');
+    const escapedExtension = resolve(outsideDir, 'escaped.js');
+    await writeFile(escapedExtension, 'export default function extension() {}', 'utf-8');
+    await symlink(escapedExtension, resolve(tmpDir, 'eforge', 'extensions', 'escaped-link.js'));
+    const srv = await start(tmpDir);
+
+    for (const route of [API_ROUTES.extensionTrust, API_ROUTES.extensionUntrust]) {
+      const unknown = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'nonexistent' }),
+      });
+      expect(unknown.status).toBe(404);
+
+      const localOnly = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'bad' }),
+      });
+      expect(localOnly.status).toBe(404);
+
+      const userOnly = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'user-only' }),
+      });
+      expect(userOnly.status).toBe(404);
+
+      const projectLocalPath = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: resolve(tmpDir, '.eforge', 'extensions', 'loaded.js') }),
+      });
+      expect(projectLocalPath.status).toBe(400);
+
+      const externalPath = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: externalExtension }),
+      });
+      expect(externalPath.status).toBe(400);
+
+      const symlinkEscapedPath = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: resolve(tmpDir, 'eforge', 'extensions', 'escaped-link.js') }),
+      });
+      expect(symlinkEscapedPath.status).toBe(400);
+
+      const missingBody = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      expect(missingBody.status).toBe(400);
+
+      const bothNamePath = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'team', path: resolve(tmpDir, 'eforge', 'extensions', 'team.js') }),
+      });
+      expect(bothNamePath.status).toBe(400);
+    }
+
+    await writeFile(resolve(tmpDir, 'eforge', 'config.yaml'), [
+      'extensions:',
+      '  trustProjectExtensions: false',
+      '  paths:',
+      '    - eforge/extensions/team.js',
+    ].join('\n'), 'utf-8');
+    for (const route of [API_ROUTES.extensionTrust, API_ROUTES.extensionUntrust]) {
+      const ambiguous = await fetch(`http://localhost:${srv.port}${route}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'team' }),
+      });
+      expect(ambiguous.status).toBe(409);
+    }
+  });
+
+  it('POST extensionTrust and extensionUntrust reject cross-origin callers and non-loopback Host headers', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const srv = await start(tmpDir);
+
+    await expect(postTrustRaw(srv.port, API_ROUTES.extensionTrust, { Origin: 'http://evil.example' }, { name: 'team' })).resolves.toBe(403);
+    await expect(postTrustRaw(srv.port, API_ROUTES.extensionTrust, { Host: '192.0.2.1' }, { name: 'team' })).resolves.toBe(403);
+    await expect(postTrustRaw(srv.port, API_ROUTES.extensionUntrust, { Origin: 'http://evil.example' }, { name: 'team' })).resolves.toBe(403);
+    await expect(postTrustRaw(srv.port, API_ROUTES.extensionUntrust, { Host: '192.0.2.1' }, { name: 'team' })).resolves.toBe(403);
   });
 
   it('CLI extension validate exits with code 1 for an invalid ad-hoc extension path', async () => {

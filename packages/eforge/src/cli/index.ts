@@ -31,6 +31,8 @@ import {
   apiTestExtension,
   apiNewExtension,
   apiReloadExtensions,
+  apiTrustExtension,
+  apiUntrustExtension,
   type ExtensionEntry,
   type ExtensionNewRequest,
   type ExtensionTestRequest,
@@ -160,6 +162,21 @@ function extensionRegistrationSummary(entry: ExtensionEntry): string {
   return parts.length > 0 ? parts.join(',') : '-';
 }
 
+function formatTrustColumn(entry: ExtensionEntry): string {
+  if (entry.trustState === undefined || entry.trustState === 'not-required') return '-';
+  if (entry.trustState === 'trusted') {
+    const hash = entry.currentHash ? entry.currentHash.slice(0, 8) : '';
+    return hash ? `trusted (${hash})` : 'trusted';
+  }
+  if (entry.trustState === 'changed') {
+    const hash = entry.currentHash ? entry.currentHash.slice(0, 8) : '';
+    return hash ? `changed (${hash})` : 'changed';
+  }
+  // untrusted
+  const hash = entry.currentHash ? entry.currentHash.slice(0, 8) : '';
+  return hash ? `untrusted (${hash})` : 'untrusted';
+}
+
 function renderExtensionTable(extensions: ExtensionEntry[]): void {
   if (extensions.length === 0) {
     console.log(chalk.dim('No extensions found'));
@@ -168,13 +185,14 @@ function renderExtensionTable(extensions: ExtensionEntry[]): void {
   const rows = extensions.map((entry) => ({
     name: entry.name,
     status: entry.status,
+    enabled: String(entry.enabled),
     scope: entry.scope,
     source: entry.source,
-    enabled: String(entry.enabled),
+    trust: formatTrustColumn(entry),
     registrations: extensionRegistrationSummary(entry),
     path: entry.path,
   }));
-  const headers = ['name', 'status', 'enabled', 'scope', 'source', 'registrations', 'path'] as const;
+  const headers = ['name', 'status', 'enabled', 'scope', 'source', 'trust', 'registrations', 'path'] as const;
   const widths = Object.fromEntries(headers.map((header) => [
     header,
     Math.max(header.length, ...rows.map((row) => String(row[header]).length)),
@@ -196,6 +214,13 @@ function renderExtensionDetail(entry: ExtensionEntry): void {
   if (entry.entrypoint) console.log(`  Entrypoint:    ${entry.entrypoint}`);
   if (entry.strategy) console.log(`  Strategy:      ${entry.strategy}`);
   console.log(`  Registrations: ${extensionRegistrationSummary(entry)}`);
+  if (entry.trustState !== undefined && entry.trustState !== 'not-required') {
+    console.log(`  Trust:         ${entry.trustState}`);
+    if (entry.currentHash) console.log(`  Current hash:  ${entry.currentHash}`);
+    if (entry.trustedHash) console.log(`  Trusted hash:  ${entry.trustedHash}`);
+    if (entry.trustedAt) console.log(`  Trusted at:    ${entry.trustedAt}`);
+    if (entry.trustedBy) console.log(`  Trusted by:    ${entry.trustedBy}`);
+  }
   if (entry.shadows.length > 0) {
     console.log('  Shadows:');
     for (const shadow of entry.shadows) {
@@ -807,6 +832,60 @@ export function createProgram(abortController?: AbortController, version?: strin
         process.exit(exitCode);
       }
     });
+
+  // --- eforge:region plan-02-management-surfaces ---
+  extension
+    .command('trust <nameOrPath>')
+    .description('Trust a project-team native extension by name or path')
+    .option('--trusted-by <identity>', 'Optional annotation identifying who is trusting the extension')
+    .option('--json', 'Output JSON')
+    .action(async (nameOrPath: string, options: { trustedBy?: string; json?: boolean }) => {
+      try {
+        const body: { name?: string; path?: string; trustedBy?: string } = isExtensionPathArg(nameOrPath)
+          ? { path: nameOrPath }
+          : { name: nameOrPath };
+        if (options.trustedBy) body.trustedBy = options.trustedBy;
+        const { data } = await apiTrustExtension({ cwd: process.cwd(), body });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.log(chalk.green('✔') + ` Extension ${data.extension.name} trusted`);
+          if (data.extension.currentHash) console.log(`  Hash:    ${data.extension.currentHash}`);
+          if (data.extension.trustedAt) console.log(`  At:      ${data.extension.trustedAt}`);
+          if (data.extension.trustedBy) console.log(`  By:      ${data.extension.trustedBy}`);
+          console.log(chalk.dim(data.message));
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+
+  extension
+    .command('untrust <nameOrPath>')
+    .description('Remove trust for a project-team native extension by name or path')
+    .option('--json', 'Output JSON')
+    .action(async (nameOrPath: string, options: { json?: boolean }) => {
+      try {
+        const body: { name?: string; path?: string } = isExtensionPathArg(nameOrPath)
+          ? { path: nameOrPath }
+          : { name: nameOrPath };
+        const { data } = await apiUntrustExtension({ cwd: process.cwd(), body });
+        if (options.json) {
+          console.log(JSON.stringify(data, null, 2));
+        } else {
+          console.log(chalk.green('✔') + ` Extension ${data.extension.name} untrusted`);
+          if (data.extension.currentHash) console.log(`  Hash:    ${data.extension.currentHash}`);
+          console.log(chalk.dim(data.message));
+        }
+      } catch (err) {
+        const { message, exitCode } = formatCliError(err);
+        console.error(chalk.red(`Error: ${message}`));
+        process.exit(exitCode);
+      }
+    });
+  // --- eforge:endregion plan-02-management-surfaces ---
   // --- eforge:endregion plan-02-extension-tooling-surfaces ---
 
   // Config commands
