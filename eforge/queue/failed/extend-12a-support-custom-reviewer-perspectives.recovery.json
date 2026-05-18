@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 2,
+  "summary": {
+    "prdId": "extend-12a-support-custom-reviewer-perspectives",
+    "setName": "extend-12a-support-custom-reviewer-perspectives",
+    "featureBranch": "eforge/extend-12a-support-custom-reviewer-perspectives",
+    "baseBranch": "main",
+    "plans": [
+      {
+        "planId": "plan-03-planning-ui-docs-examples",
+        "status": "failed",
+        "error": "Blocked by failed dependency: plan-02-runtime-catalog-and-review"
+      }
+    ],
+    "failingPlan": {
+      "planId": "plan-03-planning-ui-docs-examples",
+      "errorMessage": "Blocked by failed dependency: plan-02-runtime-catalog-and-review"
+    },
+    "landedCommits": [
+      {
+        "sha": "36ab156900408f573389679b70b43b9f9dbc09d2",
+        "subject": "wip(plan-02-runtime-catalog-and-review): continuation checkpoint (attempt 2)",
+        "author": "Mark Schaake",
+        "date": "2026-05-18T01:02:19-07:00"
+      },
+      {
+        "sha": "4f9cba246e09fd4deb2c96507f75aaa37bf1e8d7",
+        "subject": "feat(plan-01-perspective-contracts): Perspective Contracts and Loader Validation",
+        "author": "Mark Schaake",
+        "date": "2026-05-18T00:45:54-07:00"
+      },
+      {
+        "sha": "5ebd2f37154867cdd5efc258c7df1ebb4d426733",
+        "subject": "plan(extend-12a-support-custom-reviewer-perspectives): planning artifacts",
+        "author": "Mark Schaake",
+        "date": "2026-05-17T23:59:16-07:00"
+      }
+    ],
+    "diffStat": ".../orchestration.yaml                             | 135 +++++++\n .../plan-01-perspective-contracts.md               |  99 +++++\n .../plan-02-runtime-catalog-and-review.md          | 102 ++++++\n .../plan-03-planning-ui-docs-examples.md           | 105 ++++++\n packages/client/src/browser.ts                     |  19 +-\n packages/client/src/event-registry.ts              |  23 ++\n packages/client/src/events.schemas.ts              |  86 ++++-\n packages/client/src/events.ts                      |   8 +\n packages/client/src/index.ts                       |  25 +-\n packages/client/src/types.ts                       |  17 +-\n packages/eforge/src/cli/index.ts                   |   8 +\n packages/engine/src/agents/parallel-reviewer.ts    | 163 ++++++---\n packages/engine/src/config.ts                      |  23 +-\n packages/engine/src/eforge.ts                      |   6 +\n packages/engine/src/extensions/projector.ts        |   8 +\n packages/engine/src/extensions/recorder.ts         |  25 +-\n .../src/extensions/reviewer-perspective-runtime.ts | 253 +++++++++++++\n packages/engine/src/extensions/types.ts            |   2 +-\n .../engine/src/pipeline/stages/build-stages.ts     | 210 +++++++++--\n packages/engine/src/pipeline/types.ts              |  11 +\n packages/engine/src/review-cycle-perspectives.ts   |  36 +-\n packages/engine/src/review-heuristics.ts           |   3 +\n packages/engine/src/review-perspective-catalog.ts  | 188 ++++++++++\n packages/engine/src/review-perspective-keys.ts     |  53 +++\n packages/engine/src/schemas.ts                     |   7 +-\n packages/extension-sdk/src/api.ts                  |  12 +-\n packages/extension-sdk/src/hooks.ts                |  40 ++-\n packages/extension-sdk/src/index.ts                |   4 +\n packages/monitor/src/server.ts                     |   5 +\n test/config.test.ts                                |  26 +-\n test/extension-loader.test.ts                      | 147 +++++++-\n test/extension-replay.test.ts                      |   2 +-\n test/extension-sdk-example.test.ts                 |  24 ++\n test/extension-tooling-routes.test.ts              |  36 ++\n test/parallel-reviewer-custom-perspective.test.ts  | 328 +++++++++++++++++\n ...arallel-reviewer-perspective-validation.test.ts | 106 +++++-\n test/per-plan-build-config.test.ts                 |   2 +-\n test/reviewer-perspective-catalog.test.ts          | 287 +++++++++++++++\n test/reviewer-perspective-runtime.test.ts          | 399 +++++++++++++++++++++\n test/schemas.test.ts                               | 165 ++++++++-\n 40 files changed, 3061 insertions(+), 137 deletions(-)",
+    "modelsUsed": [
+      "claude-sonnet-4-6",
+      "gpt-5.5"
+    ],
+    "failedAt": "2026-05-18T08:10:27.758Z"
+  },
+  "verdict": {
+    "verdict": "manual",
+    "confidence": "low",
+    "rationale": "Recovery analyst failed or timed out.",
+    "completedWork": [],
+    "remainingWork": [],
+    "risks": [],
+    "partial": true,
+    "recoveryError": "Claude Code process aborted by user"
+  },
+  "generatedAt": "2026-05-18T08:11:59.914Z"
+}
