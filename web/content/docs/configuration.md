@@ -129,10 +129,10 @@ Native eforge extensions are TypeScript/JavaScript modules discovered from three
 | Scope | Directory | Trust default |
 |-------|-----------|---------------|
 | User | `~/.config/eforge/extensions/` | trusted |
-| Project/team | `eforge/extensions/` | skipped unless trusted |
+| Project/team | `eforge/extensions/` | skipped unless a matching local trust record exists |
 | Project-local | `.eforge/extensions/` | trusted |
 
-Precedence is `project-local > project-team > user`. Use project-local extensions for experiments, then promote to `eforge/extensions/` when the team should share them. Project/team extensions require an explicit trust opt-in because they are committed code.
+Precedence is `project-local > project-team > user`. Use project-local extensions for experiments, then promote to `eforge/extensions/` when the team should share them. Project/team extensions require a per-extension local trust record in `.eforge/extension-trust.json` created by `eforge extension trust <name>`. `extensions.trustProjectExtensions` is retained only as a deprecated compatibility field: it does not trust project/team code, and committed project config/profile layers that set it are stripped with a warning. Any code change invalidates the stored hash and blocks the extension until re-trusted.
 
 ```yaml
 extensions:
@@ -148,12 +148,12 @@ extensions:
     - experimental-policy        # optional denylist by name
   paths:
     - ./tools/eforge-audit.ts    # explicit file/directory paths
-  trustProjectExtensions: false  # default
+  trustProjectExtensions: false  # deprecated compatibility field; local trust records control project/team loading
 ```
 
 Supported extension entrypoints are `.ts`, `.mts`, `.js`, and `.mjs` files or directories with `index.*` / supported `package.json` entrypoints. TypeScript loads through `jiti`; JavaScript uses dynamic import. The loader executes the default-export factory in the eforge daemon/worker Node process without a sandbox, records registrations, and surfaces status, diagnostics, shadows, trust, source, strategy, registration counts, and event replay results through `eforge extension list/show/validate/test` and extension API routes.
 
-Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, and management commands (`eforge extension list/show/validate/test/new/reload`). `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
+Current runtime support includes discovery, trust gating, loading, diagnostics, provenance output, registration capture, native `onEvent` dispatch and replay testing, `onAgentRun` prompt-context augmentation, per-run extension tool injection, per-run tool availability tuning, pre-build `registerProfileRouter` dispatch, runtime policy gates for `beforeQueueDispatch`, `beforePlanMerge`, and `beforeFinalMerge`, and management commands (`eforge extension list/show/validate/test/new/reload/trust/untrust`). `registerTool` records loader-time provenance; `onAgentRun({ tools: [...] })` is the per-run injection path. Input-source execution, reviewer perspective execution, validation-provider execution, `beforeEnqueue`, `beforeValidation`, approval workflow/state, and `modify` decisions are deferred runtime phases. See [Extensions](/docs/extensions) and [Extensions API Reference](/docs/extensions-api).
 
 ## Profile Toolbelts for UI Work
 

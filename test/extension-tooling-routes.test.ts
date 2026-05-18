@@ -738,6 +738,33 @@ describe('extension tooling daemon routes', () => {
     await expect(readFile(importMarker, 'utf-8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('POST extensionTrust and extensionUntrust accept project-team extension paths', async () => {
+    const tmpDir = makeTempDir();
+    await setupProject(tmpDir);
+    const teamPath = resolve(tmpDir, 'eforge', 'extensions', 'team.js');
+    const srv = await start(tmpDir);
+    writeLockfile(tmpDir, { pid: process.pid, port: srv.port, startedAt: new Date().toISOString() });
+
+    const trusted = await apiTrustExtension({ cwd: tmpDir, body: { path: 'eforge/extensions/team.js', trustedBy: 'path-test' } });
+    expect(trusted.data.extension).toMatchObject({
+      name: 'team',
+      path: teamPath,
+      scope: 'project-team',
+      trustState: 'trusted',
+      trustedBy: 'path-test',
+      currentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+
+    const untrusted = await apiUntrustExtension({ cwd: tmpDir, body: { path: teamPath } });
+    expect(untrusted.data.extension).toMatchObject({
+      name: 'team',
+      path: teamPath,
+      scope: 'project-team',
+      trustState: 'untrusted',
+      currentHash: trusted.data.extension.currentHash,
+    });
+  });
+
   it('POST extensionTrust rejects project-local, user, external, path-escaping, ambiguous, and unknown targets', async () => {
     const tmpDir = makeTempDir();
     const outsideDir = makeTempDir();

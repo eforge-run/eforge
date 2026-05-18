@@ -169,6 +169,53 @@ describe('native extension loader', () => {
     expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'extension:untrusted' || diagnostic.code === 'extension:trust-changed')).toBe(false);
   });
 
+  it('requires matching trust records for explicit project-team extension paths', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const teamPath = resolve(getScopeDirectory('project-team', opts), 'extensions', 'team-explicit.js');
+    await writeModule(teamPath, 'export default function extension(eforge) { eforge.registerInputSource({ name: "team-explicit", description: "team", fetch: async () => "ok" }); }');
+
+    const untrusted = await loadNativeExtensions({
+      cwd: opts.cwd,
+      configDir: opts.configDir,
+      config: { enabled: true, trustProjectExtensions: false, include: ['__eforge_no_auto_extensions__'], paths: [teamPath] },
+    });
+
+    expect(untrusted.registry.extensions).toHaveLength(0);
+    const untrustedCandidate = untrusted.candidates.find((candidate) => candidate.name === 'team-explicit');
+    expect(untrustedCandidate).toMatchObject({
+      path: teamPath,
+      scope: 'project-team',
+      source: 'explicit',
+      status: 'skipped',
+      trust: 'untrusted',
+      trustState: 'untrusted',
+      currentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(untrusted.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'extension:untrusted', name: 'team-explicit', source: 'explicit' }),
+    ]));
+
+    await upsertTrustRecord(resolve(root, '.eforge'), 'team-explicit', untrustedCandidate!.currentHash!);
+    const trusted = await loadNativeExtensions({
+      cwd: opts.cwd,
+      configDir: opts.configDir,
+      config: { enabled: true, trustProjectExtensions: false, include: ['__eforge_no_auto_extensions__'], paths: [teamPath] },
+    });
+
+    expect(trusted.registry.extensions.map((extension) => extension.name)).toEqual(['team-explicit']);
+    expect(trusted.candidates.find((candidate) => candidate.name === 'team-explicit')).toMatchObject({
+      path: teamPath,
+      scope: 'project-team',
+      source: 'explicit',
+      status: 'loaded',
+      trust: 'trusted',
+      trustState: 'trusted',
+      currentHash: untrustedCandidate!.currentHash,
+      trustedHash: untrustedCandidate!.currentHash,
+    });
+  });
+
   it('skips untrusted project-team extensions when no trust record exists', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
