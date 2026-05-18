@@ -3,7 +3,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { EforgeEngine } from '@eforge-build/engine/eforge';
 import { getScopeDirectory, type ScopeResolverOpts } from '@eforge-build/scopes';
-import { loadNativeExtensions, projectExtensionRegistry } from '@eforge-build/engine/extensions';
+import { loadNativeExtensions, projectExtensionRegistry, replayNativeExtensionEvents, upsertTrustRecord, discoverNativeExtensions } from '@eforge-build/engine/extensions';
 import { Type } from '@eforge-build/extension-sdk';
 import { useTempDir } from './test-tmpdir.js';
 import { StubHarness } from './stub-harness.js';
@@ -138,7 +138,38 @@ describe('native extension loader', () => {
     ]));
   });
 
-  it('skips untrusted project-team extensions and loads them when trusted', async () => {
+  it('loads user and external explicit extensions without project-team trust records', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const userPath = resolve(getScopeDirectory('user', opts), 'extensions', 'user.js');
+    const externalPath = resolve(root, 'manual', 'external.js');
+    await writeModule(userPath, 'export default function extension(eforge) { eforge.registerInputSource({ name: "user-source", description: "user", fetch: async () => "ok" }); }');
+    await writeModule(externalPath, 'export default function extension(eforge) { eforge.registerInputSource({ name: "external-source", description: "external", fetch: async () => "ok" }); }');
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false, paths: [externalPath] } });
+
+    expect(result.registry.extensions.map((extension) => extension.name).sort()).toEqual(['external', 'user']);
+    expect(result.registry.inputSources.map((source) => source.name).sort()).toEqual(['external-source', 'user-source']);
+    expect(result.candidates.find((candidate) => candidate.name === 'user')).toMatchObject({
+      path: userPath,
+      scope: 'user',
+      source: 'auto',
+      status: 'loaded',
+      trust: 'trusted',
+      trustState: 'not-required',
+    });
+    expect(result.candidates.find((candidate) => candidate.name === 'external')).toMatchObject({
+      path: externalPath,
+      scope: 'external',
+      source: 'explicit',
+      status: 'loaded',
+      trust: 'trusted',
+      trustState: 'not-required',
+    });
+    expect(result.diagnostics.some((diagnostic) => diagnostic.code === 'extension:untrusted' || diagnostic.code === 'extension:trust-changed')).toBe(false);
+  });
+
+  it('skips untrusted project-team extensions when no trust record exists', async () => {
     const root = makeTempDir();
     const opts = await makeTree(root);
     await writeModule(resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js'), 'export default function extension(eforge) { eforge.registerInputSource({ name: "team", description: "team", fetch: async () => "ok" }); }');
@@ -146,9 +177,175 @@ describe('native extension loader', () => {
     const skipped = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
     expect(skipped.registry.extensions).toHaveLength(0);
     expect(skipped.diagnostics.some((diagnostic) => diagnostic.code === 'extension:untrusted')).toBe(true);
+    // Verify importExtension was never called - the candidate should be skipped, not loaded or error
+    const teamCandidate = skipped.candidates.find((c) => c.name === 'team');
+    expect(teamCandidate?.status).toBe('skipped');
+    expect(teamCandidate?.trustState).toBe('untrusted');
+  });
 
-    const loaded = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: true } });
+  it('skips untrusted project-team extensions even when trustProjectExtensions is true', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js'), 'throw new Error("coarse trust flag must not import this"); export default function extension() {}');
+
+    const skipped = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: true } });
+
+    expect(skipped.registry.extensions).toHaveLength(0);
+    expect(skipped.candidates.find((c) => c.name === 'team')).toMatchObject({
+      status: 'skipped',
+      trustState: 'untrusted',
+      trust: 'untrusted',
+    });
+    expect(skipped.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'extension:untrusted', currentHash: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+    ]));
+    expect(skipped.diagnostics.some((diagnostic) => diagnostic.code === 'extension:factory-error')).toBe(false);
+  });
+
+  it('projects trust and hash metadata for skipped project-team candidates', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensionPath = resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js');
+    await writeModule(extensionPath, 'export default function extension() {}');
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const projection = projectExtensionRegistry(result.registry);
+
+    expect(projection.candidates).toEqual([
+      expect.objectContaining({
+        name: 'team',
+        path: extensionPath,
+        status: 'skipped',
+        trust: 'untrusted',
+        trustState: 'untrusted',
+        currentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        trustStorePath: resolve(root, '.eforge', 'extension-trust.json'),
+      }),
+    ]);
+  });
+
+  it('propagates trust and hash metadata into replay extension entries and diagnostics', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extensionPath = resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js');
+    await writeModule(extensionPath, 'export default function extension() {}');
+
+    const result = await replayNativeExtensionEvents({
+      cwd: root,
+      loaderOptions: { cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } },
+      name: 'team',
+      events: [],
+    });
+
+    expect(result.extensions).toEqual([
+      expect.objectContaining({
+        name: 'team',
+        path: extensionPath,
+        status: 'skipped',
+        trust: 'untrusted',
+        trustState: 'untrusted',
+        currentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+        trustStorePath: resolve(root, '.eforge', 'extension-trust.json'),
+        diagnostics: [expect.objectContaining({ code: 'extension:untrusted', currentHash: expect.stringMatching(/^[0-9a-f]{64}$/) })],
+      }),
+    ]);
+    expect(result.diagnostics).toEqual([
+      expect.objectContaining({ code: 'extension:untrusted', currentHash: expect.stringMatching(/^[0-9a-f]{64}$/) }),
+    ]);
+  });
+
+  it('loads project-team extensions after inserting a matching trust record', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    await writeModule(resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js'), 'export default function extension(eforge) { eforge.registerInputSource({ name: "team", description: "team", fetch: async () => "ok" }); }');
+
+    // Discover to get the current hash
+    const discovery = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const candidate = discovery.candidates.find((c) => c.name === 'team');
+    expect(candidate?.currentHash).toBeDefined();
+
+    // Trust the extension by inserting a matching trust record
+    const eforgeDir = resolve(root, '.eforge');
+    await upsertTrustRecord(eforgeDir, 'team', candidate!.currentHash!, 'cli-user');
+
+    const loaded = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
     expect(loaded.registry.extensions.map((extension) => extension.name)).toEqual(['team']);
+    const loadedCandidate = loaded.candidates.find((c) => c.name === 'team');
+    expect(loadedCandidate).toMatchObject({
+      status: 'loaded',
+      trust: 'trusted',
+      trustState: 'trusted',
+      currentHash: candidate!.currentHash,
+      trustedHash: candidate!.currentHash,
+      trustedBy: 'cli-user',
+      trustStorePath: resolve(root, '.eforge', 'extension-trust.json'),
+    });
+    expect(loadedCandidate?.trustedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+
+    const projection = projectExtensionRegistry(loaded.registry);
+    expect(projection.candidates).toEqual([
+      expect.objectContaining({
+        name: 'team',
+        status: 'loaded',
+        trustState: 'trusted',
+        currentHash: candidate!.currentHash,
+        trustedHash: candidate!.currentHash,
+        trustedBy: 'cli-user',
+        trustedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+        trustStorePath: resolve(root, '.eforge', 'extension-trust.json'),
+      }),
+    ]);
+  });
+
+  it('skips changed project-team extensions and emits extension:trust-changed diagnostic', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    const extPath = resolve(getScopeDirectory('project-team', opts), 'extensions', 'team.js');
+    await writeModule(extPath, 'export default function extension(eforge) { eforge.registerInputSource({ name: "team", description: "team", fetch: async () => "ok" }); }');
+
+    // Discover and trust with initial hash
+    const discovery = await discoverNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    const initialHash = discovery.candidates.find((c) => c.name === 'team')?.currentHash;
+    expect(initialHash).toBeDefined();
+    const eforgeDir = resolve(root, '.eforge');
+    await upsertTrustRecord(eforgeDir, 'team', initialHash!);
+
+    // Modify the extension - now it's changed. The top-level throw proves the loader skips before import.
+    await writeFile(extPath, 'throw new Error("changed extension should not be imported"); export default function extension(eforge) { eforge.registerInputSource({ name: "team-modified", description: "team", fetch: async () => "ok" }); }', 'utf-8');
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    expect(result.registry.extensions).toHaveLength(0);
+    const changedDiagnostic = result.diagnostics.find((d) => d.code === 'extension:trust-changed');
+    expect(changedDiagnostic).toMatchObject({
+      code: 'extension:trust-changed',
+      name: 'team',
+      path: extPath,
+      scope: 'project-team',
+      source: 'auto',
+      trustedHash: initialHash,
+      currentHash: expect.stringMatching(/^[0-9a-f]{64}$/),
+    });
+    expect(changedDiagnostic?.currentHash).not.toBe(initialHash);
+
+    const changedCandidate = result.candidates.find((c) => c.name === 'team');
+    expect(changedCandidate?.status).toBe('skipped');
+    expect(changedCandidate?.trustState).toBe('changed');
+
+    // Verify importExtension was never called - no loaded, no error from factory
+    expect(result.diagnostics.some((d) => d.code === 'extension:factory-error')).toBe(false);
+    expect(result.diagnostics.some((d) => d.code === 'extension:invalid-export')).toBe(false);
+  });
+
+  it('does not call importExtension for untrusted project-team extensions (no factory-error side effects)', async () => {
+    const root = makeTempDir();
+    const opts = await makeTree(root);
+    // Write an extension that would throw if loaded (to prove it's not being imported)
+    await writeModule(resolve(getScopeDirectory('project-team', opts), 'extensions', 'throw-if-loaded.js'), 'throw new Error("should not be imported"); export default function extension() {}');
+
+    const result = await loadNativeExtensions({ cwd: opts.cwd, configDir: opts.configDir, config: { enabled: true, trustProjectExtensions: false } });
+    // Should emit untrusted, not factory-error
+    expect(result.diagnostics.some((d) => d.code === 'extension:untrusted')).toBe(true);
+    expect(result.diagnostics.some((d) => d.code === 'extension:factory-error')).toBe(false);
   });
 
   it('diagnoses duplicate names for every named registration family', async () => {

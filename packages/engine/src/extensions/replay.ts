@@ -283,6 +283,10 @@ function normalizeDiagnostic(diagnostic: NativeExtensionDiagnostic | ExtensionDi
   if (diagnostic.path !== undefined) result.path = diagnostic.path;
   if (diagnostic.scope !== undefined) result.scope = diagnostic.scope as ExtensionDiagnostic['scope'];
   if (diagnostic.source !== undefined) result.source = diagnostic.source;
+  const trustHashes = diagnostic as { currentHash?: string; trustedHash?: string };
+  const resultWithTrustHashes = result as ExtensionDiagnostic & { currentHash?: string; trustedHash?: string };
+  if (trustHashes.currentHash !== undefined) resultWithTrustHashes.currentHash = trustHashes.currentHash;
+  if (trustHashes.trustedHash !== undefined) resultWithTrustHashes.trustedHash = trustHashes.trustedHash;
   return result;
 }
 
@@ -376,6 +380,12 @@ function projectExtensions(registry: NativeExtensionRegistry, globalEnabled: boo
       status: candidate.status as ExtensionEntry['status'],
       enabled: globalEnabled && candidate.status !== 'shadowed',
       trust: candidate.trust,
+      ...(candidate.trustState !== undefined && { trustState: candidate.trustState }),
+      ...(candidate.currentHash !== undefined && { currentHash: candidate.currentHash }),
+      ...(candidate.trustedHash !== undefined && { trustedHash: candidate.trustedHash }),
+      ...(candidate.trustedAt !== undefined && { trustedAt: candidate.trustedAt }),
+      ...(candidate.trustedBy !== undefined && { trustedBy: candidate.trustedBy }),
+      ...(candidate.trustStorePath !== undefined && { trustStorePath: candidate.trustStorePath }),
       ...(candidate.format !== undefined && { format: candidate.format }),
       ...(candidate.layout !== undefined && { layout: candidate.layout }),
       ...(loaded?.strategy !== undefined && { strategy: loaded.strategy }),
