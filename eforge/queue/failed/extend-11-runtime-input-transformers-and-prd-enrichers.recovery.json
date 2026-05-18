@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 2,
+  "summary": {
+    "prdId": "extend-11-runtime-input-transformers-and-prd-enrichers",
+    "setName": "extend-11-runtime-input-transformers-and-prd-enrichers",
+    "featureBranch": "eforge/extend-11-runtime-input-transformers-and-prd-enrichers",
+    "baseBranch": "main",
+    "plans": [
+      {
+        "planId": "plan-03-docs-issue-tracker-example",
+        "status": "failed",
+        "error": "Blocked by failed dependency: plan-02-enqueue-preprocessing-runtime"
+      }
+    ],
+    "failingPlan": {
+      "planId": "plan-03-docs-issue-tracker-example",
+      "errorMessage": "Blocked by failed dependency: plan-02-enqueue-preprocessing-runtime"
+    },
+    "landedCommits": [
+      {
+        "sha": "1496e677450f268007762d5466d24a19741902b3",
+        "subject": "test(plan-02-enqueue-preprocessing-runtime): fix test issues",
+        "author": "Mark Schaake",
+        "date": "2026-05-17T21:33:38-07:00"
+      },
+      {
+        "sha": "ebd6aad2f441c71d8ac9cd4aef558ea93d34eb7c",
+        "subject": "feat(plan-02-enqueue-preprocessing-runtime): Enqueue Preprocessing Runtime",
+        "author": "Mark Schaake",
+        "date": "2026-05-17T21:30:54-07:00"
+      },
+      {
+        "sha": "a6f2565840f2eaf3dd0570f7e6e862c9d9b3601d",
+        "subject": "feat(plan-01-extension-input-contracts): Extension Input and Enricher Contracts",
+        "author": "Mark Schaake",
+        "date": "2026-05-17T21:14:11-07:00"
+      },
+      {
+        "sha": "84b7d86570924fc310f60ee6b6714ac7a284d2a5",
+        "subject": "plan(extend-11-runtime-input-transformers-and-prd-enrichers): initial planning artifacts",
+        "author": "Mark Schaake",
+        "date": "2026-05-17T20:33:39-07:00"
+      }
+    ],
+    "diffStat": ".../orchestration.yaml                             | 137 +++++\n .../plan-01-extension-input-contracts.md           |  94 +++\n .../plan-02-enqueue-preprocessing-runtime.md       |  96 +++\n .../plan-03-docs-issue-tracker-example.md          |  82 +++\n .../client/src/__tests__/events-schemas.test.ts    | 206 +++++++\n .../src/__tests__/events-wire-parity.test.ts       |  55 ++\n packages/client/src/api-version.ts                 |   2 +-\n packages/client/src/event-registry.ts              |  30 +\n packages/client/src/events.schemas.ts              |  53 ++\n packages/client/src/types.ts                       |   4 +-\n packages/eforge/package.json                       |   1 +\n packages/eforge/src/cli/display.ts                 |  22 +\n packages/eforge/src/cli/index.ts                   |  48 +-\n packages/engine/src/eforge.ts                      |   2 +-\n packages/engine/src/extensions/index.ts            |   1 +\n packages/engine/src/extensions/loader.ts           |   3 +\n packages/engine/src/extensions/projector.ts        |   2 +\n packages/engine/src/extensions/recorder.ts         |  10 +\n packages/engine/src/extensions/replay.ts           |   3 +\n packages/engine/src/extensions/types.ts            |   5 +\n packages/extension-sdk/src/api.ts                  |  34 +-\n packages/extension-sdk/src/context.ts              |  38 ++\n packages/extension-sdk/src/hooks.ts                |  85 ++-\n packages/extension-sdk/src/index.ts                |   5 +\n packages/input/src/extension-normalize.ts          | 582 ++++++++++++++++++\n packages/input/src/index.ts                        |  36 ++\n packages/monitor-ui/src/lib/reducer/index.ts       |   8 +\n .../monitor/src/__tests__/auto-build-route.test.ts |  88 +++\n packages/monitor/src/server.ts                     |  26 +-\n pnpm-lock.yaml                                     |   3 +\n test/daemon-recovery.test.ts                       |   6 +-\n test/daemon-session-plan-routes.test.ts            |  14 +-\n test/extension-cli-commands.test.ts                |  21 +\n test/extension-loader.test.ts                      |  88 ++-\n test/extension-replay.test.ts                      |  35 ++\n test/extension-sdk-example.test.ts                 |  62 ++\n test/extension-tooling-routes.test.ts              |   4 +-\n test/extension-tooling-wiring.test.ts              |  43 ++\n test/input-extension-normalization.test.ts         | 664 +++++++++++++++++++++\n web/content/reference/api.md                       |   2 +-\n web/content/reference/cli.md                       |   2 +-\n web/content/reference/config.md                    |   2 +-\n web/content/reference/events.md                    |   8 +-\n web/content/reference/tools.md                     |   2 +-\n web/public/llms-full.txt                           |  16 +-\n web/public/llms.txt                                |   2 +-\n web/public/reference/api.md                        |   2 +-\n web/public/reference/cli.md                        |   2 +-\n web/public/reference/config.md                     |   2 +-\n web/public/reference/events.md                     |   8 +-\n web/public/reference/tools.md                      |   2 +-\n web/public/schemas/events.schema.json              | 191 ++++++\n 52 files changed, 2885 insertions(+), 54 deletions(-)",
+    "modelsUsed": [
+      "claude-sonnet-4-6",
+      "gpt-5.5"
+    ],
+    "failedAt": "2026-05-18T04:47:34.697Z"
+  },
+  "verdict": {
+    "verdict": "manual",
+    "confidence": "low",
+    "rationale": "Recovery analyst failed or timed out.",
+    "completedWork": [],
+    "remainingWork": [],
+    "risks": [],
+    "partial": true,
+    "recoveryError": "Claude Code process aborted by user"
+  },
+  "generatedAt": "2026-05-18T04:49:09.734Z"
+}
