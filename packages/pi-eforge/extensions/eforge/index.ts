@@ -315,8 +315,8 @@ export default function eforgeExtension(pi: ExtensionAPI) {
   // ------------------------------------------------------------------
   // Tool: eforge_follow
   // Long-running tool that blocks for the lifetime of a session and streams
-  // high-signal events to the caller via `onUpdate(message)`. Resolves with
-  // the `SessionSummary` so the outcome lands in the conversation transcript.
+  // high-signal events to the caller via `onUpdate({ content: [...] })`.
+  // Resolves with the `SessionSummary` so the outcome lands in the conversation transcript.
   // Mirrors the MCP `eforge_follow` tool in packages/eforge/src/cli/mcp-proxy.ts
   // - both consumers share `eventToProgress()` from @eforge-build/client so the
   // per-event messages stay identical across Claude Code and Pi.
@@ -394,7 +394,10 @@ export default function eforgeExtension(pi: ExtensionAPI) {
             if (update) {
               counters = update.counters;
               try {
-                onUpdate(update.message);
+                onUpdate({
+                  content: [{ type: "text", text: update.message }],
+                  details: {},
+                });
               } catch {
                 // Pi UI may be closed or the callback may throw; swallow so the
                 // subscription keeps running.

@@ -3,8 +3,8 @@
  *
  * Exercises the tool's `execute()` function end-to-end against a stub daemon
  * that emits synthetic SSE events, asserting that:
- *   - `onUpdate(message)` is invoked for each high-signal event with the
- *     mapped human-readable string,
+ *   - `onUpdate(result)` is invoked for each high-signal event with a Pi tool
+ *     result containing the mapped human-readable string,
  *   - noisy event families (`agent:*`) and low-severity review issues are
  *     filtered,
  *   - the tool resolves with a `SessionSummary`-derived JSON payload once
@@ -27,6 +27,11 @@ import eforgeExtension from '../packages/pi-eforge/extensions/eforge/index.js';
 // Test helpers
 // ---------------------------------------------------------------------------
 
+interface PiToolResult {
+  content: Array<{ type: string; text: string }>;
+  details?: Record<string, unknown>;
+}
+
 interface CapturedTool {
   name: string;
   description: string;
@@ -34,9 +39,9 @@ interface CapturedTool {
     toolCallId: string,
     params: Record<string, unknown>,
     signal: AbortSignal | undefined,
-    onUpdate: ((message: string) => void) | undefined,
+    onUpdate: ((result: PiToolResult) => void) | undefined,
     ctx: { cwd: string; hasUI: boolean; ui: unknown },
-  ) => Promise<{ content: Array<{ type: string; text: string }> }>;
+  ) => Promise<PiToolResult>;
 }
 
 /**
@@ -171,9 +176,9 @@ describe('Pi eforge_follow tool', () => {
       const follow = tools.get('eforge_follow');
       expect(follow).toBeTruthy();
 
-      const updates: string[] = [];
-      const onUpdate = (message: string): void => {
-        updates.push(message);
+      const updates: PiToolResult[] = [];
+      const onUpdate = (result: PiToolResult): void => {
+        updates.push(result);
       };
 
       const result = await follow!.execute(
@@ -192,16 +197,18 @@ describe('Pi eforge_follow tool', () => {
       // phase:start, phase:end, build:files_changed, review:issue{high} -
       // in the order they arrived. agent:* and low-severity issues are filtered.
       expect(updates).toHaveLength(4);
-      expect(updates[0]).toMatch(/^Phase:/);
-      expect(updates[0]).toContain('plan');
-      expect(updates[0]).toContain('starting');
-      expect(updates[1]).toMatch(/^Phase:/);
-      expect(updates[1]).toContain('plan');
-      expect(updates[1]).toContain('complete');
-      expect(updates[2]).toContain('Files changed:');
-      expect(updates[2]).toContain('3');
-      expect(updates[3]).toContain('(high)');
-      expect(updates[3]).toContain('Missing error handling');
+      const updateTexts = updates.map((update) => update.content[0]?.text ?? '');
+      expect(updates.every((update) => Array.isArray(update.content))).toBe(true);
+      expect(updateTexts[0]).toMatch(/^Phase:/);
+      expect(updateTexts[0]).toContain('plan');
+      expect(updateTexts[0]).toContain('starting');
+      expect(updateTexts[1]).toMatch(/^Phase:/);
+      expect(updateTexts[1]).toContain('plan');
+      expect(updateTexts[1]).toContain('complete');
+      expect(updateTexts[2]).toContain('Files changed:');
+      expect(updateTexts[2]).toContain('3');
+      expect(updateTexts[3]).toContain('(high)');
+      expect(updateTexts[3]).toContain('Missing error handling');
 
       // The tool resolves with a JSON payload containing the session summary.
       expect(result.content).toHaveLength(1);
@@ -256,7 +263,7 @@ describe('Pi eforge_follow tool', () => {
       const follow = tools.get('eforge_follow')!;
 
       let callCount = 0;
-      const throwingOnUpdate = (_message: string): void => {
+      const throwingOnUpdate = (_result: PiToolResult): void => {
         callCount += 1;
         throw new Error('caller UI closed');
       };
@@ -300,7 +307,7 @@ describe('Pi eforge_follow tool', () => {
 
       const controller = new AbortController();
       let firstUpdateSeen = false;
-      const onUpdate = (_message: string): void => {
+      const onUpdate = (_result: PiToolResult): void => {
         if (!firstUpdateSeen) {
           firstUpdateSeen = true;
           setTimeout(() => controller.abort(), 5);
